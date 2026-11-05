@@ -5,7 +5,7 @@
 import type { StepContext } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
-import { decimalsOf, nowUtcIso } from './common.js';
+import { chainName, decimalsOf, fmt, joinAnd, nowUtcIso } from './common.js';
 
 export const TOKENS_ORDER: readonly Token[] = ['USDC', 'ETH'];
 
@@ -57,4 +57,21 @@ export function balanceOf(balances: ChainBalance[], chain_id: ChainId): ChainBal
 /** §10.4 gas check: raw ETH − pending ETH ≥ eth_gas_reserve[c]. */
 export function hasGas(b: ChainBalance): boolean {
   return b.ok && b.raw.ETH - b.pending.ETH >= b.reserve;
+}
+
+/** §15 INSUFFICIENT_FUNDS params (SQ-08): totals across the readable chains. */
+export function insufficientParams(
+  ctx: StepContext,
+  token: Token,
+  balances: ChainBalance[],
+  needTotal: bigint,
+): Record<string, string> {
+  const ok = balances.filter((b) => b.ok);
+  const have = ok.reduce((sum, b) => sum + b.spendable[token], 0n);
+  return {
+    token,
+    need: fmt(needTotal, token),
+    have: fmt(have, token),
+    chains: joinAnd(ok.map((b) => chainName(ctx, b.chain_id))),
+  };
 }

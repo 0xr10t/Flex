@@ -55,7 +55,14 @@ import {
   weekdayOf,
   type ScheduleCore,
 } from '../plan/schedule.js';
-import { balanceOf, hasGas, readBalances, TOKENS_ORDER, type ChainBalance } from '../plan/spendable.js';
+import {
+  balanceOf,
+  hasGas,
+  insufficientParams,
+  readBalances,
+  TOKENS_ORDER,
+  type ChainBalance,
+} from '../plan/spendable.js';
 import { AUTOPAY_PICK_LABEL } from '../messages/templates.js';
 
 // ───────────────────────────── re-entrant state ─────────────────────────────
@@ -463,22 +470,6 @@ function pickChain(
     };
   }
   return { kind: 'ok', chain, reused: reuseFrom(chain) };
-}
-
-export function insufficientParams(
-  ctx: StepContext,
-  token: Token,
-  balances: ChainBalance[],
-  needTotal: bigint,
-): Record<string, string> {
-  const ok = balances.filter((b) => b.ok);
-  const have = ok.reduce((s, b) => s + b.spendable[token], 0n);
-  return {
-    token,
-    need: fmt(needTotal, token),
-    have: fmt(have, token),
-    chains: joinAnd(ok.map((b) => chainName(ctx, b.chain_id))),
-  };
 }
 
 async function step(ctx: StepContext): Promise<StepResult> {
