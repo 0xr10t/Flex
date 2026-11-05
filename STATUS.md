@@ -21,15 +21,16 @@ Rule (NEXT_ORCHESTRATOR_PROMPT §0): code writers = Opus 5.5 (`model: "opus"`); 
 
 | Agent | Role | Model | Branch | Started | Result |
 | --- | --- | --- | --- | --- | --- |
-| Lane A agent | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | running |
-| Lane C agent | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | running |
+| Lane A agent #1 | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | stopped by the human (account switch); merged contracts-v3, `a2d9b55` |
+| Lane C agent #1 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | stopped by the human (account switch); merged contracts-v3, `3ec1461`, uncommitted test edits left |
+| Lane A agent #2 | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | running |
+| Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | running |
 
 ## Skills available in this session
 
-Used: `code-review`, `security-review`, `simplify`, `run`. Missing from this installation, replaced as follows:
-`engineering:testing-strategy` → `test-driven-development`; `engineering:debug` → `systematic-debugging`;
-`engineering:code-review` → `code-review`; `engineering:deploy-checklist` → `verification-before-completion`;
-`engineering:documentation`, `engineering:architecture` → by hand.
+After the account switch all of these are installed: `engineering:testing-strategy`, `engineering:code-review`,
+`engineering:debug`, `engineering:architecture`, `engineering:documentation`, `engineering:deploy-checklist`,
+`security-review`, `simplify`, `run`.
 
 ## Contract versions
 
