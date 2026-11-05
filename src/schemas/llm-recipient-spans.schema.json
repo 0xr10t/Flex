@@ -1,0 +1,17 @@
+{
+  "$id": "agent-layer/llm/recipient-spans/v1",
+  "type": "object", "additionalProperties": false, "required": ["spans"],
+  "properties": {
+    "spans": {
+      "type": "array", "maxItems": 50,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["text", "kind", "role"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "kind": { "enum": ["name", "ens", "address", "group"] },
+          "role": { "enum": ["payee", "mentioned"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,422 @@
+{
+  "$ref": "#/$defs/InternalPlan",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AddressPh": {
+      "description": "§7.3 `address_` + 8 lowercase hex.",
+      "type": "string",
+      "pattern": "^address_[0-9a-f]{8}$"
+    },
+    "AmountPh": {
+      "description": "§7.3 `amount_` + 8 lowercase hex.",
+      "type": "string",
+      "pattern": "^amount_[0-9a-f]{8}$"
+    },
+    "ChainId": {
+      "enum": [
+        11155111,
+        84532,
+        421614
+      ],
+      "type": "number"
+    },
+    "CreJob": {
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "trigger": {
+          "const": "cron",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trigger",
+        "cron",
+        "timezone",
+        "interval"
+      ],
+      "type": "object"
+    },
+    "Frequency": {
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly"
+      ],
+      "type": "string"
+    },
+    "InternalIntent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanI"
+        },
+        {
+          "$ref": "#/$defs/PlanJ"
+        },
+        {
+          "$ref": "#/$defs/PlanK"
+        },
+        {
+          "$ref": "#/$defs/PlanL"
+        }
+      ]
+    },
+    "InternalPlan": {
+      "description": "The S9 output validated by V-01 against src/schemas/internal-plan.schema.json.",
+      "items": {
+        "$ref": "#/$defs/InternalIntent"
+      },
+      "type": "array"
+    },
+    "PlanI": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/AmountPh"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "depends_on": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intent_id": {
+          "const": "i",
+          "type": "string"
+        },
+        "recipient": {
+          "$ref": "#/$defs/AddressPh"
+        },
+        "reused_from_chain_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChainId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "required": [
+        "intent_id",
+        "step",
+        "depends_on",
+        "token",
+        "chain_id",
+        "amount",
+        "recipient",
+        "reused_from_chain_id"
+      ],
+      "type": "object"
+    },
+    "PlanJ": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/AmountPh"
+        },
+        "deliverable_base_units": {
+          "type": "string"
+        },
+        "dest_chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "funds_steps": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intent_id": {
+          "const": "j",
+          "type": "string"
+        },
+        "receiver": {
+          "const": "self",
+          "type": "string"
+        },
+        "source_chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "required": [
+        "intent_id",
+        "step",
+        "token",
+        "source_chain_id",
+        "dest_chain_id",
+        "amount",
+        "deliverable_base_units",
+        "receiver",
+        "funds_steps"
+      ],
+      "type": "object"
+    },
+    "PlanK": {
+      "additionalProperties": false,
+      "properties": {
+        "amount_per_payment": {
+          "$ref": "#/$defs/AmountPh"
+        },
+        "autopay_id": {
+          "type": "string"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "cre_job": {
+          "$ref": "#/$defs/CreJob"
+        },
+        "depends_on": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intent_id": {
+          "const": "k",
+          "type": "string"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "properties": {
+            "expires_at": {
+              "type": "string"
+            },
+            "per_period_cap": {
+              "$ref": "#/$defs/AmountPh"
+            },
+            "total_cap": {
+              "$ref": "#/$defs/AmountPh"
+            }
+          },
+          "required": [
+            "per_period_cap",
+            "total_cap",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        "recipient": {
+          "$ref": "#/$defs/AddressPh"
+        },
+        "schedule": {
+          "$ref": "#/$defs/Schedule"
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "required": [
+        "intent_id",
+        "step",
+        "depends_on",
+        "autopay_id",
+        "token",
+        "chain_id",
+        "recipient",
+        "amount_per_payment",
+        "schedule",
+        "limits",
+        "cre_job"
+      ],
+      "type": "object"
+    },
+    "PlanL": {
+      "additionalProperties": false,
+      "properties": {
+        "autopay_id": {
+          "type": "string"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "delegate_address": {
+          "type": "string"
+        },
+        "intent_id": {
+          "const": "l",
+          "type": "string"
+        },
+        "recipient": {
+          "$ref": "#/$defs/AddressPh"
+        },
+        "refund_remaining": {
+          "const": true,
+          "type": "boolean"
+        },
+        "step": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "intent_id",
+        "step",
+        "autopay_id",
+        "chain_id",
+        "delegate_address",
+        "recipient",
+        "refund_remaining"
+      ],
+      "type": "object"
+    },
+    "Schedule": {
+      "additionalProperties": false,
+      "properties": {
+        "day_of_month": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "days_of_week": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Weekday"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "$ref": "#/$defs/ScheduleEnd"
+        },
+        "first_occurrence": {
+          "description": "ISO-8601 date-time",
+          "type": "string"
+        },
+        "frequency": {
+          "$ref": "#/$defs/Frequency"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "start_date": {
+          "description": "yyyy-MM-dd",
+          "type": "string"
+        },
+        "time_of_day": {
+          "description": "HH:MM",
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "frequency",
+        "interval",
+        "days_of_week",
+        "day_of_month",
+        "time_of_day",
+        "timezone",
+        "start_date",
+        "first_occurrence",
+        "end"
+      ],
+      "type": "object"
+    },
+    "ScheduleEnd": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "number"
+            },
+            "type": {
+              "const": "after_count",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "count"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "type": {
+              "const": "on_date",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "date"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "until_cancelled",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Token": {
+      "enum": [
+        "USDC",
+        "ETH"
+      ],
+      "type": "string"
+    },
+    "Weekday": {
+      "enum": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "agent-layer/internal-plan/v1"
+}

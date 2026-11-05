@@ -1,0 +1,10 @@
+{
+  "$id": "agent-layer/llm/request-type/v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["request_type", "actions", "also_balance"],
+  "properties": {
+    "request_type": { "enum": ["actions", "balance", "unsupported"] },
+    "actions": { "type": "array", "uniqueItems": true, "maxItems": 3, "items": { "enum": ["i", "k", "l"] } },
+    "also_balance": { "type": "boolean" }
+  }
+}

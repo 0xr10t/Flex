@@ -1,0 +1,19 @@
+{
+  "$id": "agent-layer/llm/quarantine/v1",
+  "type": "object", "additionalProperties": false, "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["address", "ens_name", "amount", "token"],
+        "properties": {
+          "address":  { "type": ["string", "null"], "maxLength": 42 },
+          "ens_name": { "type": ["string", "null"], "maxLength": 120 },
+          "amount":   { "type": ["string", "null"], "maxLength": 40 },
+          "token":    { "enum": ["USDC", "ETH", null] }
+        }
+      }
+    }
+  }
+}

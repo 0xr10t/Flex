@@ -1,0 +1,21 @@
+{
+  "$id": "agent-layer/llm/amounts/v1",
+  "type": "object", "additionalProperties": false, "required": ["amounts"],
+  "properties": {
+    "amounts": {
+      "type": "array", "maxItems": 30,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["phrase", "number", "relative", "token", "fiat", "role"],
+        "properties": {
+          "phrase":   { "type": "string", "minLength": 1, "maxLength": 80 },
+          "number":   { "type": ["string", "null"] },
+          "relative": { "enum": ["all", "half", "max", null] },
+          "token":    { "enum": ["USDC", "ETH", null] },
+          "fiat":     { "enum": ["USD", "OTHER", null] },
+          "role":     { "enum": ["pay", "context"] }
+        }
+      }
+    }
+  }
+}

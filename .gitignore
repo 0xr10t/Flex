@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.db
+*.db-wal
+*.db-shm
+config.json
+*_token
+logs/
+.env
