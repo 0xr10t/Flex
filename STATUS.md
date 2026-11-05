@@ -1,6 +1,6 @@
 # STATUS
 
-Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v1`.
+Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v2`.
 
 ## Lane board
 
@@ -17,6 +17,7 @@ Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PR
 | Tag | Date | Changes |
 | --- | --- | --- |
 | `contracts-v1` | 2026-11-06 | Initial contracts: types, step, repos, llm, io, catalog, static tables, schemas, schema.sql, registry stubs, test fakes |
+| `contracts-v2` | 2026-11-06 | `src/contracts/money.ts` (decimal/base-unit/short-address helpers), `LANES.md` (export names, conventions) |
 
 ## Merge log
 
