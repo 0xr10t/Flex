@@ -36,6 +36,14 @@ import { validateLimits } from './settings.js';
 export const MAX_BODY_BYTES = 20 * 1024 * 1024;
 export const REPORTS_PATH = '/v1/execution/reports';
 
+const HTTP_ERROR_NAME: Readonly<Record<number, string>> = {
+  400: 'Bad Request',
+  404: 'Not Found',
+  413: 'Payload Too Large',
+  415: 'Unsupported Media Type',
+  500: 'Internal Server Error',
+};
+
 export interface AppDeps {
   repos: Repos;
   llm: LlmClient;
@@ -103,12 +111,11 @@ export function createApp(deps: AppDeps): FastifyInstance {
     return undefined;
   });
 
+  // Fastify errors (malformed JSON → 400, body over 20 MB → 413, …): status only, never the error text (§18).
   app.setErrorHandler((error: { statusCode?: number }, _request, reply) => {
     const status = typeof error.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
     if (status >= 500) deps.log.error({ event: 'http_error', http_status: status });
-    return reply
-      .code(status)
-      .send({ statusCode: status, error: status >= 500 ? 'Internal Server Error' : 'Bad Request' });
+    return reply.code(status).send({ statusCode: status, error: HTTP_ERROR_NAME[status] ?? 'Error' });
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ statusCode: 404, error: 'Not Found' }));
 

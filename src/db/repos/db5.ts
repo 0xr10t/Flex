@@ -1,5 +1,5 @@
 // Implements: §7.1 DB5 agent limits (key → JSON value), §6.3 defaults inserted on first run, §7.2 / §16.4
-// DB5 written only by PUT /v1/settings/limits (putAll's only caller is src/server/routes/settings.ts).
+// DB5 written only by PUT /v1/settings/limits (putAll's only caller is the PUT /v1/settings/limits route in src/server/app.ts).
 // Owner: Lane A.
 
 import type { Db5Limits } from '../../contracts/repos.js';

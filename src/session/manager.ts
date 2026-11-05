@@ -5,7 +5,8 @@
 // re-enters the same step), §9.7 / §13.4 max_attempts 4 → TOO_MANY_RETRIES, §17.3 confirmation/answer/cancel
 // table, §8.14 step 6 / I-37 HANDOFF_FAILED retried up to 3 attempts in total, §13.3 fixed replies, §14.1
 // AgentResponse, §14.4 MODEL_FAILED when the model is unavailable, §15 error responses, §0 / SQ-19 uncovered states
-// → UNSUPPORTED_REQUEST with an `unsupported_state` log line, §18 metrics as log events.
+// → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-01 cancel without a matching request, SQ-A-03
+// message while HANDOFF_FAILED), §18 metrics as log events.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
@@ -194,6 +195,14 @@ export class SessionManager {
           }
         }
       }
+      if (a !== null && a.req.state === 'HANDOFF_FAILED') {
+        // §17.3 has no row for a messages call while HANDOFF_FAILED (spec-questions/A.md SQ-A-03). Interim: cancel
+        // texts cancel it like the cancel endpoint; any other text → UNSUPPORTED_REQUEST (§0) and the request stays
+        // HANDOFF_FAILED, so `confirm` yes can still retry it.
+        if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+        this.logUnsupported(s, a.req.state, 'handoff_failed:message', a.req.request_id);
+        return ok(this.unsupportedReply(s, a.req.request_id));
+      }
       return ok(await this.newRequest(s, input, []));
     });
   }
@@ -243,20 +252,31 @@ export class SessionManager {
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
       if (cancellable) return ok(this.discard(s, a, REPLY.CANCELLED()));
-      this.deps.log.warn({
-        event: 'unsupported_state',
-        session_id: s.session_id,
-        state: a?.req.state ?? 'NONE',
-        rule_id: 'cancel:no_active_request',
-      });
-      return ok({
-        session_id: s.session_id,
-        request_id,
-        state: 'error',
-        messages: [],
-        error: { code: 'UNSUPPORTED_REQUEST', message: ERROR_MESSAGE.UNSUPPORTED_REQUEST({}) },
-      });
+      this.logUnsupported(s, a?.req.state ?? 'NONE', 'cancel:no_active_request');
+      return ok(this.unsupportedReply(s, request_id));
     });
+  }
+
+  /** §0 / SQ-19: an uncovered input is logged with its state and branch id (no request is changed). */
+  private logUnsupported(s: OpenSession, state: string, rule_id: string, request_id?: string): void {
+    this.deps.log.warn({
+      event: 'unsupported_state',
+      session_id: s.session_id,
+      ...(request_id !== undefined ? { request_id } : {}),
+      state,
+      rule_id,
+    });
+  }
+
+  /** An UNSUPPORTED_REQUEST response that leaves the active request as it is (SQ-A-01, SQ-A-03). */
+  private unsupportedReply(s: OpenSession, request_id: string): AgentResponse {
+    return {
+      session_id: s.session_id,
+      request_id,
+      state: 'error',
+      messages: [],
+      error: { code: 'UNSUPPORTED_REQUEST', message: ERROR_MESSAGE.UNSUPPORTED_REQUEST({}) },
+    };
   }
 
   // ───────────────────────────── runner ─────────────────────────────
@@ -280,7 +300,8 @@ export class SessionManager {
   private async newRequest(s: OpenSession, input: MessageInput, prepend: string[]): Promise<AgentResponse> {
     const prev = s.active;
     if (prev !== null && !isTerminal(prev.req)) {
-      // A HANDOFF_FAILED request not retried before the next message is abandoned (§8.0: one active request).
+      // Unreachable through handleMessage (awaiting states are handled first); kept so §8.0 "one active request"
+      // holds for any caller.
       prev.req.state = 'DISCARDED';
       this.logFinal(prev.req);
     }
@@ -472,13 +493,7 @@ export class SessionManager {
 
   /** §0: a state this spec does not cover → UNSUPPORTED_REQUEST; log the internal state code (SQ-19). */
   private unsupported(s: OpenSession, a: Active, rule_id: string): AgentResponse {
-    this.deps.log.warn({
-      event: 'unsupported_state',
-      session_id: s.session_id,
-      request_id: a.req.request_id,
-      state: a.req.state,
-      rule_id,
-    });
+    this.logUnsupported(s, a.req.state, rule_id, a.req.request_id);
     return this.fail(s, a, 'UNSUPPORTED_REQUEST', undefined, 'FAILED');
   }
 

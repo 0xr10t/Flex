@@ -3,7 +3,6 @@
 // Owner: Lane A. The other lanes' factories are injected through `LaneFactories`; the Orchestrator wires the real
 // ones (and the step registry) in Phase 2.
 
-import { mkdirSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type {
   AllowlistLogger,
@@ -71,9 +70,8 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
   const tokens = loadTokens(config);
   const log = createLogger(opts.logFile !== undefined ? { file: opts.logFile } : {});
   const key = getOrCreateDbKey(opts.keyStore ?? createOsKeyStore());
-  const dbPath = expandHome(config.db.path);
-  if (dbPath !== ':memory:') mkdirSync(expandHome('~/.agent-layer'), { recursive: true, mode: 0o700 });
-  const db = openDatabase(dbPath, key);
+  // openDatabase creates the DB file's directory (mode 0700) when it is missing.
+  const db = openDatabase(expandHome(config.db.path), key);
   const names = chainNames(config);
   const repos = createRepos(db, { chainName: (id) => names[id] ?? String(id) });
   repos.db5.insertDefaultsIfMissing(new Date().toISOString());
