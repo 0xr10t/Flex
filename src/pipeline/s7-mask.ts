@@ -5,26 +5,12 @@
 
 import type { Db8HistoryRow } from '../contracts/repos.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
-import type {
-  AddressPh,
-  AgentRequest,
-  ChainId,
-  RecipientPh,
-  RecipientRef,
-  ResolvedRecipient,
-  Span,
-} from '../contracts/types.js';
+import type { AddressPh, ChainId, RecipientPh, RecipientRef, ResolvedRecipient } from '../contracts/types.js';
 import { CHAIN_IDS } from '../contracts/types.js';
 import { s6State } from '../recipients/state.js';
 
 /** §17.2 step 1: session history depth. */
 const HISTORY_LIMIT = 5;
-
-/**
- * CCR C-1 (ccr/C-1.md, local stub): S5 (Lane B) records the `mentioned` spans (offsets in masked_text_s3) so S7 can replace them
- * with `[person]` (§8.6 rule 6, §8.8). Until the contract carries it, S7 reads this optional field.
- */
-type WithMentioned = AgentRequest & { mentioned_spans?: Span[] };
 
 interface Replacement {
   start: number;
@@ -79,7 +65,7 @@ function applyReplacements(text: string, reps: Replacement[]): string {
 }
 
 export async function maskStep(ctx: StepContext): Promise<StepResult> {
-  const req = ctx.req as WithMentioned;
+  const req = ctx.req;
   const done = req.step_state.s7 as { done: boolean } | undefined;
   if (done?.done) return { kind: 'continue' };
   const s6 = s6State(req);
@@ -125,7 +111,8 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
     if (span.span !== null)
       reps.push({ start: span.span.start, end: span.span.end, text: span.text, with: placeholder });
   }
-  for (const m of req.mentioned_spans ?? []) reps.push({ start: m.start, end: m.end, text: m.text, with: '[person]' });
+  // §8.6 rule 6 / §8.8 (CCR C-1): S5's `mentioned` spans become `[person]`.
+  for (const m of req.mentioned_spans) reps.push({ start: m.start, end: m.end, text: m.text, with: '[person]' });
 
   req.recipients = refs;
   req.masked_text_s8 = applyReplacements(req.masked_text_s3 ?? req.typed_text, reps);

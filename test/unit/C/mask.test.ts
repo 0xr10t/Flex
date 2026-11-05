@@ -228,7 +228,7 @@ describe('§8.8 S7 mask recipients', () => {
     const { ctx } = await resolveAndMask({ text, spans: [{ text: 'Mihir', kind: 'name' }] });
     const start = text.indexOf('Priya');
     const mentioned: Span[] = [{ text: 'Priya', start, end: start + 5, clause_index: 1 }];
-    (ctx.req as typeof ctx.req & { mentioned_spans: Span[] }).mentioned_spans = mentioned;
+    ctx.req.mentioned_spans = mentioned;
     await s7.step(ctx);
     const ph = ctx.req.recipients[0]?.placeholder;
     expect(ctx.req.masked_text_s8).toBe(`send amount_aaaaaaaa to ${ph}, my sister [person] said so`);
