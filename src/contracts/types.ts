@@ -653,6 +653,12 @@ export interface AgentRequest {
   masked_text_s3?: string;
   /** S6 output aligned with `spans`. */
   resolved: ResolvedRecipient[];
+  /**
+   * S5 output (contracts-v3, CCR B-2 / C-1): the `role = 'mentioned'` spans (§8.6 rule 6), offsets in masked_text_s3.
+   * Never looked up, never stored in any DB, never sent to a model; S7 replaces their text with `[person]` in
+   * masked_text_s8 (§8.8).
+   */
+  mentioned_spans: Span[];
   /** S11 output, kept for confirmation. */
   summary?: Summary;
   /** S12: the envelope built on first "yes", reused on retries (§8.14 step 6). */

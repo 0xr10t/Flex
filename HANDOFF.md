@@ -4,7 +4,24 @@ Written 2026-11-06 when the previous Orchestrator session ran out of usage. Read
 `ORCHESTRATOR_PROMPT.md` (the process), `README.md` (the spec, source of truth), `LANES.md` (lane conventions and the
 export names Phase 2 will wire), `STATUS.md`, `SPEC_CHECKLIST.md` and `SPEC_QUESTIONS.md`.
 
-## Where things stand
+## Update 2026-11-05 (second Orchestrator session) — read this first
+
+- **Phase 1 was resumed**: one lane agent per lane, spawned with the prompts the new Orchestrator wrote (template in
+  `STATUS.md` history; each = ORCHESTRATOR_PROMPT §6 brief verbatim + the "what is left" item below + lane specifics).
+  **The human then stopped all four agents mid-work.** No lane reached its reviewer or wrote a §8 report.
+- **`contracts-v3` published** on `agentic_layer`:
+  - CCR B-2 / C-1 add `AgentRequest.mentioned_spans` (S5 → S7 `[person]` masking);
+  - CCR B-1 adds `ITEM_LABEL` to the catalog, with interim wording pending SQ-22.
+
+  See the CCR log in `STATUS.md` for what each lane must change after rebasing onto `contracts-v3`.
+- **New lane work is NOT on GitHub.** The session had no push access. The new lane commits (A +1, B +1, C +7, D +1)
+  and the uncommitted lane files exist only in that container, or in the bundle/archive handed to the human (see
+  `STATUS.md` for the exact list). Restore them before resuming, or redo that work from the `origin/lane/*` heads below.
+- New spec rulings: SQ-21 (answered: LLM #4 prompt `// …` remarks are annotations, not prompt text). SQ-22 is open.
+  SQ-11: Node 22.23.4 is available in the cloud environment.
+- **Testing sub-agents must run on Claude Sonnet** (`model: "sonnet"`), as the human asked.
+
+## Where things stand (as of the first hand-off)
 
 **Phase 0: done.** It is on `agentic_layer`, tagged `contracts-v1` and then `contracts-v2`:
 

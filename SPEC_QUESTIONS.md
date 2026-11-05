@@ -92,3 +92,8 @@ No reply text is given for these discards.
 
 **SQ-21** · §8.10 LLM #4 prompt text: the AMOUNTS / RECIPIENTS / DOCUMENT ITEMS / SESSION / `{correction_line}` lines carry trailing `// …` remarks.
 *Answer:* those remarks describe slot contents ("only on the retry", example JSON shapes); §8.10 says prompts are "fixed text with `{…}` slots filled by code; nothing else is ever added". → `payments.txt` holds the text without the `// …` remarks; `{correction_line}` = `CORRECTION: <problems>` on the retry only and the line is omitted on the first call. ANSWERED (spec §8.10).
+
+**SQ-22** · §8.2 steps 4–5, §15 `DOCUMENT_TOO_LARGE`, §13.1 note "Couldn't read anything usable from {item}" — the `{item}` slot has no wording (raised by Lane B as SQB-02; CCR B-1).
+*Now (contracts-v3 `ITEM_LABEL`):* attachment → its filename; link → `link N` (as in `[link N]` / `URL_FETCH_FAILED`); pasted block → `pasted text N`.
+*Status:* OPEN (human) — confirm the labels, especially `pasted text N`.
+

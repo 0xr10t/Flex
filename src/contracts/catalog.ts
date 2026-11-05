@@ -251,6 +251,16 @@ export const NOTES = {
 } as const;
 
 /** §9.6 step 7 / E4 skip reasons. SQ-07: duplicate-address reason wording not given by the spec. */
+/**
+ * §8.2 steps 4–5 / §15 `DOCUMENT_TOO_LARGE` and §13.1 note: the `{item}` slot naming a content item
+ * (contracts-v3, CCR B-1). SQ-22: the spec gives no wording; interim labels until the human answers.
+ */
+export const ITEM_LABEL = {
+  attachment: (p: { filename: string }): string => p.filename,
+  url: (p: { n: number }): string => `link ${p.n}`,
+  pasted: (p: { n: number }): string => `pasted text ${p.n}`,
+} as const;
+
 export const SKIP_REASON = {
   OWN_ADDRESS: () => "that's your own address",
   NO_ADDRESS_ON: (p: P) => `no address on ${req(p, 'chain')}`,
