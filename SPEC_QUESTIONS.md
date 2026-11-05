@@ -147,3 +147,8 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
 - **SQ-C-10** §9 flowchart vs §9.4: which resolved contacts get the ENS re-check? → now a `Q_WHO_IS` contact chip does; an address already in DB2 does not.
 - **SQ-C-11** viem returns null on `HttpError`/`ResolverError` reverts, so a gateway failure reads as "no address" → now the user is asked (no wrong address can result).
 - **SQ-O-01** (raised by the Orchestrator from Lane C's report) §8.8 / §16.1 / §16.2 / §7.3 rule 5: §8.8 masks spans only, but §16.1 says LLM #4 sees recipients masked. If S5 tags one occurrence of a name and the same name appears again untagged, the name reaches LLM #4. Tagging every occurrence as a payee would mint extra placeholders that P3 then requires to be paid. → now spans only. Options: (a) keep; (b) replace further occurrences of a tagged text by that span's placeholder, with no new DB3 row; (c) replace them by `[person]`.
+- **SQ-A-04** how an `intent_result` finds the DB7 row → now by `autopay.autopay_id`; a failed `l` leaves the row unchanged; a `k` report with no `autopay` updates DB6 only.
+- **SQ-A-05** closing a leftover session id while another session is open → now 404, clears nothing.
+- **SQ-A-06** after the third failed hand-off the request is `FAILED`, but the only text says "Confirm again to retry" and confirm returns 409 → now the §15 text unchanged. Wording needed.
+- **SQ-A-07** an existing token file not at mode 0600 → now refused at startup, including 0400.
+- **SQ-A-08** base64 attachments → now strict RFC 4648, no whitespace; non-zero trailing bits accepted.
