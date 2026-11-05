@@ -76,6 +76,7 @@ export function newAgentRequest(request_id: RequestId, session_id: SessionId, in
     handoff_attempts: 0,
     input,
     resolved: [],
+    mentioned_spans: [],
     prepend_messages: [],
     step_state: {},
   };
