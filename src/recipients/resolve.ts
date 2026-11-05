@@ -51,14 +51,15 @@ type Resolved = Omit<ResolvedRecipient, 'span_index'>;
 /** Result of driving one payee one step further. */
 type Outcome =
   | { k: 'resolved'; r: Resolved; group_ph?: GroupPh }
-  | { k: 'ask'; flow: Flow; question: Question }
+  /** `base` = the question text without a re-ask hint (defaults to the question text). */
+  | { k: 'ask'; flow: Flow; question: Question; base?: string }
   | { k: 'removed' }
   | { k: 'stop'; result: StepResult };
 
 const qid = (): QuestionId => newId('question') as QuestionId;
 
-function ask(flow: Flow, question: Question): Outcome {
-  return { k: 'ask', flow, question };
+function ask(flow: Flow, question: Question, base?: string): Outcome {
+  return base === undefined ? { k: 'ask', flow, question } : { k: 'ask', flow, question, base };
 }
 
 function stop(result: StepResult): Outcome {
@@ -260,8 +261,12 @@ function addressHint(check: Extract<AddressCheck, { ok: false }>): string | unde
   return undefined;
 }
 
+function reenterBase(origin: Origin): string {
+  return QUESTION_TEXT.Q_ADDRESS_REENTER(origin.suggested !== null ? { name: origin.suggested } : {});
+}
+
 function reenterQuestion(origin: Origin, attempt: number, hint?: string): Question {
-  const base = QUESTION_TEXT.Q_ADDRESS_REENTER(origin.suggested !== null ? { name: origin.suggested } : {});
+  const base = reenterBase(origin);
   return buildQuestion({
     question_id: qid(),
     code: 'Q_ADDRESS_REENTER',
@@ -278,6 +283,7 @@ async function addressFromText(ctx: StepContext, text: string, origin: Origin): 
   return ask(
     { t: 'addr', stage: 'reenter', address: null, ens: null, attempt: 1, origin },
     reenterQuestion(origin, 1, addressHint(check)),
+    reenterBase(origin),
   );
 }
 
@@ -560,7 +566,7 @@ function settle(ctx: StepContext, st: S6State, out: Outcome): StepResult | null 
       return null;
     case 'ask':
       st.flow = out.flow;
-      st.pending = { question: out.question, base_text: out.question.text };
+      st.pending = { question: out.question, base_text: out.base ?? out.question.text };
       return { kind: 'question', question: out.question };
     case 'stop':
       st.flow = null;
