@@ -64,7 +64,6 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
   const done = req.step_state.s7 as { done: boolean } | undefined;
   if (done?.done) return { kind: 'continue' };
   const s6 = s6State(req);
-  const history = ctx.repos.db8.recentHistory(req.session_id, HISTORY_LIMIT);
   const refs: RecipientRef[] = [];
   const reps: Replacement[] = [];
 
@@ -82,7 +81,10 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
         type: 'person',
         source: 'session',
         followup: true,
-        last_chain_id: lastChainFor(history, span.followup_placeholder),
+        last_chain_id: lastChainFor(
+          ctx.repos.db8.recentHistory(req.session_id, HISTORY_LIMIT),
+          span.followup_placeholder,
+        ),
       });
     } else if (r.kind === 'group') {
       const g = s6.groups[i];

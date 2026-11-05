@@ -33,7 +33,12 @@ export function looksLikeAddress(text: string): boolean {
   return ADDRESS_RE.test(text.trim());
 }
 
-/** §9.2 step 3: equal to wallet.address (case-insensitive comparison of the hex). */
+/** Same address, whatever the case of the hex. */
+export function sameAddress(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/** §9.2 step 3: equal to wallet.address. */
 export function isSelf(address: string, wallet: string): boolean {
-  return address.toLowerCase() === wallet.toLowerCase();
+  return sameAddress(address, wallet);
 }

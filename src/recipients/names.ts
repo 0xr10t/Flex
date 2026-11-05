@@ -44,7 +44,6 @@ export function checkContactName(text: string, config: Config, repos: Repos): Na
   const name = text.trim();
   if (!NAME_RE.test(name)) return { ok: false, reason: 'invalid' };
   const key = nameKey(name);
-  if (key.length === 0) return { ok: false, reason: 'invalid' };
   if (key.startsWith('0x')) return { ok: false, reason: 'invalid' };
   const chainAliases = config.chains.flatMap((c) => [c.name, ...c.aliases]).map(nameKey);
   if (chainAliases.includes(key)) return { ok: false, reason: 'invalid' };

@@ -49,19 +49,18 @@ export interface ChainAddress {
   address: Address;
 }
 
-/** §9.3 step 3 over several chains, in the given order. Chains without a record are left out. */
+/** §9.3 step 3 over several chains, results in the given order. Chains without a record are left out. */
 export async function resolveOnChains(
   ens: EnsClient,
   config: Config,
   name: string,
   chain_ids: ChainId[],
 ): Promise<ChainAddress[]> {
-  const out: ChainAddress[] = [];
-  for (const chain_id of chain_ids) {
-    const address = await resolveOnChain(ens, config, name, chain_id);
-    if (address !== null) out.push({ chain_id, address });
-  }
-  return out;
+  const addresses = await Promise.all(chain_ids.map((chain_id) => resolveOnChain(ens, config, name, chain_id)));
+  return chain_ids.flatMap((chain_id, i) => {
+    const address = addresses[i] ?? null;
+    return address === null ? [] : [{ chain_id, address }];
+  });
 }
 
 /** §9.3 step 7: first label of an ENS name (prefill for Q_NAME_FOR_ADDRESS). */

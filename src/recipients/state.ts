@@ -29,13 +29,12 @@ export interface EnsInfo {
 export type Flow =
   /** Q_WHO_IS pending (§9.1 step 4). */
   | { t: 'who_is'; origin: Origin }
-  /** §9.2 address flow; `stage` names the pending question. `attempt` counts the "No, re-enter" loop (§9.7). */
+  /** §9.2 address flow; `stage` names the pending question, whose attempt counts the "No, re-enter" loop (§9.7). */
   | {
       t: 'addr';
       stage: 'correct' | 'reenter' | 'name';
       address: Address | null;
       ens: EnsInfo | null;
-      attempt: number;
       origin: Origin;
     }
   /** Q_ENS_CHAIN pending (§9.3 step 6). */

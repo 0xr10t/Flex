@@ -17,6 +17,7 @@ import {
   SKIP_REASON,
   buildQuestion,
   matchChip,
+  reask,
   withHint,
 } from '../contracts/catalog.js';
 import { EnsUnavailable, IndexerUnavailable } from '../contracts/io.js';
@@ -31,13 +32,12 @@ import type {
   GroupMember,
   GroupPh,
   Question,
-  QuestionCode,
   QuestionId,
   RecipientSpan,
   ResolvedRecipient,
 } from '../contracts/types.js';
 import { newId } from '../util/ids.js';
-import { checkAddress, isSelf, looksLikeAddress, type AddressCheck } from './address.js';
+import { checkAddress, isSelf, looksLikeAddress, sameAddress, type AddressCheck } from './address.js';
 import { chainName, joinNames, okChains, statedChain } from './chains.js';
 import { firstLabel, normalizeEns, resolveOnChain, resolveOnChains, type ChainAddress } from './ens.js';
 import { resolveMembers, triageMembers } from './group.js';
@@ -57,6 +57,8 @@ type Outcome =
   | { k: 'stop'; result: StepResult };
 
 const qid = (): QuestionId => newId('question') as QuestionId;
+
+const plainChip = (id: string, label: string): Chip => ({ id, label, disabled: false, detail: '' });
 
 function ask(flow: Flow, question: Question, base?: string): Outcome {
   return base === undefined ? { k: 'ask', flow, question } : { k: 'ask', flow, question, base };
@@ -82,12 +84,7 @@ function unsupported(ctx: StepContext, rule_id: string): Outcome {
 function again(st: S6State, q: Question, hint?: string, text?: string): StepResult {
   if (q.attempt >= MAX_ATTEMPTS) return { kind: 'error', code: 'TOO_MANY_RETRIES' };
   const base = text ?? st.pending?.base_text ?? q.text;
-  const question: Question = {
-    ...q,
-    question_id: qid(),
-    attempt: q.attempt + 1,
-    text: hint !== undefined ? withHint(hint, base) : base,
-  };
+  const question = reask({ ...q, text: base }, qid(), hint);
   st.pending = { question, base_text: base };
   return { kind: 'question', question };
 }
@@ -122,25 +119,24 @@ async function contactOutcome(ctx: StepContext, rows: Db2Row[]): Promise<Outcome
 async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Promise<Outcome> {
   const ens = resolved.ens_name as string;
   const saved = resolved.address as Address;
-  const results: Array<Address | null> = [];
+  const name_key = (rows[0] as Db2Row).name_key;
+  const chain_ids = [...new Set(rows.map((r) => r.chain_id))];
+  let results: Array<Address | null>;
   try {
-    for (const chain_id of [...new Set(rows.map((r) => r.chain_id))]) {
-      results.push(await resolveOnChain(ctx.ens, ctx.config, ens, chain_id));
-    }
+    results = await Promise.all(chain_ids.map((chain_id) => resolveOnChain(ctx.ens, ctx.config, ens, chain_id)));
   } catch (e) {
     if (!(e instanceof EnsUnavailable)) throw e;
     // §9.4 "RPC unavailable": use the saved address; note.
     ctx.req.notes.push(NOTES.ENS_RECHECK_FAILED({ ens }));
     return { k: 'resolved', r: resolved };
   }
-  const different = [...new Set(results.filter((a): a is Address => a !== null && !sameAddr(a, saved)))];
+  const different = [...new Set(results.filter((a): a is Address => a !== null && !sameAddress(a, saved)))];
   // spec-questions/C.md SQ-C-02: §9.4 has one "new address"; several differing chains are not covered.
   if (different.length > 1) return unsupported(ctx, 'ens_recheck_several_new_addresses');
   const fresh = different[0];
   if (fresh !== undefined) {
-    const flow: Flow = { t: 'ens_changed', name_key: (rows[0] as Db2Row).name_key, ens, saved, fresh };
     return ask(
-      flow,
+      { t: 'ens_changed', name_key, ens, saved, fresh },
       buildQuestion({
         question_id: qid(),
         code: 'Q_ENS_CHANGED',
@@ -150,9 +146,8 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
     );
   }
   if (results.some((a) => a !== null)) return { k: 'resolved', r: resolved };
-  const flow: Flow = { t: 'ens_changed', name_key: (rows[0] as Db2Row).name_key, ens, saved, fresh: null };
   return ask(
-    flow,
+    { t: 'ens_changed', name_key, ens, saved, fresh: null },
     buildQuestion({
       question_id: qid(),
       code: 'Q_ENS_CHANGED',
@@ -160,10 +155,6 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
       chips: [CHIPS.ENS_KEEP, CHIPS.CANCEL],
     }),
   );
-}
-
-function sameAddr(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase();
 }
 
 // ───────────────────────────── §9.1 names ─────────────────────────────
@@ -177,12 +168,9 @@ async function nameFlow(ctx: StepContext, text: string, origin: Origin): Promise
 }
 
 function whoIsQuestion(ctx: StepContext, name: string, text?: string): Question {
-  const chips: Chip[] = closeContacts(ctx.repos.db2.listAll(), nameKey(name)).map((c) => ({
-    id: `contact:${c.name_key}`,
-    label: c.name,
-    disabled: false,
-    detail: '',
-  }));
+  const chips = closeContacts(ctx.repos.db2.listAll(), nameKey(name)).map((c) =>
+    plainChip(`contact:${c.name_key}`, c.name),
+  );
   return buildQuestion({
     question_id: qid(),
     code: 'Q_WHO_IS',
@@ -218,7 +206,7 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
   // §9.3 step 4.
   if (found.length === 0) {
     return ask(
-      { t: 'addr', stage: 'reenter', address: null, ens: null, attempt, origin },
+      { t: 'addr', stage: 'reenter', address: null, ens: null, origin },
       buildQuestion({
         question_id: qid(),
         code: 'Q_ADDRESS_REENTER',
@@ -240,12 +228,12 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
     );
   }
   // §9.3 step 6.
-  const chips = found.map((f) => ({
-    id: String(f.chain_id),
-    label: ENS_CHAIN_CHIP_LABEL({ chain: chainName(ctx, f.chain_id), addr: shortAddress(f.address) }),
-    disabled: false,
-    detail: '',
-  }));
+  const chips = found.map((f) =>
+    plainChip(
+      String(f.chain_id),
+      ENS_CHAIN_CHIP_LABEL({ chain: chainName(ctx, f.chain_id), addr: shortAddress(f.address) }),
+    ),
+  );
   return ask(
     { t: 'ens_chain', name, found, origin, attempt },
     buildQuestion({ question_id: qid(), code: 'Q_ENS_CHAIN', params: { ens: name }, chips, attempt }),
@@ -281,7 +269,7 @@ async function addressFromText(ctx: StepContext, text: string, origin: Origin): 
   if (check.ok) return addressChecked(ctx, check.address, origin, null, 1);
   // §9.2 steps 1–2 "re-ask": the address is asked for with Q_ADDRESS_REENTER, with the quoted hint.
   return ask(
-    { t: 'addr', stage: 'reenter', address: null, ens: null, attempt: 1, origin },
+    { t: 'addr', stage: 'reenter', address: null, ens: null, origin },
     reenterQuestion(origin, 1, addressHint(check)),
     reenterBase(origin),
   );
@@ -309,7 +297,7 @@ function addressChecked(
   }
   // Step 5.
   return ask(
-    { t: 'addr', stage: 'correct', address, ens, attempt, origin },
+    { t: 'addr', stage: 'correct', address, ens, origin },
     correctQuestion(ctx, address, ens, origin, attempt),
   );
 }
@@ -369,12 +357,7 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
       const allowed = okChains(ctx);
       // spec-questions/C.md SQ-C-04: no allowed `ok` chain to offer.
       if (allowed.length === 0) return unsupported(ctx, 'group_chain_no_ok_chain');
-      const chips = allowed.map((c) => ({
-        id: String(c),
-        label: chainName(ctx, c),
-        disabled: false,
-        detail: '',
-      }));
+      const chips = allowed.map((c) => plainChip(String(c), chainName(ctx, c)));
       return ask({ ...flow, stage: 'chain' }, buildQuestion({ question_id: qid(), code: 'Q_GROUP_CHAIN', chips }));
     }
   }
@@ -606,13 +589,12 @@ export async function resolveAnswer(ctx: StepContext, q: Question, answer: Answe
   const st = s6State(ctx.req);
   const flow = st.flow;
   if (flow === null) return { kind: 'error', code: 'INTERNAL_ERROR' };
-  const code: QuestionCode = q.code;
   switch (flow.t) {
     case 'who_is':
       return answerWhoIs(ctx, st, q, answer, flow.origin);
     case 'addr':
-      if (code === 'Q_ADDRESS_CORRECT') return answerCorrect(ctx, st, q, answer, flow);
-      if (code === 'Q_ADDRESS_REENTER') return answerReenter(ctx, st, q, answer, flow);
+      if (flow.stage === 'correct') return answerCorrect(ctx, st, q, answer, flow);
+      if (flow.stage === 'reenter') return answerReenter(ctx, st, q, answer, flow);
       return answerName(ctx, st, q, answer, flow);
     case 'ens_chain':
       return answerEnsChain(ctx, st, q, answer, flow);
@@ -660,31 +642,26 @@ async function answerWhoIs(
   return again(st, q);
 }
 
-async function answerCorrect(
+function answerCorrect(
   ctx: StepContext,
   st: S6State,
   q: Question,
   answer: Answer,
   flow: Extract<Flow, { t: 'addr' }>,
-): Promise<StepResult> {
+): StepResult {
   const chip = matchChip(q, answer);
-  if (chip === null) {
-    const res = again(st, q);
-    if (res.kind === 'question') flow.attempt = res.question.attempt;
-    return res;
-  }
+  if (chip === null) return again(st, q);
   if (chip.id === CHIPS.DONT_PAY.id) return proceed(ctx, st, { k: 'removed' });
   if (chip.id === CHIPS.YES.id) {
     const prefill = flow.ens !== null ? firstLabel(flow.ens.name) : flow.origin.suggested;
     return proceed(ctx, st, ask({ ...flow, stage: 'name' }, nameQuestion(prefill)));
   }
   // "No, re-enter" counts as a failed attempt (§9.7).
-  if (flow.attempt >= MAX_ATTEMPTS) return { kind: 'error', code: 'TOO_MANY_RETRIES' };
-  const attempt = flow.attempt + 1;
+  if (q.attempt >= MAX_ATTEMPTS) return { kind: 'error', code: 'TOO_MANY_RETRIES' };
   return proceed(
     ctx,
     st,
-    ask({ ...flow, stage: 'reenter', address: null, ens: null, attempt }, reenterQuestion(flow.origin, attempt)),
+    ask({ ...flow, stage: 'reenter', address: null, ens: null }, reenterQuestion(flow.origin, q.attempt + 1)),
   );
 }
 
@@ -695,18 +672,13 @@ async function answerReenter(
   answer: Answer,
   flow: Extract<Flow, { t: 'addr' }>,
 ): Promise<StepResult> {
-  const failed = (hint?: string, text?: string): StepResult => {
-    const res = again(st, q, hint, text);
-    if (res.kind === 'question') flow.attempt = res.question.attempt;
-    return res;
-  };
   const t = textOf(answer);
-  if (t === null || t.length === 0) return failed();
+  if (t === null || t.length === 0) return again(st, q);
   // The answer is typed by the user, so it is not content-sourced any more (spec-questions/C.md SQ-C-05).
   const origin: Origin = { ...flow.origin, untrusted: false };
   if (looksLikeAddress(t)) {
     const check = checkAddress(t);
-    if (!check.ok) return failed(addressHint(check));
+    if (!check.ok) return again(st, q, addressHint(check));
     return proceed(ctx, st, addressChecked(ctx, check.address, origin, null, q.attempt));
   }
   // §13.4: an ENS name typed where an address is asked goes through §9.3.
@@ -715,20 +687,20 @@ async function answerReenter(
     const out = await ensFlow(ctx, ens, origin, q.attempt);
     // An ENS name without an address is a failed answer to this question (§9.7), worded as §9.3 step 4.
     if (out.k === 'ask' && out.question.code === 'Q_ADDRESS_REENTER') {
-      return failed(undefined, QUESTION_VARIANT.REENTER_ENS_NO_ADDRESS({ ens }));
+      return again(st, q, undefined, QUESTION_VARIANT.REENTER_ENS_NO_ADDRESS({ ens }));
     }
     return proceed(ctx, st, out);
   }
-  return failed();
+  return again(st, q);
 }
 
-async function answerName(
+function answerName(
   ctx: StepContext,
   st: S6State,
   q: Question,
   answer: Answer,
   flow: Extract<Flow, { t: 'addr' }>,
-): Promise<StepResult> {
+): StepResult {
   const t = textOf(answer);
   if (t === null) return again(st, q);
   const check = checkContactName(t, ctx.config, ctx.repos);
@@ -759,13 +731,13 @@ async function answerName(
   });
 }
 
-async function answerEnsChain(
+function answerEnsChain(
   ctx: StepContext,
   st: S6State,
   q: Question,
   answer: Answer,
   flow: Extract<Flow, { t: 'ens_chain' }>,
-): Promise<StepResult> {
+): StepResult {
   const chip = matchChip(q, answer);
   const picked = chip === null ? undefined : flow.found.find((f) => String(f.chain_id) === chip.id);
   if (picked === undefined) return again(st, q);
@@ -784,13 +756,13 @@ async function answerEnsChain(
   );
 }
 
-async function answerEnsChanged(
+function answerEnsChanged(
   ctx: StepContext,
   st: S6State,
   q: Question,
   answer: Answer,
   flow: Extract<Flow, { t: 'ens_changed' }>,
-): Promise<StepResult> {
+): StepResult {
   const chip = matchChip(q, answer);
   if (chip === null) return again(st, q);
   if (chip.id === CHIPS.CANCEL.id) {
@@ -837,7 +809,7 @@ async function answerGroup(
   return proceed(ctx, st, groupFinish(ctx, flow, picked));
 }
 
-async function answerNoPayee(ctx: StepContext, st: S6State, q: Question, answer: Answer): Promise<StepResult> {
+function answerNoPayee(ctx: StepContext, st: S6State, q: Question, answer: Answer): StepResult {
   const t = textOf(answer);
   if (t === null || t.length === 0) return again(st, q);
   // Resolved via §9 like a typed payee.

@@ -57,7 +57,7 @@ export function createSubnameSource(config: Config, fetchFn: FetchFn = fetch): S
     async listChildren(parent: string): Promise<string[] | 'not_found'> {
       const id = namehash(parent);
       const found = await post<{ domain: { id: string } | null }>(PARENT_QUERY, { id });
-      if (found.domain === null || found.domain === undefined) return 'not_found';
+      if (!found.domain) return 'not_found';
       const names: string[] = [];
       for (let skip = 0; ; skip += PAGE_SIZE) {
         const page = await post<{ domains: Array<{ name: string | null; labelName: string | null }> }>(SUBNAMES_QUERY, {
