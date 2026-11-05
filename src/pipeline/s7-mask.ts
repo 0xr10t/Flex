@@ -20,8 +20,9 @@ interface Replacement {
 }
 
 /**
- * §17.2 step 4: the payee's previous chain. History rows hold the handed-off payments (placeholders only); the most
- * recent entry naming this placeholder gives the chain (`chain_id` of a plan intent, or a numeric S8 `chain`).
+ * §17.2 step 4: the payee's previous chain. History rows hold the handed-off payments (placeholders only); only the
+ * most recent item naming this placeholder counts: its numeric `chain_id` (SQ-C-08), else its numeric S8 `chain`,
+ * else null (`"unstated"` never falls back to an older payment).
  */
 export function lastChainFor(history: Db8HistoryRow[], placeholder: AddressPh): ChainId | null {
   for (const h of history) {
@@ -36,28 +37,22 @@ export function lastChainFor(history: Db8HistoryRow[], placeholder: AddressPh): 
       const it = items[i] as Record<string, unknown> | null;
       if (it === null || typeof it !== 'object' || it.recipient !== placeholder) continue;
       const c = typeof it.chain_id === 'number' ? it.chain_id : it.chain;
-      if (typeof c === 'number' && (CHAIN_IDS as readonly number[]).includes(c)) return c as ChainId;
+      return typeof c === 'number' && (CHAIN_IDS as readonly number[]).includes(c) ? (c as ChainId) : null;
     }
   }
   return null;
 }
 
-/** Applies non-overlapping replacements right to left; a replacement whose offsets don't match its text is located. */
-function applyReplacements(text: string, reps: Replacement[]): string {
-  const located: Replacement[] = [];
-  for (const r of reps) {
-    if (text.slice(r.start, r.end) === r.text) {
-      located.push(r);
-      continue;
-    }
-    const at = text.indexOf(r.text);
-    if (at >= 0) located.push({ ...r, start: at, end: at + r.text.length });
-  }
-  located.sort((a, b) => b.start - a.start);
+/**
+ * Applies the replacements right to left. The offsets are in masked_text_s3 and S5 keeps no overlaps (§8.6 rule 5), so
+ * a replacement that doesn't match its text or overlaps another is a bug: null, because a recipient could otherwise
+ * stay readable in the text LLM #4 sees (§16.1).
+ */
+function applyReplacements(text: string, reps: Replacement[]): string | null {
   let out = text;
   let floor = Number.POSITIVE_INFINITY;
-  for (const r of located) {
-    if (r.end > floor) continue; // overlapping: keep the one already applied (§8.6 rule 5 already kept the longest)
+  for (const r of [...reps].sort((a, b) => b.start - a.start)) {
+    if (r.end > floor || text.slice(r.start, r.end) !== r.text) return null;
     out = out.slice(0, r.start) + r.with + out.slice(r.end);
     floor = r.start;
   }
@@ -114,8 +109,19 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
   // §8.6 rule 6 / §8.8 (CCR C-1): S5's `mentioned` spans become `[person]`.
   for (const m of req.mentioned_spans) reps.push({ start: m.start, end: m.end, text: m.text, with: '[person]' });
 
+  const masked = applyReplacements(req.masked_text_s3 ?? req.typed_text, reps);
+  if (masked === null) {
+    ctx.log.error({
+      event: 'internal_error',
+      step: 's7',
+      error_code: 'INTERNAL_ERROR',
+      rule_id: 's7_span_mismatch',
+      request_id: req.request_id,
+    });
+    return { kind: 'error', code: 'INTERNAL_ERROR' };
+  }
   req.recipients = refs;
-  req.masked_text_s8 = applyReplacements(req.masked_text_s3 ?? req.typed_text, reps);
+  req.masked_text_s8 = masked;
   req.state = 'RECIPIENTS_MASKED';
   req.step_state.s7 = { done: true };
   return { kind: 'continue' };
