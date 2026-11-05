@@ -45,3 +45,8 @@ S9 actually chose is then not in that JSON.
 *Now:* S7 takes the previous chain from the most recent history entry that names the placeholder: a numeric `chain_id`
 (plan intent) or a numeric `chain` (S8 payment). `"unstated"` gives `last_chain_id = null`. Lane D should write the
 resolved chain into each history item (see the lane report, "Needs from other lanes").
+
+**SQ-C-09** · §9.6 step 9 `Q_GROUP_MEMBERS` "every payable member preselected"
+The §13.4 chip shape (`id`, `label`, `disabled`, `detail`) has no "selected" flag, so preselection cannot be sent.
+*Now:* every enabled chip is meant to be preselected; disabled chips are the unpayable members. The UI team must
+preselect all enabled chips of a `multiselect` question (or the contract needs a `selected` flag). Please confirm.

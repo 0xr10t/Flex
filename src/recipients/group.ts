@@ -64,7 +64,7 @@ export interface MemberTriage {
   members: MemberLookup[];
   /** Subnames removed because they resolve to the wallet's own address (§9.6 step 7 note). */
   self: string[];
-  /** Subnames removed as duplicates of an alphabetically earlier subname's address (SQ-07: no note wording). */
+  /** Subnames removed as duplicates of an alphabetically earlier subname's address (SQ-07: no note wording, so no note is added). */
   duplicates: string[];
 }
 

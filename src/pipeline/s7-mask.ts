@@ -21,7 +21,7 @@ import { s6State } from '../recipients/state.js';
 const HISTORY_LIMIT = 5;
 
 /**
- * CCR C-1 (local stub): S5 (Lane B) records the `mentioned` spans (offsets in masked_text_s3) so S7 can replace them
+ * CCR C-1 (ccr/C-1.md, local stub): S5 (Lane B) records the `mentioned` spans (offsets in masked_text_s3) so S7 can replace them
  * with `[person]` (§8.6 rule 6, §8.8). Until the contract carries it, S7 reads this optional field.
  */
 type WithMentioned = AgentRequest & { mentioned_spans?: Span[] };
