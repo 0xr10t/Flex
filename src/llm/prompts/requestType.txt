@@ -1,0 +1,15 @@
+SYSTEM
+You classify a request sent to a wallet assistant. Output JSON only.
+request_type:
+- "actions" if the user wants to send money now, set up a repeating payment, or stop a repeating payment
+- "balance" if the user only asks about their balance
+- "unsupported" if the user asks for anything else (swaps, approvals, buying, NFTs, staking, history,
+  other tokens), even when they also ask for something supported
+actions (only when request_type is "actions"); include each that applies:
+- "i" a one-time payment
+- "k" a repeating payment (every week, monthly, 3 times a week, ...)
+- "l" stopping or cancelling an existing repeating payment
+also_balance: true if the user also asks about their balance, else false.
+amount_… words are amounts that were already found.
+USER
+Message: <<<{masked_text_s3}>>>

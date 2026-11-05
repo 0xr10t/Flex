@@ -1,0 +1,60 @@
+// Implements: helpers shared by Lane B's steps S0–S5: chain display names (§6.1 config, §13.1 "Chain display
+// names from config"), name lists in messages (SQ-06 interim join format, spec-questions/B.md SQB-01), question ids
+// (§7.3 `q_` + 12 hex via newId), §0 / SQ-19 "log the internal state code" for uncovered states,
+// §10.1 spendable balance (used by §8.4 step 6 relative amounts).
+// Owner: Lane B.
+
+import type { StepContext, StepResult } from '../contracts/step.js';
+import type { ChainId, Config, QuestionId, Token } from '../contracts/types.js';
+import { TOKEN_DECIMALS } from '../contracts/types.js';
+import { toBaseUnits } from '../contracts/money.js';
+import { newId } from '../util/ids.js';
+
+export function chainName(config: Config, chain_id: ChainId): string {
+  return config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
+}
+
+/** "A", "A and B", "A, B and C" (SQ-06 interim format). */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+}
+
+export function qid(): QuestionId {
+  return newId('question') as QuestionId;
+}
+
+export function nowUtcIso(ctx: StepContext): string {
+  return ctx.now().toUTC().toISO() ?? new Date().toISOString();
+}
+
+/**
+ * §0: a state the spec does not cover stops the request with UNSUPPORTED_REQUEST and logs the internal state code
+ * (SQ-19: `event: "unsupported_state"`, `state`, `rule_id`).
+ */
+export function unsupported(ctx: StepContext, step: string, rule_id: string): StepResult {
+  ctx.log.warn({
+    event: 'unsupported_state',
+    step,
+    state: ctx.req.state,
+    rule_id,
+    session_id: ctx.req.session_id,
+    request_id: ctx.req.request_id,
+  });
+  return { kind: 'error', code: 'UNSUPPORTED_REQUEST' };
+}
+
+/**
+ * §10.1 spendable(c, t) = DB4.balance − Σ pending DB6 rows of the last 10 minutes (payment, bridge_out,
+ * autopay_prefund) − (ETH ? eth_gas_reserve[c] : 0), floored at 0. Base units (bigint). Null when the chain's DB4
+ * row is missing or `unavailable`.
+ */
+export function spendable(ctx: StepContext, chain_id: ChainId, token: Token): bigint | null {
+  const row = ctx.repos.db4.get(chain_id, token);
+  if (!row || row.status !== 'ok') return null;
+  const decimals = TOKEN_DECIMALS[token];
+  let v = BigInt(row.base_units);
+  for (const p of ctx.repos.db6.pendingRecent(chain_id, token, nowUtcIso(ctx))) v -= toBaseUnits(p.amount, decimals);
+  if (token === 'ETH') v -= toBaseUnits(ctx.limits.eth_gas_reserve[String(chain_id)] ?? '0', decimals);
+  return v > 0n ? v : 0n;
+}
