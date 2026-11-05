@@ -49,6 +49,7 @@ The spec quotes hint sentences for invalid answers ("That address has a typo: it
 **SQ-11** · §5 Node.js version
 Spec: Node.js 22 LTS. This machine has Node 23.11.1. `package.json` declares `engines.node >= 22`.
 *Status:* OPEN (human) — install Node 22 (nvm/fnm) for the final clean-clone run, or accept 23.
+*Update 2026-11-05:* the cloud build environment runs Node 22.23.4; the clean-clone checks run there. Proposed resolution: closed by using Node 22.
 
 **SQ-15** · §9.4 `Q_ENS_CHANGED` "Cancel" and §11.3 `Q_GROUP_OVER_LIMIT` "No" → `DISCARDED`
 No reply text is given for these discards.
@@ -88,3 +89,6 @@ No reply text is given for these discards.
 
 **SQ-20** · A-10 "with the standard balances" — §19 gives no single standard USDC balance set.
 *Answer:* test-fixture choice, not behaviour: acceptance tests use the E1 balances (Base 80, Arbitrum 60, Sepolia 0 USDC; ETH 0.1 each) unless the row says otherwise. ANSWERED (Orchestrator, test data).
+
+**SQ-21** · §8.10 LLM #4 prompt text: the AMOUNTS / RECIPIENTS / DOCUMENT ITEMS / SESSION / `{correction_line}` lines carry trailing `// …` remarks.
+*Answer:* those remarks describe slot contents ("only on the retry", example JSON shapes); §8.10 says prompts are "fixed text with `{…}` slots filled by code; nothing else is ever added". → `payments.txt` holds the text without the `// …` remarks; `{correction_line}` = `CORRECTION: <problems>` on the retry only and the line is omitted on the first call. ANSWERED (spec §8.10).
