@@ -645,15 +645,17 @@ async function answerWhoIs(
   }
   const t = textOf(answer);
   if (t === null || t.length === 0) return again(st, q);
+  // The answer is typed by the user, so it is not content-sourced any more (spec-questions/C.md SQ-C-05).
+  const typed: Origin = { ...origin, untrusted: false };
   if (looksLikeAddress(t)) {
     const check = checkAddress(t);
     if (!check.ok) return again(st, q, addressHint(check));
     // Address typed → §9.2 with suggested name = the original span text.
-    return proceed(ctx, st, addressChecked(ctx, check.address, origin, null, 1));
+    return proceed(ctx, st, addressChecked(ctx, check.address, typed, null, 1));
   }
   if (looksLikeEns(t)) {
     if (normalizeEns(t) === null) return again(st, q, undefined, QUESTION_VARIANT.WHO_IS_INVALID_ENS());
-    return proceed(ctx, st, await ensFlow(ctx, t, origin, 1));
+    return proceed(ctx, st, await ensFlow(ctx, t, typed, 1));
   }
   return again(st, q);
 }
