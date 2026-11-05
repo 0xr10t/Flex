@@ -7,3 +7,4 @@ src/llm/prompts
 src/schemas/*.json
 src/db/schema.sql
 *.md
+.claude
