@@ -23,7 +23,7 @@ The new address is already saved in DB2 under a different contact name, so the u
 **SQ-C-04** · §9.6 step 2 `Q_GROUP_CHAIN` "chips: allowed ok chains"
 No allowed chain has status `ok` in DB4 for this request, so there is no chip to offer.
 *Now:* `UNSUPPORTED_REQUEST`, `rule_id: "group_chain_no_ok_chain"`.
-*Update:* settled from the spec as unreachable in normal use. S0 reads exactly the chains in `allowed_chain_ids`, and §8.1 step 5 stops the request with `BALANCES_UNAVAILABLE` when every one of them is unavailable, so S6 always has an `ok` chain to offer. The branch stays as a guard; only an empty `allowed_chain_ids` could reach it.
+*Update:* settled from the spec as unreachable in normal use. S0 reads exactly the chains in `allowed_chain_ids`, and §8.1 step 5 stops the request with `BALANCES_UNAVAILABLE` when every one of them is unavailable, so S6 always has an `ok` chain to offer. §14.1 also rejects an empty `allowed_chain_ids`. The branch stays as a guard.
 
 **SQ-C-05** · §9.2 step 5, untrusted address → "No, re-enter" → `Q_ADDRESS_REENTER`
 After the user re-enters an address for a document payee, is the new address still "from the attached content"?
