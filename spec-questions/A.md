@@ -69,5 +69,6 @@ existing file has another mode.
 
 **SQ-A-08** · §14.1 "attachments are base64" — which base64
 The alphabet, padding and line breaks are not specified.
-*Now:* RFC 4648 §4 standard alphabet, padded, length a multiple of 4, no whitespace; anything else → 400.
+*Now:* RFC 4648 §4 standard alphabet, padded, length a multiple of 4, no whitespace; anything else → 400. Non-zero
+trailing bits (`aGl=`) are not checked and are accepted.
 *Status:* OPEN (confirm).

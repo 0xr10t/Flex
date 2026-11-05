@@ -36,11 +36,11 @@ export class RotatingFileStream {
 
   /**
    * Shifts `<path>.i` → `<path>.(i+1)` (the oldest is overwritten), `<path>` → `<path>.1`, then reopens. The file is
-   * reopened even if a rename fails. Until then `fd` is -1, so a write can never reach a reused descriptor number.
+   * reopened even if a rename fails. If the reopen fails too, `fd` stays -1, so a write can never reach a reused
+   * descriptor number, and `size` stays over the limit, so the next write rotates again and can recover.
    */
   rotate(): void {
-    closeSync(this.fd);
-    this.fd = -1;
+    this.closeFd();
     try {
       for (let i = this.maxFiles - 1; i >= 1; i--) {
         const src = i === 1 ? this.path : `${this.path}.${i - 1}`;
@@ -53,6 +53,12 @@ export class RotatingFileStream {
   }
 
   close(): void {
+    this.closeFd();
+  }
+
+  private closeFd(): void {
+    if (this.fd < 0) return;
     closeSync(this.fd);
+    this.fd = -1;
   }
 }
