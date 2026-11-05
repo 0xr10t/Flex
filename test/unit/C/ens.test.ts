@@ -68,7 +68,7 @@ describe('§9.3 helpers', () => {
   });
 });
 
-describe('§9.3 ENS flow (S6)', () => {
+describe('C-446 §9.3 ENS flow (S6)', () => {
   it('C-175 §9.3 step 1: normalize failure → Q_WHO_IS "That isn\'t a valid ENS name. Who is it?"', async () => {
     const { ctx, d } = await run(ensSpan('bad..eth'), []);
     const q = expectQuestion(d, 'Q_WHO_IS', 1);

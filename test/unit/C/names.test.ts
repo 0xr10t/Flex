@@ -19,7 +19,7 @@ import {
   typo,
 } from './helpers.js';
 
-describe('§9.1 names', () => {
+describe('C-446 §9.1 names', () => {
   it('C-157 §9.1 step 1: name_key = trim, lowercase, collapse internal whitespace', () => {
     expect(nameKey('  Mihir   Kumar ')).toBe('mihir kumar');
     expect(nameKey('ARADHYA')).toBe('aradhya');

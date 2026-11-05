@@ -28,7 +28,7 @@ function setup(records: Array<[bigint, `0x${string}`]>, opts: { unavailable?: bo
   return { ctx, d: new Driver(ctx) };
 }
 
-describe('§9.4 ENS re-check', () => {
+describe('C-446 §9.4 ENS re-check', () => {
   it('C-184 §9.4 "Same address": re-resolved per saved chain → continue, no question, no note', async () => {
     const { ctx, d } = setup([
       [COIN[BASE], RIYA],

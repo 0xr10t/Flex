@@ -79,7 +79,7 @@ describe('§9.2 step 1–2 address checks (unit)', () => {
   });
 });
 
-describe('§9.2 address flow (S6)', () => {
+describe('C-446 §9.2 address flow (S6)', () => {
   it('C-165 C-334 §9.2 step 1: bad-checksum address in the prompt → Q_ADDRESS_REENTER with the typo hint', async () => {
     const { ctx, d } = await start(addrSpan(typo(NEWADDR)));
     const q = expectQuestion(d, 'Q_ADDRESS_REENTER', 1);

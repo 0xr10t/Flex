@@ -46,7 +46,7 @@ function seedIitr(ctx: ReturnType<typeof groupCtx>['ctx']) {
   ctx.ens.set('alice.iitr.eth', COIN[BASE], A).set('bob.iitr.eth', COIN.DEFAULT, B).set('carol.iitr.eth', COIN[ARB], C);
 }
 
-describe('§9.6 group sends (S6)', () => {
+describe('C-446 §9.6 group sends (S6)', () => {
   it('C-190 C-192 C-197 C-198 C-297 E4: Q_GROUP_CHAIN → Q_GROUP_PARENT (not in ENS) → Q_GROUP_MEMBERS → DB3 rows', async () => {
     const { ctx, d } = groupCtx();
     seedIitr(ctx);
