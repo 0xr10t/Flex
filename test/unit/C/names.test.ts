@@ -160,16 +160,12 @@ describe('§9.1 names', () => {
 describe('§9.2 step 6 name rules, §16.3', () => {
   const ctx = makeCtx();
 
-  it.each([
-    ['Riya'],
-    ['Riya K'],
-    ['r.k-1_2'],
-    ['Zoë'],
-    ['a'],
-    ['x'.repeat(32)],
-  ])('C-173 §9.2 step 6: %j is a valid contact name', (name) => {
-    expect(checkContactName(name, ctx.config, ctx.repos)).toEqual({ ok: true, name });
-  });
+  it.each([['Riya'], ['Riya K'], ['r.k-1_2'], ['Zoë'], ['a'], ['x'.repeat(32)]])(
+    'C-173 §9.2 step 6: %j is a valid contact name',
+    (name) => {
+      expect(checkContactName(name, ctx.config, ctx.repos)).toEqual({ ok: true, name });
+    },
+  );
 
   it.each([
     ['', 'empty'],
