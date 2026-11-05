@@ -50,6 +50,7 @@ The spec quotes hint sentences for invalid answers ("That address has a typo: it
 Spec: Node.js 22 LTS. This machine has Node 23.11.1. `package.json` declares `engines.node >= 22`.
 *Status:* OPEN (human) — install Node 22 (nvm/fnm) for the final clean-clone run, or accept 23.
 *Update 2026-11-05:* the cloud build environment runs Node 22.23.4; the clean-clone checks run there. Proposed resolution: closed by using Node 22.
+*Update 2026-11-06:* this machine runs Node 25.9.0; the human declined installing Node 22 here. All suites pass on 25.9.0. Still open: confirm 25 is acceptable, or run the final clean-clone check on Node 22.
 
 **SQ-15** · §9.4 `Q_ENS_CHANGED` "Cancel" and §11.3 `Q_GROUP_OVER_LIMIT` "No" → `DISCARDED`
 No reply text is given for these discards.
@@ -97,3 +98,47 @@ No reply text is given for these discards.
 *Now (contracts-v3 `ITEM_LABEL`):* attachment → its filename; link → `link N` (as in `[link N]` / `URL_FETCH_FAILED`); pasted block → `pasted text N`.
 *Status:* OPEN (human) — confirm the labels, especially `pasted text N`.
 
+
+## Lane questions — Orchestrator triage (2026-11-06)
+
+Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane/b-understanding),
+`spec-questions/C.md` (lane/c-recipients). Each lane's "Now" behaviour stays binding until answered.
+
+### Settled from the spec (the lane's "Now" is confirmed)
+
+- **SQB-01** → same as SQ-06 interim join ("A", "A and B", "A, B and C").
+- **SQB-02** → SQ-22 (open, human).
+- **SQB-04** → §8.3 rule 1 splits sentences into clauses; a `.`/`,` inside a number, address, ENS name or link is not
+  a sentence separator (rules 2, 3, 10 need those tokens intact). Confirmed.
+- **SQB-05, SQB-09, SQB-10, SQB-11, SQB-13, SQB-16, SQB-18, SQB-21, SQB-22** → readings consistent with the cited
+  sections; confirmed.
+- **SQB-15** → §8.5 rule 3: S11 (Lane D) puts `buildBalanceAnswer(ctx)` first in the summary response when
+  `req.also_balance` is set. Lane D task.
+- **SQB-19** → contracts-v3 (`AgentRequest.mentioned_spans`).
+- **SQB-20** → §10.3 step 2 / §10.1 apply to a relative amount's chain too: `CHAIN_NOT_ALLOWED` / `BALANCES_UNAVAILABLE`.
+- **SQ-C-05** → §9.2 step 5: the re-entered address is typed by the user, so it is `source='user'` with no content
+  wording. Confirmed.
+- **SQ-C-06** → §9.2 steps 1–2 "re-ask": the first ask is `Q_ADDRESS_REENTER` at attempt 1 with the hint. Confirmed
+  (hint format follows SQ-04).
+- **SQ-C-07** → "exactly one chain word" means one distinct chain. Confirmed.
+- **SQ-C-08** → §17.2 step 4 needs the previous chain. Ruling: each `db8_history.payments_json` item is the S8
+  payment (placeholders only) plus `chain_id` = the chain S9 assigned to it (Lane D writes it; Lane C's S7 reads a
+  numeric `chain_id` first). Still placeholders + chain ids only (§16.2).
+
+### Open — need the human (interim behaviour applies)
+
+- **SQ-A-01** `/cancel` with no active request → now 200 + `UNSUPPORTED_REQUEST`.
+- **SQ-A-02** settings validation details (precision, `eth_gas_reserve` keys, duplicates, string pct, unknown keys) → now strict.
+- **SQ-A-03** `messages` while `HANDOFF_FAILED` → now cancel words cancel; other text → `UNSUPPORTED_REQUEST`.
+- **SQB-03** which "chain-like words" raise `UNSUPPORTED_CHAIN` → now only `polygon`, `solana`.
+- **SQB-06** LLM #1 `number` not matching `^\d+(\.\d+)?$` → now `UNSUPPORTED_REQUEST`.
+- **SQB-07** inflected cancel words ("cancelled", "stopping") → now counted.
+- **SQB-08** unreadable PDF → now `UNSUPPORTED_REQUEST`.
+- **SQB-12** also refuse `0.0.0.0/8` and `::` in the SSRF check → now refused.
+- **SQB-14** model returned only `l` with no cancel word → now `UNSUPPORTED_REQUEST`.
+- **SQB-17** a `QItem` with both address and ENS name → now the address is used.
+- **SQ-C-01** ENS RPC failure for a payee → now `UNSUPPORTED_REQUEST`.
+- **SQ-C-02** re-check returns two different new addresses → now `UNSUPPORTED_REQUEST`.
+- **SQ-C-03** "Use new address" when it is saved under another name → now `UNSUPPORTED_REQUEST`.
+- **SQ-C-04** `Q_GROUP_CHAIN` with no `ok` chain → now `UNSUPPORTED_REQUEST`.
+- **SQ-C-09** `Q_GROUP_MEMBERS` preselection has no chip flag → now "all enabled chips are preselected" (UI rule).
