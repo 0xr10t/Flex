@@ -17,6 +17,7 @@ import {
   type SessionResult,
 } from '../session/manager.js';
 import {
+  isBase64,
   validateAnswer,
   validateCancel,
   validateConfirm,
@@ -99,7 +100,11 @@ export function createApp(deps: AppDeps): FastifyInstance {
     return reply.code(200).send(manager.openSession(body.timezone));
   });
 
-  app.delete<{ Params: { id: string } }>('/v1/sessions/:id', async (request, reply) => {
+  // §14.1: this route has no body, so a JSON content type with an empty body must not reach the JSON parser (→ 400).
+  const ignoreBody = async (request: FastifyRequest): Promise<void> => {
+    delete request.headers['content-type'];
+  };
+  app.delete<{ Params: { id: string } }>('/v1/sessions/:id', { onRequest: ignoreBody }, async (request, reply) => {
     if (!manager.closeSession(request.params.id)) return httpError(reply, 404);
     return reply.code(204).send();
   });
@@ -107,6 +112,7 @@ export function createApp(deps: AppDeps): FastifyInstance {
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/messages', async (request, reply) => {
     const body = request.body;
     if (!validateMessage(body)) return badRequest(reply);
+    if (!(body.attachments ?? []).every((a) => isBase64(a.base64))) return badRequest(reply);
     const input: MessageInput = {
       text: body.text,
       pasted_blocks: body.pasted_blocks ?? [],

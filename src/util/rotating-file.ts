@@ -34,20 +34,22 @@ export class RotatingFileStream {
     return true;
   }
 
-  /** Shifts `<path>.i` → `<path>.(i+1)` (the oldest is overwritten), `<path>` → `<path>.1`, then reopens. */
+  /**
+   * Shifts `<path>.i` → `<path>.(i+1)` (the oldest is overwritten), `<path>` → `<path>.1`, then reopens. The file is
+   * reopened even if a rename fails. Until then `fd` is -1, so a write can never reach a reused descriptor number.
+   */
   rotate(): void {
     closeSync(this.fd);
-    if (this.maxFiles === 1) {
-      this.fd = openSync(this.path, 'w', 0o600);
-      this.size = 0;
-      return;
+    this.fd = -1;
+    try {
+      for (let i = this.maxFiles - 1; i >= 1; i--) {
+        const src = i === 1 ? this.path : `${this.path}.${i - 1}`;
+        if (existsSync(src)) renameSync(src, `${this.path}.${i}`);
+      }
+    } finally {
+      this.fd = openSync(this.path, this.maxFiles === 1 ? 'w' : 'a', 0o600);
+      this.size = fstatSync(this.fd).size;
     }
-    for (let i = this.maxFiles - 1; i >= 1; i--) {
-      const src = i === 1 ? this.path : `${this.path}.${i - 1}`;
-      if (existsSync(src)) renameSync(src, `${this.path}.${i}`);
-    }
-    this.fd = openSync(this.path, 'a', 0o600);
-    this.size = 0;
   }
 
   close(): void {

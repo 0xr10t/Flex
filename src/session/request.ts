@@ -28,6 +28,28 @@ export const STATE_AFTER_STEP: Readonly<Record<StepName, RequestState>> = {
   s12: 'HANDED_OFF',
 };
 
+/** Every §8.0 request state (the record makes the compiler check the list is complete). */
+export const REQUEST_STATES: readonly string[] = Object.keys({
+  RECEIVED: true,
+  BALANCES_REFRESHED: true,
+  GUARDED: true,
+  SCANNED: true,
+  AMOUNTS_MASKED: true,
+  TYPED: true,
+  SPANS_TAGGED: true,
+  RECIPIENTS_RESOLVED: true,
+  RECIPIENTS_MASKED: true,
+  PAIRED: true,
+  PLANNED: true,
+  VALIDATED: true,
+  AWAITING_CONFIRMATION: true,
+  HANDED_OFF: true,
+  HANDOFF_FAILED: true,
+  ANSWERED: true,
+  DISCARDED: true,
+  FAILED: true,
+} satisfies Record<RequestState, true>);
+
 /** States after which a request accepts no further input. */
 export const TERMINAL_STATES: ReadonlySet<RequestState> = new Set<RequestState>([
   'ANSWERED',

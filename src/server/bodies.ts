@@ -29,12 +29,15 @@ export const validateMessage = ajv.compile<Partial<MessageInput> & { text: strin
         type: 'object',
         additionalProperties: false,
         required: ['filename', 'mime', 'base64'],
-        properties: { filename: STR, mime: STR, base64: { type: 'string', pattern: '^[A-Za-z0-9+/=\\s]*$' } },
+        properties: { filename: STR, mime: STR, base64: STR },
       },
     },
     urls: { type: 'array', items: STR },
   },
 });
+
+/** §14.1 "attachments are base64" (RFC 4648 §4, no line breaks; SQ-A-08). Linear, so safe at 20 MB. */
+export const isBase64 = (s: string): boolean => s.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(s);
 
 /** §14.1 answers body: exactly one of chip_id / text / selected_ids. */
 export const validateAnswer = ajv.compile<AnswerBody>({

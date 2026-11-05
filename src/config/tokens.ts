@@ -3,7 +3,7 @@
 // Owner: Lane A.
 
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Config } from '../contracts/types.js';
 import { expandHome } from './load.js';
@@ -19,7 +19,7 @@ export class TokenFileError extends Error {
 
 /**
  * Returns the token in `path`, creating the file first (32 random bytes as lowercase hex, mode 0600) when it is
- * missing. An existing file must hold one 64-hex token (surrounding whitespace ignored).
+ * missing. An existing file must have mode 0600 (SQ-A-07) and hold one 64-hex token (surrounding whitespace ignored).
  */
 export function ensureTokenFile(path: string): string {
   if (!existsSync(path)) {
@@ -29,6 +29,7 @@ export function ensureTokenFile(path: string): string {
     chmodSync(path, 0o600);
     return token;
   }
+  if ((statSync(path).mode & 0o777) !== 0o600) throw new TokenFileError('token file must have mode 0600');
   const token = readFileSync(path, 'utf8').trim();
   if (!TOKEN_RE.test(token)) throw new TokenFileError('token file does not contain a 32-byte hex token');
   return token;

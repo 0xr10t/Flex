@@ -145,14 +145,15 @@ export class SessionManager {
 
   /**
    * DELETE /v1/sessions/{id}: closes the session and clears DB1, DB3, DB8 (§7.4). Returns false for an unknown id.
-   * A session left in DB8 by a crashed process is known and can be closed too (ADR-007).
+   * A session left in DB8 by a crashed process can be closed too (ADR-007), unless another session is open: the clear
+   * would delete that session's rows, so the id counts as unknown and the next close wipes it (SQ-A-05).
    */
   closeSession(session_id: string): boolean {
     if (this.open !== null && this.open.session_id === session_id) {
       this.closeOpen(this.open);
       return true;
     }
-    if (this.deps.repos.db8.getSession(session_id) !== undefined) {
+    if (this.open === null && this.deps.repos.db8.getSession(session_id) !== undefined) {
       this.deps.repos.clearSessionStores();
       this.deps.log.info({ event: 'session_closed', session_id });
       return true;
@@ -258,18 +259,18 @@ export class SessionManager {
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
       if (cancellable) return ok(this.discard(s, a, REPLY.CANCELLED()));
-      this.logUnsupported(s, a?.req.state ?? 'NONE', 'cancel:no_active_request');
+      this.logUnsupported(s, a?.req.state, 'cancel:no_active_request');
       return ok(this.unsupportedReply(s, request_id));
     });
   }
 
   /** §0 / SQ-19: an uncovered input is logged with its state and branch id (no request is changed). */
-  private logUnsupported(s: OpenSession, state: string, rule_id: string, request_id?: string): void {
+  private logUnsupported(s: OpenSession, state: string | undefined, rule_id: string, request_id?: string): void {
     this.deps.log.warn({
       event: 'unsupported_state',
       session_id: s.session_id,
       ...(request_id !== undefined ? { request_id } : {}),
-      state,
+      ...(state !== undefined ? { state } : {}),
       rule_id,
     });
   }
