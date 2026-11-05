@@ -104,6 +104,7 @@ export function newRequest(over: Partial<AgentRequest> = {}): AgentRequest {
     daily_limit_override: false,
     handoff_attempts: 0,
     resolved: [],
+    mentioned_spans: [],
     prepend_messages: [],
     step_state: {},
     ...over,
