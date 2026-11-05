@@ -55,9 +55,7 @@ function hasCorrection(user: string): boolean {
 describe('S8 call and output (§8.9)', () => {
   it('C-131 C-129 E3: payments in model order with the DB1 token; continue', async () => {
     const { ctx, a1, a2, r1, r2 } = e3();
-    const llm = useFixture(ctx, [
-      paymentsCall(a1, [llmItem('i', a2, r2, ARB), llmItem('i', a1, r1, BASE)]),
-    ]);
+    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a2, r2, ARB), llmItem('i', a1, r1, BASE)])]);
     const r = await s8.step(ctx);
     expect(r).toEqual({ kind: 'continue' });
     expect(ctx.req.payments).toEqual([
@@ -104,7 +102,9 @@ describe('S8 call and output (§8.9)', () => {
     expect((await s8.step(ctx)).kind).toBe('continue');
     const call = llm.recorded[0];
     const props = (
-      call?.schema as { properties: { payments: { maxItems: number; items: { properties: Record<string, { enum: unknown[] }> } } } }
+      call?.schema as {
+        properties: { payments: { maxItems: number; items: { properties: Record<string, { enum: unknown[] }> } } };
+      }
     ).properties.payments;
     expect(props.items.properties.amount?.enum).toEqual([a1, null]);
     expect(props.items.properties.amount?.enum).not.toContain(doc);
@@ -302,7 +302,8 @@ describe('S8 retry path (P1–P4, C-130)', () => {
       chain_id: BASE,
       members: [{ subname: 'alice.iitr.eth', address: ALICE_CS }],
     }).group;
-    ctx.req.masked_text_s8 = `send ${a1} to ${g}`;
+    addChainMention(ctx, 'base', BASE);
+    ctx.req.masked_text_s8 = `send ${a1} to ${g} on base`;
     const llm = useFixture(ctx, [
       paymentsCall(a1, [llmItem('i', a1, g, BASE), llmItem('l', null, g)]),
       paymentsCall('CORRECTION: ', [llmItem('i', a1, g, BASE)]),
@@ -347,7 +348,8 @@ describe('S8 checks without retry (P5–P9)', () => {
       chain_id: BASE,
       members: [{ subname: 'alice.iitr.eth', address: ALICE_CS }],
     }).group;
-    ctx.req.masked_text_s8 = `send ${a1} to ${g}`;
+    addChainMention(ctx, 'base', BASE);
+    ctx.req.masked_text_s8 = `send ${a1} to ${g} on base`;
     useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, g, BASE)])]);
     expectError(await s8.step(ctx), 'RELATIVE_AMOUNT_NOT_ALLOWED');
   });
@@ -395,7 +397,12 @@ describe('S8 checks without retry (P5–P9)', () => {
   it('C-138 C-401 P7 k with an untrusted recipient that is an existing DB2 contact → allowed', async () => {
     const ctx = ctxD({ actions: ['k'] });
     const a1 = addAmount(ctx, '10');
-    const r1 = addRecipient(ctx, { name: 'Aradhya', address: ARADHYA_CS, source: 'untrusted', untrusted_item_index: 0 });
+    const r1 = addRecipient(ctx, {
+      name: 'Aradhya',
+      address: ARADHYA_CS,
+      source: 'untrusted',
+      untrusted_item_index: 0,
+    });
     ctx.req.masked_text_s8 = `pay ${a1} every friday`;
     useFixture(ctx, [paymentsCall(a1, [llmItem('k', a1, r1, 'unstated', WEEKLY_FRI)])]);
     expect((await s8.step(ctx)).kind).toBe('continue');

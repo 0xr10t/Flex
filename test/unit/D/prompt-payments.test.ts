@@ -111,7 +111,9 @@ describe('LLM #4 prompt builder (§8.10)', () => {
     expect(lines).toContain(
       `AMOUNTS: [{"placeholder":"${A1}","token":"USDC","from_attached_content":false},{"placeholder":"${A2}","token":"ETH","from_attached_content":true}]`,
     );
-    expect(lines).toContain(`RECIPIENTS: [{"placeholder":"${G1}","type":"group"},{"placeholder":"${R2}","type":"person"}]`);
+    expect(lines).toContain(
+      `RECIPIENTS: [{"placeholder":"${G1}","type":"group"},{"placeholder":"${R2}","type":"person"}]`,
+    );
     expect(lines).toContain(`DOCUMENT ITEMS: [{"amount":"${A2}","recipient":"${R2}"}]`);
     expect(lines).toContain('CHAINS MENTIONED: [{"word":"base","chain_id":84532}]');
     expect(lines).toContain('ACTION KINDS: ["i"]');

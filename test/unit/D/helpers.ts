@@ -189,7 +189,12 @@ export function mintAmount(
   ctx: TestContext,
   amount: string,
   token: Token = 'USDC',
-  o: { source?: 'user' | 'derived' | 'untrusted'; origin?: Parameters<TestContext['repos']['db1']['mint']>[0]['origin']; confirmed?: boolean; session_id?: string } = {},
+  o: {
+    source?: 'user' | 'derived' | 'untrusted';
+    origin?: Parameters<TestContext['repos']['db1']['mint']>[0]['origin'];
+    confirmed?: boolean;
+    session_id?: string;
+  } = {},
 ): AmountPh {
   return ctx.repos.db1.mint({
     session_id: o.session_id ?? ctx.req.session_id,
@@ -259,7 +264,14 @@ export function addRecipient(ctx: TestContext, o: RecipientOpts): AddressPh {
     ens_chain_ids: o.ens_chain_ids ?? [],
     pinned_chain_id: o.pinned_chain_id ?? null,
   });
-  ctx.req.recipients.push({ placeholder: ph, span_index, type: 'person', source, followup: false, last_chain_id: null });
+  ctx.req.recipients.push({
+    placeholder: ph,
+    span_index,
+    type: 'person',
+    source,
+    followup: false,
+    last_chain_id: null,
+  });
   return ph;
 }
 
@@ -590,7 +602,10 @@ export function planJ(
   const decimals = token === 'USDC' ? 6 : 18;
   const amount = mintAmount(ctx, padded, token, { source: 'derived', origin: 'bridge_padded' });
   const [i = '0', f = ''] = deliverable.split('.');
-  const base = (BigInt(i) * 10n ** BigInt(decimals) + BigInt((f + '0'.repeat(decimals)).slice(0, decimals) || '0')).toString();
+  const base = (
+    BigInt(i) * 10n ** BigInt(decimals) +
+    BigInt((f + '0'.repeat(decimals)).slice(0, decimals) || '0')
+  ).toString();
   return {
     intent_id: 'j',
     step,
@@ -642,11 +657,21 @@ export function planK(
       total_cap: mintAmount(ctx, o.total ?? '80', token, { source: 'derived', origin: 'autopay_total_cap' }),
       expires_at: o.expires_at ?? '2026-12-31T18:29:59Z',
     },
-    cre_job: { trigger: 'cron', cron: o.cron ?? '0 10 * * 5', timezone: schedule.timezone, interval: schedule.interval },
+    cre_job: {
+      trigger: 'cron',
+      cron: o.cron ?? '0 10 * * 5',
+      timezone: schedule.timezone,
+      interval: schedule.interval,
+    },
   };
 }
 
-export function planL(step: number, recipient: AddressPh, autopay_id = 'ap_0000000000f7', chain_id: ChainId = BASE): PlanL {
+export function planL(
+  step: number,
+  recipient: AddressPh,
+  autopay_id = 'ap_0000000000f7',
+  chain_id: ChainId = BASE,
+): PlanL {
   return {
     intent_id: 'l',
     step,
@@ -671,7 +696,10 @@ export function expectError(r: StepResult, code: ErrorCode, params?: Record<stri
   return msg;
 }
 
-export function expectQuestion(r: StepResult, code: string): NonNullable<Extract<StepResult, { kind: 'question' }>['question']> {
+export function expectQuestion(
+  r: StepResult,
+  code: string,
+): NonNullable<Extract<StepResult, { kind: 'question' }>['question']> {
   expect(r.kind).toBe('question');
   if (r.kind !== 'question') throw new Error(`expected question ${code}, got ${JSON.stringify(r)}`);
   expect(r.question.code).toBe(code);
