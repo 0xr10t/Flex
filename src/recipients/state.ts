@@ -39,7 +39,7 @@ export type Flow =
       origin: Origin;
     }
   /** Q_ENS_CHAIN pending (§9.3 step 6). */
-  | { t: 'ens_chain'; name: string; found: ChainAddress[]; origin: Origin }
+  | { t: 'ens_chain'; name: string; found: ChainAddress[]; origin: Origin; attempt: number }
   /** Q_ENS_CHANGED pending (§9.4). `fresh` null = "no address now" variant. */
   | { t: 'ens_changed'; name_key: string; ens: string; saved: Address; fresh: Address | null }
   /** §9.6 group flow; `stage` names the pending question. */

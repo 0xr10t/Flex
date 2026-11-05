@@ -11,6 +11,7 @@ import {
   MEMBER_UNPAYABLE_DETAIL,
   NOTES,
   QUESTION_TEXT,
+  REPLY,
   QUESTION_VARIANT,
   REASK_HINT,
   SKIP_REASON,
@@ -132,6 +133,7 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
     return { k: 'resolved', r: resolved };
   }
   const different = [...new Set(results.filter((a): a is Address => a !== null && !sameAddr(a, saved)))];
+  // spec-questions/C.md SQ-C-02: §9.4 has one "new address"; several differing chains are not covered.
   if (different.length > 1) return unsupported(ctx, 'ens_recheck_several_new_addresses');
   const fresh = different[0];
   if (fresh !== undefined) {
@@ -208,6 +210,7 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
   try {
     found = await resolveOnChains(ctx.ens, ctx.config, name, chains);
   } catch (e) {
+    // spec-questions/C.md SQ-C-01: the spec gives no outcome for a failed ENS lookup in §9.3.
     if (e instanceof EnsUnavailable) return unsupported(ctx, 'ens_lookup_unavailable');
     throw e;
   }
@@ -243,8 +246,8 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
     detail: '',
   }));
   return ask(
-    { t: 'ens_chain', name, found, origin },
-    buildQuestion({ question_id: qid(), code: 'Q_ENS_CHAIN', params: { ens: name }, chips }),
+    { t: 'ens_chain', name, found, origin, attempt },
+    buildQuestion({ question_id: qid(), code: 'Q_ENS_CHAIN', params: { ens: name }, chips, attempt }),
   );
 }
 
@@ -357,7 +360,10 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
     if (stated !== null) {
       flow.chain_id = stated;
     } else {
-      const chips = okChains(ctx).map((c) => ({
+      const allowed = okChains(ctx);
+      // spec-questions/C.md SQ-C-04: no allowed `ok` chain to offer.
+      if (allowed.length === 0) return unsupported(ctx, 'group_chain_no_ok_chain');
+      const chips = allowed.map((c) => ({
         id: String(c),
         label: chainName(ctx, c),
         disabled: false,
@@ -688,15 +694,17 @@ async function answerReenter(
   };
   const t = textOf(answer);
   if (t === null || t.length === 0) return failed();
+  // The answer is typed by the user, so it is not content-sourced any more (spec-questions/C.md SQ-C-05).
+  const origin: Origin = { ...flow.origin, untrusted: false };
   if (looksLikeAddress(t)) {
     const check = checkAddress(t);
     if (!check.ok) return failed(addressHint(check));
-    return proceed(ctx, st, addressChecked(ctx, check.address, flow.origin, null, q.attempt));
+    return proceed(ctx, st, addressChecked(ctx, check.address, origin, null, q.attempt));
   }
   // §13.4: an ENS name typed where an address is asked goes through §9.3.
   const ens = looksLikeEns(t) ? normalizeEns(t) : null;
   if (ens !== null) {
-    const out = await ensFlow(ctx, ens, flow.origin, q.attempt);
+    const out = await ensFlow(ctx, ens, origin, q.attempt);
     // An ENS name without an address is a failed answer to this question (§9.7), worded as §9.3 step 4.
     if (out.k === 'ask' && out.question.code === 'Q_ADDRESS_REENTER') {
       return failed(undefined, QUESTION_VARIANT.REENTER_ENS_NO_ADDRESS({ ens }));
@@ -758,7 +766,13 @@ async function answerEnsChain(
   return proceed(
     ctx,
     st,
-    addressChecked(ctx, picked.address, flow.origin, { name: flow.name, chain_ids, pinned: picked.chain_id }, 1),
+    addressChecked(
+      ctx,
+      picked.address,
+      flow.origin,
+      { name: flow.name, chain_ids, pinned: picked.chain_id },
+      flow.attempt,
+    ),
   );
 }
 
@@ -774,13 +788,14 @@ async function answerEnsChanged(
   if (chip.id === CHIPS.CANCEL.id) {
     st.flow = null;
     st.pending = null;
-    // SQ-15: request DISCARDED; reply per the interim answer.
-    return { kind: 'discard' };
+    // SQ-15: request DISCARDED; reply per the interim answer (§13.3 "User cancelled").
+    return { kind: 'discard', messages: [REPLY.CANCELLED()] };
   }
   if (chip.id === CHIPS.ENS_USE_NEW.id && flow.fresh !== null) {
     if (isSelf(flow.fresh, ctx.config.wallet.address))
       return proceed(ctx, st, stop({ kind: 'error', code: 'SELF_PAYMENT' }));
     const upd = ctx.repos.db2.updateAddressForName(flow.name_key, flow.fresh);
+    // spec-questions/C.md SQ-C-03: the new address is already saved under another name (§7.1 invariant).
     if (!upd.ok) return proceed(ctx, st, unsupported(ctx, 'ens_new_address_saved_under_other_name'));
   }
   const rows = ctx.repos.db2.findByNameKey(flow.name_key);
