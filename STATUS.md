@@ -6,10 +6,10 @@ Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PR
 
 | Lane | Branch | Status | Checklist items done / total | Unit tests passing | Open CCRs | Open questions | Last report |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A — Platform | `lane/a-platform` | not started | 0 / 81 | — | 0 | — | — |
-| B — Understanding | `lane/b-understanding` | not started | 0 / 123 | — | 0 | SQ-01, SQ-04, SQ-09 | — |
-| C — Recipients | `lane/c-recipients` | not started | 0 / 73 | — | 0 | SQ-04, SQ-06, SQ-07, SQ-09, SQ-15 | — |
-| D — Planning & output | `lane/d-planning` | not started | 0 / 152 | — | 0 | SQ-05, SQ-08, SQ-15 | — |
+| A — Platform | `lane/a-platform` | in progress | 0 / 81 | — | 0 | — | — |
+| B — Understanding | `lane/b-understanding` | in progress | 0 / 123 | — | 0 | SQ-01, SQ-04, SQ-09 | — |
+| C — Recipients | `lane/c-recipients` | in progress | 0 / 73 | — | 0 | SQ-04, SQ-06, SQ-07, SQ-09, SQ-15 | — |
+| D — Planning & output | `lane/d-planning` | in progress | 0 / 152 | — | 0 | SQ-05, SQ-08, SQ-15 | — |
 | Orchestrator | `agentic_layer` | Phase 0 done | 14 / 85 | 8 / 8 | — | SQ-03, SQ-11, SQ-18 | — |
 
 ## Contract versions

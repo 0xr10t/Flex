@@ -8,3 +8,4 @@ config.json
 *_token
 logs/
 .env
+.claude/
