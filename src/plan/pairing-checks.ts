@@ -123,17 +123,16 @@ export function terminalError(ctx: StepContext, payments: Payment[]): PairingOut
       return { kind: 'error', code: 'RELATIVE_AMOUNT_NOT_ALLOWED' };
     }
   }
-  // P7 untrusted values in a k (an untrusted recipient that is an existing DB2 contact is allowed).
+  // P7 untrusted values in a k.
   for (const p of payments) {
     if (p.kind !== 'k') continue;
     if (p.amount !== null && ctx.repos.db1.get(p.amount)?.source === 'untrusted') {
       return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
     }
-    const row = ctx.repos.db3.get(p.recipient);
-    if (row?.source === 'untrusted') {
-      const isContact = row.address !== null && ctx.repos.db2.findByAddress(row.address).length > 0;
-      if (!isContact) return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
-    }
+    // Keyed on the DB3 source: a content address the user just confirmed has a DB2 row through add_contact but
+    // "stays flagged untrusted for this request only" (§9.2 step 7). Only a contact that existed before this request
+    // (S6 sets source='contact') passes the §16.1 exception.
+    if (ctx.repos.db3.get(p.recipient)?.source === 'untrusted') return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
   }
   // P9 pinned recipient (DB3 chain_id of a single row, §8.8) or pinned amount with a different stated chain.
   for (const p of payments) {

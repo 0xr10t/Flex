@@ -97,12 +97,12 @@ function ask(
 
 interface KDraft {
   schedule: Schedule;
-  count: bigint;
   amount: bigint;
   token: Token;
   perPeriod: bigint;
   total: bigint;
   day28: boolean;
+  last: DateTime;
 }
 
 type Phase1 = { kind: 'ok'; k: Map<number, KDraft>; l: Map<number, Db7Row> } | { kind: 'result'; result: StepResult };
@@ -154,7 +154,7 @@ function resolveK(
     day28 = c.clamped;
   }
   const time_of_day =
-    dates.find((d) => d.kind === 'time' && d.time !== null)?.time ?? ctx.config.defaults.autopay_time_of_day;
+    dates.find((d) => d.kind !== 'end' && d.time !== null)?.time ?? ctx.config.defaults.autopay_time_of_day;
   const todayIso = today.toISODate() as string;
   let start_date = st.start[key];
   if (start_date === undefined) {
@@ -191,7 +191,6 @@ function resolveK(
       };
     }
     if (parsed.type === 'for_count') {
-      if (parsed.n > 520) return { kind: 'result', result: unsupported(ctx, 's9', 'AUTOPAY_COUNT_OVER_520') };
       end = { type: 'after_count', count: parsed.n };
     } else if (parsed.type === 'for_units') {
       end = { type: 'on_date', date: onDateForDuration(first, parsed.n, parsed.unit) };
@@ -221,6 +220,10 @@ function resolveK(
   }
   if (occ.occurrences.length === 0)
     return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NO_OCCURRENCES' } };
+  // §12.5 caps after_count at 520 and the spec has no reply for a longer count within the duration limit (SQ-D-06).
+  if (end.type === 'after_count' && end.count > 520) {
+    return { kind: 'result', result: unsupported(ctx, 's9', 'S9_AUTOPAY_COUNT_OVER_520') };
+  }
   const row = p.amount === null ? undefined : ctx.repos.db1.get(p.amount);
   if (!row) return { kind: 'result', result: internalError(ctx, 's9', 'S9_K_AMOUNT_MISSING') };
   const token = row.token;
@@ -249,7 +252,8 @@ function resolveK(
     };
   }
   const count = BigInt(occ.occurrences.length);
-  return { kind: 'ok', draft: { schedule, count, amount, token, perPeriod, total: amount * count, day28 } };
+  const last = occ.occurrences[occ.occurrences.length - 1] as DateTime;
+  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total: amount * count, day28, last } };
 }
 
 function scheduleLabel(s: Schedule): string {
@@ -338,8 +342,7 @@ interface Item {
   l?: Db7Row;
 }
 
-type ChainPick =
-  { kind: 'ok'; chain: ChainId; reused: ChainId | null; followup: boolean } | { kind: 'result'; result: StepResult };
+type ChainPick = { kind: 'ok'; chain: ChainId; reused: ChainId | null } | { kind: 'result'; result: StepResult };
 
 function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainId): StepResult | null {
   if (!ctx.limits.allowed_chain_ids.includes(c)) {
@@ -368,10 +371,13 @@ function pickChain(
     (balanceOf(balances, c)?.spendable[token] ?? 0n) - (assigned.get(`${c}:${token}`) ?? 0n);
   const okAllowed = limits.allowed_chain_ids.filter((c) => balanceOf(balances, c)?.ok);
   const contactRows = row.kind === 'single' ? ctx.repos.db2.findByAddress(row.address) : [];
-  const isContact = contactRows.length > 0;
+  // §10.3 rule 4 is about contacts that existed before this request (source='contact'): an address saved during this
+  // request keeps its 'user' / 'untrusted' / 'ens' candidates. reuseFrom is §9.5: any payment on a chain without a DB2
+  // row for this address.
+  const isContact = row.source === 'contact';
   const contactChains = limits.allowed_chain_ids.filter((c) => contactRows.some((r) => r.chain_id === c));
   const reuseFrom = (c: ChainId): ChainId | null =>
-    isContact && !contactRows.some((r) => r.chain_id === c)
+    contactRows.length > 0 && !contactRows.some((r) => r.chain_id === c)
       ? (contactChains[0] ?? contactRows[0]?.chain_id ?? null)
       : null;
 
@@ -386,31 +392,40 @@ function pickChain(
 
   // §17.2 step 4: a follow-up payee with "unstated" chain uses its previous chain as if stated.
   let stated = p.chain;
-  let followup = false;
   const ref = req.recipients.find((r) => r.placeholder === p.recipient);
-  if (stated === 'unstated' && ref?.followup && ref.last_chain_id !== null) {
-    stated = ref.last_chain_id;
-    followup = true;
-  }
+  if (stated === 'unstated' && ref?.followup && ref.last_chain_id !== null) stated = ref.last_chain_id;
 
   if (pin !== null) {
-    if (stated !== 'unstated' && stated !== pin)
-      return { kind: 'result', result: unsupported(ctx, 's9', 'S9_PIN_VS_STATED') };
+    if (stated !== 'unstated' && stated !== pin) {
+      // P9 catches a chain the user typed; this is the follow-up's previous chain, used "as if stated".
+      return {
+        kind: 'result',
+        result: {
+          kind: 'error',
+          code: 'CHAIN_CONFLICT',
+          params: {
+            name: recipientNameOf(ctx, recipient),
+            chain: chainName(ctx, pin),
+            other: chainName(ctx, stated),
+          },
+        },
+      };
+    }
     const bad = checkChain(ctx, balances, pin);
     if (bad) return { kind: 'result', result: bad };
-    return { kind: 'ok', chain: pin, reused: reuseFrom(pin), followup };
+    return { kind: 'ok', chain: pin, reused: reuseFrom(pin) };
   }
   if (groupChain !== null) {
     if (stated !== 'unstated' && stated !== groupChain)
       return { kind: 'result', result: unsupported(ctx, 's9', 'S9_GROUP_CHAIN_VS_STATED') };
     const bad = checkChain(ctx, balances, groupChain);
     if (bad) return { kind: 'result', result: bad };
-    return { kind: 'ok', chain: groupChain, reused: null, followup };
+    return { kind: 'ok', chain: groupChain, reused: null };
   }
   if (stated !== 'unstated') {
     const bad = checkChain(ctx, balances, stated);
     if (bad) return { kind: 'result', result: bad };
-    return { kind: 'ok', chain: stated, reused: reuseFrom(stated), followup };
+    return { kind: 'ok', chain: stated, reused: reuseFrom(stated) };
   }
 
   // §10.3 rule 3: candidates by recipient source.
@@ -420,6 +435,7 @@ function pickChain(
   else if (row.source === 'ens') {
     const resolved = ref ? req.resolved[ref.span_index] : undefined;
     base = limits.allowed_chain_ids.filter((c) => resolved?.ens_chain_ids.includes(c));
+    if (base.length === 0) base = contactChains; // a follow-up has no ENS lookup; add_contact saved the same chains
   } else base = [...limits.allowed_chain_ids];
   const cands = base.filter((c) => okAllowed.includes(c));
   const best = (set: ChainId[], requireNeed: boolean): ChainId | null => {
@@ -446,7 +462,7 @@ function pickChain(
       result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: joinAnd(names) } },
     };
   }
-  return { kind: 'ok', chain, reused: reuseFrom(chain), followup };
+  return { kind: 'ok', chain, reused: reuseFrom(chain) };
 }
 
 export function insufficientParams(
@@ -476,7 +492,6 @@ async function step(ctx: StepContext): Promise<StepResult> {
   const balances = readBalances(ctx);
   const assigned = new Map<string, bigint>();
   const items: Item[] = [];
-  let followupUsed = false;
 
   for (let i = 0; i < payments.length; i++) {
     const p = payments[i] as Payment;
@@ -520,7 +535,6 @@ async function step(ctx: StepContext): Promise<StepResult> {
       if (pick.kind === 'result') return pick.result;
       const key = `${pick.chain}:${token}`;
       assigned.set(key, (assigned.get(key) ?? 0n) + need);
-      if (pick.followup) followupUsed = true;
       const item: Item = {
         pay: i,
         kind: p.kind,
@@ -660,8 +674,6 @@ async function step(ctx: StepContext): Promise<StepResult> {
     } else if (it.k) {
       const d = it.k;
       if (d.day28) pushNote(ctx, NOTES.DAY_28());
-      const occ = enumerateOccurrences(d.schedule, limits.autopay_max_weeks).occurrences;
-      const last = occ[occ.length - 1] as DateTime;
       plan.push({
         intent_id: 'k',
         step: stepNo,
@@ -675,7 +687,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
         limits: {
           per_period_cap: mint(d.perPeriod, token, 'autopay_per_period_cap'),
           total_cap: mint(d.total, token, 'autopay_total_cap'),
-          expires_at: expiresAt(last, d.schedule.timezone),
+          expires_at: expiresAt(d.last, d.schedule.timezone),
         },
         cre_job: {
           trigger: 'cron',
@@ -686,7 +698,10 @@ async function step(ctx: StepContext): Promise<StepResult> {
       });
     }
   }
-  if (followupUsed) pushNote(ctx, NOTES.FOLLOWUP());
+  // §17.2 step 7: every follow-up payee gets the note (SQ-D-07 for a follow-up with a typed chain).
+  if (payments.some((p) => req.recipients.some((r) => r.placeholder === p.recipient && r.followup))) {
+    pushNote(ctx, NOTES.FOLLOWUP());
+  }
   req.plan = plan;
   req.state = 'PLANNED';
   delete req.step_state.s9;
@@ -738,7 +753,8 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
     case 'Q_AUTOPAY_DATE': {
       const text = answerText(answer);
       const d = text === null ? null : parseDateAnswer(text, ctx.now());
-      if (d === null || d < (pend.first_date ?? today)) return again();
+      // §13.4: "date after first occurrence".
+      if (d === null || d <= (pend.first_date ?? today)) return again();
       st.end[key] = { type: 'on_date', date: d };
       break;
     }
