@@ -153,9 +153,13 @@ export function validateConfig(raw: unknown): Config {
   if (new Set(ids).size !== ids.length) errors.push('/chains duplicate chain_id');
   if (!ids.includes(cfg.ens.rpc_chain_id)) errors.push('/ens/rpc_chain_id not a configured chain');
   if (!IANAZone.isValidZone(cfg.defaults.timezone)) errors.push('/defaults/timezone not an IANA timezone');
-  for (const url of [cfg.llm.ollama_url, cfg.execution.url, cfg.ens.indexer_url, ...cfg.chains.map((c) => c.rpc_url)]) {
-    if (!URL.canParse(url)) errors.push('/ url not parsable');
-  }
+  const urls: Array<[string, string]> = [
+    ['/llm/ollama_url', cfg.llm.ollama_url],
+    ['/execution/url', cfg.execution.url],
+    ['/ens/indexer_url', cfg.ens.indexer_url],
+    ...cfg.chains.map((c, i): [string, string] => [`/chains/${i}/rpc_url`, c.rpc_url]),
+  ];
+  for (const [field, url] of urls) if (!URL.canParse(url)) errors.push(`${field} not a parsable URL`);
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
 }
