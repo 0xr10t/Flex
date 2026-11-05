@@ -1,6 +1,7 @@
 // Lane A test harness for the session manager: a stub step registry whose entries tests override per step, the
 // Orchestrator fakes for every injected client, and a fixed clock.
 import { DateTime } from 'luxon';
+import type { AllowlistLogger } from '../../../src/contracts/io.js';
 import type { Repos } from '../../../src/contracts/repos.js';
 import {
   STEP_ORDER,
@@ -57,10 +58,10 @@ export function msg(text: string): MessageInput {
 }
 
 /** Default registry: S0–S10 continue, S11 returns a summary, S12 continue (accepted). */
-export function makeHarness<R extends Repos = FakeRepos>(opts: { repos?: R } = {}): Harness<R> {
+export function makeHarness<R extends Repos = FakeRepos>(opts: { repos?: R; log?: AllowlistLogger } = {}): Harness<R> {
   const repos = (opts.repos ?? createFakeRepos()) as R;
   const llm = new FixtureLlmClient({ calls: [] });
-  const log = new CapturingLogger();
+  const log = (opts.log ?? new CapturingLogger()) as CapturingLogger;
   const calls: Call[] = [];
   const contexts: StepContext[] = [];
   const clock = { iso: '2026-11-05T17:30:00.000Z' };

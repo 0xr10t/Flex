@@ -7,6 +7,7 @@ import type { StepResult } from '../../../src/contracts/step.js';
 import type { Address, AgentResponse, HandoffEnvelope, Question } from '../../../src/contracts/types.js';
 import { CANCEL_TEXTS, CONFIRM_NO_TEXTS, CONFIRM_YES_TEXTS } from '../../../src/contracts/static-tables.js';
 import type { SessionResult } from '../../../src/session/manager.js';
+import { createLogger } from '../../../src/util/logger.js';
 import { openTempDb } from './helpers.js';
 import { SUMMARY, makeHarness, msg, question, stepNames, type Harness } from './session-harness.js';
 
@@ -483,5 +484,90 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
     }
     expect((t.db.prepare('SELECT count(*) n FROM db6_spend_log').get() as { n: number }).n).toBe(1);
     expect(h.manager.closeSession('ses_cccccccccccc')).toBe(false);
+  });
+});
+
+describe('SQ-A-05 / C-340 closing a leftover session id', () => {
+  const count = (t: ReturnType<typeof openTempDb>, table: string): number =>
+    (t.db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n;
+
+  it('SQ-A-05 / C-340 §7.4: with a session open, another id in db8_sessions → false, nothing cleared, the open session still works; closing it wipes the leftover too', async () => {
+    const t = openTempDb();
+    t.repos.db5.insertDefaultsIfMissing('t');
+    const h = makeHarness({ repos: t.repos });
+    const sid = open(h);
+    const a = body(await h.manager.handleMessage(sid, msg('hello')));
+    t.repos.db1.mint({
+      session_id: sid,
+      request_id: a.request_id,
+      amount: '5',
+      token: 'USDC',
+      source: 'user',
+      origin: 'phrase',
+      confirmed: true,
+    });
+    t.repos.db8.insertSession({ session_id: 'ses_dddddddddddd', timezone: 'UTC', opened_at: 't' });
+    t.repos.db8.insertPrompt({
+      session_id: 'ses_dddddddddddd',
+      request_id: 'req_0000000000dd',
+      kind: 'typed',
+      text: 'old',
+      created_at: 't',
+    });
+    const before = [count(t, 'db1_amount_placeholders'), count(t, 'db8_sessions'), count(t, 'db8_prompts')];
+
+    expect(h.manager.closeSession('ses_dddddddddddd')).toBe(false);
+    expect([count(t, 'db1_amount_placeholders'), count(t, 'db8_sessions'), count(t, 'db8_prompts')]).toEqual(before);
+    expect(t.repos.db8.getSession('ses_dddddddddddd')).toBeDefined();
+    expect(t.repos.db8.getSession(sid)).toBeDefined();
+    expect(body(await h.manager.handleMessage(sid, msg('still here'))).state).toBe('awaiting_confirmation');
+
+    expect(h.manager.closeSession(sid)).toBe(true);
+    expect(count(t, 'db8_sessions')).toBe(0);
+    expect(count(t, 'db8_prompts')).toBe(0);
+    expect(count(t, 'db1_amount_placeholders')).toBe(0);
+  });
+
+  it('SQ-A-05 / C-340: with no session open, a leftover id still clears and returns true', () => {
+    const t = openTempDb();
+    const h = makeHarness({ repos: t.repos });
+    t.repos.db8.insertSession({ session_id: 'ses_dddddddddddd', timezone: 'UTC', opened_at: 't' });
+    expect(h.manager.closeSession('ses_dddddddddddd')).toBe(true);
+    expect(count(t, 'db8_sessions')).toBe(0);
+  });
+});
+
+describe('SQ-A-01 / §18 the cancel:no_active_request log line', () => {
+  function withRealLogger(): { h: Harness; lines: () => Array<Record<string, unknown>> } {
+    const chunks: string[] = [];
+    const log = createLogger({ destination: { write: (c: string) => chunks.push(c) } });
+    const h = makeHarness({ log });
+    return {
+      h,
+      lines: () =>
+        chunks
+          .join('')
+          .split('\n')
+          .filter((l) => l !== '')
+          .map((l) => JSON.parse(l) as Record<string, unknown>),
+    };
+  }
+
+  it('SQ-A-01 §18: with no active request the line keeps rule_id and has no state key', async () => {
+    const { h, lines } = withRealLogger();
+    const sid = open(h);
+    await h.manager.handleCancel(sid, 'req_000000000000');
+    const line = lines().find((l) => l.event === 'unsupported_state');
+    expect(line).toBeDefined();
+    expect(line).toMatchObject({ rule_id: 'cancel:no_active_request', level: 'warn' });
+    expect(line).not.toHaveProperty('state');
+  });
+
+  it('SQ-A-01 §18: with another active request the line keeps both rule_id and state', async () => {
+    const { h, lines } = withRealLogger();
+    const { sid } = await toConfirmation(h);
+    await h.manager.handleCancel(sid, 'req_000000000000');
+    const line = lines().find((l) => l.event === 'unsupported_state');
+    expect(line).toMatchObject({ rule_id: 'cancel:no_active_request', state: 'AWAITING_CONFIRMATION' });
   });
 });

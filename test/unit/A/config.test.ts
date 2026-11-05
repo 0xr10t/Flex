@@ -1,6 +1,6 @@
 // Lane A unit tests: §6.1 config loading/validation, §6.1/§16.4 token files, §6.2 static tables, §6.3 DB5 defaults
 // constants, §5 stack.
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -173,9 +173,38 @@ describe('§6.1 / §16.4 token files', () => {
   it('C-407 §16.4: identical UI and report tokens are refused', () => {
     const c = testConfig();
     writeFileSync(join(dir, 'same'), 'cd'.repeat(32));
+    chmodSync(join(dir, 'same'), 0o600);
     c.auth = { ui_token_file: join(dir, 'same'), execution_report_token_file: join(dir, 'same') };
     c.execution = { ...c.execution, outbound_token_file: join(dir, 'out') };
     expect(() => loadTokens(c)).toThrow(TokenFileError);
+    expect(() => loadTokens(c)).toThrow('must be different');
+  });
+
+  for (const mode of [0o644, 0o640]) {
+    it(`SQ-A-07 / C-407: an existing token file with mode ${mode.toString(8)} is refused, unchanged, and the message has no token`, () => {
+      const token = 'ab'.repeat(32);
+      const path = join(dir, `tok-${mode.toString(8)}`);
+      writeFileSync(path, token);
+      chmodSync(path, mode);
+      let error: unknown;
+      try {
+        ensureTokenFile(path);
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(TokenFileError);
+      expect((error as Error).message).not.toContain(token);
+      expect(readFileSync(path, 'utf8')).toBe(token);
+      expect(statSync(path).mode & 0o777).toBe(mode);
+    });
+  }
+
+  it('SQ-A-07: an existing token file with mode 0600 is accepted', () => {
+    const token = 'ef'.repeat(32);
+    const path = join(dir, 'tok-600');
+    writeFileSync(path, `${token}\n`);
+    chmodSync(path, 0o600);
+    expect(ensureTokenFile(path)).toBe(token);
   });
 });
 

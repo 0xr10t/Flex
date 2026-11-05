@@ -1,8 +1,11 @@
 // Lane A unit tests: §18 logging — allowlist serializer, never-logged values, pino JSON lines, level info,
 // rotation at 10 MB × 5 files.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
+import { STEP_ORDER } from '../../../src/contracts/step.js';
+import { QUESTION_CODES } from '../../../src/contracts/types.js';
 import { LOG_ALLOWED_FIELDS, type LogFields } from '../../../src/contracts/io.js';
 import { DEFAULT_LOG_FILE, createLogger, sanitizeLogFields } from '../../../src/util/logger.js';
 import { LOG_MAX_BYTES, LOG_MAX_FILES, RotatingFileStream } from '../../../src/util/rotating-file.js';
@@ -83,6 +86,99 @@ describe('§18 allowlist serializer', () => {
         http_status: Number.NaN,
       }),
     ).toEqual({});
+  });
+
+  const CHECKSUMMED = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E';
+  const LOWER = '0x3fa94b8e2d1c7a6f5e4d3c2b1a0f9e8d7c6bc21e';
+  const DROPPED: Array<[string, string]> = [
+    ...['rule_id', 'event'].flatMap((f): Array<[string, string]> => [
+      [f, CHECKSUMMED],
+      [f, LOWER],
+      [f, LOWER.slice(2)],
+      [f, 'abcdef0123456789abcdef0123456789abcdef01'],
+      [f, 'alice.eth'],
+      [f, '12.5'],
+      [f, '40'],
+      [f, '50usdc'],
+      [f, 'a'.repeat(65)],
+    ]),
+    ['state', '12.5'],
+    ['state', 'Aradhya'],
+    ['question_code', '40'],
+    ['error_code', 'alice.eth'],
+    ['step', 'Aradhya'],
+    ['step', 's13'],
+    ['session_id', 'hunter2'],
+    ['session_id', `ses_${'a'.repeat(11)}`],
+    ['request_id', `req_${'AB'.repeat(6)}`],
+  ];
+  for (const [field, value] of DROPPED) {
+    it(`C-430 §18: ${field} = "${value}" is dropped`, () => {
+      const out = sanitizeLogFields({ [field]: value } as unknown as LogFields);
+      expect(out).not.toHaveProperty(field);
+      expect(JSON.stringify(out)).not.toContain(value);
+      expect(out).toEqual({});
+    });
+  }
+
+  const STATES = [
+    'RECEIVED',
+    'BALANCES_REFRESHED',
+    'GUARDED',
+    'SCANNED',
+    'AMOUNTS_MASKED',
+    'TYPED',
+    'SPANS_TAGGED',
+    'RECIPIENTS_RESOLVED',
+    'RECIPIENTS_MASKED',
+    'PAIRED',
+    'PLANNED',
+    'VALIDATED',
+    'AWAITING_CONFIRMATION',
+    'HANDED_OFF',
+    'HANDOFF_FAILED',
+    'ANSWERED',
+    'DISCARDED',
+    'FAILED',
+  ];
+  it('C-429 §18: every §8.0 state, s0..s12, every question code and every error code is kept', () => {
+    expect(STEP_ORDER).toHaveLength(13);
+    for (const state of STATES) expect(sanitizeLogFields({ state })).toEqual({ state });
+    for (const step of STEP_ORDER) expect(sanitizeLogFields({ step })).toEqual({ step });
+    for (const question_code of QUESTION_CODES) {
+      expect(sanitizeLogFields({ question_code } as LogFields)).toEqual({ question_code });
+    }
+    for (const error_code of Object.keys(ERROR_MESSAGE)) {
+      expect(sanitizeLogFields({ error_code } as LogFields)).toEqual({ error_code });
+    }
+  });
+
+  it('C-429 §18: the known rule ids, event labels and ids are kept', () => {
+    for (const rule_id of [
+      'V-15',
+      'HANDOFF_INVALID',
+      'cancel:no_active_request',
+      's11:continue',
+      'handoff_failed:message',
+    ]) {
+      expect(sanitizeLogFields({ rule_id })).toEqual({ rule_id });
+      expect(sanitizeLogFields({ event: rule_id })).toEqual({ event: rule_id });
+    }
+    const ids = { session_id: 'ses_0123456789ab', request_id: 'req_abcdef012345' };
+    expect(sanitizeLogFields(ids)).toEqual(ids);
+  });
+
+  it('C-428 §18: a destination whose write throws does not make log.info throw', () => {
+    const log = createLogger({
+      destination: {
+        write: () => {
+          throw new Error('disk full');
+        },
+      },
+    });
+    expect(() => log.info({ event: 'e' })).not.toThrow();
+    expect(() => log.warn({ event: 'e' })).not.toThrow();
+    expect(() => log.error({ event: 'e' })).not.toThrow();
   });
 
   it('C-429: caller-supplied ts/level are dropped (the logger writes its own); non-objects yield nothing', () => {
@@ -171,5 +267,19 @@ describe('§18 rotation', () => {
   it('C-428: invalid rotation settings are refused', () => {
     expect(() => new RotatingFileStream(join(tempDir(), 'a.log'), 0, 5)).toThrow();
     expect(() => new RotatingFileStream(join(tempDir(), 'a.log'), 10, 0)).toThrow();
+  });
+  it('C-428: if a rename fails during rotate() the file is reopened and later writes still land in <path>', () => {
+    const file = join(tempDir(), 'agent.log');
+    const s = new RotatingFileStream(file, 100, 2);
+    s.write('a'.repeat(60));
+    // <path>.1 is a non-empty directory, so renaming <path> onto it fails.
+    mkdirSync(`${file}.1`);
+    writeFileSync(join(`${file}.1`, 'keep'), 'x');
+    expect(() => s.write('b'.repeat(60))).toThrow();
+    expect(() => s.write('c'.repeat(10))).not.toThrow();
+    s.close();
+    const content = readFileSync(file, 'utf8');
+    expect(content.endsWith('c'.repeat(10))).toBe(true);
+    expect(content.startsWith('a'.repeat(60))).toBe(true);
   });
 });

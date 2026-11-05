@@ -10,6 +10,7 @@ import { LOG_ALLOWED_FIELDS } from '../../../src/contracts/io.js';
 import type { StepResult } from '../../../src/contracts/step.js';
 import type { AgentRequest } from '../../../src/contracts/types.js';
 import { createApp, MAX_BODY_BYTES } from '../../../src/server/app.js';
+import { isBase64 } from '../../../src/server/bodies.js';
 import { testConfig } from '../../fakes/context.js';
 import { REPORT_TOKEN, UI_TOKEN, makeServer, type ServerHarness } from './server-harness.js';
 import { question } from './session-harness.js';
@@ -109,6 +110,38 @@ describe('§14.1 bodies', () => {
     expect(good.status).toBe(200);
     const bad = await s.call('POST', `/v1/sessions/${sid}/messages`, { body: att('not base64!!*') });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('SQ-A-08 / C-337 base64 attachments', () => {
+  const attach = (base64: string): unknown => ({
+    text: 'hi',
+    attachments: [{ filename: 'a.bin', mime: 'x/y', base64 }],
+  });
+
+  for (const bad of ['=', 'A', 'AB=', 'A===', 'AAA=A', 'aGVs\nbG8=', 'aGVsbG8=\r\n', 'aGk= ', 'a-k=']) {
+    it(`C-337 SQ-A-08: ${JSON.stringify(bad)} → 400`, async () => {
+      expect(isBase64(bad)).toBe(false);
+      const sid = await s.openSession();
+      expect((await s.call('POST', `/v1/sessions/${sid}/messages`, { body: attach(bad) })).status).toBe(400);
+    });
+  }
+
+  for (const good of ['', 'aGk=', 'aGVsbG8=']) {
+    it(`C-337 SQ-A-08: ${JSON.stringify(good)} → accepted`, async () => {
+      expect(isBase64(good)).toBe(true);
+      const sid = await s.openSession();
+      expect((await s.call('POST', `/v1/sessions/${sid}/messages`, { body: attach(good) })).status).toBe(200);
+    });
+  }
+
+  it('C-337 SQ-A-08: a real upload of about 15 MB of base64 (under the 20 MB limit) answers 200', async () => {
+    const sid = await s.openSession();
+    const b64 = Buffer.alloc(11 * 1024 * 1024, 7).toString('base64');
+    expect(b64.length).toBeGreaterThan(14 * 1024 * 1024);
+    expect(b64.length + 200).toBeLessThan(MAX_BODY_BYTES);
+    const r = await s.call('POST', `/v1/sessions/${sid}/messages`, { body: attach(b64) });
+    expect(r.status).toBe(200);
   });
 });
 
@@ -216,6 +249,42 @@ describe('§14.1 sessions', () => {
     expect(del.text).toBe('');
     expect((await s.call('DELETE', `/v1/sessions/${sid}`)).status).toBe(404);
     expect((await s.call('DELETE', '/v1/sessions/ses_ffffffffffff')).status).toBe(404);
+  });
+});
+
+describe('C-340 DELETE with an empty JSON body', () => {
+  const del = (sid: string, token: string | null = UI_TOKEN) =>
+    s.app.inject({
+      method: 'DELETE',
+      url: `/v1/sessions/${sid}`,
+      headers: {
+        ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
+        'content-type': 'application/json',
+        'content-length': '0',
+      },
+    });
+
+  it('C-340: content-type application/json with content-length 0 → 204; an unknown id → 404', async () => {
+    const sid = await s.openSession();
+    expect((await del('ses_ffffffffffff')).statusCode).toBe(404);
+    const r = await del(sid);
+    expect(r.statusCode).toBe(204);
+    expect(r.body).toBe('');
+  });
+
+  it('C-336 / C-340: a wrong or missing token on that request still gets 401 and closes nothing', async () => {
+    const sid = await s.openSession();
+    expect((await del(sid, 'z'.repeat(UI_TOKEN.length))).statusCode).toBe(401);
+    expect((await del(sid, null)).statusCode).toBe(401);
+    expect((await s.message(sid)).status).toBe(200);
+  });
+
+  it('SQ-A-05 / C-340: with a session open, DELETE of another id present in db8_sessions → 404 and the open session stays', async () => {
+    const sid = await s.openSession();
+    s.repos.db8.insertSession({ session_id: 'ses_dddddddddddd', timezone: 'UTC', opened_at: 't' });
+    expect((await s.call('DELETE', '/v1/sessions/ses_dddddddddddd')).status).toBe(404);
+    expect(s.repos.tables.db8_sessions.has('ses_dddddddddddd')).toBe(true);
+    expect((await s.message(sid)).status).toBe(200);
   });
 });
 
