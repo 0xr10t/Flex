@@ -6,6 +6,9 @@ export names Phase 2 will wire), `STATUS.md`, `SPEC_CHECKLIST.md` and `SPEC_QUES
 
 ## Update 2026-11-05 (second Orchestrator session) — read this first
 
+- **Start the next session with `NEXT_ORCHESTRATOR_PROMPT.md`.** Lane heads: A `ac4384e`, B `9c0c3bb`, C `473077a`,
+  D `9c9051e`, all green; the uncommitted lane files were committed as WIP before hand-off.
+
 - **Phase 1 was resumed**: one lane agent per lane, spawned with the prompts the new Orchestrator wrote (template in
   `STATUS.md` history; each = ORCHESTRATOR_PROMPT §6 brief verbatim + the "what is left" item below + lane specifics).
   **The human then stopped all four agents mid-work.** No lane reached its reviewer or wrote a §8 report.

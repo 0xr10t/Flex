@@ -6,16 +6,18 @@ Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PR
 
 Snapshot 2026-11-05 after the resumed Phase 1 lane agents were **stopped by the human** mid-work. Nothing on the lane
 branches below is pushed: the commits are local to this container (branches `lane/*`), and the uncommitted files sit in
-the agent worktrees under `.claude/worktrees/agent-*`. Not re-verified (typecheck/lint/test) after the stop; no lane
+the agent worktrees under `.claude/worktrees/agent-*`. Re-verified after the stop: typecheck, lint and test are green on every lane head; no lane
 reached its Lane Reviewer or wrote a §8 report.
 
 | Lane | Branch | Status | Checklist items done / total | Unit tests passing | Open CCRs | Open questions | Last report |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A — Platform | `lane/a-platform` @ `2f706f3` (local, +1 over origin `3f9ca24`) | stopped. Commit: messages while `HANDOFF_FAILED` fix + `spec-questions/A.md`. Uncommitted: `src/config/load.ts` change, 9 test files in `test/unit/A/` (config, pragmas, db, ids, logger, repos, session harness/tests — session runner tests were in progress) | not verified | not verified | 0 | `spec-questions/A.md` (SQ-A-01…) | none |
-| B — Understanding | `lane/b-understanding` @ `866f358` (local, +1 over origin `55c4642`) | stopped. Commit: S3, S4, S5 with answer handlers. Uncommitted: `test/unit/B/{lexical,parse,secrets}.test.ts` | not verified | not verified | B-1, B-2 → approved in contracts-v3 | `spec-questions/B.md` (SQB-01…; SQB-02 → SQ-22) | none |
-| C — Recipients | `lane/c-recipients` @ `473077a` (local, +7 over origin `a6be84d`) | stopped. Commits: prettier fix, S6 fixes, tests for §9.2–§9.7 and S7. Nothing uncommitted | not verified | not verified | C-1 → approved in contracts-v3 | `spec-questions/C.md` (SQ-C-01…09) | none |
-| D — Planning & output | `lane/d-planning` @ `8c61351` (local, +1 over origin `cc981ba`) | stopped. Commit: S8 (LLM #4 prompt builder, per-request schema, P1–P9, correction retry). Uncommitted (S9 started): `src/pipeline/s9-plan.ts`, `src/plan/{answers,bridges,schedule,spendable}.ts`, `src/messages/templates.ts`, `test/unit/D/parse-mock.ts`. S10–S12 not started | not verified | not verified | 0 | none written yet | none |
+| A — Platform | `lane/a-platform` @ `ac4384e` (to be pushed by the human from the bundle) | stopped; WIP tests committed by the Orchestrator (170 tests green). Commit: messages while `HANDOFF_FAILED` fix + `spec-questions/A.md`. Uncommitted: `src/config/load.ts` change, 9 test files in `test/unit/A/` (config, pragmas, db, ids, logger, repos, session harness/tests — session runner tests were in progress) | not verified | not verified | 0 | `spec-questions/A.md` (SQ-A-01…) | none |
+| B — Understanding | `lane/b-understanding` @ `9c0c3bb` (to be pushed by the human from the bundle) | stopped; WIP tests committed by the Orchestrator (57 tests green). Commit: S3, S4, S5 with answer handlers. Uncommitted: `test/unit/B/{lexical,parse,secrets}.test.ts` | not verified | not verified | B-1, B-2 → approved in contracts-v3 | `spec-questions/B.md` (SQB-01…; SQB-02 → SQ-22) | none |
+| C — Recipients | `lane/c-recipients` @ `473077a` (to be pushed by the human from the bundle) | stopped (173 tests green). Commits: prettier fix, S6 fixes, tests for §9.2–§9.7 and S7. Nothing uncommitted | not verified | not verified | C-1 → approved in contracts-v3 | `spec-questions/C.md` (SQ-C-01…09) | none |
+| D — Planning & output | `lane/d-planning` @ `9c9051e` (to be pushed by the human from the bundle) | stopped; WIP S9 committed by the Orchestrator (51 tests green, S9 untested). Commit: S8 (LLM #4 prompt builder, per-request schema, P1–P9, correction retry). Uncommitted (S9 started): `src/pipeline/s9-plan.ts`, `src/plan/{answers,bridges,schedule,spendable}.ts`, `src/messages/templates.ts`, `test/unit/D/parse-mock.ts`. S10–S12 not started | not verified | not verified | 0 | none written yet | none |
 | Orchestrator | `agentic_layer` | Phase 1 supervision; contracts-v3 published. typecheck ✅ lint ✅ test 14/14 ✅ | 14 / 85 | 14 / 14 | — | SQ-03, SQ-11, SQ-18, SQ-22 | — |
+
+The next Orchestrator session starts from `NEXT_ORCHESTRATOR_PROMPT.md`. Code is written by Opus 5.5 agents; every test, review and audit agent runs on Sonnet 5.5.
 
 ## Contract versions
 
