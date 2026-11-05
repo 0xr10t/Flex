@@ -36,3 +36,14 @@ other text → `UNSUPPORTED_REQUEST` (§0), logged as `rule_id: "handoff_failed:
 *Status:* OPEN. Options: (a) keep; (b) treat it like `AWAITING_CONFIRMATION` (yes texts retry, no texts discard,
 other text discards and starts a new request with the "dropped the previous plan" line); (c) any text abandons the
 failed hand-off and starts a new request.
+
+**SQ-A-04** · §14.3 `intent_result` on a `k` / `l` step
+§14.3 says what happens to "the DB7 row" of a `k` or `l` step but not how the row or the step's kind is identified, nor
+what a failed `l` step does ("or `failed`" is given only for `k`). §11.4: an `l` intent writes no DB6 row and DB7 holds
+only the row of the original `k`, so the `request_id` of a pure `l` request is stored nowhere.
+*Now:* the row is the one named by `autopay.autopay_id`. Created by this `request_id` → `k` step (`executed` needs
+`delegate_address`, else 400; `failed` → DB7 `failed`). Created by another request → `l` step (`executed` → `cancelled`;
+`failed` → row unchanged, the autopay is still running). A known `autopay_id` is enough for a request id that has no
+row (an `l` request can be checked no other way). A report without `autopay` updates DB6 only; if the request has no
+rows at all → 404.
+*Status:* OPEN (confirm).

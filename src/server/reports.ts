@@ -6,7 +6,8 @@
 //
 // Which DB7 row an intent_result concerns is given by `autopay.autopay_id` (the id the envelope carried for the `k`
 // or `l` intent, §12.5): the row created by this request_id is the `k` step; a row created by an earlier request is
-// the autopay this request's `l` step stops.
+// the autopay this request's `l` step stops (spec-questions/A.md SQ-A-04: an `l` step leaves no row of its own, so
+// its request_id cannot be looked up, and a failed `l` step leaves the DB7 row as it is).
 
 import { getAddress } from 'viem';
 import { fractionDigits } from '../contracts/money.js';
@@ -16,6 +17,10 @@ import { TOKEN_DECIMALS, type Address, type AutopayId, type ExecutionReport } fr
 export type ReportOutcome = 204 | 400 | 404;
 
 const checksum = (a: string): Address => getAddress(a.toLowerCase());
+
+/** A request the agent handed off: it has DB6 rows or created a DB7 row. */
+const isKnownRequest = (repos: Repos, request_id: string): boolean =>
+  repos.db6.hasRequest(request_id) || repos.db7.listByRequest(request_id).length > 0;
 
 export function applyReport(repos: Repos, report: ExecutionReport, nowIso: string): ReportOutcome {
   switch (report.kind) {
@@ -37,8 +42,7 @@ function intentResult(repos: Repos, r: ExecutionReport, nowIso: string): ReportO
   if (autopayId !== undefined && ap === undefined) return 404;
   const isKStep = ap !== undefined && ap.request_id === request_id;
   if (isKStep && status === 'executed' && r.autopay?.delegate_address === undefined) return 400;
-  const known = repos.db6.hasRequest(request_id) || repos.db7.listByRequest(request_id).length > 0 || ap !== undefined;
-  if (!known) return 404;
+  if (ap === undefined && !isKnownRequest(repos, request_id)) return 404;
 
   repos.transaction(() => {
     repos.db6.applyIntentResult({
@@ -84,6 +88,7 @@ function autopayPayment(repos: Repos, r: ExecutionReport, nowIso: string): Repor
   if (fractionDigits(ap.amount) > TOKEN_DECIMALS[ap.token]) return 400;
   const row = repos.db7.get(ap.autopay_id);
   if (row === undefined) return 404;
+  if (r.request_id !== undefined && !isKnownRequest(repos, r.request_id)) return 404;
   repos.db6.insertMany([
     {
       request_id: r.request_id ?? row.request_id,
@@ -109,6 +114,7 @@ function autopayStatus(repos: Repos, r: ExecutionReport, nowIso: string): Report
   const ap = r.autopay;
   if (ap === undefined || ap.status === undefined) return 400;
   if (repos.db7.get(ap.autopay_id) === undefined) return 404;
+  if (r.request_id !== undefined && !isKnownRequest(repos, r.request_id)) return 404;
   repos.db7.update(ap.autopay_id, { status: ap.status }, nowIso);
   return 204;
 }

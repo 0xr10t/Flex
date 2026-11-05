@@ -98,7 +98,7 @@ export const validateReport = ajv.compile({
       properties: {
         autopay_id: ID,
         delegate_address: ADDRESS,
-        cre_job_id: ID,
+        cre_job_id: { type: 'string', minLength: 1 },
         status: { enum: ['active', 'cancelled', 'ended', 'failed'] },
         amount: DECIMAL,
         chain_id: { enum: [...CHAIN_IDS] },
