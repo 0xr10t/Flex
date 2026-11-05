@@ -11,7 +11,7 @@ Machine: macOS arm64, **Node 25.9.0** (the human declined installing Node 22 on 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A — Platform | `lane/a-platform` @ `ac4384e` | Phase 1 resumed (runner tests, routes, reports, settings, A rows, reviewer). Not yet rebased on `contracts-v3` | not verified | 170 / 170 (typecheck ✅ lint ✅) | 0 | `spec-questions/A.md` | none |
 | B — Understanding | `lane/b-understanding` @ `9c0c3bb` | S0–S5 written; tests for S0/S1/S3/S4/S5 + §16.1 marker test missing. Not yet rebased on `contracts-v3` | not verified | 57 / 57 (typecheck ✅ lint ✅) | B-1, B-2 → approved (contracts-v3) | `spec-questions/B.md` | none |
-| C — Recipients | `lane/c-recipients` @ `473077a` | S6/S7 complete with tests; reviewer not run. Not yet rebased on `contracts-v3` | not verified | 173 / 173 (typecheck ✅ lint ✅) | C-1 → approved (contracts-v3) | `spec-questions/C.md` (SQ-C-01…09) | none |
+| C — Recipients | `lane/c-recipients` @ `06d7efa` | **done**, reviewed, on `contracts-v3`, not merged. Phase 2 follow-up: try `PARENT_QUERY` (`ID!`) against a real subgraph; only pinned by text tests so far | 70 implemented + tested, 3 at interim behaviour (C-169, C-195, C-197) / 73 | 220 / 220 (typecheck ✅ lint ✅) | C-1 → approved (contracts-v3) | SQ-C-01, 02, 03, 09, 10, 11 | 2026-11-06, Lane C agent #2 |
 | D — Planning & output | `lane/d-planning` @ `9c9051e` | S8 done + tests; S9 written, untested; S10–S12 not started | not verified | 51 / 51 (typecheck ✅ lint ✅) | 0 | none yet | none |
 | Orchestrator | `agentic_layer` @ `2125afc` | Phase 1 supervision. typecheck ✅ lint ✅ test 14/14 ✅ | 14 / 85 | 14 / 14 | — | SQ-01, 03–09, 11, 15, 18, 22 | — |
 
@@ -24,7 +24,10 @@ Rule (NEXT_ORCHESTRATOR_PROMPT §0): code writers = Opus 5.5 (`model: "opus"`); 
 | Lane A agent #1 | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | stopped by the human (account switch); merged contracts-v3, `a2d9b55` |
 | Lane C agent #1 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | stopped by the human (account switch); merged contracts-v3, `3ec1461`, uncommitted test edits left |
 | Lane A agent #2 | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | running |
-| Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | running |
+| Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | done @ `06d7efa`; Orchestrator re-ran typecheck ✅ lint ✅ test 220/220 ✅ |
+| Lane C Tester | Lane C tests | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; 47 tests, no production bugs |
+| Lane C Reviewer | Lane C review | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; R-1…R-4 fixed |
+| Lane D agent | Lane D — Planning & output (code) | opus | `lane/d-planning` | 2026-11-06 | running |
 
 ## Skills available in this session
 

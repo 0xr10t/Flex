@@ -125,6 +125,9 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
   payment (placeholders only) plus `chain_id` = the chain S9 assigned to it (Lane D writes it; Lane C's S7 reads a
   numeric `chain_id` first). Still placeholders + chain ids only (§16.2).
 
+- **SQ-C-04** → unreachable: §8.1 step 5 stops the request when every allowed chain is unavailable and §14.1 rejects an
+  empty `allowed_chain_ids`. The branch stays as a guard.
+
 ### Open — need the human (interim behaviour applies)
 
 - **SQ-A-01** `/cancel` with no active request → now 200 + `UNSUPPORTED_REQUEST`.
@@ -140,5 +143,7 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
 - **SQ-C-01** ENS RPC failure for a payee → now `UNSUPPORTED_REQUEST`.
 - **SQ-C-02** re-check returns two different new addresses → now `UNSUPPORTED_REQUEST`.
 - **SQ-C-03** "Use new address" when it is saved under another name → now `UNSUPPORTED_REQUEST`.
-- **SQ-C-04** `Q_GROUP_CHAIN` with no `ok` chain → now `UNSUPPORTED_REQUEST`.
 - **SQ-C-09** `Q_GROUP_MEMBERS` preselection has no chip flag → now "all enabled chips are preselected" (UI rule).
+- **SQ-C-10** §9 flowchart vs §9.4: which resolved contacts get the ENS re-check? → now a `Q_WHO_IS` contact chip does; an address already in DB2 does not.
+- **SQ-C-11** viem returns null on `HttpError`/`ResolverError` reverts, so a gateway failure reads as "no address" → now the user is asked (no wrong address can result).
+- **SQ-O-01** (raised by the Orchestrator from Lane C's report) §8.8 / §16.1 / §16.2 / §7.3 rule 5: §8.8 masks spans only, but §16.1 says LLM #4 sees recipients masked. If S5 tags one occurrence of a name and the same name appears again untagged, the name reaches LLM #4. Tagging every occurrence as a payee would mint extra placeholders that P3 then requires to be paid. → now spans only. Options: (a) keep; (b) replace further occurrences of a tagged text by that span's placeholder, with no new DB3 row; (c) replace them by `[person]`.
