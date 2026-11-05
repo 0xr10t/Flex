@@ -3,11 +3,12 @@
 // Owner: Lane A.
 
 import { ajv } from '../schemas/index.js';
-import { CHAIN_IDS } from '../contracts/types.js';
+import { CHAIN_IDS, type ExecutionReport, type MessageInput } from '../contracts/types.js';
+import type { AnswerBody } from '../session/manager.js';
 
 const STR = { type: 'string' } as const;
 
-export const validateOpenSession = ajv.compile({
+export const validateOpenSession = ajv.compile<{ timezone: string }>({
   type: 'object',
   additionalProperties: false,
   required: ['timezone'],
@@ -15,7 +16,7 @@ export const validateOpenSession = ajv.compile({
 });
 
 /** §14.1 messages body. `pasted_blocks`, `attachments`, `urls` may be omitted (treated as empty). */
-export const validateMessage = ajv.compile({
+export const validateMessage = ajv.compile<Partial<MessageInput> & { text: string }>({
   type: 'object',
   additionalProperties: false,
   required: ['text'],
@@ -36,7 +37,7 @@ export const validateMessage = ajv.compile({
 });
 
 /** §14.1 answers body: exactly one of chip_id / text / selected_ids. */
-export const validateAnswer = ajv.compile({
+export const validateAnswer = ajv.compile<AnswerBody>({
   oneOf: [
     {
       type: 'object',
@@ -59,14 +60,14 @@ export const validateAnswer = ajv.compile({
   ],
 });
 
-export const validateConfirm = ajv.compile({
+export const validateConfirm = ajv.compile<{ request_id: string; decision: 'yes' | 'no' }>({
   type: 'object',
   additionalProperties: false,
   required: ['request_id', 'decision'],
   properties: { request_id: STR, decision: { enum: ['yes', 'no'] } },
 });
 
-export const validateCancel = ajv.compile({
+export const validateCancel = ajv.compile<{ request_id: string }>({
   type: 'object',
   additionalProperties: false,
   required: ['request_id'],
@@ -80,7 +81,7 @@ const DATE_TIME = { type: 'string', format: 'date-time' } as const;
 const ID = { type: 'string', pattern: '^[A-Za-z0-9_.:-]{1,128}$' } as const;
 
 /** §14.3 report body (shape check; per-kind required fields are checked in the route). */
-export const validateReport = ajv.compile({
+export const validateReport = ajv.compile<ExecutionReport>({
   type: 'object',
   additionalProperties: false,
   required: ['kind'],

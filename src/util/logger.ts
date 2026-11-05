@@ -98,7 +98,6 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
       formatters: {
         level: (label: string) => ({ level: label }),
         bindings: () => ({}),
-        log: (obj: Record<string, unknown>) => sanitizeLogFields(obj),
       },
     },
     { write: (s: string) => void dest.write(s) },

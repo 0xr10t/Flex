@@ -22,7 +22,7 @@ import { createOsKeyStore, getOrCreateDbKey, type KeyStore } from './db/keychain
 import { openDatabase } from './db/open.js';
 import { createRepos } from './db/repos/index.js';
 import { createApp } from './server/app.js';
-import type { StepRegistry } from './session/manager.js';
+import { modelReady, type StepRegistry } from './session/manager.js';
 import { createLogger, type Logger } from './util/logger.js';
 
 /** Factories owned by lanes B, C and D (LANES.md "Exports the Orchestrator will wire"). */
@@ -77,12 +77,7 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
   repos.db5.insertDefaultsIfMissing(new Date().toISOString());
 
   const llm = factories.createLlm(config, log);
-  let ollama = false;
-  try {
-    ollama = await llm.modelAvailable();
-  } catch {
-    ollama = false;
-  }
+  const ollama = await modelReady(llm);
   log.info({ event: ollama ? 'startup_model_ok' : 'startup_model_unavailable' });
 
   const app = createApp({

@@ -41,6 +41,7 @@ import type {
   ResponseState,
   SessionId,
 } from '../contracts/types.js';
+import { MAX_PLACEHOLDER_DRAWS } from '../db/repos/common.js';
 import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
@@ -49,8 +50,6 @@ import { classifyConfirmationText, isCancelText } from './texts.js';
 export const MAX_ATTEMPTS = 4;
 /** §8.14 step 6: hand-off attempts in total. */
 export const MAX_HANDOFF_ATTEMPTS = 3;
-/** §7.3 rule 3 applied to session ids (db8_sessions primary key). */
-const MAX_ID_DRAWS = 5;
 
 export type StepRegistry = Readonly<Record<StepName, StepEntry>>;
 
@@ -102,6 +101,18 @@ const ok = <T>(body: T): SessionResult<T> => ({ kind: 'ok', body });
 const NOT_FOUND = { kind: 'not_found' } as const;
 const CONFLICT = { kind: 'conflict' } as const;
 
+/** §14.4: the configured model is available; a client that throws counts as unavailable. */
+export async function modelReady(llm: LlmClient): Promise<boolean> {
+  try {
+    return await llm.modelAvailable();
+  } catch {
+    return false;
+  }
+}
+
+/** An instant as the ISO-8601 UTC string stored in the DB (§7). */
+export const toIsoUtc = (t: DateTime): string => t.toUTC().toISO() ?? new Date().toISOString();
+
 export class SessionManager {
   private readonly deps: SessionManagerDeps;
   private readonly clock: () => DateTime;
@@ -121,7 +132,7 @@ export class SessionManager {
     if (!IANAZone.isValidZone(timezone)) throw new Error('invalid timezone');
     if (this.open !== null) this.closeOpen(this.open);
     const opened_at = this.nowIso();
-    for (let i = 0; i < MAX_ID_DRAWS; i++) {
+    for (let i = 0; i < MAX_PLACEHOLDER_DRAWS; i++) {
       const session_id = this.newId('session') as SessionId;
       if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
       this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
@@ -158,11 +169,7 @@ export class SessionManager {
     s.closed = true;
     this.open = null;
     const a = s.active;
-    if (a !== null && !isTerminal(a.req)) {
-      a.req.state = 'DISCARDED';
-      a.req.paused_at = undefined;
-      this.logFinal(a.req);
-    }
+    if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
     this.deps.repos.clearSessionStores();
     this.deps.log.info({ event: 'session_closed', session_id: s.session_id });
@@ -189,8 +196,7 @@ export class SessionManager {
             return ok(this.discard(s, a, REPLY.USER_SAID_NO()));
           case 'other': {
             // §17.3: the pending request is DISCARDED; the text starts a new request with the §13.3 line prepended.
-            a.req.state = 'DISCARDED';
-            this.logFinal(a.req);
+            this.markDiscarded(a.req);
             return ok(await this.newRequest(s, input, [REPLY.PENDING_REPLACED()]));
           }
         }
@@ -298,25 +304,13 @@ export class SessionManager {
   }
 
   private async newRequest(s: OpenSession, input: MessageInput, prepend: string[]): Promise<AgentResponse> {
-    const prev = s.active;
-    if (prev !== null && !isTerminal(prev.req)) {
-      // Unreachable through handleMessage (awaiting states are handled first); kept so §8.0 "one active request"
-      // holds for any caller.
-      prev.req.state = 'DISCARDED';
-      this.logFinal(prev.req);
-    }
     const req = newAgentRequest(this.newId('request') as RequestId, s.session_id, input);
     req.prepend_messages.push(...prepend);
     const a: Active = { req, limits: this.deps.repos.db5.getAll() };
     s.active = a;
     this.deps.log.info({ event: 'request_received', session_id: s.session_id, request_id: req.request_id });
     // §14.4: the configured model must be available, otherwise every request fails with MODEL_FAILED.
-    let modelOk: boolean;
-    try {
-      modelOk = await this.deps.llm.modelAvailable();
-    } catch {
-      modelOk = false;
-    }
+    const modelOk = await modelReady(this.deps.llm);
     this.assertOpen(s);
     if (!modelOk) return this.finish(s, a, 's0', { kind: 'error', code: 'MODEL_FAILED' });
     return this.run(s, a, 0);
@@ -485,10 +479,14 @@ export class SessionManager {
 
   /** Request DISCARDED with a reply (§17.3, §13.3). Never written to db8_history (only S12 appends). */
   private discard(s: OpenSession, a: Active, ...messages: string[]): AgentResponse {
-    a.req.state = 'DISCARDED';
-    a.req.paused_at = undefined;
-    this.logFinal(a.req);
+    this.markDiscarded(a.req);
     return this.respond(s, a, 'done', messages);
+  }
+
+  private markDiscarded(req: AgentRequest): void {
+    req.state = 'DISCARDED';
+    req.paused_at = undefined;
+    this.logFinal(req);
   }
 
   /** §0: a state this spec does not cover → UNSUPPORTED_REQUEST; log the internal state code (SQ-19). */
@@ -553,7 +551,7 @@ export class SessionManager {
   }
 
   private nowIso(): string {
-    return this.clock().toUTC().toISO() ?? new Date().toISOString();
+    return toIsoUtc(this.clock());
   }
 }
 

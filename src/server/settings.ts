@@ -6,7 +6,7 @@
 // Owner: Lane A.
 
 import { compareDecimal, fractionDigits, isDecimalString } from '../contracts/money.js';
-import { TOKEN_DECIMALS, type ChainId, type Config, type Limits, type Token } from '../contracts/types.js';
+import { TOKEN_DECIMALS, type Config, type Limits, type Token } from '../contracts/types.js';
 import { DB5_KEYS } from '../config/defaults.js';
 
 export interface FieldError {
@@ -86,7 +86,7 @@ export function validateLimits(body: unknown, config: Config): LimitsValidation 
       err('eth_gas_reserve', 'must be an object keyed by chain id');
     } else {
       for (const [k, amount] of Object.entries(v)) {
-        if (!configured.map(String).includes(k)) err(`eth_gas_reserve.${k}`, 'unknown chain id');
+        if (!configured.some((c) => String(c) === k)) err(`eth_gas_reserve.${k}`, 'unknown chain id');
         else err(`eth_gas_reserve.${k}`, positiveAmount(amount, TOKEN_DECIMALS.ETH));
       }
       for (const c of allowed) if (!(String(c) in v)) err(`eth_gas_reserve.${c}`, 'is required for an allowed chain');
@@ -96,24 +96,12 @@ export function validateLimits(body: unknown, config: Config): LimitsValidation 
   if ('bridge_buffer_pct' in body) {
     const v = body.bridge_buffer_pct;
     if (typeof v !== 'string' || !isDecimalString(v)) err('bridge_buffer_pct', 'must be a decimal string');
-    else if (compareDecimal(v, '20', Math.max(fractionDigits(v), 0)) > 0) {
+    else if (compareDecimal(v, '20', fractionDigits(v)) > 0) {
       err('bridge_buffer_pct', 'must be between 0 and 20');
     }
   }
 
   if (errors.length > 0) return { ok: false, errors };
-  const b = body as unknown as Limits;
-  return {
-    ok: true,
-    limits: {
-      per_tx_max: { USDC: b.per_tx_max.USDC, ETH: b.per_tx_max.ETH },
-      daily_max: { USDC: b.daily_max.USDC, ETH: b.daily_max.ETH },
-      autopay_max_per_period: { USDC: b.autopay_max_per_period.USDC, ETH: b.autopay_max_per_period.ETH },
-      autopay_max_weeks: b.autopay_max_weeks,
-      max_bridges_per_request: b.max_bridges_per_request,
-      allowed_chain_ids: [...b.allowed_chain_ids] as ChainId[],
-      eth_gas_reserve: { ...b.eth_gas_reserve },
-      bridge_buffer_pct: b.bridge_buffer_pct,
-    },
-  };
+  // Every key was checked above and unknown keys were refused, so the body is exactly a Limits object.
+  return { ok: true, limits: body as unknown as Limits };
 }

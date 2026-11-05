@@ -4,3 +4,6 @@
 import type BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
 
 export type Database = BetterSqlite3.Database;
+
+/** §7: the database key, 32 bytes as lowercase hex. */
+export const DB_KEY_RE = /^[0-9a-f]{64}$/;

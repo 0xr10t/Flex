@@ -8,19 +8,14 @@
 import { timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { DateTime, IANAZone } from 'luxon';
-import type {
-  AllowlistLogger,
-  ContentFetcher,
-  EnsClient,
-  ExecutionClient,
-  RpcClients,
-  SubnameSource,
-} from '../contracts/io.js';
-import type { LlmClient } from '../contracts/llm.js';
-import type { Repos } from '../contracts/repos.js';
-import type { NewId } from '../contracts/step.js';
-import type { Config, ExecutionReport, MessageInput } from '../contracts/types.js';
-import { SessionManager, type AnswerBody, type SessionResult, type StepRegistry } from '../session/manager.js';
+import type { MessageInput } from '../contracts/types.js';
+import {
+  modelReady,
+  SessionManager,
+  toIsoUtc,
+  type SessionManagerDeps,
+  type SessionResult,
+} from '../session/manager.js';
 import {
   validateAnswer,
   validateCancel,
@@ -38,28 +33,17 @@ export const REPORTS_PATH = '/v1/execution/reports';
 
 const HTTP_ERROR_NAME: Readonly<Record<number, string>> = {
   400: 'Bad Request',
+  401: 'Unauthorized',
   404: 'Not Found',
+  409: 'Conflict',
   413: 'Payload Too Large',
   415: 'Unsupported Media Type',
   500: 'Internal Server Error',
 };
 
-export interface AppDeps {
-  repos: Repos;
-  llm: LlmClient;
-  rpc: RpcClients;
-  ens: EnsClient;
-  subnames: SubnameSource;
-  exec: ExecutionClient;
-  fetcher: ContentFetcher;
-  log: AllowlistLogger;
-  config: Config;
-  /** Step registry (src/pipeline/registry.ts once wired; stub steps in tests). */
-  registry: StepRegistry;
+export interface AppDeps extends SessionManagerDeps {
   /** Bearer tokens (§14.1 UI, §14.3 execution report). Must differ (§16.4). */
   tokens: { ui: string; report: string };
-  clock?: () => DateTime;
-  newId?: NewId;
 }
 
 function tokenMatches(header: string | undefined, expected: string): boolean {
@@ -69,33 +53,24 @@ function tokenMatches(header: string | undefined, expected: string): boolean {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
+/** An error reply: status and its name only, never error text or request content (§18). */
+const httpError = (reply: FastifyReply, status: number): FastifyReply =>
+  reply.code(status).send({ statusCode: status, error: HTTP_ERROR_NAME[status] ?? 'Error' });
+
+const badRequest = (reply: FastifyReply): FastifyReply => httpError(reply, 400);
+
 function sendResult(reply: FastifyReply, r: SessionResult): FastifyReply {
-  if (r.kind === 'not_found') return reply.code(404).send({ statusCode: 404, error: 'Not Found' });
-  if (r.kind === 'conflict') return reply.code(409).send({ statusCode: 409, error: 'Conflict' });
+  if (r.kind === 'not_found') return httpError(reply, 404);
+  if (r.kind === 'conflict') return httpError(reply, 409);
   return reply.code(200).send(r.body);
 }
 
-const badRequest = (reply: FastifyReply): FastifyReply =>
-  reply.code(400).send({ statusCode: 400, error: 'Bad Request' });
-
 export function createApp(deps: AppDeps): FastifyInstance {
-  if (deps.tokens.ui === deps.tokens.report) throw new Error('UI and execution-report tokens must differ (§16.4)');
+  const { tokens, ...managerDeps } = deps;
+  if (tokens.ui === tokens.report) throw new Error('UI and execution-report tokens must differ (§16.4)');
   const clock = deps.clock ?? (() => DateTime.utc());
-  const nowIso = (): string => clock().toUTC().toISO() ?? new Date().toISOString();
-  const manager = new SessionManager({
-    repos: deps.repos,
-    llm: deps.llm,
-    rpc: deps.rpc,
-    ens: deps.ens,
-    subnames: deps.subnames,
-    exec: deps.exec,
-    fetcher: deps.fetcher,
-    log: deps.log,
-    config: deps.config,
-    registry: deps.registry,
-    clock,
-    ...(deps.newId !== undefined ? { newId: deps.newId } : {}),
-  });
+  const nowIso = (): string => toIsoUtc(clock());
+  const manager = new SessionManager({ ...managerDeps, clock });
 
   // No Fastify request logging: URLs and bodies must never reach a log (§18).
   const app = Fastify({ logger: false, bodyLimit: MAX_BODY_BYTES });
@@ -104,10 +79,8 @@ export function createApp(deps: AppDeps): FastifyInstance {
   // other route only the UI token.
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     const isReports = request.routeOptions.url === REPORTS_PATH;
-    const expected = isReports ? deps.tokens.report : deps.tokens.ui;
-    if (!tokenMatches(request.headers.authorization, expected)) {
-      return reply.code(401).send({ statusCode: 401, error: 'Unauthorized' });
-    }
+    const expected = isReports ? tokens.report : tokens.ui;
+    if (!tokenMatches(request.headers.authorization, expected)) return httpError(reply, 401);
     return undefined;
   });
 
@@ -115,33 +88,30 @@ export function createApp(deps: AppDeps): FastifyInstance {
   app.setErrorHandler((error: { statusCode?: number }, _request, reply) => {
     const status = typeof error.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
     if (status >= 500) deps.log.error({ event: 'http_error', http_status: status });
-    return reply.code(status).send({ statusCode: status, error: HTTP_ERROR_NAME[status] ?? 'Error' });
+    return httpError(reply, status);
   });
-  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ statusCode: 404, error: 'Not Found' }));
+  app.setNotFoundHandler((_request, reply) => httpError(reply, 404));
 
   // ── sessions (§14.1, §17.1) ──
   app.post('/v1/sessions', async (request, reply) => {
     const body = request.body;
-    if (!validateOpenSession(body)) return badRequest(reply);
-    const { timezone } = body as { timezone: string };
-    if (!IANAZone.isValidZone(timezone)) return badRequest(reply);
-    return reply.code(200).send(manager.openSession(timezone));
+    if (!validateOpenSession(body) || !IANAZone.isValidZone(body.timezone)) return badRequest(reply);
+    return reply.code(200).send(manager.openSession(body.timezone));
   });
 
   app.delete<{ Params: { id: string } }>('/v1/sessions/:id', async (request, reply) => {
-    if (!manager.closeSession(request.params.id)) return reply.code(404).send({ statusCode: 404, error: 'Not Found' });
+    if (!manager.closeSession(request.params.id)) return httpError(reply, 404);
     return reply.code(204).send();
   });
 
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/messages', async (request, reply) => {
     const body = request.body;
     if (!validateMessage(body)) return badRequest(reply);
-    const b = body as Partial<MessageInput> & { text: string };
     const input: MessageInput = {
-      text: b.text,
-      pasted_blocks: b.pasted_blocks ?? [],
-      attachments: b.attachments ?? [],
-      urls: b.urls ?? [],
+      text: body.text,
+      pasted_blocks: body.pasted_blocks ?? [],
+      attachments: body.attachments ?? [],
+      urls: body.urls ?? [],
     };
     return sendResult(reply, await manager.handleMessage(request.params.id, input));
   });
@@ -149,21 +119,19 @@ export function createApp(deps: AppDeps): FastifyInstance {
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/answers', async (request, reply) => {
     const body = request.body;
     if (!validateAnswer(body)) return badRequest(reply);
-    return sendResult(reply, await manager.handleAnswer(request.params.id, body as AnswerBody));
+    return sendResult(reply, await manager.handleAnswer(request.params.id, body));
   });
 
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/confirm', async (request, reply) => {
     const body = request.body;
     if (!validateConfirm(body)) return badRequest(reply);
-    const { request_id, decision } = body as { request_id: string; decision: 'yes' | 'no' };
-    return sendResult(reply, await manager.handleConfirm(request.params.id, request_id, decision));
+    return sendResult(reply, await manager.handleConfirm(request.params.id, body.request_id, body.decision));
   });
 
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/cancel', async (request, reply) => {
     const body = request.body;
     if (!validateCancel(body)) return badRequest(reply);
-    const { request_id } = body as { request_id: string };
-    return sendResult(reply, await manager.handleCancel(request.params.id, request_id));
+    return sendResult(reply, await manager.handleCancel(request.params.id, body.request_id));
   });
 
   // ── settings (§14.1, §7.2: the only DB5 write path) ──
@@ -179,12 +147,7 @@ export function createApp(deps: AppDeps): FastifyInstance {
 
   // ── health (§14.1, §14.4) ──
   app.get('/v1/health', async (_request, reply) => {
-    let ollama = false;
-    try {
-      ollama = await deps.llm.modelAvailable();
-    } catch {
-      ollama = false;
-    }
+    const ollama = await modelReady(deps.llm);
     let db = true;
     try {
       deps.repos.db5.getAll();
@@ -198,11 +161,10 @@ export function createApp(deps: AppDeps): FastifyInstance {
   app.post(REPORTS_PATH, async (request, reply) => {
     const body = request.body;
     if (!validateReport(body)) return badRequest(reply);
-    const outcome = applyReport(deps.repos, body as ExecutionReport, nowIso());
+    const outcome = applyReport(deps.repos, body, nowIso());
     deps.log.info({ event: 'execution_report', http_status: outcome });
     if (outcome === 204) return reply.code(204).send();
-    if (outcome === 404) return reply.code(404).send({ statusCode: 404, error: 'Not Found' });
-    return badRequest(reply);
+    return httpError(reply, outcome);
   });
 
   return app;

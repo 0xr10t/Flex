@@ -40,9 +40,19 @@ function intentResult(repos: Repos, r: ExecutionReport, nowIso: string): ReportO
   const autopayId = r.autopay?.autopay_id;
   const ap = autopayId !== undefined ? repos.db7.get(autopayId) : undefined;
   if (autopayId !== undefined && ap === undefined) return 404;
-  const isKStep = ap !== undefined && ap.request_id === request_id;
-  if (isKStep && status === 'executed' && r.autopay?.delegate_address === undefined) return 400;
   if (ap === undefined && !isKnownRequest(repos, request_id)) return 404;
+
+  let db7Patch: Parameters<Repos['db7']['update']>[1] | null = null;
+  if (ap !== undefined && ap.request_id === request_id) {
+    const delegate = r.autopay?.delegate_address;
+    if (status === 'failed') db7Patch = { status: 'failed' };
+    else if (delegate === undefined) return 400;
+    else {
+      db7Patch = { status: 'active', delegate_address: checksum(delegate), cre_job_id: r.autopay?.cre_job_id ?? null };
+    }
+  } else if (ap !== undefined && status === 'executed') {
+    db7Patch = { status: 'cancelled' };
+  }
 
   repos.transaction(() => {
     repos.db6.applyIntentResult({
@@ -52,24 +62,7 @@ function intentResult(repos: Repos, r: ExecutionReport, nowIso: string): ReportO
       tx_hash: r.tx_hash ?? null,
       executed_at: r.executed_at ?? null,
     });
-    if (ap === undefined) return;
-    if (isKStep) {
-      if (status === 'executed') {
-        repos.db7.update(
-          ap.autopay_id,
-          {
-            status: 'active',
-            delegate_address: checksum(r.autopay?.delegate_address as string),
-            cre_job_id: r.autopay?.cre_job_id ?? null,
-          },
-          nowIso,
-        );
-      } else {
-        repos.db7.update(ap.autopay_id, { status: 'failed' }, nowIso);
-      }
-    } else if (status === 'executed') {
-      repos.db7.update(ap.autopay_id, { status: 'cancelled' }, nowIso);
-    }
+    if (ap !== undefined && db7Patch !== null) repos.db7.update(ap.autopay_id, db7Patch, nowIso);
   });
   return 204;
 }

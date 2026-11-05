@@ -4,6 +4,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { Entry } from '@napi-rs/keyring';
+import { DB_KEY_RE } from './database.js';
 
 export const KEYCHAIN_SERVICE = 'agent-layer';
 export const KEYCHAIN_ACCOUNT = 'db-key';
@@ -23,8 +24,6 @@ export function createOsKeyStore(): KeyStore {
   };
 }
 
-const KEY_RE = /^[0-9a-f]{64}$/;
-
 export class DbKeyError extends Error {
   constructor(message: string) {
     super(message);
@@ -36,7 +35,7 @@ export class DbKeyError extends Error {
 export function getOrCreateDbKey(store: KeyStore): string {
   const existing = store.get();
   if (existing !== null) {
-    if (!KEY_RE.test(existing)) throw new DbKeyError('keychain db-key is not 32 bytes of lowercase hex');
+    if (!DB_KEY_RE.test(existing)) throw new DbKeyError('keychain db-key is not 32 bytes of lowercase hex');
     return existing;
   }
   const key = randomBytes(32).toString('hex');

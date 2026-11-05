@@ -11,8 +11,6 @@ import { toBool, toInt } from './common.js';
 
 /** §7.1: kinds whose rows count toward the daily limit. */
 export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>(['payment', 'bridge_buffer', 'autopay_payment']);
-/** §10.1: pending kinds subtracted from spendable. */
-export const PENDING_SUBTRACT_KINDS: readonly Db6Kind[] = ['payment', 'bridge_out', 'autopay_prefund'];
 /** §10.1 / I-10 window. */
 export const PENDING_WINDOW_MINUTES = 10;
 
