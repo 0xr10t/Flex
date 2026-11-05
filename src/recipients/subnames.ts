@@ -16,8 +16,8 @@ export const SUBNAMES_QUERY = `query Subnames($parent: String!, $skip: Int!) {
   domains(where: { parent: $parent }, first: 1000, skip: $skip, orderBy: name) { name labelName }
 }`;
 
-/** Domain entity lookup by id (= namehash) for §9.6 step 4. */
-export const PARENT_QUERY = `query Parent($id: String!) {
+/** Domain entity lookup by id (= namehash) for §9.6 step 4. The subgraph's `domain` argument has type `ID!`. */
+export const PARENT_QUERY = `query Parent($id: ID!) {
   domain(id: $id) { id }
 }`;
 
