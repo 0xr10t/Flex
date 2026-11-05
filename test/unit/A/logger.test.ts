@@ -1,6 +1,6 @@
 // Lane A unit tests: §18 logging — allowlist serializer, never-logged values, pino JSON lines, level info,
 // rotation at 10 MB × 5 files.
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
@@ -262,6 +262,29 @@ describe('§18 rotation', () => {
     s.write('x'.repeat(50));
     s.close();
     expect(readFileSync(file, 'utf8')).toBe('x'.repeat(50));
+  });
+
+  it('C-428: if the reopen in rotate() fails, the overflow write throws and close() does not throw', () => {
+    const dir = join(tempDir(), 'logs');
+    const s = new RotatingFileStream(join(dir, 'agent.log'), 100, 3);
+    s.write('a'.repeat(60));
+    rmSync(dir, { recursive: true, force: true });
+    expect(() => s.write('b'.repeat(60))).toThrow();
+    expect(() => s.close()).not.toThrow();
+    expect(() => s.close()).not.toThrow();
+  });
+
+  it('C-428: after a failed reopen, recreating the directory lets the next write land in <path> and close() works', () => {
+    const dir = join(tempDir(), 'logs');
+    const file = join(dir, 'agent.log');
+    const s = new RotatingFileStream(file, 100, 3);
+    s.write('a'.repeat(60));
+    rmSync(dir, { recursive: true, force: true });
+    expect(() => s.write('b'.repeat(60))).toThrow();
+    mkdirSync(dir, { recursive: true });
+    expect(() => s.write('c'.repeat(60))).not.toThrow();
+    expect(readFileSync(file, 'utf8')).toBe('c'.repeat(60));
+    expect(() => s.close()).not.toThrow();
   });
 
   it('C-428: invalid rotation settings are refused', () => {
