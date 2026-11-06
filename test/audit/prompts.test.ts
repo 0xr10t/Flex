@@ -143,3 +143,60 @@ describe('SQ-O-01: §8.8 masks only tagged spans; an untagged repeat of a name r
     expect(four).not.toContain('Kabir');
   });
 });
+
+describe('F-12: a name tagged both payee and mentioned asks Q_NAME_ROLE', () => {
+  const TEXT = 'Send 50 usdc to Aradhya. Aradhya is my flatmate';
+  const fixture = (): FixtureFile => ({
+    calls: [
+      {
+        name: 'amounts',
+        match: 'Aradhya',
+        output: {
+          amounts: [{ phrase: '50 usdc', number: '50', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+        },
+      },
+      {
+        name: 'request_type',
+        match: 'Aradhya',
+        output: { request_type: 'actions', actions: ['i'], also_balance: false },
+      },
+      {
+        name: 'spans',
+        match: 'Aradhya',
+        output: {
+          spans: [
+            { text: 'Aradhya', kind: 'name', role: 'payee' },
+            { text: 'Aradhya', kind: 'name', role: 'mentioned' },
+          ],
+        },
+      },
+      { name: 'payments', match: 'ACTION KINDS:', output: { payments: [PAYMENT] } },
+    ],
+  });
+
+  it('F-12: answer "pay" -> LLM #4 sees no "Aradhya" and the address_ placeholder twice; one DB3 row; one spans call', async () => {
+    const h = new Harness('audit-f12-pay', fixture(), {});
+    const r1 = await h.say(TEXT);
+    expect(r1.body.question?.code).toBe('Q_NAME_ROLE');
+    const r2 = await h.answer(r1, { chipLabel: 'Yes, pay Aradhya' });
+    expect(r2.body.state).toBe('awaiting_confirmation');
+    const four = h.llm.recorded.find((c) => c.name === 'payments')?.user ?? '';
+    expect(four).not.toContain('Aradhya');
+    const message = four.split('\n')[0] ?? '';
+    expect(message.match(/address_[0-9a-f]{8}/g) ?? []).toHaveLength(2); // both occurrences swept
+    expect(new Set(four.match(/address_[0-9a-f]{8}/g)).size).toBe(1);
+    expect(h.count('db3_address_placeholders')).toBe(1);
+    expect(h.llm.recorded.filter((c) => c.name === 'spans')).toHaveLength(1);
+    await h.finish({ allowUnused: true });
+  });
+
+  it('F-12: answer "only mentioned" -> Q_NO_PAYEE, and no DB3 row for the name', async () => {
+    const h = new Harness('audit-f12-mentioned', fixture(), {});
+    const r1 = await h.say(TEXT);
+    expect(r1.body.question?.code).toBe('Q_NAME_ROLE');
+    const r2 = await h.answer(r1, { chipLabel: "No, they're only mentioned" });
+    expect(r2.body.question?.code).toBe('Q_NO_PAYEE');
+    expect(h.count('db3_address_placeholders')).toBe(0);
+    await h.finish({ allowUnused: true });
+  });
+});
