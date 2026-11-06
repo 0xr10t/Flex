@@ -83,6 +83,10 @@ Part 1 lists what was checked and found consistent. Part 2 records the human's a
 
 ## Final consistency pass
 
+> **Confirmed by the human (2026-11-06), F-10 trigger:** ask "Who should get {amount} {token}?" when the request names
+> several recipients, or when the amount and its recipient are in different sentences. A single recipient in one sentence
+> ("10 usdc and 0.01 eth to mihir") passes without a question. The tension noted below is resolved.
+
 All 13 answers were checked against each other, the accepted interim answers and the spec sections they touch. They
 form one consistent set; the points below are how the pieces fit, and one reading that the implementer must follow.
 
