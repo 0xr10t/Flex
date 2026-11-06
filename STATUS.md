@@ -28,6 +28,8 @@ Rule (see `Standing decisions and gotchas` below): code writers = Opus 5.5 (`mod
 | Lane A Reviewer | Lane A review | sonnet (per report) | `lane/a-platform` | 2026-11-06 | done; 6 defects + N1 fixed; `ecdb941` read by the Orchestrator |
 | Lane B agent #1 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | stopped by the human @ `538613c` (contracts-v3 merged only) |
 | Lane B agent #2 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | running |
+| Docs clean-up agent | delete obsolete docs | sonnet | `agentic_layer` | 2026-11-06 | done @ `8d7556d` |
+| Acceptance Tester | §3.1 harness + A-01…A-60 | sonnet | `phase2/acceptance` (from `186e548`) | 2026-11-06 | running |
 | Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | done @ `06d7efa`; Orchestrator re-ran typecheck ✅ lint ✅ test 220/220 ✅ |
 | Lane C Tester | Lane C tests | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; 47 tests, no production bugs |
 | Lane C Reviewer | Lane C review | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; R-1…R-4 fixed |
@@ -65,6 +67,7 @@ Lane follow-ups after rebasing onto `contracts-v3`: A — `newAgentRequest()` (`
 
 | `agentic_layer` sha | Lane | Date | Unit suite |
 | --- | --- | --- | --- |
+| `186e548` | A — Platform (`lane/a-platform` @ `6029674`) | 2026-11-06 | typecheck ✅ lint ✅ 439/439 ✅ |
 
 ## Acceptance results (A-01 … A-60)
 
