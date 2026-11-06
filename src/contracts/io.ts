@@ -40,7 +40,14 @@ export interface SubnameSource {
   listChildren(parent: string): Promise<string[] | 'not_found'>;
 }
 
-export type SubmitResult = { status: 'accepted' } | { status: 'rejected'; message: string } | { status: 'unavailable' };
+/**
+ * `cause` of an unavailable hand-off (SQ-A-06, F-9): 'server_error' for a 5xx answer, 'timeout' when no answer came
+ * back (timeout or network failure: whether the wallet got the envelope is unknown).
+ */
+export type UnavailableCause = 'timeout' | 'server_error';
+
+export type SubmitResult =
+  { status: 'accepted' } | { status: 'rejected'; message: string } | { status: 'unavailable'; cause: UnavailableCause };
 
 /** §14.2 POST {execution.url}/v1/intents with Idempotency-Key. */
 export interface ExecutionClient {

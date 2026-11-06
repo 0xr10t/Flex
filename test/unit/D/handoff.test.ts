@@ -631,7 +631,7 @@ describe('§8.14 steps 5–6 / §15 rejected and unavailable', () => {
 
   it('C-392 5xx / timeout → EXECUTION_UNAVAILABLE with the §15 message; nothing recorded', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
-    ctx.exec.responses = [{ status: 'unavailable' }];
+    ctx.exec.responses = [{ status: 'unavailable', cause: 'server_error' }];
     const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)]);
     expect(expectError(res, 'EXECUTION_UNAVAILABLE')).toBe("I couldn't reach your wallet. Confirm again to retry.");
     expect(ctx.repos.tables.db6).toEqual([]);
@@ -641,7 +641,10 @@ describe('§8.14 steps 5–6 / §15 rejected and unavailable', () => {
 
   it('C-152 §8.14 step 6 / §14.2 a retry after EXECUTION_UNAVAILABLE re-sends the SAME envelope with the SAME Idempotency-Key', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
-    ctx.exec.responses = [{ status: 'unavailable' }, { status: 'unavailable' }];
+    ctx.exec.responses = [
+      { status: 'unavailable', cause: 'server_error' },
+      { status: 'unavailable', cause: 'server_error' },
+    ];
     const plan = [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)];
     ctx.req.plan = plan;
     await s12.step(ctx);
