@@ -3,7 +3,16 @@
 // keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
 
 import { getAddress, zeroAddress } from 'viem';
-import { CHIPS, NOTES, REPLY, buildQuestion, matchChip, reask } from '../contracts/catalog.js';
+import {
+  CHIPS,
+  LIMIT_OVERRIDE,
+  NOTES,
+  REPLY,
+  buildQuestion,
+  matchChip,
+  reask,
+  type LimitOverrideArgs,
+} from '../contracts/catalog.js';
 import { toBaseUnits } from '../contracts/money.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { AddressPh, AmountPh, ChainId, InternalIntent, QuestionId, Token } from '../contracts/types.js';
@@ -196,19 +205,24 @@ function dailyLimit(ctx: StepContext, plan: InternalIntent[]): Failure {
     const spent = spentToday(ctx, token);
     const request = thisRequest(ctx, plan, token);
     if (spent + request <= max) continue;
-    if (req.daily_limit_override) {
+    if (req.limit_override) {
       pushNote(ctx, NOTES.LIMIT_LIFTED());
       continue;
     }
     const remaining = fmt(spent < max ? max - spent : 0n, token);
     if (!hasGroup) return { kind: 'error', code: 'LIMIT_DAILY', params: { token, remaining } };
+    // contracts-v4 stub: still only the group daily case asks; the general rule lands with lane D (SQ-D-16).
+    const over: LimitOverrideArgs = {
+      broken: [{ kind: 'daily', daily_max: limits.daily_max[token], remaining, token, repeating: false }],
+      amount: { value: fmt(request, token), token },
+    };
     return {
       kind: 'question',
       question: buildQuestion({
         question_id: newId('question') as QuestionId,
-        code: 'Q_GROUP_OVER_LIMIT',
-        params: { total: fmt(request, token), token, remaining, daily_max: limits.daily_max[token] },
-        chips: [CHIPS.OVER_LIMIT_YES, CHIPS.NO],
+        code: 'Q_LIMIT_OVERRIDE',
+        text: LIMIT_OVERRIDE.text(over),
+        chips: LIMIT_OVERRIDE.chips(over),
       }),
     };
   }
@@ -234,12 +248,12 @@ async function step(ctx: StepContext): Promise<StepResult> {
 }
 
 const onAnswer: AnswerHandler = async (ctx, q, answer) => {
-  if (q.code !== 'Q_GROUP_OVER_LIMIT') return internalError(ctx, 's10', 'S10_UNKNOWN_QUESTION');
+  if (q.code !== 'Q_LIMIT_OVERRIDE') return internalError(ctx, 's10', 'S10_UNKNOWN_QUESTION');
   const chip = matchChip(q, answer);
   // §13.4 allows plain "yes" for a Yes chip; this one is labelled "Yes, this once".
   const saidYes = answer.kind === 'text' && answer.text.trim().toLowerCase() === 'yes';
   if (chip?.id === CHIPS.OVER_LIMIT_YES.id || saidYes) {
-    ctx.req.daily_limit_override = true;
+    ctx.req.limit_override = true;
     return { kind: 'continue' };
   }
   if (chip?.id === CHIPS.NO.id) return { kind: 'discard', messages: [REPLY.CANCELLED()] };

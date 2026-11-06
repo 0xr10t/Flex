@@ -16,7 +16,7 @@
 //  - 'summary' → only S11; request AWAITING_CONFIRMATION.
 //  - 'error'   → request FAILED (or `final_state` when given, e.g. ANSWERED for S4 unsupported §8.5 rule 1).
 //               S12 returning EXECUTION_UNAVAILABLE → runner sets HANDOFF_FAILED (§8.14 step 6).
-//  - 'discard' → request DISCARDED (e.g. Q_ENS_CHANGED "Cancel", Q_GROUP_OVER_LIMIT "No").
+//  - 'discard' → request DISCARDED (e.g. Q_ENS_CHANGED "Cancel", Q_LIMIT_OVERRIDE "No").
 
 import type { DateTime } from 'luxon';
 import type { AllowlistLogger, ContentFetcher, EnsClient, ExecutionClient, RpcClients, SubnameSource } from './io.js';

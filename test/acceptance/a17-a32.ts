@@ -290,13 +290,13 @@ export function registerA17toA32(): void {
       const r1 = await h.say('send 100 usdc to everyone under iitr.eth on base');
       expect(r1.body.question?.code).toBe('Q_GROUP_MEMBERS');
       const r2 = await h.answer(r1, { selectedLabels: names });
-      expect(r2.body.question?.code).toBe('Q_GROUP_OVER_LIMIT');
+      expect(r2.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
       expect(r2.body.question?.text).toBe(
         "This sends 300 USDC, but only 250 is left of today's 300 limit. Go ahead this once?",
       );
       expect(r2.body.question?.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
       const r3 = await h.answer(r2, { chipLabel: 'Yes, this once' });
-      expect(h.asked).toEqual(['Q_GROUP_MEMBERS', 'Q_GROUP_OVER_LIMIT']);
+      expect(h.asked).toEqual(['Q_GROUP_MEMBERS', 'Q_LIMIT_OVERRIDE']);
       expect(r3.body.state).toBe('awaiting_confirmation');
       expect(r3.body.summary?.notes).toContain("Today's limit was lifted once for this group payment.");
       expect(lines(r3)).toEqual([`Send 100 USDC each to 3 members of iitr.eth on Base Sepolia: ${names.join(', ')}.`]);

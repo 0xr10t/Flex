@@ -3,7 +3,7 @@
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
 // Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
 
-import type { Answer, Chip, ErrorCode, QuestionCode, QuestionId, QuestionInput, Question } from './types.js';
+import type { Answer, Chip, ErrorCode, QuestionCode, QuestionId, QuestionInput, Question, Token } from './types.js';
 
 type P = Record<string, string>;
 
@@ -11,6 +11,12 @@ function req(p: P, key: string): string {
   const v = p[key];
   if (v === undefined) throw new Error(`catalog: missing param ${key}`);
   return v;
+}
+
+/** "A", "A and B", "A, B and C": the one join for user-facing lists (SQ-06 / SQB-01, F-10, SQ-O-10). */
+export function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 // ───────────────────────────── §13.4 question texts ─────────────────────────────
@@ -41,8 +47,13 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   Q_GROUP_CHAIN: () => 'Which chain should the group be paid on?',
   // SQ-05: the spec says the text also shows the total when the amount is known, but gives no wording.
   Q_GROUP_MEMBERS: (p) => `Pay these ${req(p, 'n')} members of ${req(p, 'parent')}? Untick anyone to leave out.`,
-  Q_GROUP_OVER_LIMIT: (p) =>
-    `This sends ${req(p, 'total')} ${req(p, 'token')}, but only ${req(p, 'remaining')} is left of today's ${req(p, 'daily_max')} limit. Go ahead this once?`,
+  // SQ-D-16, F-1…F-6: `lead` from limitOverrideLead(); `repeating` = 'true' picks "Set it up anyway?".
+  // Build it with LIMIT_OVERRIDE.text() / LIMIT_OVERRIDE.chips().
+  Q_LIMIT_OVERRIDE: (p) => `${req(p, 'lead')} ${p.repeating === 'true' ? 'Set it up anyway?' : 'Go ahead this once?'}`,
+  // SQ-O-03, F-11: one question per affected amount; chips = the possible recipients (PAIR_AMOUNT.chips()).
+  Q_PAIR_AMOUNT: (p) => `Who should get ${req(p, 'amount')} ${req(p, 'token')}?`,
+  // SQ-O-01, F-12: a name labelled both payee and mentioned (NAME_ROLE.text() / NAME_ROLE.chips()).
+  Q_NAME_ROLE: (p) => `Should I pay ${req(p, 'name')}?`,
   Q_AUTOPAY_FREQUENCY: () => 'How often should this repeat?',
   Q_AUTOPAY_START: () => 'When should this start?',
   Q_AUTOPAY_END: () => 'When should these payments stop?',
@@ -72,7 +83,9 @@ export const QUESTION_INPUT: Record<QuestionCode, QuestionInput> = {
   Q_GROUP_PARENT: 'text',
   Q_GROUP_CHAIN: 'chips',
   Q_GROUP_MEMBERS: 'multiselect',
-  Q_GROUP_OVER_LIMIT: 'chips',
+  Q_LIMIT_OVERRIDE: 'chips',
+  Q_PAIR_AMOUNT: 'chips',
+  Q_NAME_ROLE: 'chips',
   Q_AUTOPAY_FREQUENCY: 'chips',
   Q_AUTOPAY_START: 'date',
   Q_AUTOPAY_END: 'chips',
@@ -136,7 +149,10 @@ export const CHIPS = {
   ENS_USE_NEW: chip('use_new', 'Use new address'),
   ENS_KEEP: chip('keep_saved', 'Keep saved address'),
   CANCEL: chip('cancel', 'Cancel'),
+  /** Q_LIMIT_OVERRIDE "Yes" (one-time payments). */
   OVER_LIMIT_YES: chip('override', 'Yes, this once'),
+  /** Q_LIMIT_OVERRIDE "Yes" when a broken limit belongs to a repeating payment (same id as OVER_LIMIT_YES). */
+  OVER_LIMIT_SET_UP: chip('override', 'Yes, set it up'),
   DAILY: chip('daily', 'Daily'),
   WEEKLY: chip('weekly', 'Weekly'),
   MONTHLY: chip('monthly', 'Monthly'),
@@ -150,6 +166,125 @@ export const MEMBER_UNPAYABLE_DETAIL = (p: P): string => `no address on ${req(p,
 
 /** §9.3 step 6 chip label "Base Sepolia (0x3fA9…c21E)". */
 export const ENS_CHAIN_CHIP_LABEL = (p: P): string => `${req(p, 'chain')} (${req(p, 'addr')})`;
+
+// ───────────────────────────── contracts-v4 question builders ─────────────────────────────
+
+/**
+ * One broken DB5 limit (SQ-D-16, F-1…F-6), in S10's check order. Figures are display values (no trailing zeros).
+ * `token` is shown after a figure only when the broken limits span two tokens. `repeating` is true when the limit
+ * belongs to a repeating payment (`k`); any such limit picks the "Set it up anyway?" closing.
+ */
+export type BrokenLimit =
+  | { kind: 'per_payment'; max: string; token: Token; repeating: boolean }
+  | { kind: 'daily'; daily_max: string; remaining: string; token: Token; repeating: false }
+  | { kind: 'autopay_period'; max: string; token: Token; repeating: true }
+  | { kind: 'autopay_duration'; weeks: string; repeating: true }
+  | { kind: 'bridges'; n: string; max: string; repeating: boolean };
+
+type OverLimit = Exclude<BrokenLimit, { kind: 'bridges' }>;
+
+export interface LimitOverrideArgs {
+  /** At least one. */
+  broken: BrokenLimit[];
+  /** "This is {value} {token}, …": the request's total of that token; omitted when not meaningful. */
+  amount?: { value: string; token: Token };
+}
+
+function overFragment(b: OverLimit, withToken: boolean): string {
+  const unit = (figure: string, token: Token): string => (withToken ? `${figure} ${token}` : figure);
+  switch (b.kind) {
+    case 'per_payment':
+      return `your per-payment limit of ${unit(b.max, b.token)}`;
+    case 'daily':
+      return `today's limit of ${unit(b.daily_max, b.token)} (only ${b.remaining} is left)`;
+    case 'autopay_period':
+      return `your weekly autopay limit of ${unit(b.max, b.token)}`;
+    case 'autopay_duration':
+      return `the ${b.weeks}-week limit for repeating payments`;
+  }
+}
+
+/**
+ * Lead sentence of Q_LIMIT_OVERRIDE: one fragment per broken limit, joined with joinList; the "over …" fragments
+ * share one "over", as in F-1.
+ *  - "This is 150 USDC, over your per-payment limit of 100 and today's limit of 300 (only 40 is left)." (F-1)
+ *  - "This repeating payment is over your weekly autopay limit of 100." (F-3)
+ *  - "This needs 4 transfers between chains; your limit is 3." (F-4)
+ */
+export function limitOverrideLead(a: LimitOverrideArgs): string {
+  const over = a.broken.filter((b): b is OverLimit => b.kind !== 'bridges');
+  const bridges = a.broken.find((b) => b.kind === 'bridges');
+  const mixed = new Set(over.flatMap((b) => ('token' in b ? [b.token] : []))).size > 1;
+  const parts: string[] = [];
+  if (over.length > 0) parts.push(`over ${joinList(over.map((b) => overFragment(b, mixed)))}`);
+  if (bridges) parts.push(`needs ${bridges.n} transfers between chains; your limit is ${bridges.max}`);
+  const body = joinList(parts);
+  if (over.length === 0) return `This ${body}.`;
+  if (over.every((b) => b.repeating)) return `This repeating payment is ${body}.`;
+  if (a.amount !== undefined && !mixed) return `This is ${a.amount.value} ${a.amount.token}, ${body}.`;
+  return `This is ${body}.`;
+}
+
+/** Q_LIMIT_OVERRIDE (SQ-D-16, F-1…F-6): text, and chips "Yes, this once" (or "Yes, set it up") / "No". */
+export const LIMIT_OVERRIDE = {
+  repeating: (a: LimitOverrideArgs): boolean => a.broken.some((b) => b.repeating),
+  text: (a: LimitOverrideArgs): string =>
+    QUESTION_TEXT.Q_LIMIT_OVERRIDE({ lead: limitOverrideLead(a), repeating: String(LIMIT_OVERRIDE.repeating(a)) }),
+  chips: (a: LimitOverrideArgs): Chip[] => [
+    LIMIT_OVERRIDE.repeating(a) ? CHIPS.OVER_LIMIT_SET_UP : CHIPS.OVER_LIMIT_YES,
+    CHIPS.NO,
+  ],
+} as const;
+
+/** Q_LIMIT_OVERRIDE: matchChip(q, answer, LIMIT_OVERRIDE_YES_NO) maps a typed "yes" / "no" to its chips. */
+export const LIMIT_OVERRIDE_YES_NO = { yes: CHIPS.OVER_LIMIT_YES.id, no: CHIPS.NO.id } as const;
+
+/** Q_PAIR_AMOUNT (SQ-O-03, F-11): "Who should get {amount} {token}?", one chip per possible recipient. */
+export const PAIR_AMOUNT = {
+  text: (p: { amount: string; token: Token }): string => QUESTION_TEXT.Q_PAIR_AMOUNT(p),
+  /** `id` = the recipient placeholder, `label` = its display name (or short address). */
+  chips: (recipients: ReadonlyArray<{ id: string; label: string }>): Chip[] =>
+    recipients.map((r) => chip(r.id, r.label)),
+} as const;
+
+/** Chip ids of Q_NAME_ROLE. */
+export const NAME_ROLE_CHIP = { PAY: 'pay', MENTIONED: 'only_mentioned' } as const;
+
+/** Q_NAME_ROLE (SQ-O-01, F-12): "Should I pay {name}?", chips "Yes, pay {name}" / "No, they're only mentioned". */
+export const NAME_ROLE = {
+  text: (p: { name: string }): string => QUESTION_TEXT.Q_NAME_ROLE(p),
+  chips: (p: { name: string }): Chip[] => [
+    chip(NAME_ROLE_CHIP.PAY, `Yes, pay ${p.name}`),
+    chip(NAME_ROLE_CHIP.MENTIONED, "No, they're only mentioned"),
+  ],
+} as const;
+
+/** Q_NAME_ROLE: matchChip(q, answer, NAME_ROLE_YES_NO) maps a typed "yes" / "no" to its chips. */
+export const NAME_ROLE_YES_NO = { yes: NAME_ROLE_CHIP.PAY, no: NAME_ROLE_CHIP.MENTIONED } as const;
+
+/**
+ * §15 INSUFFICIENT_FUNDS params (SQ-08, F-10). `chains`: the chains with a positive spendable amount of the token,
+ * in configured chain order, unreadable chains left out (entries with a zero amount are dropped here as well).
+ * All figures are display values without trailing zeros. Renders
+ * "You don't have enough USDC: you need 150, and can use 140 across Base Sepolia (80) and Arbitrum Sepolia (60)."
+ * and, with no chain left, "You don't have enough USDC: you need 150, and can use 0."
+ */
+export interface InsufficientFundsArgs {
+  token: Token;
+  need: string;
+  have: string;
+  chains: ReadonlyArray<{ name: string; spendable: string }>;
+}
+
+export function insufficientFundsParams(a: InsufficientFundsArgs): Record<string, string> {
+  const positive = a.chains.filter((c) => /[1-9]/.test(c.spendable));
+  return {
+    token: a.token,
+    need: a.need,
+    have: a.have,
+    chains: joinList(positive.map((c) => `${c.name} (${c.spendable})`)),
+  };
+}
 
 // ───────────────────────────── Question builder ─────────────────────────────
 
@@ -197,9 +332,9 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   MAINNET_NOT_SUPPORTED: () => 'I only work on test networks for now: Sepolia, Base Sepolia and Arbitrum Sepolia.',
   UNSUPPORTED_CHAIN: (p) => `I can't use ${req(p, 'word')}. I support Sepolia, Base Sepolia and Arbitrum Sepolia.`,
   UNSUPPORTED_TOKEN: () => 'I can only send USDC and ETH.',
-  // SQ-01: §8.5 rule 1 quotes a different wording with "<short reason>"; §15 wording used until resolved.
+  // SQ-01, F-7: human-approved difference from §15 and §8.5 rule 1 (no short reason is generated).
   UNSUPPORTED_REQUEST: () =>
-    "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't help with that part.",
+    "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
   SPLIT_UNSUPPORTED: () => 'Tell me how much each person should get, e.g. "15 to A and 15 to B".',
   RELATIVE_AMOUNT_NOT_ALLOWED: () => "I can use 'all' or 'half' only for a one-time payment to one person.",
   GROUP_AUTOPAY_UNSUPPORTED: () => "Repeating payments to a whole group aren't supported yet.",
@@ -213,9 +348,12 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   NO_ACTIVE_AUTOPAY: (p) => `There's no active repeating payment to ${req(p, 'name')}.`,
   AUTOPAY_NOT_READY: () => 'That repeating payment is still being set up. Try again shortly.',
   AUTOPAY_NO_OCCURRENCES: () => 'That schedule has no payment dates. Check the start and end.',
-  // SQ-08: §10.4 also says the message lists per-chain spendable vs needed; §15 wording used until resolved.
-  INSUFFICIENT_FUNDS: (p) =>
-    `You don't have enough ${req(p, 'token')}: you need ${req(p, 'need')}, and can use ${req(p, 'have')} across ${req(p, 'chains')}.`,
+  // SQ-08, F-10: `chains` per chain, "Base Sepolia (80) and Arbitrum Sepolia (60)" (insufficientFundsParams);
+  // empty or absent → "…, and can use 0." with no "across" part.
+  INSUFFICIENT_FUNDS: (p) => {
+    const across = p.chains !== undefined && p.chains !== '' ? ` across ${p.chains}` : '';
+    return `You don't have enough ${req(p, 'token')}: you need ${req(p, 'need')}, and can use ${req(p, 'have')}${across}.`;
+  },
   NO_GAS: (p) => `You need at least ${req(p, 'reserve')} ETH on ${req(p, 'chain')} for network fees.`,
   CHAIN_NOT_ALLOWED: (p) => `${req(p, 'chain')} isn't in your allowed chains (Settings).`,
   LIMIT_PER_TX: (p) => `${req(p, 'amount')} ${req(p, 'token')} is over your per-payment limit of ${req(p, 'max')}.`,
@@ -228,7 +366,16 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   TOO_MANY_RETRIES: () => "Let's start over. Nothing was sent.",
   MODEL_FAILED: () => "I couldn't understand that right now. Please try again.",
   EXECUTION_REJECTED: (p) => `Your wallet couldn't accept this: ${req(p, 'message')}`,
-  EXECUTION_UNAVAILABLE: () => "I couldn't reach your wallet. Confirm again to retry.",
+  // SQ-A-06, F-9: attempts 1–2 keep the §15 text; on the 3rd failed attempt `final` is that attempt's cause.
+  EXECUTION_UNAVAILABLE: (p) => {
+    if (p.final === 'timeout') {
+      return "I couldn't confirm your wallet received this after 3 tries. Check your wallet before trying again.";
+    }
+    if (p.final === 'server_error') {
+      return "I couldn't reach your wallet after 3 tries. Nothing was sent. Please try again later.";
+    }
+    return "I couldn't reach your wallet. Confirm again to retry.";
+  },
   INTERNAL_ERROR: () => 'Something went wrong preparing this. Nothing was sent.',
   CANCELLED: () => 'Cancelled. Nothing was sent.',
 };
@@ -236,7 +383,8 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
 // ───────────────────────────── §13.1 notes ─────────────────────────────
 
 export const NOTES = {
-  SILENT_REUSE: (p: P) => `Same address as on ${req(p, 'chain')}.`,
+  /** SQ-O-10: `chains` = joinList of every chain whose DB2 row for the contact holds the reused address. */
+  SILENT_REUSE: (p: P) => `Same address as on ${req(p, 'chains')}.`,
   FOLLOWUP: () => 'Recipient and chain from your last payment.',
   YOU_WROTE: (p: P) => `You wrote '${req(p, 'phrase')}' → ${req(p, 'amount')} ${req(p, 'token')}.`,
   FROM_CONTENT: (p: P) => `From attached content: ${req(p, 'what')}. You confirmed it.`,
@@ -245,7 +393,8 @@ export const NOTES = {
   DAY_28: () => 'Paid on the 28th, since months differ in length.',
   /** §9.6 step 7 / E4: `reason` e.g. "that's your own address", "no address on Base Sepolia". */
   SKIPPED: (p: P) => `Skipped ${req(p, 'name')}: ${req(p, 'reason')}.`,
-  LIMIT_LIFTED: () => "Today's limit was lifted once for this group payment.",
+  /** SQ-D-16, F-2: shown when a "Yes" to Q_LIMIT_OVERRIDE lifted a limit. */
+  LIMIT_LIFTED: () => 'A limit was lifted once for this request.',
   CONTENT_AMOUNTS_UNUSED: () => "Amounts in the attached content weren't used.",
   CONTENT_UNREADABLE: (p: P) => `Couldn't read anything usable from ${req(p, 'item')}.`,
 } as const;
@@ -272,6 +421,8 @@ export const REPLY = {
   HANDED_OFF: () => 'Sent to your wallet for signing.',
   USER_SAID_NO: () => "OK, I've dropped that. Tell me what you'd like instead.",
   CANCELLED: () => 'Cancelled. Nothing was sent.',
+  /** SQ-A-01, F-8: cancel of a HANDED_OFF request (HTTP 200, state unchanged). */
+  CANCEL_AFTER_HANDOFF: () => "That was already sent to your wallet for signing, so it can't be cancelled here.",
   PENDING_REPLACED: () => 'I dropped the previous plan and started on your new request.',
 } as const;
 
@@ -288,14 +439,15 @@ export const SUMMARY_FRAME = {
  * chip if it equals a chip label case-insensitively (also "yes"/"no" for Yes/No chips); otherwise invalid.
  * Disabled chips never match. Returns the matched chip or null.
  */
-export function matchChip(q: Question, answer: Answer): Chip | null {
+export function matchChip(q: Question, answer: Answer, yesNo?: { yes: string; no: string }): Chip | null {
   const enabled = q.chips.filter((c) => !c.disabled);
   if (answer.kind === 'chip') return enabled.find((c) => c.id === answer.chip_id) ?? null;
   if (answer.kind !== 'text') return null;
   const t = answer.text.trim().toLowerCase();
   const byLabel = enabled.find((c) => c.label.toLowerCase() === t);
   if (byLabel) return byLabel;
-  if (t === 'yes') return enabled.find((c) => c.label === 'Yes') ?? null;
-  if (t === 'no') return enabled.find((c) => c.label === 'No') ?? null;
+  // contracts-v4: `yesNo` names the chips a typed "yes" / "no" stands for when they are not labelled Yes / No.
+  if (t === 'yes') return enabled.find((c) => (yesNo ? c.id === yesNo.yes : c.label === 'Yes')) ?? null;
+  if (t === 'no') return enabled.find((c) => (yesNo ? c.id === yesNo.no : c.label === 'No')) ?? null;
   return null;
 }
