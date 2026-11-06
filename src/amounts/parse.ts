@@ -114,6 +114,16 @@ function digitsCore(s: string): string | null {
   return (m[1] ?? '').replace(/,/g, '') + (m[2] ?? '');
 }
 
+/** Syntax-only span check; fiat conversion and decimals beyond parser/token precision still need questions. */
+export function isAbsoluteAmountPhrase(text: string): boolean {
+  const normalized = text.replace(/\brs\.\s*/gi, 'rs ').replace(/\s+(?:worth\s+)?of\s+/i, ' ');
+  const parsed = parseAmountText(normalized, null);
+  if (parsed.ok || parsed.reason === 'zero') return true;
+  const core = stripCurrency(normalized).replace(/^\.(?=\d)/, '0.');
+  const digits = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(core);
+  return digits !== null && digitsCore(digits[1] ?? '') !== null;
+}
+
 function parseDigits(core: string): bigint | null {
   // number, optional space, optional suffix
   const numeric = core.replace(/^\.(?=\d)/, '0.');
