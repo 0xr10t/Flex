@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ERROR_MESSAGE, REPLY } from '../../../src/contracts/catalog.js';
+import { CHIPS, ERROR_MESSAGE, REPLY } from '../../../src/contracts/catalog.js';
 import { LOG_ALLOWED_FIELDS } from '../../../src/contracts/io.js';
 import type { StepResult } from '../../../src/contracts/step.js';
 import type { AgentRequest } from '../../../src/contracts/types.js';
@@ -340,6 +340,7 @@ describe('§14.1 messages', () => {
 describe('§14.1 answers', () => {
   async function paused(): Promise<{ sid: string; rid: string; qid: string }> {
     const q = question();
+    q.chips = [CHIPS.USDC, CHIPS.ETH];
     let asked = false;
     s.set('s3', {
       step: async () => {

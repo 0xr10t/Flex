@@ -6,6 +6,7 @@
 // BALANCES_UNAVAILABLE. §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s timeout, no retries; the
 // clients share one connection pool of their own with random JSON-RPC ids (fix 7) and never follow CCIP-Read (fix 3).
 // FR-02, NFR-07, I-12. S0 runs only for new messages (the runner never calls it for answers; it asks no questions).
+// SQ-CHAT-02 also reads cached balances on a disposable context for wallet questions, preserving any active draft.
 // Owner: Lane B.
 
 import { randomInt } from 'node:crypto';

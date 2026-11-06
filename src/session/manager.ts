@@ -8,10 +8,11 @@
 // → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
 // cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
 // SQ-S-01 / SQ-S-02: retain an unsubmitted failed payment for the next follow-up, without adding DB8 history.
+// SQ-CHAT-02: natural read-only wallet answers refresh a separate context, preserving the active payment state.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
-import { ERROR_MESSAGE, REPLY } from '../contracts/catalog.js';
+import { ERROR_MESSAGE, REPLY, matchChip } from '../contracts/catalog.js';
 import type {
   AllowlistLogger,
   ContentFetcher,
@@ -50,9 +51,12 @@ import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
 import { failedPaymentContext } from './failed-payment.js';
+import { prepareDraftCorrection } from './draft-correction.js';
 import {
   answerOnlyReply,
+  explicitDraftCancellation,
   interpretReply,
+  literalRecipientAddress,
   needsConversation,
   recipientOnlyReply,
   replyGuidance,
@@ -60,6 +64,17 @@ import {
   type ConversationTurn,
 } from './conversation.js';
 import { canCorrectPendingRecipient, correctPendingRecipient } from '../recipients/resolve.js';
+import {
+  ChatInputTooLong,
+  classifyChatMessage,
+  generateChatReply,
+  generateWalletReply,
+  rememberChat,
+  type ChatContext,
+  type ChatTurn,
+} from './general-chat.js';
+import { buildWalletContext } from './wallet-context.js';
+import { s0 } from '../pipeline/s0-balances.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -104,12 +119,18 @@ interface Active {
   failedPayment?: FailedPaymentContext;
   /** SQ-CV-01: bounded, guarded user replies for the current draft only; cleared with its in-memory state. */
   conversation?: ConversationTurn[];
+  /** The native error is retained for chat context and the hand-off retry UI; it is never model-authored. */
+  lastError?: AgentResponse['error'];
 }
 
 interface OpenSession {
   session_id: SessionId;
   timezone: string;
   active: Active | null;
+  /** Opt-in generic exchanges only, bounded by rememberChat; never persisted or used as wallet answers. */
+  chatHistory: ChatTurn[];
+  /** Sticky until close so a follow-up knows that older generic exchanges have been dropped. */
+  chatHistoryOmitted: boolean;
   /** §14.1: one call per session at a time. */
   busy: boolean;
   /** The call in progress (R1-F1: closing the session waits for it). */
@@ -169,7 +190,17 @@ export class SessionManager {
         const session_id = this.newId('session') as SessionId;
         if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
         this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
-        this.open = { session_id, timezone, active: null, busy: false, inflight: null, closing: false, closed: false };
+        this.open = {
+          session_id,
+          timezone,
+          active: null,
+          chatHistory: [],
+          chatHistoryOmitted: false,
+          busy: false,
+          inflight: null,
+          closing: false,
+          closed: false,
+        };
         this.deps.log.info({ event: 'session_opened', session_id });
         return { session_id };
       }
@@ -220,6 +251,8 @@ export class SessionManager {
     const a = s.active;
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
+    s.chatHistory = [];
+    s.chatHistoryOmitted = false;
     this.deps.repos.clearSessionStores();
     this.deps.log.info({ event: 'session_closed', session_id: s.session_id });
   }
@@ -229,6 +262,23 @@ export class SessionManager {
   /** POST /v1/sessions/{id}/messages: a new request, or an answer/confirmation per §17.3. */
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
+      // SQ-CV-02: interpret an explicit edit against the validated draft before generic chat or replacement.
+      // A fresh request identity prevents a confirmation for the old summary from approving its revision.
+      const pending = s.active;
+      if (pending?.req.state === 'AWAITING_CONFIRMATION' && classifyConfirmationText(input.text) === 'other') {
+        const correction = prepareDraftCorrection(this.context(s, pending), input);
+        if (correction?.kind === 'clarify') return ok(this.chatReply(s, pending, correction.message));
+        if (correction?.kind === 'replace') {
+          this.markDiscarded(pending.req);
+          return ok(
+            await this.newRequest(s, correction.input, ['I updated your draft. Please review the revised summary.']),
+          );
+        }
+      }
+      if (this.deps.config.chat?.enabled) {
+        const chat = await this.generalChat(s, input);
+        if (chat !== null) return ok(chat);
+      }
       const a = s.active;
       if (a?.failedPayment !== undefined && isCancelText(input.text)) {
         delete a.failedPayment;
@@ -281,6 +331,12 @@ export class SessionManager {
             : { kind: 'selected', selected_ids: [...body.selected_ids] };
       // §13.4 "Every question also accepts 'cancel'" (§17.3 cancel texts).
       if (answer.kind === 'text' && isCancelText(answer.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+      if (this.deps.config.chat?.enabled && answer.kind === 'text') {
+        const input: MessageInput = { text: answer.text, pasted_blocks: [], attachments: [], urls: [] };
+        const chat = await this.generalChat(s, input);
+        if (chat !== null) return ok(chat);
+        return ok(await this.answer(s, a, answer, input));
+      }
       return ok(await this.answer(s, a, answer));
     });
   }
@@ -344,6 +400,115 @@ export class SessionManager {
   /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
   private noopReply(s: OpenSession, request_id: string, text: string): AgentResponse {
     return { session_id: s.session_id, request_id, state: 'done', messages: [{ type: 'text', text }] };
+  }
+
+  /**
+   * Opt-in explanations are separate from payment interpretation. Only guarded, plain typed text is eligible;
+   * a wallet classification returns the entire original input to the unchanged native handlers.
+   */
+  private async generalChat(s: OpenSession, input: MessageInput): Promise<AgentResponse | null> {
+    const settings = this.deps.config.chat;
+    if (!settings?.enabled) return null;
+    const { text } = input;
+    const links = extractUrls(text, input.urls).links;
+    // Do not send even an intent classifier secret material or raw URLs. S1 / answer() owns their rejection.
+    if (detectSecret(text) !== null || links.some((link) => urlHasSecret(link.url))) return null;
+    if (input.attachments.length || input.pasted_blocks.length || input.urls.length || links.length) return null;
+    if (!text.trim()) return null;
+    // Native confirmation words and literal field answers must never depend on model classification.
+    if (classifyConfirmationText(text) !== 'other') return null;
+    const a = s.active;
+    if (
+      a !== null &&
+      isAwaitingAnswer(a.req) &&
+      a.req.paused_at !== undefined &&
+      !needsConversation(this.context(s, a), a.req.paused_at.question, text)
+    )
+      return null;
+    const context = this.chatContext(s, a);
+    try {
+      const intent = await classifyChatMessage(this.deps.llm, text, context, s.chatHistory);
+      this.assertOpen(s);
+      if (intent === 'wallet') return null;
+      if (intent === 'wallet_info') {
+        // Use S0's background-populated cache; only a cold start may change DB4 here.
+        // No step mutates the active draft or resets its questions/confirmation.
+        const readContext = this.context(s, {
+          req: newAgentRequest(this.newId('request') as RequestId, s.session_id, {
+            text: '',
+            pasted_blocks: [],
+            attachments: [],
+            urls: [],
+          }),
+          limits: this.deps.repos.db5.getAll(),
+        });
+        const result = await s0.step(readContext);
+        this.assertOpen(s);
+        if (result.kind !== 'continue' && !(result.kind === 'error' && result.code === 'BALANCES_UNAVAILABLE'))
+          throw new Error('Wallet refresh failed');
+        context.wallet = buildWalletContext(readContext);
+      }
+      const reply = await (intent === 'wallet_info' ? generateWalletReply : generateChatReply)(
+        this.deps.llm,
+        text,
+        context,
+        s.chatHistory,
+        settings.think,
+      );
+      this.assertOpen(s);
+      const history = rememberChat(s.chatHistory, text, reply);
+      s.chatHistoryOmitted ||= history.length < s.chatHistory.length + 1;
+      s.chatHistory = history;
+      return this.chatReply(s, a, reply);
+    } catch (error) {
+      this.assertOpen(s);
+      // An unavailable/invalid chat response is never reinterpreted as a payment or a field answer.
+      return this.chatReply(s, a, error instanceof ChatInputTooLong ? REPLY.CHAT_TOO_LONG() : REPLY.CHAT_UNAVAILABLE());
+    }
+  }
+
+  /** Current public wallet address and draft context only; balance facts are added after a wallet_info cache read. */
+  private chatContext(s: OpenSession, a: Active | null): ChatContext {
+    const wallet_address = this.deps.config.wallet.address;
+    if (a === null) return { state: 'IDLE', wallet_address, older_chat_omitted: s.chatHistoryOmitted };
+    const context: ChatContext = {
+      state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state,
+      wallet_address,
+      older_chat_omitted: s.chatHistoryOmitted,
+    };
+    const text = a.req.typed_text;
+    // S1 alone sets typed_text. Recheck here so future call sites cannot pass unguarded context to chat.
+    if (text && detectSecret(text) === null && extractUrls(text, []).links.length === 0)
+      context.original_request = text;
+    if (isAwaitingAnswer(a.req) && a.req.paused_at !== undefined) {
+      context.question_code = a.req.paused_at.question.code;
+      context.guidance = replyGuidance(this.context(s, a), a.req.paused_at.question);
+    }
+    if (a.req.state === 'AWAITING_CONFIRMATION' && a.req.summary !== undefined) {
+      context.pending_summary = { text: a.req.summary.text, notes: [...a.req.summary.notes] };
+    }
+    if (a.lastError !== undefined) context.last_error = a.lastError.code;
+    return context;
+  }
+
+  /** Chat leaves every native field untouched, including failed-payment/back-reference context after completion. */
+  private chatReply(s: OpenSession, a: Active | null, text: string): AgentResponse {
+    if (a === null || isTerminal(a.req)) return this.noopReply(s, this.newId('request'), text);
+    const body = this.noopReply(s, a.req.request_id, text);
+    if (isAwaitingAnswer(a.req) && a.req.paused_at !== undefined) {
+      body.state = 'awaiting_answer';
+      body.question = a.req.paused_at.question;
+    } else if (a.req.state === 'AWAITING_CONFIRMATION') {
+      body.state = 'awaiting_confirmation';
+      body.summary = a.req.summary;
+    } else if (a.req.state === 'HANDOFF_FAILED') {
+      body.state = 'error';
+      body.error = a.lastError ?? {
+        code: 'EXECUTION_UNAVAILABLE',
+        message: ERROR_MESSAGE.EXECUTION_UNAVAILABLE({}),
+      };
+    }
+    return body;
   }
 
   /** §0 / SQ-19: an uncovered input is logged with its state and branch id (no request is changed). */
@@ -449,7 +614,13 @@ export class SessionManager {
     }
     // New content cannot be silently consumed as a field answer. Its full input goes through S1, before any
     // conversational model call could see it; attachments and extracted document values never enter the router.
-    if (input && (input.attachments.length || input.pasted_blocks.length || input.urls.length)) {
+    if (
+      input &&
+      (input.attachments.length ||
+        input.pasted_blocks.length ||
+        input.urls.length ||
+        (this.deps.config.chat?.enabled && extractUrls(text, []).links.length > 0))
+    ) {
       if (this.deps.repos.handoffs.get(a.req.request_id) !== undefined)
         return this.respond(s, a, 'awaiting_answer', [replyGuidance(this.context(s, a), paused.question)], {
           question: paused.question,
@@ -516,16 +687,26 @@ export class SessionManager {
     }
     if (decision.intent === 'cancel') {
       this.recordAnswer(s, a, text);
-      return /\b(?:cancel|stop|abort|drop|forget|never\s*mind)\b/i.test(text) &&
-        !/\b(?:not|don't|dont|why|how|what)\b/i.test(text)
-        ? this.discard(s, a, REPLY.CANCELLED())
-        : clarify();
+      return explicitDraftCancellation(text) ? this.discard(s, a, REPLY.CANCELLED()) : clarify();
     }
+    // "His address is …" remains an address answer even if the model calls it a recipient change.
+    // Both interpretations use exactly the supplied address, through the existing address validator.
+    if (
+      decision.intent === 'recipient' &&
+      decision.value !== null &&
+      ['Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(paused.question.code) &&
+      literalRecipientAddress(decision.value) &&
+      answerOnlyReply(text, decision.value)
+    )
+      return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
     if (decision.intent === 'recipient' && decision.value !== null && recipientOnlyReply(text, decision.value)) {
       if (paused.question.code === 'Q_NO_PAYEE')
         return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
       this.recordAnswer(s, a, text);
-      if (!canCorrectPendingRecipient(ctx)) return clarify();
+      if (!canCorrectPendingRecipient(ctx))
+        return clarify(
+          'I need the full updated request to change the recipient here. Include the amount and schedule you want to keep.',
+        );
       // Re-read current settings/balances. The normal S6 → S11 path resolves, validates and summarizes the change.
       a.limits = this.deps.repos.db5.getAll();
       const balances = await this.invoke(s, a, 's0', (current) => this.deps.registry.s0.step(current));
@@ -540,12 +721,18 @@ export class SessionManager {
     if (decision.intent === 'answer' && decision.value !== null && answerOnlyReply(text, decision.value)) {
       const q = paused.question;
       // Model interpretation cannot select consent, price/amount choices, contacts, or limit overrides.
-      // Discrete choices continue to require the existing native whole-reply match or an explicit chip.
+      // A copied token may match an enabled native choice; consent and other discrete choices still need
+      // the existing whole-reply match or an explicit chip.
       const freeValue =
         q.input === 'number' ||
         q.input === 'date' ||
+        (q.code === 'Q_TOKEN' && matchChip(q, { kind: 'text', text: decision.value }) !== null) ||
         ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_NAME_FOR_ADDRESS', 'Q_GROUP_PARENT'].includes(q.code);
-      if (freeValue && (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)))
+      if (
+        freeValue &&
+        (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)) &&
+        (!['Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(q.code) || literalRecipientAddress(decision.value))
+      )
         return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
     }
     this.recordAnswer(s, a, text);
@@ -652,6 +839,7 @@ export class SessionManager {
   /** Applies a non-`continue` step result (or `continue` from S12) to the request and builds the response. */
   private finish(s: OpenSession, a: Active, step: StepName, res: StepResult): AgentResponse {
     const req = a.req;
+    if (res.kind !== 'error') delete a.lastError;
     req.paused_at = undefined;
     switch (res.kind) {
       case 'question': {
@@ -733,14 +921,16 @@ export class SessionManager {
     }
     a.req.state = state;
     a.req.paused_at = undefined;
+    a.lastError = { code: errCode, message };
     a.failedPayment =
       state === 'FAILED' && errCode === 'INSUFFICIENT_FUNDS' ? failedPaymentContext(a.req, this.deps.repos) : undefined;
     if (state !== 'HANDOFF_FAILED') this.logFinal(a.req, errCode);
-    return this.respond(s, a, 'error', [], { error: { code: errCode, message } });
+    return this.respond(s, a, 'error', [], { error: a.lastError });
   }
 
   /** Request DISCARDED with a reply (§17.3, §13.3). Never written to db8_history (only S12 appends). */
   private discard(s: OpenSession, a: Active, ...messages: string[]): AgentResponse {
+    delete a.lastError;
     this.markDiscarded(a.req);
     return this.respond(s, a, 'done', messages);
   }

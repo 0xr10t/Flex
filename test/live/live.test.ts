@@ -5,7 +5,7 @@
 // with the expected plan (any difference = WRONG HAND-OFF, which must never happen).
 //
 // Env: LIVE_SET=acceptance|paraphrase|all (default all), LIVE_IDS (comma-separated IDs),
-// LIVE_FROM / LIVE_TO (slice within the selected set), LIVE_TAG.
+// LIVE_FROM / LIVE_TO (slice within the selected set), LIVE_TAG, LIVE_MODEL, LIVE_THINK=true|false, LIVE_CHAT=true|false.
 // Results: test/live/results/<tag>.json (all entries, incremental). Test data only, never user data.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +17,8 @@ import type { ChainId, HandoffEnvelope, Question } from '../../src/contracts/typ
 import { createOllamaClient } from '../../src/llm/ollama.js';
 import { ARB, BASE, Harness, SEPOLIA, WALLET, addr, coinType, lines, short, type Resp } from '../acceptance/harness.js';
 import { seedAutopay, seedSpend, weeklySchedule } from '../acceptance/seed.js';
+import { testConfig } from '../fakes/context.js';
+import { liveChatConfig, liveModelConfig } from './model-config.js';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const CHAIN: Record<string, ChainId> = { sepolia: SEPOLIA, base: BASE, arb: ARB };
@@ -32,6 +34,8 @@ const DAY: Record<string, string> = {
 };
 
 const SET = process.env.LIVE_SET ?? 'all';
+const MODEL_CONFIG = liveModelConfig(testConfig().llm);
+const CHAT_CONFIG = liveChatConfig(testConfig().chat);
 const ALL = JSON.parse(readFileSync(join(import.meta.dirname, 'prompts.json'), 'utf8')) as Json[];
 let entries = ALL.filter((e) => SET === 'all' || e.source === SET);
 if (process.env.LIVE_IDS !== undefined) {
@@ -163,6 +167,7 @@ function envelopeDiff(env: HandoffEnvelope, plan: Json[], setup: Json): string[]
 
 interface Rec {
   name: string;
+  think?: boolean;
   ms: number;
   user: string;
   output?: unknown;
@@ -173,6 +178,8 @@ async function runEntry(e: Json): Promise<Json> {
   const setup: Json = e.setup ?? {};
   const t00 = Date.now();
   const h = new Harness(`live-${e.id}`, { calls: [] }, { balances: setup.balances });
+  h.config.llm = { ...MODEL_CONFIG };
+  if (CHAT_CONFIG !== undefined) h.config.chat = { ...CHAT_CONFIG };
   const recs: Rec[] = [];
   const logEvents: Json[] = [];
   const real = createOllamaClient(h.config, {
@@ -186,11 +193,18 @@ async function runEntry(e: Json): Promise<Json> {
     const t0 = Date.now();
     try {
       const out = await real.call(args);
-      recs.push({ name: args.name, ms: Date.now() - t0, user: args.user, output: out });
+      recs.push({
+        name: args.name,
+        think: args.think ?? h.config.llm.think,
+        ms: Date.now() - t0,
+        user: args.user,
+        output: out,
+      });
       return out;
     } catch (err) {
       recs.push({
         name: args.name,
+        think: args.think ?? h.config.llm.think,
         ms: Date.now() - t0,
         user: args.user,
         error: err instanceof LlmFailed ? 'LlmFailed' : String(err),
@@ -198,9 +212,18 @@ async function runEntry(e: Json): Promise<Json> {
       throw err;
     }
   };
-  const res: Json = { id: e.id, source: e.source, prompt: e.prompt, expected: e.expected };
+  const res: Json = {
+    id: e.id,
+    source: e.source,
+    prompt: e.prompt,
+    expected: e.expected,
+    llm_config: h.config.llm,
+    chat_config: h.config.chat,
+  };
   const asked: string[] = [];
   let r: Resp | undefined;
+  let targetTraceStart: number | null = null;
+  let targetRpcStart: number | null = null;
   try {
     // setup
     for (const c of setup.contacts ?? [])
@@ -259,6 +282,8 @@ async function runEntry(e: Json): Promise<Json> {
     if (setup.urls) extra.urls = setup.urls;
     if (setup.attachments) extra.attachments = setup.attachments;
     const t0 = Date.now();
+    targetTraceStart = recs.length;
+    targetRpcStart = h.rpc.calls.length;
     r = await h.say(text, extra);
     res.first_latency_ms = Date.now() - t0;
     const queue: Json[] = [...(e.answers ?? [])];
@@ -329,7 +354,26 @@ async function runEntry(e: Json): Promise<Json> {
     const pay = recs.filter((x) => x.name === 'payments');
     res.pairing_reached = pay.length > 0;
     res.pairing_exact = pay.length > 0 && !pay.some((x) => x.user.includes('CORRECTION:')) && !pay.some((x) => x.error);
+    res.target_trace_start = targetTraceStart;
+    const targetPay =
+      targetTraceStart === null ? null : recs.slice(targetTraceStart).filter((x) => x.name === 'payments');
+    res.target_pairing_reached = targetPay === null ? null : targetPay.length > 0;
+    res.target_pairing_exact =
+      targetPay === null
+        ? null
+        : targetPay.length > 0 &&
+          !targetPay.some((x) => x.user.includes('CORRECTION:')) &&
+          !targetPay.some((x) => x.error);
     res.llm_calls = recs.length;
+    // Additive evidence for chat routing and per-call thinking; the historical outcome oracle is unchanged.
+    res.model_calls = recs.map((x) => ({
+      name: x.name,
+      think: x.think,
+      ...(x.name === 'chat_route' || x.name === 'chat' || x.name === 'request_type' ? { output: x.output } : {}),
+      error: x.error,
+    }));
+    res.final_response = r?.body;
+    res.target_rpc_calls = targetRpcStart === null ? null : h.rpc.calls.slice(targetRpcStart);
     res.llm_ms = recs.map((x) => x.ms);
     res.llm_retries = logEvents.filter((x) => x.llm_retry === true).length;
     res.llm_failures = logEvents.filter((x) => x.event === 'llm_call_failed').length;
@@ -337,7 +381,14 @@ async function runEntry(e: Json): Promise<Json> {
     res.total_ms ??= Date.now() - t00;
     const bad = res.outcome !== 'exact' || (res.pairing_reached && !res.pairing_exact) || res.llm_retries > 0;
     if (bad || res.unexpected_stop)
-      res.llm_trace = recs.map((x) => ({ name: x.name, ms: x.ms, user: x.user, output: x.output, error: x.error }));
+      res.llm_trace = recs.map((x) => ({
+        name: x.name,
+        think: x.think,
+        ms: x.ms,
+        user: x.user,
+        output: x.output,
+        error: x.error,
+      }));
     await h.finish({ allowUnused: true }).catch(() => undefined);
   }
   return res;
@@ -345,9 +396,9 @@ async function runEntry(e: Json): Promise<Json> {
 
 describe(`live model evaluation [${TAG}]`, () => {
   it('model is available', async () => {
-    const r = await fetch('http://127.0.0.1:11434/api/tags');
+    const r = await fetch(`${MODEL_CONFIG.ollama_url}/api/tags`);
     const j = (await r.json()) as { models: Array<{ name: string }> };
-    expect(j.models.some((m) => m.name === 'qwen2.5:7b-instruct')).toBe(true);
+    expect(j.models.some((m) => m.name === MODEL_CONFIG.model)).toBe(true);
   });
   for (const e of entries) {
     it(`${e.id}: ${e.prompt}`, async () => {

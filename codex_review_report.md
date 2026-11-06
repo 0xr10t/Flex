@@ -2,6 +2,38 @@
 
 Review date: 2026-11-06. Project: `agent-layer` in `/Users/phantomxsd/Flex`.
 
+## Qwen3 and general-chat follow-up — SQ-M-01 / SQ-CHAT-01
+
+The human subsequently selected Qwen3 8B and approved general explanations with thinking on while wallet
+extraction remains off. [QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) records the new behavior, migration findings
+Q3-01–Q3-07, independent tests and current real-model verification. The original review and Qwen2.5 results below
+are retained as historical evidence; they do not describe the new chat-enabled runtime.
+
+## Follow-up conversation review — SQ-CV-01
+
+The user's multi-turn examples exposed four additional findings, B20–B23, beyond the original 19: replies were
+treated as field values without model interpretation; amount replies lost their currency; summary notes retained
+stale wording; and a malformed model amount phrase could mask the action and recipient after clarification.
+[CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md) records reproductions, fixes, independent review and the
+current verification status. The earlier counts and live evaluation below describe the original remediation.
+
+| Finding | Observed failure | Implemented correction |
+| --- | --- | --- |
+| B20 | A sentence, recipient correction or new request was consumed by the old pending-field validator. | Contextual intent interpretation before field handling; clarification keeps the question open without spending a retry. |
+| B21 | `10 usd` lost its currency and prompted for USDC versus ETH again. | Retain explicit currency in amount replies and validate conflicts/precision. |
+| B22 | A corrected amount's summary omitted the USD interpretation or quoted an earlier phrase. | Preserve accepted reply wording independently from original masking positions. |
+| B23 | A malformed model amount span could erase `pay mihir`, causing a balance response after the amount answer. | Require monetary span evidence; preserve no-amount request text and reject unsafe broad spans. Precision, fiat and `5 more` compatibility have permanent regressions. |
+
+The frozen conversation revision `a05cb9d` passes **2,129 unit/acceptance tests, 205 audit checks and seven real-model
+conversation scenarios**, plus typecheck, lint and build. Independent Astra/max reviewers graded the code and tests.
+The complete 154-prompt rerun has **129 exact outcomes, 25 existing stops, zero wrong handoffs, no crashes or rejected
+summaries**, and no changed final outcome/stop/code signatures. The updated frontend on port 8791 also passes the
+reported Yash → `10 usd` → `pay riya` flow over actual TCP with real Qwen and zero submissions. Remaining limits,
+legacy fixture adaptations and raw evidence are recorded in the linked conversation report.
+
+The final working-tree rerun also passes all **2,129 tests and 205 audits**, with zero failures or skipped/todo tests;
+typecheck, lint and build pass. Generated live traces retain their original bytes and recorded hashes.
+
 **Original review: 19 grouped findings (9 P1, 10 P2), plus 3 separately identified contract/semantic gaps.** Nine independent reviewers ran with `gpt-6-astra`, reasoning effort `max`, in waves of three, alongside the coordinating agent. Five findings reproduced previously acknowledged pending fixes (SQ-R-02 through SQ-R-06). Two earlier defects were fixed by concurrent changes and passed rechecks; they are excluded from that count.
 
 ## Remediation status — 2026-11-06

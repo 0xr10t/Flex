@@ -441,6 +441,9 @@ export const SKIP_REASON = {
 // ───────────────────────────── §13.3 fixed replies, §8.14, §13.1 framing ─────────────────────────────
 
 export const REPLY = {
+  /** SQ-CHAT-01/02: failures only; successful general replies are model-authored. */
+  CHAT_TOO_LONG: () => 'Please shorten your message and try again.',
+  CHAT_UNAVAILABLE: () => "I couldn't answer that right now. Please try again.",
   HANDED_OFF: () => 'Sent to your wallet for signing.',
   USER_SAID_NO: () => "OK, I've dropped that. Tell me what you'd like instead.",
   CANCELLED: () => 'Cancelled. Nothing was sent.',

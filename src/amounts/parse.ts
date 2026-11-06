@@ -92,12 +92,15 @@ export function amountCurrencyKinds(text: string): ReadonlySet<TokenWordKind> {
   return kinds;
 }
 
-/** Removes currency words/symbols; returns the remaining numeric core (lower-cased, trimmed). */
-function stripCurrency(text: string): string {
+/** Removes currency and one trailing "more" (§17.2: a new amount, never an addition to the previous payment). */
+function numericCore(text: string): string {
   let s = text.toLowerCase();
   for (const sym of CURRENCY_SYMBOLS) s = s.split(sym).join(' ');
   s = s.replace(CURRENCY_WORD_RE, '$1 ');
-  return s.replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/ more$/, '');
 }
 
 /** Shifts a plain decimal string by 10^exp (exp ≥ 0) and returns it at SCALE decimals as bigint. */
@@ -112,6 +115,16 @@ function digitsCore(s: string): string | null {
   const m = /^(\d{1,3}(?:,\d{2,3})+|\d+)(\.\d+)?$/.exec(s);
   if (!m) return null;
   return (m[1] ?? '').replace(/,/g, '') + (m[2] ?? '');
+}
+
+/** Syntax-only span check; fiat conversion and decimals beyond parser/token precision still need questions. */
+export function isAbsoluteAmountPhrase(text: string): boolean {
+  const normalized = text.replace(/\brs\.\s*/gi, 'rs ').replace(/\s+(?:worth\s+)?of\s+/i, ' ');
+  const parsed = parseAmountText(normalized, null);
+  if (parsed.ok || parsed.reason === 'zero') return true;
+  const core = numericCore(normalized).replace(/^\.(?=\d)/, '0.');
+  const digits = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(core);
+  return digits !== null && digitsCore(digits[1] ?? '') !== null;
 }
 
 function parseDigits(core: string): bigint | null {
@@ -210,7 +223,7 @@ function parseWords(core: string): bigint | null {
  * `token` decides the precision check (USDC 6, ETH 18); with a null token only the zero check applies.
  */
 export const parseAmountText: ParseAmountText = (text: string, token): ParsedAmount => {
-  const core = stripCurrency(text);
+  const core = numericCore(text);
   if (core.length === 0) return { ok: false, reason: 'unparseable' };
   const value = parseDigits(core) ?? parseWords(core);
   if (value === null) return { ok: false, reason: 'unparseable' };

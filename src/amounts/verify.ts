@@ -463,6 +463,8 @@ export function applyAnswer(
       item.value_done = true;
       item.code_verified = true;
       item.mismatch = null;
+      // Summary notes quote the accepted reply; the original span still anchors masking and pairing.
+      if (item.phrase !== null || kinds.size > 0) item.phrase = t;
       if (explicitToken !== null) item.token = explicitToken;
       if (kinds.size > 0) item.fiat = fiat;
       if (pending.code === 'Q_FIAT_OTHER') {

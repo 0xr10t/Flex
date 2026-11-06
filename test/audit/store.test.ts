@@ -2,6 +2,7 @@
 import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { createRepos } from '../../src/db/repos/index.js';
 import { openDatabase } from '../../src/db/open.js';
@@ -24,6 +25,41 @@ const ALL_TABLES = [
 ];
 const CLEARED = ['db1_amount_placeholders', 'db3_address_placeholders', 'db8_prompts', 'db8_history', 'db8_sessions'];
 const KEPT = ALL_TABLES.filter((t) => !CLEARED.includes(t));
+
+function db2CallSites(sources: Array<{ path: string; text: string }>) {
+  const sites: Array<{ path: string; function: string; method: string }> = [];
+  const property = (node: ts.Node): { receiver: ts.Expression; name: string } | null => {
+    if (ts.isPropertyAccessExpression(node)) return { receiver: node.expression, name: node.name.text };
+    if (ts.isElementAccessExpression(node))
+      return {
+        receiver: node.expression,
+        name: ts.isStringLiteralLike(node.argumentExpression) ? node.argumentExpression.text : '<computed>',
+      };
+    return null;
+  };
+  const enclosingFunction = (node: ts.Node): string => {
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      if (ts.isFunctionDeclaration(parent)) return parent.name?.text ?? '<anonymous>';
+      if (ts.isFunctionExpression(parent) || ts.isArrowFunction(parent) || ts.isMethodDeclaration(parent))
+        return '<nested or method>';
+    }
+    return '<module>';
+  };
+  for (const source of sources) {
+    if (source.path.startsWith('db/') || source.path.startsWith('contracts/')) continue;
+    const tree = ts.createSourceFile(source.path, source.text, ts.ScriptTarget.Latest, true);
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const call = property(node.expression);
+        if (call && property(call.receiver)?.name === 'db2')
+          sites.push({ path: source.path, function: enclosingFunction(node), method: call.name });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tree);
+  }
+  return sites;
+}
 
 describe('§7.4 / §16.4 session close', () => {
   it('secure_delete is ON for the connection and every table exists as expected', () => {
@@ -186,9 +222,30 @@ describe('§7.2 / §16.4 write paths', () => {
   });
 
   it('DB2 writers: addContact only in S6 answerName (after Yes + name); updateAddressForName only for the §9.4 "Use new address" chip', () => {
-    expect(callers(/db2\.addContact\(/)).toEqual(['recipients/resolve.ts:751']);
-    expect(callers(/db2\.updateAddressForName\(/)).toEqual(['recipients/resolve.ts:818']);
-    expect(callers(/db2\.(?!find|list|get|addContact|updateAddressForName)\w+\(/)).toEqual([]);
+    const calls = db2CallSites(files);
+    expect(calls.filter((site) => site.method === 'addContact')).toEqual([
+      { path: 'recipients/resolve.ts', function: 'answerName', method: 'addContact' },
+    ]);
+    expect(calls.filter((site) => site.method === 'updateAddressForName')).toEqual([
+      { path: 'recipients/resolve.ts', function: 'answerEnsChanged', method: 'updateAddressForName' },
+    ]);
+    expect(
+      calls.filter((site) => !/^(?:find|list|get)|^(?:addContact|updateAddressForName)$/.test(site.method)),
+    ).toEqual([]);
+  });
+
+  it('the DB2 inventory ignores comments and detects a write in an unexpected enclosing function', () => {
+    expect(
+      db2CallSites([
+        {
+          path: 'recipients/resolve.ts',
+          text: `
+      // ctx.repos.db2.addContact({});
+      function unexpectedWriter(ctx) { ctx.repos.db2['addContact']({}); }
+    `,
+        },
+      ]),
+    ).toEqual([{ path: 'recipients/resolve.ts', function: 'unexpectedWriter', method: 'addContact' }]);
   });
 
   it('the pipeline gets no limits write path: PUT is refused with the report token and the UI token is required', async () => {

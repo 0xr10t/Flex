@@ -1,0 +1,59 @@
+{
+  "wallet": { "address": "0xYourWalletAddressChecksummed" },
+  "server": { "host": "127.0.0.1", "port": 8787 },
+  "auth": {
+    "ui_token_file": "~/.agent-layer/ui_token",
+    "execution_report_token_file": "~/.agent-layer/execution_report_token"
+  },
+  "db": { "path": "~/.agent-layer/agent.db" },
+  "llm": {
+    "ollama_url": "http://127.0.0.1:11434",
+    "model": "qwen3:8b",
+    "think": false,
+    "temperature": 0,
+    "seed": 42,
+    "num_ctx": 8192,
+    "timeout_ms": 60000
+  },
+  "chat": { "enabled": true, "think": true },
+  "chains": [
+    {
+      "chain_id": 11155111,
+      "name": "Sepolia",
+      "is_l2": false,
+      "aliases": ["sepolia", "ethereum", "eth chain", "l1", "ethereum sepolia", "eth sepolia"],
+      "rpc_url": "https://<anon-rpc>/sepolia",
+      "usdc_address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+    },
+    {
+      "chain_id": 84532,
+      "name": "Base Sepolia",
+      "is_l2": true,
+      "aliases": ["base", "base sepolia", "base testnet"],
+      "rpc_url": "https://<anon-rpc>/base-sepolia",
+      "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "chain_id": 421614,
+      "name": "Arbitrum Sepolia",
+      "is_l2": true,
+      "aliases": ["arbitrum", "arbi", "arb", "arbitrum sepolia", "arb sepolia"],
+      "rpc_url": "https://<anon-rpc>/arbitrum-sepolia",
+      "usdc_address": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+    }
+  ],
+  "ens": {
+    "rpc_chain_id": 11155111,
+    "universal_resolver_address": "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
+    "indexer_url": "https://api.v2-sepolia.ensnode.io/api/omnigraph",
+    "indexer_kind": "ensnode-omnigraph"
+  },
+  "execution": {
+    "url": "http://127.0.0.1:8788",
+    "outbound_token_file": "~/.agent-layer/execution_outbound_token",
+    "timeout_ms": 15000
+  },
+  "network": { "socks_proxy": "socks5h://127.0.0.1:9050" },
+  "fetch": { "enabled": true, "max_bytes": 1048576, "timeout_ms": 10000, "max_redirects": 3 },
+  "defaults": { "timezone": "Asia/Kolkata", "autopay_time_of_day": "10:00" }
+}

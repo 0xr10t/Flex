@@ -1,0 +1,81 @@
+[
+ {
+  "id": "A-06",
+  "source": "acceptance",
+  "prompt": "Send 5 more",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "5",
+     "to": "Aradhya",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 9315,
+  "questions": [],
+  "total_ms": 37383,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Send 5 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- Recipient and chain from your last payment.\nSpent today after this: 55.4 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "target_trace_start": 4,
+  "target_pairing_reached": true,
+  "target_pairing_exact": true,
+  "llm_calls": 8,
+  "llm_ms": [
+   11277,
+   2778,
+   3264,
+   10408,
+   2607,
+   1422,
+   836,
+   4397
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "A-07",
+  "source": "acceptance",
+  "prompt": "send 5 more",
+  "expected": {
+   "outcome": {
+    "kind": "question",
+    "codes": [
+     "Q_NO_PAYEE"
+    ]
+   }
+  },
+  "first_latency_ms": 1418,
+  "questions": [
+   "Q_TOKEN",
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 2659,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "target_trace_start": 0,
+  "target_pairing_reached": false,
+  "target_pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   1412,
+   724,
+   396
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ }
+]

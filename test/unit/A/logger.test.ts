@@ -80,13 +80,27 @@ describe('§18 allowlist serializer', () => {
         rule_id: 'a'.repeat(65),
         state: 'x y',
         attempt: '2',
-        llm_call: 'chat',
+        llm_call: 'untrusted_chat_text',
         llm_retry: 'yes',
         chain_ids_unavailable: ['0x3fA9'],
         http_status: Number.NaN,
       }),
     ).toEqual({});
   });
+
+  it.each(['chat', 'chat_route'] as const)(
+    'SQ-CHAT-01: accepts the approved %s call name without chat contents',
+    (llm_call) => {
+      expect(
+        sanitizeLogFields({
+          llm_call,
+          text: 'private chat text',
+          thinking: 'private reasoning',
+          output: { reply: 'private answer' },
+        }),
+      ).toEqual({ llm_call });
+    },
+  );
 
   const CHECKSUMMED = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E';
   const LOWER = '0x3fa94b8e2d1c7a6f5e4d3c2b1a0f9e8d7c6bc21e';

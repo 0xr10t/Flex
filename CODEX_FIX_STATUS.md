@@ -4,6 +4,13 @@ Work requested on 2026-11-06: fix the findings and gaps in `codex_review_report.
 All **19 findings and 3 gaps** have fixes, permanent regressions and independent review. README remains the original
 specification; historical review and handoff instructions are retained.
 
+Later SQ-CV-01 findings **B20–B23** are also fixed and independently tested. Frozen revision `a05cb9d` passes
+**2,129 unit/acceptance tests, 205 audits, seven real-model conversation scenarios**, typecheck, lint and build.
+The full 154-case rerun preserves **129 exact outcomes, 25 stops and zero wrong handoffs/crashes/rejected summaries**.
+The updated frontend is running at **http://127.0.0.1:8791**; its TCP conversation check passes. See
+[CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md) for the later changes, raw results and remaining limits.
+The workstream table and earlier verification below record the original remediation.
+
 | Workstream | Owner / checkout | Current state |
 | --- | --- | --- |
 | Existing core branch, independent tests, P10 interval regression | Astra/max review; root repairs | Merged and independently verified, including interval-one and donor-rounding edge fixes |

@@ -1,0 +1,137 @@
+[
+  {
+    "id": "natural-token",
+    "passed": true,
+    "ms": 23264,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "send 10 to mihir",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_64f15db8081d",
+            "request_id": "req_222d21f3ff06",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_dcb59a040e28",
+              "code": "Q_TOKEN",
+              "text": "Is 10 in USDC or ETH?",
+              "input": "chips",
+              "chips": [
+                {
+                  "id": "USDC",
+                  "label": "USDC",
+                  "disabled": false,
+                  "detail": ""
+                },
+                {
+                  "id": "ETH",
+                  "label": "ETH",
+                  "disabled": false,
+                  "detail": ""
+                }
+              ],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "USDC please",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_64f15db8081d",
+            "request_id": "req_222d21f3ff06",
+            "state": "awaiting_confirmation",
+            "messages": [],
+            "summary": {
+              "text": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia."
+              ],
+              "notes": [],
+              "footer": [
+                "Spent today after this: 10 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10",
+              "number": "10",
+              "relative": null,
+              "token": null,
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3118
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "answer",
+          "value": "USDC"
+        },
+        "ms": 5394
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1773
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2328
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_fdebe377",
+              "recipient": "address_6dbe50da",
+              "chain": "unstated",
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 10498
+      }
+    ],
+    "submissions": []
+  }
+]

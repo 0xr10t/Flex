@@ -1,6 +1,7 @@
 // Phase 3 audit (§3.2 item 5): §15 "Messages never contain amounts, addresses or names beyond what the user typed".
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { ERROR_MESSAGE } from '../../src/contracts/catalog.js';
 import { Harness, loadFixture } from '../acceptance/harness.js';
@@ -16,17 +17,98 @@ const files = walk(SRC).map((p) => ({ path: relative(SRC, p), text: readFileSync
 
 describe('error messages come from the catalog', () => {
   it('AgentResponse.error is built only in session/manager.ts, from ERROR_MESSAGE[code](params)', () => {
-    const builders = files
-      .filter((f) => !f.path.startsWith('contracts/') && /\berror:\s*\{\s*code/.test(f.text))
-      .map((f) => f.path);
-    expect(builders).toEqual(['session/manager.ts']);
-    const m = files.find((f) => f.path === 'session/manager.ts')!.text;
-    const msgs = [...m.matchAll(/error:\s*\{\s*code[^\n]*/g)].map((x) => x[0]);
-    expect(msgs.length).toBe(2);
-    // unsupportedReply: literal catalog call; fail(): the `message` computed from ERROR_MESSAGE[code](params ?? {}).
-    expect(msgs[0]).toMatch(/message: ERROR_MESSAGE\.UNSUPPORTED_REQUEST\(\{\}\)/);
-    expect(msgs[1]).toMatch(/code: errCode, message/);
-    expect(m).toMatch(/message = ERROR_MESSAGE\[code\]\(params \?\? \{\}\)/);
+    const createdIn = new Set<string>();
+    const messageSources = new Set<string>();
+    const reusedIn = new Set<string>();
+    const field = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined => {
+      for (const property of object.properties) {
+        if (ts.isPropertyAssignment(property) && property.name.getText().replace(/^['"]|['"]$/g, '') === name)
+          return property.initializer;
+        if (ts.isShorthandPropertyAssignment(property) && property.name.text === name) return property.name;
+      }
+      return undefined;
+    };
+    const method = (node: ts.Node): string => {
+      for (let parent = node.parent; parent; parent = parent.parent)
+        if (ts.isMethodDeclaration(parent)) return parent.name.getText();
+      return '<outside method>';
+    };
+    const catalogCall = (node: ts.Expression): boolean =>
+      ts.isCallExpression(node) &&
+      ((ts.isPropertyAccessExpression(node.expression) && node.expression.expression.getText() === 'ERROR_MESSAGE') ||
+        (ts.isElementAccessExpression(node.expression) && node.expression.expression.getText() === 'ERROR_MESSAGE'));
+    const responseError = (node: ts.Expression, owner: string): boolean => {
+      if (ts.isObjectLiteralExpression(node))
+        return field(node, 'code') !== undefined && field(node, 'message') !== undefined;
+      if (node.getText() === 'a.lastError') return owner === 'fail' || owner === 'chatReply';
+      if (node.getText() === 'extra.error') return owner === 'respond';
+      return (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+        node.left.getText() === 'a.lastError' &&
+        owner === 'chatReply' &&
+        responseError(node.right, owner)
+      );
+    };
+
+    for (const source of files.filter((f) => !f.path.startsWith('contracts/'))) {
+      const tree = ts.createSourceFile(source.path, source.text, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isObjectLiteralExpression(node)) {
+          const code = field(node, 'code');
+          const message = field(node, 'message');
+          if (code && message) {
+            expect(source.path, node.getText()).toBe('session/manager.ts');
+            const owner = method(node);
+            createdIn.add(owner);
+            if (catalogCall(message)) {
+              // Literal catalog entries must correspond to the exposed error code.
+              expect(ts.isStringLiteralLike(code), node.getText()).toBe(true);
+              expect(message.getText()).toBe(`ERROR_MESSAGE.${(code as ts.StringLiteral).text}({})`);
+            } else {
+              // fail() shares the catalog-built message through lastError; it never rebuilds one from chat.
+              expect({ owner, code: code.getText(), message: message.getText() }).toEqual({
+                owner: 'fail',
+                code: 'errCode',
+                message: 'message',
+              });
+            }
+          }
+        }
+        if (source.path === 'session/manager.ts') {
+          const owner = method(node);
+          if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+            if (node.left.getText() === 'message' && owner === 'fail') {
+              expect(catalogCall(node.right), node.getText()).toBe(true);
+              messageSources.add(node.right.getText());
+            }
+            if (ts.isPropertyAccessExpression(node.left) && node.left.name.text === 'lastError') {
+              expect(owner).toBe('fail');
+              expect(
+                ts.isObjectLiteralExpression(node.right) && field(node.right, 'message')?.getText() === 'message',
+              ).toBe(true);
+            }
+            if (ts.isPropertyAccessExpression(node.left) && node.left.name.text === 'error') {
+              expect(responseError(node.right, owner), node.getText()).toBe(true);
+              reusedIn.add(owner);
+            }
+          }
+          if (ts.isPropertyAssignment(node) && node.name.getText() === 'error') {
+            expect(responseError(node.initializer, owner), node.getText()).toBe(true);
+            reusedIn.add(owner);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(tree);
+    }
+    // Named paths make this non-vacuous without pinning object count, layout, or source line numbers.
+    expect([...createdIn].sort()).toEqual(['chatReply', 'fail', 'unsupportedReply']);
+    expect([...reusedIn].sort()).toEqual(['chatReply', 'fail', 'respond', 'unsupportedReply']);
+    expect([...messageSources].sort()).toEqual([
+      'ERROR_MESSAGE.INTERNAL_ERROR({})',
+      'ERROR_MESSAGE[code](params ?? {})',
+    ]);
   });
 
   it('steps return {kind:"error", code, params}; params are the only free text, listed by step', () => {

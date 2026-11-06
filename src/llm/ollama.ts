@@ -82,18 +82,23 @@ class OllamaLlmClient implements LlmClient {
 
   private async once(args: LlmCallArgs, validate: ValidateFunction): Promise<unknown> {
     const { llm } = this.config;
+    // SQ-M-03: only read-only replies use the optional chat model; routing and wallet calls keep llm.model.
+    const model = args.name === 'chat' && this.config.chat?.enabled ? (this.config.chat.model ?? llm.model) : llm.model;
+    const think = args.think ?? llm.think;
     const res = await fetch(`${baseUrl(this.config)}/api/chat`, {
       method: 'POST',
       redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: llm.model,
+        model,
         messages: [
           { role: 'system', content: args.system },
           { role: 'user', content: args.user },
         ],
         format: args.schema,
         stream: false,
+        // SQ-M-01: use the API's hard switch for structured Qwen3 extraction; legacy configs omit it.
+        ...(think === undefined ? {} : { think }),
         options: { temperature: llm.temperature, seed: llm.seed, num_ctx: llm.num_ctx },
       }),
       signal: AbortSignal.timeout(llm.timeout_ms),

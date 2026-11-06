@@ -35,31 +35,40 @@ const SELF = /^(?:i|me|my|mine|myself|my wallet|my address)$/i;
 const CONVERSATIONAL =
   /\b(?:i|you|we|my|myself|your|want|need|have|should|could|would|please|actually|instead|change|replace|use|pay|send|transfer|set\s*up|create|cancel|stop|abort|explain|help|why|what|how|which|who|don't|dont|not|never)\b/i;
 
+export function literalRecipientAddress(text: string): boolean {
+  const t = text.trim();
+  return ADDRESS_FULL_RE.test(t) || (t.includes('.') && !/\s/.test(t) && normalizeEns(t) !== null);
+}
+
+/** A model classification alone cannot abandon a draft, especially for negated or compound replies. */
+export function explicitDraftCancellation(text: string): boolean {
+  const t = text.normalize('NFKC').replace(/[’‘]/g, "'").trim();
+  return /^(?:please\s+)?(?:(?:cancel|abort|drop|stop)(?:\s+(?:this|that|it|(?:(?:this|that|the|my)\s+)?(?:(?:pending|current|unfinished)\s+)?(?:request|draft|payment)))?|(?:never\s*mind)|forget\s+(?:this|that|it|about\s+it))(?:\s+please)?[.!]*$/i.test(
+    t,
+  );
+}
+
 export function simpleRecipient(text: string): boolean {
   const t = text.trim();
   if (SELF.test(t) || CONVERSATIONAL.test(t) || /[?!]/.test(t)) return false;
-  return (
-    ADDRESS_FULL_RE.test(t) ||
-    (t.includes('.') && !/\s/.test(t) && normalizeEns(t) !== null) ||
-    (/^[\p{L}\p{M}\p{N} ._'’-]{1,64}$/u.test(t) && t.split(/\s+/).length <= 3)
-  );
+  return literalRecipientAddress(t) || (/^[\p{L}\p{M}\p{N} ._'’-]{1,64}$/u.test(t) && t.split(/\s+/).length <= 3);
 }
 
 /** Literal values are already interpretable; conversational text needs the model, not a permissive regex. */
 export function needsConversation(ctx: StepContext, q: Question, text: string): boolean {
   const t = text.trim();
   if (!t || matchChip(q, { kind: 'text', text: t }) !== null) return false;
+  // Decimal amounts are also syntactically valid ENS names; interpret them in the pending field first.
+  if (q.input === 'number' && (parseAmountText(t, null).ok || /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(t))) return false;
   const recipientQuestion = ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(q.code);
-  if (ADDRESS_FULL_RE.test(t) || (t.includes('.') && !/\s/.test(t) && normalizeEns(t) !== null))
-    return !recipientQuestion;
-  if (q.input === 'number' && parseAmountText(t, null).ok) return false;
+  if (literalRecipientAddress(t)) return !(recipientQuestion || (q.code === 'Q_GROUP_PARENT' && t.includes('.')));
   if (q.input === 'date') {
     const dates = chronoSpans(t, ctx.now());
     if (dates.some((d) => d.start === 0 && d.end === t.length)) return false;
   }
   if ((q.code === 'Q_NO_PAYEE' || q.code === 'Q_NAME_FOR_ADDRESS') && simpleRecipient(t)) return false;
   if (['Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(q.code) && simpleRecipient(t)) return true;
-  return CONVERSATIONAL.test(t) || /[?!]/.test(t) || t.split(/\s+/).length > 1;
+  return true;
 }
 
 const PURPOSE: Partial<Record<QuestionCode, string>> = {

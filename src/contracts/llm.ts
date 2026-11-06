@@ -2,13 +2,16 @@
 // Owned by the Orchestrator (frozen contract). Lane B implements OllamaLlmClient in src/llm/ollama.ts;
 // tests use FixtureLlmClient (test/fakes/llm.ts).
 
-export type LlmCallName = 'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine' | 'conversation';
+export type LlmCallName =
+  'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine' | 'conversation' | 'chat_route' | 'chat';
 
 export interface LlmCallArgs {
   name: LlmCallName;
   system: string;
   user: string;
   schema: object;
+  /** Backend-owned per-call override, used to enable thinking for general conversation. */
+  think?: boolean;
 }
 
 export interface LlmClient {

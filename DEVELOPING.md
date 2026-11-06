@@ -22,10 +22,18 @@ Start Ollama with `ollama serve` if it is not already running. In another termin
 
 ```sh
 ollama pull qwen2.5:7b-instruct
+ollama pull qwen3:8b
 curl --fail --silent http://127.0.0.1:11434/api/tags
 ```
 
-The production settings in `config.example.json` are model `qwen2.5:7b-instruct`, temperature `0`, seed `42`, context `8192`, and timeout `60000` milliseconds. Ollama must use an `http://127.0.0.1` URL; configuration rejects remote hosts. A fixed seed does not make model output fully deterministic.
+The hackathon model selected in SQ-M-02 is `qwen2.5:7b-instruct` from `config.example.json`, with temperature `0`,
+seed `42`, context `8192`, and timeout `60000` milliseconds. The optional `llm.think` field may be omitted for this
+profile. SQ-M-03 enables thinking for chat using a separate model:
+`chat: { "enabled": true, "think": true, "model": "qwen3:8b" }`, as in the local demo. Qwen2.5 handles intent
+routing, follow-ups and wallet extraction; Qwen3 handles chat and wallet-information replies. Qwen2.5 rejects
+Ollama's `think: true` setting. Omitting `chat.model` retains the existing single-model behavior.
+`config.qwen3.example.json` remains available for experiments that use Qwen3 for wallet extraction too. Ollama must use an
+`http://127.0.0.1` URL; configuration rejects remote hosts. A fixed seed does not make model output fully deterministic.
 
 Create a local configuration from the template, preserving an existing configuration:
 
@@ -37,7 +45,34 @@ if [ ! -e "$HOME/.agent-layer/config.json" ]; then
 fi
 ```
 
-Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the `<anon-rpc>` placeholders with your anon-rpc endpoints. RPC URLs must be https, or `http://127.0.0.1` for a node on this machine, and `execution.url` must be `http://127.0.0.1`. The example sends everything that leaves this machine through Tor: `network.socks_proxy` is `socks5h://127.0.0.1:9050`, Tor's default SOCKS port. Install Tor and start it before the agent and the wallet (`tor`, or the system service); its default `IsolateSOCKSAuth` gives each kind of query its own circuit. If Tor isn't running, chain reads, ENS lookups, the indexer and links fail rather than go direct. Choose anon-rpc endpoints that accept Tor connections. Set `network.socks_proxy` to `null` only for a setup without Tor, such as a local node at `http://127.0.0.1`; `ens.indexer_url: null` and `fetch.enabled: false` turn group sends and link reading off. See `docs/spec/AGENT_SPEC_v1.1.md` §16.5. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires every declared field and rejects extra fields. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
+Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the `<anon-rpc>` placeholders with your anon-rpc endpoints. RPC URLs must be https, or `http://127.0.0.1` for a node on this machine, and `execution.url` must be `http://127.0.0.1`. The example sends everything that leaves this machine through Tor: `network.socks_proxy` is `socks5h://127.0.0.1:9050`, Tor's default SOCKS port. Install Tor and start it before the agent and the wallet (`tor`, or the system service); its default `IsolateSOCKSAuth` gives each kind of query its own circuit. If Tor isn't running, chain reads, ENS lookups, the indexer and links fail rather than go direct. Choose anon-rpc endpoints that accept Tor connections. Set `network.socks_proxy` to `null` only for a setup without Tor, such as a local node at `http://127.0.0.1`; `ens.indexer_url: null` and `fetch.enabled: false` turn group sends and link reading off. See `docs/spec/AGENT_SPEC_v1.1.md` §16.5. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires the baseline fields and rejects unknown fields; `llm.think` and `chat` are optional. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
+
+For an existing configured installation, set `llm.model` to `qwen2.5:7b-instruct`, omit `llm.think` or set it to
+`false`, and use `chat: { "enabled": true, "think": true, "model": "qwen3:8b" }` for thinking chat. Retain its wallet,
+endpoints, tokens and database paths, then restart the service to load the configuration. Omitting `chat` or
+setting `enabled: false` preserves wallet-only behavior. The local test frontend selects Qwen2.5 for wallet calls
+and Qwen3 for thinking chat on its next launch; existing demo processes keep the configuration they loaded at startup.
+Both models must be installed locally. The existing health check reports the primary wallet model's availability;
+a missing chat model produces the normal chat-unavailable reply without switching wallet calls to another model.
+
+General chat uses the existing messages and text-answer endpoints. It preserves pending questions and confirmations,
+and has no execution, browsing or live-data tools. It can explain a current summary without approving it. It keeps
+up to six complete conversational exchanges within a 4,000 UTF-8-byte memory budget, only for the current session;
+omitted history is identified in the model context. Individual routed messages are limited to 4,000 UTF-8 bytes
+and oversized messages receive a request to shorten them. Initial wallet wording, question guidance and the current
+summary have separate bounds; chat cannot derive a current plan from stale original wording. These bounds retain
+space for Qwen's thinking within the configured context. Reasoning traces are neither returned nor logged.
+
+With chat enabled, address and balance questions use a read-only `wallet_info` path. Code reads the background-updated
+DB4 cache through S0 on a separate request context (fetching only chains never read before), so asking while a payment is open preserves its question,
+attempt count and confirmation. The model selects relevant verified fact IDs; code displays the exact address,
+per-network balances, spendable amounts, pending spending and gas reserves. Unreadable networks have no current
+amount, and partial totals are explicitly labelled subtotals. General conversation uses model-written text and the
+configured public wallet address, with no balance refresh or wallet writes. Neither path can approve a payment.
+
+The experimental Qwen3 wallet-chat check is `LIVE_MODEL=qwen3:8b npm run test:live -- test/live/wallet-chat.test.ts`.
+That suite enables Qwen3 chat thinking and does not validate the Qwen2.5 hackathon chat configuration.
+Its synthetic-data results are written under the ignored `test_frontend/runtime/wallet-chat-live.json`.
 
 The default configuration path is `~/.agent-layer/config.json`; `AGENT_CONFIG=/absolute/path/config.json` selects another file. Leading `~/` in configured filesystem paths is expanded. Keep local credentials, token files and database keys out of the repository. The wallet setting is a public address; the agent does not need a wallet private key or seed phrase.
 
@@ -92,10 +127,37 @@ The first command already includes unit and acceptance tests; the next two selec
 The live suite uses the real local Ollama model with fake RPC, ENS, content-fetch and execution dependencies. It sends no real payments. Run it without competing model calls or heavy test jobs, and use a new tag to preserve earlier results:
 
 ```sh
-LIVE_SET=all LIVE_TAG=validation-2026-11-06 npm run test:live
+LIVE_SET=all LIVE_TAG=validation-2026-11-06 npm run test:live -- test/live/live.test.ts
 node test/live/summarize.mjs validation-2026-11-06
 ```
 
 `LIVE_SET` selects `all`, `acceptance`, or `paraphrase`. Optional `LIVE_IDS=A-15,P-061,P-073` selects named cases within that set; unknown IDs are rejected. `LIVE_FROM` and `LIVE_TO` select a zero-based slice after that filtering. The full set contains 154 cases. Results are written incrementally to `test/live/results/<tag>.json`; reusing a tag overwrites that file. The summarizer without explicit tags combines every result file, including partial runs and repeated cases, so pass the intended tag when comparing runs.
 
 Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, questions and latency in the results, not only Vitest's exit status. SQ-L-01 prompt changes require a full live run with zero wrong hand-offs and fewer unnecessary stops. Recheck unstable cases. A reviewer other than the production-code author grades final acceptance.
+
+The historical wallet and conversation suites default to the Qwen2.5 hackathon model. Select the experimental
+Qwen3 model explicitly for comparisons:
+
+```sh
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_CHAT=true LIVE_SET=all LIVE_TAG=qwen3-validation npm run test:live -- test/live/live.test.ts
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_TAG=qwen3-conversation npm run test:live -- test/live/conversation.test.ts
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_CHAT=true LIVE_TAG=qwen3-chat npm run test:live -- test/live/general-chat.test.ts
+```
+
+The suites record model settings and effective thinking per call. `LIVE_THINK` and `LIVE_CHAT` must be `true` or
+`false`; unset flags preserve baseline settings in the historical suites. `LIVE_CHAT=true` enables general chat
+with thinking on while `LIVE_THINK` selects wallet extraction's setting. The dedicated general-chat suite enables
+chat by default. The deterministic fixtures and historical live comparison oracle are unchanged.
+
+The separate conversational suite exercises seven multi-turn scenarios, including corrections while a question is
+pending, natural amount/address/token answers, refund clarification and new requests. Run it separately when
+comparing benchmark metrics:
+
+```sh
+LIVE_TAG=conversation-validation npm run test:live -- test/live/conversation.test.ts
+```
+
+Its transcripts and model outputs are written to `test/live/results/conversation/<tag>.json`, outside the
+154-case summarizer's input directory. General-chat traces are separately written under
+`test/live/results/general-chat/<tag>.json`. Running `npm run test:live` without a file filter runs every live suite
+serially; use the explicit file filters above to keep benchmark results distinct.

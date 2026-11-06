@@ -9,6 +9,8 @@ src/db/schema.sql
 *.md
 .claude
 test_frontend
+# Preserve generated live-run evidence byte-for-byte for its recorded hashes.
+test/live/results/
 wallet/contracts/out
 wallet/contracts/cache
 wallet/cre/**/.cre_build_tmp.js

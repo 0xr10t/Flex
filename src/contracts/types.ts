@@ -63,7 +63,11 @@ export interface Config {
     seed: number;
     num_ctx: number;
     timeout_ms: number;
+    /** Optional Ollama thinking control; omitted preserves the model's default. SQ-M-01. */
+    think?: boolean;
   };
+  /** SQ-CHAT-01: optional read-only general conversation, independently configured from wallet extraction. */
+  chat?: { enabled: boolean; think: boolean; model?: string };
   chains: ChainConfig[];
   ens: {
     rpc_chain_id: ChainId;

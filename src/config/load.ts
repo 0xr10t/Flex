@@ -74,6 +74,17 @@ const CONFIG_SCHEMA = {
         seed: { type: 'integer' },
         num_ctx: POS_INT,
         timeout_ms: POS_INT,
+        think: { type: 'boolean' },
+      },
+    },
+    chat: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['enabled', 'think'],
+      properties: {
+        enabled: { type: 'boolean' },
+        think: { type: 'boolean' },
+        model: { ...NON_EMPTY, pattern: '\\S' },
       },
     },
     chains: {

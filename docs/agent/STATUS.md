@@ -2,14 +2,46 @@
 
 Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v4`.
 
-## Current status — Codex remediation, 2026-11-06
+## Wallet-aware conversation — SQ-CHAT-02
+
+The agent now answers read-only wallet address/balance questions from a fresh, exact wallet snapshot while
+preserving pending payment state. General conversation remains model-written. Independent review, 2,312 full-suite
+tests plus the subsequent comparison regression, 205 security checks, four focused real-Qwen3 scenarios and the
+real browser round trip pass. The updated ignored testing frontend is **http://127.0.0.1:8893/** with sample
+Base 30 / Arbitrum 60 USDC balances and local capture only. [WALLET_CHAT_REPORT.md](WALLET_CHAT_REPORT.md) records
+the implementation and the separately observed pre-existing amount-span rejection for one mixed-request phrasing.
+
+## Latest model and chat request — SQ-M-01 / SQ-CHAT-01
+
+The human selected Qwen3 8B and approved general chat with thinking on while wallet extraction stays off.
+[QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) is the current migration and verification record. Independent
+deterministic review is complete; final runtime verification is in progress. The sections below retain the
+earlier completed Qwen2.5 work and its evidence, rather than claiming those results for the new runtime.
+
+## Later conversational follow-up — SQ-CV-01
+
+The user's additional multi-turn failures are tracked as B20–B23 in
+[CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md), which records current implementation, independent review,
+verification and remaining limits. The original-remediation results below retain their historical revisions;
+the handoff checklist incorporates this follow-up. The new instruction supersedes always treating a
+pending-question reply as a field value.
+
+Final conversation revision `a05cb9d`: **2,129 unit/acceptance tests and 205 audit checks pass**, with typecheck,
+lint and build. All **seven real-model conversational scenarios pass**. The complete **154-case** rerun preserves
+**129 exact outcomes, 25 existing stops and zero wrong handoffs/crashes/rejected summaries**; every final signature
+matches the earlier remediation. The updated local frontend at **http://127.0.0.1:8791** passes the exact reported
+sequence over TCP. Port 8790's existing draft is preserved. Raw evidence and limitations are in the linked report.
+The final working-tree rerun also passes all 2,129 tests and 205 audits with no failures, skips or todo tests;
+typecheck, lint and build pass.
+
+## Earlier Codex remediation — 2026-11-06
 
 All 19 findings and 3 gaps from `codex_review_report.md` are fixed with permanent regression tests. The formerly pending core
 branch and the additional understanding/date fixes are merged. Three Astra/max workers implemented or independently
 reviewed the fixes, with production authors and acceptance reviewers separated. The original review used nine Astra/max
 reviewers; their evidence remains in the report and `/private/tmp/flex-codex-review/`.
 
-| Check | Current verified result |
+| Check | Verified result before SQ-CV-01 |
 | --- | --- |
 | Unit + acceptance | **1,874 / 1,874**, 66 files; includes **148 HTTP acceptance cases** in 6 files |
 | Separate privacy/security audit | **169 / 169**, including an AST inventory of actual viem network capabilities |
@@ -21,7 +53,7 @@ reviewers; their evidence remains in the report and `/private/tmp/flex-codex-rev
 | UI copy approval | Human selected “Keep these texts”; recorded as SQ-CX-01 |
 | Documentation | `DEVELOPING.md`, exact prompt diffs, remediation table, spec decisions and `LIVE_EVALUATION_REPORT.md` written |
 
-Latest verification artifacts are under `/private/tmp/flex-codex-fixes/`: `final-tests.json`, `final-audit.json`,
+That remediation's verification artifacts are under `/private/tmp/flex-codex-fixes/`: `final-tests.json`, `final-audit.json`,
 `final-npm-audit.json`, `runtime-final-result.json`, and the independent review reports. Fresh-checkout verification at
 `547a36e` also passes all 1,874 tests and 169 audit checks after `npm ci`, typecheck, lint and build; its tracked tree is
 clean (`clean-*.log/json`). The full live run kept production inputs frozen. Raw live results are in
@@ -36,12 +68,12 @@ semantic exact-match was not captured. [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATI
 
 | Item | Evidence / disposition |
 | --- | --- |
-| 1. Integration and clean-checkout checks | All four lanes and reviewed fixes are on `agentic_layer`, the local integration branch. Fresh checkout `547a36e` passes install, typecheck, lint, build and tests. |
-| 2. Spec checklist | **511 implemented/tested +3 approved/tested differences**, including C-514's independently accepted live gate. The 514-row inventory is not blanket compliance with every README requirement. |
-| 3. A-01 through A-60 | All original acceptance IDs and A-60 privacy assertions pass; the expanded HTTP acceptance suite has 148 passing assertions. |
-| 4. Privacy/security | No unresolved original review findings; 169 audit checks and final TCP log-privacy checks pass. Dependency audit reports zero vulnerabilities. |
-| 5. Spec/verbatim review | Independent review reconciles the binding human answers, approved prompt text, golden artifacts and three approved example differences. The separate NFR-03 performance limitation remains explicit. |
-| 6. Live evaluation | Full 154-case gate passes with zero wrong handoffs; questions, plan accuracy, S8 proxy and latency reported. All 53 final-toolchain repeats match primary outcomes; P-061/P-073 remain exact. |
+| 1. Integration and clean-checkout checks | All four lanes and reviewed fixes are on `agentic_layer`, the local integration branch. Isolated checkout `a05cb9d` and the final working tree pass 2,129 tests, typecheck, lint and build. Fresh install was separately checked at `547a36e`; package artifacts are unchanged since then. |
+| 2. Spec checklist | **509 implemented/tested +5 approved/tested differences**, including C-514's independently accepted live gate and SQ-CV-01's two routing changes. The 514-row inventory is not blanket compliance with every README requirement. |
+| 3. A-01 through A-60 | All original acceptance IDs and A-60 privacy assertions pass within the complete 2,129-test run. Legacy routing fixture adaptations and their independent review are documented in CONVERSATION_FIX_REPORT.md. |
+| 4. Privacy/security | No unresolved original review findings; 205 audit checks pass. The earlier production TCP log-privacy checks and dependency audit remain recorded above. |
+| 5. Spec/verbatim review | Independent review reconciles the binding human answers, approved prompt text, golden artifacts, three approved example differences and two SQ-CV-01 routing differences. The separate NFR-03 performance limitation remains explicit. |
+| 6. Live evaluation | The complete 154-case rerun preserves all prior final signatures: 129 exact, 25 stops, zero wrong handoffs. Seven new real-model conversations and the frontend TCP reproduction pass. Both S8 validation proxies and latency limits are reported separately. |
 | 7. Spec questions | Human/spec answers are indexed in `SPEC_QUESTIONS.md`; no question is pending. SQ-CX-01 confirms the three UI texts. |
 | 8. Specification and setup | README remains unchanged. `DEVELOPING.md` covers native modules, keychain, token files, config, Ollama, all suites and server startup. |
 
@@ -50,7 +82,7 @@ is an additive v2 migration. `SPEC_QUESTIONS.md` documents report correlation, m
 validation, and why retries cannot change an already-submitted autopay envelope.
 
 `HANDOFF_PROMPT.md` records the work performed and is retained. No branch/tag has been pushed and no worktree or process file has
-been deleted. Concurrent `test_frontend` ignore/config edits belong to other work and are intentionally unstaged.
+been deleted. The original frontend and its active draft remain available on port 8790; the corrected runtime is on 8791.
 
 The lane board and session logs below are historical records. They do not supersede this current status.
 

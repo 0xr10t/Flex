@@ -1,0 +1,1183 @@
+[
+  {
+    "id": "recipient-and-amount",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 13843,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "Setup an autopay to yash for 3 weeks twice a week.",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_a218e20d3344",
+            "request_id": "req_6f06ce0ea550",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_b9c59ec60515",
+              "code": "Q_AMOUNT_MISSING",
+              "text": "How much should I send?",
+              "input": "number",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "10 usd",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_a218e20d3344",
+            "request_id": "req_6f06ce0ea550",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_70700d19f62c",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "pay riya",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_a218e20d3344",
+            "request_id": "req_6f06ce0ea550",
+            "state": "awaiting_confirmation",
+            "messages": [],
+            "summary": {
+              "text": "Please confirm:\n1. Pay Riya (0x0000…002c) 10 USDC every Mon and Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 9 Nov 2026, until 29 Nov 2026. Sets aside 60 USDC now; anything unused is refunded if you cancel.\n- You wrote '10 usd' → 10 USDC.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Pay Riya (0x0000…002c) 10 USDC every Mon and Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 9 Nov 2026, until 29 Nov 2026. Sets aside 60 USDC now; anything unused is refunded if you cancel."
+              ],
+              "notes": [
+                "You wrote '10 usd' → 10 USDC."
+              ],
+              "footer": [
+                "Spent today after this: 0 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": []
+        },
+        "ms": 1051
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "k"
+          ],
+          "also_balance": false
+        },
+        "ms": 1906
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "yash",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2254
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "recipient",
+          "value": "riya"
+        },
+        "ms": 1710
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "k",
+              "amount": "amount_a19143eb",
+              "recipient": "address_f0fa371e",
+              "chain": "unstated",
+              "frequency": "weekly",
+              "interval": 1,
+              "times_per_week": 2,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 6708
+      }
+    ],
+    "submissions": [
+      {
+        "envelope": {
+          "version": "1",
+          "request_id": "req_6f06ce0ea550",
+          "wallet_address": "0x00000000000000000000000000000000000000AA",
+          "created_at": "2026-11-05T17:30:00Z",
+          "intents": [
+            {
+              "intent_id": "k",
+              "step": 0,
+              "depends_on": [],
+              "autopay_id": "ap_84d9f62daebc",
+              "token": "USDC",
+              "token_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              "chain_id": 84532,
+              "recipient": "0x000000000000000000000000000000000000002c",
+              "amount_per_payment": {
+                "value": "10",
+                "base_units": "10000000",
+                "decimals": 6
+              },
+              "prefund": {
+                "value": "60",
+                "base_units": "60000000",
+                "decimals": 6
+              },
+              "schedule": {
+                "frequency": "weekly",
+                "interval": 1,
+                "days_of_week": [
+                  "MON",
+                  "THU"
+                ],
+                "day_of_month": null,
+                "time_of_day": "10:00",
+                "timezone": "Asia/Kolkata",
+                "start_date": "2026-11-05",
+                "first_occurrence": "2026-11-09T10:00:00+05:30",
+                "end": {
+                  "type": "on_date",
+                  "date": "2026-11-29"
+                }
+              },
+              "limits": {
+                "per_period_cap": {
+                  "value": "20",
+                  "base_units": "20000000",
+                  "decimals": 6
+                },
+                "total_cap": {
+                  "value": "60",
+                  "base_units": "60000000",
+                  "decimals": 6
+                },
+                "expires_at": "2026-11-26T18:29:59Z"
+              },
+              "cre_job": {
+                "trigger": "cron",
+                "cron": "0 10 * * 1,4",
+                "timezone": "Asia/Kolkata",
+                "interval": 1
+              }
+            }
+          ]
+        },
+        "idempotencyKey": "req_6f06ce0ea550"
+      }
+    ]
+  },
+  {
+    "id": "refund-and-new-request",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 9951,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "cancel an autopay",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_b479b9575cce",
+            "request_id": "req_d7d9e4cfcf11",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_d0ec4960ae24",
+              "code": "Q_NO_PAYEE",
+              "text": "Who should receive this? Enter their wallet address, ENS name or saved contact name.",
+              "input": "text",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "I have to be paid for it",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_b479b9575cce",
+            "request_id": "req_d7d9e4cfcf11",
+            "state": "awaiting_answer",
+            "messages": [
+              {
+                "type": "text",
+                "text": "Cancelling an autopay returns its remaining funds to your wallet. I need to know whose repeating payment you want to stop."
+              }
+            ],
+            "question": {
+              "question_id": "q_d0ec4960ae24",
+              "code": "Q_NO_PAYEE",
+              "text": "Who should receive this? Enter their wallet address, ENS name or saved contact name.",
+              "input": "text",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "Setup an autopay to yash for 3 weeks twice a week.",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_b479b9575cce",
+            "request_id": "req_39a5295b4c94",
+            "state": "awaiting_answer",
+            "messages": [
+              {
+                "type": "text",
+                "text": "I dropped the previous plan and started on your new request."
+              }
+            ],
+            "question": {
+              "question_id": "q_e9986e53624b",
+              "code": "Q_AMOUNT_MISSING",
+              "text": "How much should I send?",
+              "input": "number",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": []
+        },
+        "ms": 1038
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "l"
+          ],
+          "also_balance": false
+        },
+        "ms": 1917
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": []
+        },
+        "ms": 993
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "clarify",
+          "value": null
+        },
+        "ms": 1572
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "new_request",
+          "value": null
+        },
+        "ms": 1457
+      },
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": []
+        },
+        "ms": 982
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "k"
+          ],
+          "also_balance": false
+        },
+        "ms": 1918
+      }
+    ],
+    "submissions": []
+  },
+  {
+    "id": "clarify-and-address",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 22092,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "send 10 USDC to Yash",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4cb50f63fc65",
+            "request_id": "req_0bbc3de0f684",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_e56c5d648922",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"Yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "why do you need that?",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4cb50f63fc65",
+            "request_id": "req_0bbc3de0f684",
+            "state": "awaiting_answer",
+            "messages": [
+              {
+                "type": "text",
+                "text": "I need a wallet address or ENS name for this recipient. To change the recipient, say “pay Riya instead”, using the name you want."
+              }
+            ],
+            "question": {
+              "question_id": "q_e56c5d648922",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"Yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "his address is 0x000000000000000000000000000000000000002c",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4cb50f63fc65",
+            "request_id": "req_0bbc3de0f684",
+            "state": "awaiting_confirmation",
+            "messages": [],
+            "summary": {
+              "text": "Please confirm:\n1. Send 10 USDC to Riya (0x0000…002c) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Send 10 USDC to Riya (0x0000…002c) on Base Sepolia."
+              ],
+              "notes": [],
+              "footer": [
+                "Spent today after this: 10 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 USDC",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3973
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1932
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "Yash",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2351
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "clarify",
+          "value": null
+        },
+        "ms": 1631
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "answer",
+          "value": "0x000000000000000000000000000000000000002c"
+        },
+        "ms": 5277
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_6a38b72e",
+              "recipient": "address_d4ba5742",
+              "chain": "unstated",
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 6861
+      }
+    ],
+    "submissions": [
+      {
+        "envelope": {
+          "version": "1",
+          "request_id": "req_0bbc3de0f684",
+          "wallet_address": "0x00000000000000000000000000000000000000AA",
+          "created_at": "2026-11-05T17:30:00Z",
+          "intents": [
+            {
+              "intent_id": "i",
+              "step": 0,
+              "depends_on": [],
+              "token": "USDC",
+              "token_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              "chain_id": 84532,
+              "amount": {
+                "value": "10",
+                "base_units": "10000000",
+                "decimals": 6
+              },
+              "recipient": "0x000000000000000000000000000000000000002c"
+            }
+          ]
+        },
+        "idempotencyKey": "req_0bbc3de0f684"
+      }
+    ]
+  },
+  {
+    "id": "thanks-and-amount",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 15476,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "pay mihir",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4bbc3113e55c",
+            "request_id": "req_2b5280d6ab21",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_be2a3858c86a",
+              "code": "Q_AMOUNT_MISSING",
+              "text": "How much should I send?",
+              "input": "number",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "thanks",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4bbc3113e55c",
+            "request_id": "req_2b5280d6ab21",
+            "state": "awaiting_answer",
+            "messages": [
+              {
+                "type": "text",
+                "text": "Tell me the payment amount and token, for example “10 USDC”. For an autopay, this is the amount of each payment."
+              }
+            ],
+            "question": {
+              "question_id": "q_be2a3858c86a",
+              "code": "Q_AMOUNT_MISSING",
+              "text": "How much should I send?",
+              "input": "number",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "please send 10 usd",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_4bbc3113e55c",
+            "request_id": "req_2b5280d6ab21",
+            "state": "awaiting_confirmation",
+            "messages": [],
+            "summary": {
+              "text": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote '10 usd' → 10 USDC.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia."
+              ],
+              "notes": [
+                "You wrote '10 usd' → 10 USDC."
+              ],
+              "footer": [
+                "Spent today after this: 10 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": []
+        },
+        "ms": 1000
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1973
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "clarify",
+          "value": null
+        },
+        "ms": 1568
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "answer",
+          "value": "10 usd"
+        },
+        "ms": 1685
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2472
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_82375eca",
+              "recipient": "address_5692aa47",
+              "chain": "unstated",
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 6705
+      }
+    ],
+    "submissions": []
+  },
+  {
+    "id": "new-request-messages",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 24693,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "send 10 USDC to Yash",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_92c179cc64bc",
+            "request_id": "req_0c2b1ed6b3ac",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_9d8c5360e42a",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"Yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "messages",
+        "text": "send 5 USDC to Mihir on Base",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_92c179cc64bc",
+            "request_id": "req_38a15f456af3",
+            "state": "awaiting_confirmation",
+            "messages": [
+              {
+                "type": "text",
+                "text": "I dropped the previous plan and started on your new request."
+              }
+            ],
+            "summary": {
+              "text": "Please confirm:\n1. Send 5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 5 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Send 5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia."
+              ],
+              "notes": [],
+              "footer": [
+                "Spent today after this: 5 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 USDC",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3797
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1933
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "Yash",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2266
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "new_request",
+          "value": null
+        },
+        "ms": 1592
+      },
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "5 USDC",
+              "number": "5",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3678
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1945
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "Mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2389
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_5204ce54",
+              "recipient": "address_a097eb58",
+              "chain": 84532,
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 7020
+      }
+    ],
+    "submissions": [
+      {
+        "envelope": {
+          "version": "1",
+          "request_id": "req_38a15f456af3",
+          "wallet_address": "0x00000000000000000000000000000000000000AA",
+          "created_at": "2026-11-05T17:30:00Z",
+          "intents": [
+            {
+              "intent_id": "i",
+              "step": 0,
+              "depends_on": [],
+              "token": "USDC",
+              "token_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              "chain_id": 84532,
+              "amount": {
+                "value": "5",
+                "base_units": "5000000",
+                "decimals": 6
+              },
+              "recipient": "0x91Ab2C3d4E5f60718293A4B5c6D7e8f9012377d0"
+            }
+          ]
+        },
+        "idempotencyKey": "req_38a15f456af3"
+      }
+    ]
+  },
+  {
+    "id": "negative-cancel",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 9695,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "send 10 USDC to Yash",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_b99dff97ca34",
+            "request_id": "req_2aa64a9134ef",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_dc949e7f3f04",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"Yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "please don’t cancel this",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_b99dff97ca34",
+            "request_id": "req_2aa64a9134ef",
+            "state": "awaiting_answer",
+            "messages": [
+              {
+                "type": "text",
+                "text": "I need a wallet address or ENS name for this recipient. To change the recipient, say “pay Riya instead”, using the name you want."
+              }
+            ],
+            "question": {
+              "question_id": "q_dc949e7f3f04",
+              "code": "Q_WHO_IS",
+              "text": "What is the wallet address for \"Yash\"? You can also enter an ENS name.",
+              "input": "chips",
+              "chips": [],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 USDC",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3902
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 1949
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "Yash",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2278
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "clarify",
+          "value": null
+        },
+        "ms": 1537
+      }
+    ],
+    "submissions": []
+  },
+  {
+    "id": "natural-token",
+    "passed": true,
+    "llm_config": {
+      "ollama_url": "http://127.0.0.1:11434",
+      "model": "qwen3:8b",
+      "temperature": 0,
+      "seed": 42,
+      "num_ctx": 8192,
+      "timeout_ms": 60000,
+      "think": false
+    },
+    "ms": 17413,
+    "turns": [
+      {
+        "channel": "messages",
+        "text": "send 10 to mihir",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_f2a6c074411f",
+            "request_id": "req_b0d0c5402452",
+            "state": "awaiting_answer",
+            "messages": [],
+            "question": {
+              "question_id": "q_15897a6f2b48",
+              "code": "Q_TOKEN",
+              "text": "Is 10 in USDC or ETH?",
+              "input": "chips",
+              "chips": [
+                {
+                  "id": "USDC",
+                  "label": "USDC",
+                  "disabled": false,
+                  "detail": ""
+                },
+                {
+                  "id": "ETH",
+                  "label": "ETH",
+                  "disabled": false,
+                  "detail": ""
+                }
+              ],
+              "attempt": 1,
+              "max_attempts": 4
+            }
+          }
+        }
+      },
+      {
+        "channel": "answers",
+        "text": "USDC please",
+        "response": {
+          "http": 200,
+          "body": {
+            "session_id": "ses_f2a6c074411f",
+            "request_id": "req_b0d0c5402452",
+            "state": "awaiting_confirmation",
+            "messages": [],
+            "summary": {
+              "text": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+              "lines": [
+                "1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia."
+              ],
+              "notes": [],
+              "footer": [
+                "Spent today after this: 10 of 300 USDC."
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "trace": [
+      {
+        "name": "amounts",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10",
+              "number": "10",
+              "relative": null,
+              "token": null,
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        },
+        "ms": 3674
+      },
+      {
+        "name": "conversation",
+        "output": {
+          "intent": "answer",
+          "value": "USDC"
+        },
+        "ms": 1612
+      },
+      {
+        "name": "request_type",
+        "output": {
+          "request_type": "actions",
+          "actions": [
+            "i"
+          ],
+          "also_balance": false
+        },
+        "ms": 2175
+      },
+      {
+        "name": "spans",
+        "output": {
+          "spans": [
+            {
+              "text": "mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        },
+        "ms": 2610
+      },
+      {
+        "name": "payments",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_7eeeaef0",
+              "recipient": "address_cae82232",
+              "chain": "unstated",
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        },
+        "ms": 7264
+      }
+    ],
+    "submissions": []
+  }
+]

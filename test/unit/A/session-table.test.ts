@@ -50,15 +50,16 @@ async function toQuestion(
   return { sid, rid: r.request_id, q };
 }
 
-const answerText = (h: Harness, sid: string, q: Question): Promise<SessionResult> =>
-  h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'x' });
+// Native answers isolate the runner's StepResult contract from conversational interpretation.
+const answerNative = (h: Harness, sid: string, q: Question): Promise<SessionResult> =>
+  h.manager.handleAnswer(sid, { question_id: q.question_id, chip_id: 'unoffered' });
 
 describe('StepResult kinds returned by an AnswerHandler', () => {
   it('§3.3 answer: request ANSWERED, state done, messages returned', async () => {
     const h = makeHarness();
     const { sid, q } = await toQuestion(h);
     h.set('s3', { onAnswer: async () => ({ kind: 'answer', messages: ['Your balance is 5 USDC.'] }) });
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(r).toMatchObject({ state: 'done', messages: text('Your balance is 5 USDC.') });
     expect(finals(h)).toEqual(['ANSWERED']);
   });
@@ -67,14 +68,14 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
     const h = makeHarness();
     const { sid, q } = await toQuestion(h);
     h.set('s3', { onAnswer: async () => ({ kind: 'error', code: 'INTERNAL_ERROR' }) });
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(r.error).toEqual({ code: 'INTERNAL_ERROR', message: ERROR_MESSAGE.INTERNAL_ERROR({}) });
     expect(finals(h)).toEqual(['FAILED']);
 
     const h2 = makeHarness();
     const b = await toQuestion(h2);
     h2.set('s3', { onAnswer: async () => ({ kind: 'error', code: 'INTERNAL_ERROR', final_state: 'ANSWERED' }) });
-    await answerText(h2, b.sid, b.q);
+    await answerNative(h2, b.sid, b.q);
     expect(finals(h2)).toEqual(['ANSWERED']);
   });
 
@@ -82,7 +83,7 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
     const h = makeHarness();
     const { sid, q } = await toQuestion(h);
     h.set('s3', { onAnswer: async () => ({ kind: 'discard', messages: ['custom'] }) });
-    expect(body(await answerText(h, sid, q)).messages).toEqual(text('custom'));
+    expect(body(await answerNative(h, sid, q)).messages).toEqual(text('custom'));
     expect(finals(h)).toEqual(['DISCARDED']);
   });
 
@@ -91,17 +92,17 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
     const { sid, q } = await toQuestion(h, question('Q_TOKEN'));
     const next = question('Q_WHO_IS');
     h.set('s3', { onAnswer: async () => ({ kind: 'question', question: next }) });
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(r.state).toBe('awaiting_answer');
     expect(r.question?.question_id).toBe(next.question_id);
-    expect((await answerText(h, sid, q)).kind).toBe('conflict');
+    expect((await answerNative(h, sid, q)).kind).toBe('conflict');
   });
 
   it('§3.3 summary from an AnswerHandler of S11: request AWAITING_CONFIRMATION with the summary', async () => {
     const h = makeHarness();
     const { sid, q } = await toQuestion(h, question('Q_ENS_CHANGED'), 's11');
     h.set('s11', { onAnswer: async () => ({ kind: 'summary', summary: SUMMARY }) });
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(r.state).toBe('awaiting_confirmation');
     expect(r.summary).toEqual(SUMMARY);
   });
@@ -110,7 +111,7 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
     const h = makeHarness();
     const { sid, q } = await toQuestion(h);
     h.set('s3', { onAnswer: async () => ({ kind: 'summary', summary: SUMMARY }) });
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(r.state).toBe('error');
     expect(r.error?.code).toBe('UNSUPPORTED_REQUEST');
     expect(h.log.lines.some((l) => l.event === 'unsupported_state')).toBe(true);
@@ -138,7 +139,7 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
     });
     const sid = await open(h);
     await h.manager.handleMessage(sid, msg('send'));
-    const r = body(await answerText(h, sid, q));
+    const r = body(await answerNative(h, sid, q));
     expect(seen).toEqual([{}, { progress: 'half', answered: true }]);
     expect(r.state).toBe('awaiting_confirmation');
     const names = stepNames(h.calls);
@@ -150,19 +151,22 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
 describe('§9.7 TOO_MANY_RETRIES', () => {
   const rising = (h: Harness): void =>
     h.set('s3', {
-      onAnswer: async (_c, q) => ({ kind: 'question', question: { ...question(q.code), attempt: q.attempt + 1 } }),
+      onAnswer: async (_c, q) => ({
+        kind: 'question',
+        question: { ...question(q.code), input: q.input, attempt: q.attempt + 1 },
+      }),
     });
 
   for (const via of ['answers', 'messages'] as const) {
     it(`C-201 / C-389 / C-420: via ${via}: attempts 1–4 are asked, the handler's attempt 5 ends FAILED, no question returned, a later message starts a new request`, async () => {
       const h = makeHarness();
-      let current = question('Q_AMOUNT_MISSING', 1);
+      let current: Question = { ...question('Q_AMOUNT_MISSING', 1), input: 'number' };
       const { sid, rid } = await toQuestion(h, current);
       rising(h);
       const send = (): Promise<SessionResult> =>
         via === 'answers'
-          ? h.manager.handleAnswer(sid, { question_id: current.question_id, text: 'zero' })
-          : h.manager.handleMessage(sid, msg('zero'));
+          ? h.manager.handleAnswer(sid, { question_id: current.question_id, text: '0' })
+          : h.manager.handleMessage(sid, msg('0'));
       const asked: number[] = [current.attempt];
       for (let i = 0; i < 3; i++) {
         const r = body(await send());

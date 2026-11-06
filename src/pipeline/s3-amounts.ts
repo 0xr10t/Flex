@@ -15,7 +15,7 @@ import { LlmFailed } from '../contracts/llm.js';
 import { TOKENS } from '../contracts/static-tables.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { Answer, Question, Span } from '../contracts/types.js';
-import { parseAmountText } from '../amounts/parse.js';
+import { isAbsoluteAmountPhrase, parseAmountText } from '../amounts/parse.js';
 import {
   advanceItem,
   applyAnswer,
@@ -27,6 +27,7 @@ import {
   type WorkItem,
 } from '../amounts/verify.js';
 import { buildAmountsPrompt } from '../llm/prompt-builder/amounts.js';
+import { COUNT_AFTER_RE, NUMBER_WORD_RUN_RE } from '../lexical/patterns.js';
 import { clauseIndexAt, escapeRe, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
 import { qid, unsupported } from '../lexical/step-util.js';
 
@@ -119,7 +120,7 @@ function fiatInside(ctx: StepContext, r: Range): 'USD' | 'OTHER' | null {
 }
 
 /** §8.4 rules 1–2: verbatim check and context filtering. */
-function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
+function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State | null {
   const text = ctx.req.typed_text;
   const used: Range[] = [];
   const st: S3State = {
@@ -148,6 +149,34 @@ function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
   }
   pay.sort((x, y) => x.r.start - y.r.start);
   for (const { r, a } of pay) {
+    // A returned phrase is not proof that its action/recipient text can be replaced by an amount.
+    // Syntax evidence preserves the existing fiat/precision questions even when numeric parsing cannot succeed.
+    const absolute = isAbsoluteAmountPhrase(a.phrase);
+    const relativeWords = a.phrase.match(/\b(?:all|half|max)\b/gi) ?? [];
+    const relativeWord = relativeWords[0]?.toLowerCase();
+    const sameRelative =
+      relativeWord === a.relative ||
+      (relativeWord === 'all' && a.relative === 'max') ||
+      (relativeWord === 'max' && a.relative === 'all');
+    const relativePhrase =
+      isContextAmount(a.phrase) || /^(?:all|half|max)(?:\s+of)?(?:\s+my)?\s+everything$/i.test(a.phrase.trim());
+    const relative = !absolute && relativePhrase && relativeWords.length === 1 && sameRelative ? a.relative : null;
+    const verifiedSpan = absolute || relative !== null;
+    if (!verifiedSpan) {
+      const hasDigits = ctx.req.scan.numeric_candidates.some((candidate) => inside(candidate, r));
+      const hasNumberWords = [...a.phrase.matchAll(NUMBER_WORD_RUN_RE)].some((match) => {
+        const start = r.start + match.index;
+        const end = start + match[0].length;
+        const value = parseAmountText(match[0], null);
+        return (
+          (value.ok || value.reason === 'zero') &&
+          !COUNT_AFTER_RE.test(text.slice(end)) &&
+          !ctx.req.scan.dates.some((date) => overlaps({ start, end }, date))
+        );
+      });
+      // Do not hide several amounts under one placeholder or expose an old value to later models.
+      if (hasDigits || hasNumberWords) return null;
+    }
     // §8.4 step 3 / §16.1: a non-USD fiat marker that S2 found inside the phrase wins over the LLM's `fiat` (R2-3),
     // so "send ₹500 to riya" asks Q_FIAT_OTHER even when LLM #1 says USD.
     const found = fiatInside(ctx, r);
@@ -156,11 +185,11 @@ function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
       newWorkItem(st.next_id++, {
         kind: 'typed',
         phrase: a.phrase,
-        span: spanOf(ctx, r),
-        number: a.number,
-        relative: a.relative,
-        llm_token: a.token,
-        fiat,
+        span: verifiedSpan ? spanOf(ctx, r) : null,
+        number: absolute ? a.number : null,
+        relative,
+        llm_token: verifiedSpan ? a.token : null,
+        fiat: verifiedSpan ? fiat : null,
       }),
     );
   }
@@ -196,7 +225,9 @@ async function s3Step(ctx: StepContext): Promise<StepResult> {
       if (e instanceof LlmFailed) return { kind: 'error', code: 'MODEL_FAILED' };
       throw e;
     }
-    st = initState(ctx, out);
+    const initialized = initState(ctx, out);
+    if (initialized === null) return unsupported(ctx, 's3', 'S3_AMOUNT_SPAN_UNVERIFIED');
+    st = initialized;
     req.step_state.s3 = st;
   }
 
