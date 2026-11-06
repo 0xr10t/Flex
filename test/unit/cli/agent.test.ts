@@ -12,7 +12,7 @@ import {
   type AgentApi,
   type AgentResponse,
 } from '../../../src/cli/agent/client.js';
-import { connectAgent, LaunchError, type AgentEndpoint } from '../../../src/cli/agent/launcher.js';
+import { agentConfigFile, connectAgent, LaunchError, type AgentEndpoint } from '../../../src/cli/agent/launcher.js';
 import { answerFor, Chat, render } from '../../../src/cli/chat.js';
 import { openCommand, openLocalPage } from '../../../src/cli/open.js';
 import { testConfig } from '../../fakes/context.js';
@@ -70,6 +70,17 @@ describe('agent replies in the box', () => {
       '[1] USDC',
       '[2] ETH',
       'type a number, or answer in your own words · or cancel',
+    ]);
+  });
+
+  it('puts each line of a multi-line question on its own row', () => {
+    const q = {
+      ...question('chips', ['Yes', 'No, re-enter']),
+      text: 'You have not paid this recipient before.\nWallet address: 0xdEaD',
+    };
+    expect(text(render(response({ state: 'awaiting_answer', question: q }))).slice(0, 2)).toEqual([
+      'You have not paid this recipient before.',
+      'Wallet address: 0xdEaD',
     ]);
   });
 
@@ -283,6 +294,13 @@ describe('agent launcher', () => {
   const silent = (async () => {
     throw new TypeError('fetch failed');
   }) as unknown as typeof fetch;
+
+  it('prefers AGENT_CONFIG, then the set-up config in the checkout, then ~/.agent-layer', () => {
+    const { file } = setup();
+    expect(agentConfigFile({ AGENT_CONFIG: '/x/agent.json' }, file)).toBe('/x/agent.json');
+    expect(agentConfigFile({}, file)).toBe(file);
+    expect(agentConfigFile({}, '/nowhere/agent.config.json')).toMatch(/\.agent-layer\/config\.json$/);
+  });
 
   it('reports config problems without starting anything', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'flexx-launch-'));

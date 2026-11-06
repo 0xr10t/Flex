@@ -328,6 +328,12 @@ describe('command box', () => {
     expect(quit).toBe(1);
   });
 
+  it('never lets a control character reach the screen', () => {
+    const repl = new Repl();
+    repl.notify([[{ text: 'one\ntwo\u001b[2Jthree', tone: 0 }]]);
+    expect(said(repl).at(-1)).toBe('● one two [2Jthree');
+  });
+
   it('adds lines that arrive on their own', () => {
     const repl = new Repl();
     repl.notify([[{ text: 'Connected to the agent', tone: 0 }]]);

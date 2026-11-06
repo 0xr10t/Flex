@@ -286,7 +286,10 @@ export function render(r: AgentResponse): Line[] {
   }
   if (r.state === 'awaiting_answer' && r.question) {
     const q = r.question;
-    out.push(line(t(q.text), t(q.attempt > 1 ? `  (try ${q.attempt} of ${q.max_attempts})` : '', 1)));
+    // question text can span lines (e.g. the address on its own line)
+    const [first = '', ...more] = q.text.split('\n');
+    out.push(line(t(first), t(q.attempt > 1 ? `  (try ${q.attempt} of ${q.max_attempts})` : '', 1)));
+    for (const l of more) out.push(plain(l));
     q.chips.forEach((c, i) => {
       const mark = t(`[${i + 1}] `, c.disabled ? 1 : 2);
       out.push(line(mark, t(c.label, c.disabled ? 1 : 0), t(c.detail ? `  ${c.detail}` : '', 1)));
@@ -295,7 +298,7 @@ export function render(r: AgentResponse): Line[] {
     out.push(plain(`${hint} · or cancel`, 1));
   }
   if (r.error) {
-    out.push(plain(r.error.message));
+    for (const l of r.error.message.split('\n')) out.push(plain(l));
     if (RETRYABLE.has(r.error.code)) out.push(line(t('Type '), t('y', 2), t(' to try again.')));
   }
   if (out.length === 0) out.push(plain('Done.', 1));
@@ -356,7 +359,7 @@ function describeFailure(err: unknown): Line[] {
           .slice(0, 8)
           .map((d) => plain(`- ${d}`, 1)),
         plain(
-          'It is ~/.agent-layer/config.json (or the file AGENT_CONFIG names); config.example.json shows every field.',
+          'Run node scripts/setup-testnet.mjs to write .local/agent.config.json from .env, or set AGENT_CONFIG.',
           1,
         ),
       ];

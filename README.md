@@ -107,7 +107,7 @@ npm link        # once: puts `flexx` on your PATH
 flexx
 ```
 
-`flexx` is a terminal client for the agent's UI API. It reads the agent's config (`AGENT_CONFIG`, default `~/.agent-layer/config.json`). If nothing answers on the agent's port, it starts `dist/src/index.js` with that config and stops it again on exit; an agent that was already running is left alone. If the config does not validate, the chat lists the failing fields instead of starting anything.
+`flexx` is a terminal client for the agent's UI API. It reads the agent's config: `AGENT_CONFIG` when set, else the `.local/agent.config.json` that `node scripts/setup-testnet.mjs` writes in this checkout, else `~/.agent-layer/config.json`. If nothing answers on the agent's port, it starts `dist/src/index.js` with that config and stops it again on exit; an agent that was already running is left alone. If the config does not validate, the chat lists the failing fields instead of starting anything.
 
 Type a request in your own words. A question shows numbered choices: type a number, several numbers (`1,3` or `all`) for a member list, or answer in words. A summary asks `[y] Yes  [n] No`; after a yes, `flexx` opens the wallet's MetaMask approval page (the agent's `execution.url`) in your browser. Commands: `/balance`, `/limits` (and `/limits <name> <value>`, or `/limits daily_max USDC 250` for one token), `/cancel`, `/new`, `/wallet`, `/status`, `/clear`, `/help`, `/exit`. Leaving closes the session, which clears its data in the agent.
 

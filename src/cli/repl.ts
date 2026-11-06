@@ -349,11 +349,17 @@ function hang(mark: Segment, lines: Line[], width: number): Line[] {
 }
 
 /** Splits a line into rows of at most `width` cells. */
+/** Control characters (a stray newline or escape) would move the terminal's cursor; they show as spaces. */
+const visible = (c: string): string => {
+  const code = c.codePointAt(0)!;
+  return code < 0x20 || (code >= 0x7f && code <= 0x9f) ? ' ' : c;
+};
+
 function wrap(line: Line, width: number): Line[] {
   const rows: Line[] = [[]];
   let used = 0;
   for (const seg of line) {
-    let rest = [...seg.text];
+    let rest = [...seg.text].map(visible);
     while (rest.length) {
       if (used === width) {
         rows.push([]);

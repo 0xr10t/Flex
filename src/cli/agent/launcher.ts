@@ -1,10 +1,11 @@
 // Finds the agent for the CLI, starting it when it is not running. It reads the agent's own config (env AGENT_CONFIG,
-// default ~/.agent-layer/config.json) for the address, the UI token file and the wallet's URL. If nothing answers on
+// else the checkout's .local/agent.config.json that `node scripts/setup-testnet.mjs` writes, else
+// ~/.agent-layer/config.json) for the address, the UI token file and the wallet's URL. If nothing answers on
 // the agent's port, it starts `dist/src/index.js` as a child process with that config, waits for it to come up, and
 // stops it again when the CLI exits. An agent that was already running is left alone.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, configPath, expandHome, loadConfig } from '../../config/load.js';
 import type { Config } from '../../contracts/types.js';
@@ -45,6 +46,14 @@ export interface LaunchOptions {
 }
 
 const DEFAULT_ENTRY = fileURLToPath(new URL('../../index.js', import.meta.url));
+/** The config the testnet setup script writes into this checkout (dist/src/cli/agent → the repository root). */
+const SETUP_CONFIG = fileURLToPath(new URL('../../../../.local/agent.config.json', import.meta.url));
+
+/** The agent config to use: AGENT_CONFIG when set, else this checkout's set-up config, else the spec default. */
+export function agentConfigFile(env: NodeJS.ProcessEnv = process.env, setupConfig = SETUP_CONFIG): string {
+  if (env.AGENT_CONFIG) return configPath(env);
+  return existsSync(setupConfig) ? setupConfig : configPath(env);
+}
 const POLL_MS = 250;
 
 /** True when anything answers HTTP on the agent's port (even 401: the agent wants its token). */
@@ -70,7 +79,7 @@ function readToken(config: Config): string {
 /** Connects to the agent, starting it first when needed. */
 export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpoint> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const file = opts.configFile ?? configPath();
+  const file = opts.configFile ?? agentConfigFile();
   let config: Config;
   try {
     config = loadConfig(file);
