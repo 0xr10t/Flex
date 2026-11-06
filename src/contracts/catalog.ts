@@ -340,6 +340,9 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   ATTACHMENT_UNSUPPORTED: (p) =>
     `I can only read text and PDF files. ${req(p, 'filename')} wasn't read, so nothing was done.`,
   URL_FETCH_FAILED: (p) => `I couldn't open link ${req(p, 'n')}, so nothing was done.`,
+  // Privacy fix 5: links can't be fetched through anon-rpc, so reading them is off unless `fetch.enabled` is set.
+  LINKS_OFF: (p) =>
+    `Opening links is turned off for privacy, so link ${req(p, 'n')} wasn't read and nothing was done. Paste its text instead.`,
   DOCUMENT_TOO_LARGE: (p) => `${req(p, 'item')} is too long for me to read safely.`,
   BALANCES_UNAVAILABLE: (p) => `I can't read your balances on ${req(p, 'chains')} right now. Try again in a moment.`,
   MAINNET_NOT_SUPPORTED: () => 'I only work on test networks for now: Sepolia, Base Sepolia and Arbitrum Sepolia.',
@@ -412,6 +415,8 @@ export const NOTES = {
   LIMIT_LIFTED: () => 'A limit was lifted once for this request.',
   CONTENT_AMOUNTS_UNUSED: () => "Amounts in the attached content weren't used.",
   CONTENT_UNREADABLE: (p: P) => `Couldn't read anything usable from ${req(p, 'item')}.`,
+  /** Privacy fix 5: links typed in the message are never opened. */
+  LINKS_NOT_OPENED: () => "Links in your message weren't opened. Paste their text if I should read it.",
 } as const;
 
 /** §9.6 step 7 / E4 skip reasons. SQ-07: duplicate-address reason wording not given by the spec. */

@@ -102,17 +102,19 @@ describe('S1 attachments (§8.2 step 1, C-058, C-361)', () => {
 });
 
 describe('S1 URLs (§8.2 steps 1 and 3, C-059, C-060, C-362, C-069, C-072)', () => {
-  it('typed https URL is replaced by [link N]; urls[] entries are links 1..u, typed ones continue (SQB-02)', async () => {
+  it('typed https URL is replaced by [link N] but never fetched (privacy fix 5); urls[] are links 1..u, typed ones continue (SQB-02)', async () => {
     const ctx = s1ctx(
       { text: 'pay what is in https://x.example/a.html, thanks', urls: ['https://y.example/b'] },
-      emptyCalls(2),
+      emptyCalls(1),
     );
     ctx.fetcher.pages.set('https://y.example/b', { ok: true, text: 'page B' });
     ctx.fetcher.pages.set('https://x.example/a.html', { ok: true, text: 'page A' });
     const r = await s1.step(ctx);
     expect(r.kind).toBe('continue');
     expect(ctx.req.typed_text).toBe('pay what is in [link 2], thanks');
-    expect(ctx.fetcher.calls).toEqual(['https://y.example/b', 'https://x.example/a.html']);
+    expect(ctx.fetcher.calls).toEqual(['https://y.example/b']);
+    expect(ctx.llm.recorded).toHaveLength(1);
+    expect(ctx.req.notes).toEqual(["Links in your message weren't opened. Paste their text if I should read it."]);
     expect(ctx.repos.tables.db8_prompts).toHaveLength(1);
     expect(ctx.repos.tables.db8_prompts[0]).toMatchObject({ kind: 'typed', text: 'pay what is in [link 2], thanks' });
   });
@@ -126,12 +128,77 @@ describe('S1 URLs (§8.2 steps 1 and 3, C-059, C-060, C-362, C-069, C-072)', () 
     expect(ctx.fetcher.calls).toEqual([]);
   });
 
-  it('http:// link typed in the text → URL_FETCH_FAILED with its link number', async () => {
+  it('privacy fix 5: an http:// link typed in the text is not opened and is not an error', async () => {
     const ctx = s1ctx({ text: 'see http://plain.example/x now' });
     const r = await s1.step(ctx);
-    expect(r).toMatchObject({ kind: 'error', code: 'URL_FETCH_FAILED', params: { n: '1' } });
+    expect(r).toEqual({ kind: 'continue' });
     expect(ctx.fetcher.calls).toEqual([]);
+    expect(ctx.req.typed_text).toBe('see [link 1] now');
+    expect(ctx.req.notes).toEqual(["Links in your message weren't opened. Paste their text if I should read it."]);
+    expect(ctx.repos.tables.db8_prompts).toHaveLength(1);
+  });
+
+  it('privacy fix 5: several typed links are never opened, one note, no Q-LLM call', async () => {
+    const ctx = s1ctx({ text: 'pay per https://a.example/1 and https://b.example/2 and https://c.example/3' });
+    expect(await s1.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.fetcher.calls).toEqual([]);
+    expect(ctx.llm.recorded).toEqual([]);
+    expect(ctx.req.untrusted).toEqual([]);
+    expect(ctx.req.notes).toHaveLength(1);
+  });
+
+  it('privacy fix 5: with fetch.enabled false, a urls[] link → LINKS_OFF; nothing fetched, nothing stored', async () => {
+    const ctx = s1ctx({ text: 'pay this invoice', urls: ['https://invoice.example/1'] }, emptyCalls(1));
+    ctx.config.fetch.enabled = false;
+    ctx.fetcher.pages.set('https://invoice.example/1', { ok: true, text: 'pay bob.eth 5 usdc' });
+    const r = await s1.step(ctx);
+    expect(r).toEqual({ kind: 'error', code: 'LINKS_OFF', params: { n: '1' } });
+    expect(ctx.fetcher.calls).toEqual([]);
+    expect(ctx.llm.recorded).toEqual([]);
     expect(ctx.repos.tables.db8_prompts).toHaveLength(0);
+    expect(ctx.req.input).toBeUndefined();
+    if (r.kind === 'error') {
+      expect(ERROR_MESSAGE.LINKS_OFF(r.params ?? {})).toBe(
+        "Opening links is turned off for privacy, so link 1 wasn't read and nothing was done. Paste its text instead.",
+      );
+    }
+  });
+
+  it('privacy fix 5: with fetch.enabled false, LINKS_OFF names the first urls[] link after the typed ones are skipped', async () => {
+    const ctx = s1ctx({ text: 'see https://typed.example/', urls: ['https://a.example/', 'https://b.example/'] });
+    ctx.config.fetch.enabled = false;
+    expect(await s1.step(ctx)).toEqual({ kind: 'error', code: 'LINKS_OFF', params: { n: '1' } });
+    expect(ctx.fetcher.calls).toEqual([]);
+  });
+
+  it('privacy fix 5: with fetch.enabled false, typed links alone are fine (not opened, note)', async () => {
+    const ctx = s1ctx({ text: 'send 5 usdc to mihir, receipt at https://shop.example/r/1' });
+    ctx.config.fetch.enabled = false;
+    expect(await s1.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.fetcher.calls).toEqual([]);
+    expect(ctx.req.notes).toEqual(["Links in your message weren't opened. Paste their text if I should read it."]);
+  });
+
+  it('privacy fix 5: the secret scan still comes first when links are off (a key in a link → SECRET_DETECTED)', async () => {
+    const key = 'ab'.repeat(32);
+    for (const inp of [{ urls: [`https://a.example/?k=${key}`] }, { text: `see https://a.example/?k=${key}` }]) {
+      const ctx = s1ctx(inp);
+      ctx.config.fetch.enabled = false;
+      expect(await s1.step(ctx)).toEqual({ kind: 'error', code: 'SECRET_DETECTED' });
+      expect(ctx.fetcher.calls).toEqual([]);
+    }
+  });
+
+  it('privacy fix 5: an http:// urls[] link is still URL_FETCH_FAILED when links are off', async () => {
+    const ctx = s1ctx({ urls: ['http://plain.example/'] });
+    ctx.config.fetch.enabled = false;
+    expect(await s1.step(ctx)).toMatchObject({ kind: 'error', code: 'URL_FETCH_FAILED', params: { n: '1' } });
+  });
+
+  it('no links → no note', async () => {
+    const ctx = s1ctx({ text: 'send 5 usdc to mihir' });
+    await s1.step(ctx);
+    expect(ctx.req.notes).toEqual([]);
   });
 
   it('a fetch failure → URL_FETCH_FAILED with the failing link number (C-362, C-072)', async () => {
@@ -326,7 +393,7 @@ describe('S1 secret scan of links (SQ-O-06)', () => {
   });
 
   it('SQ-O-06 a typed URL with a key is blocked (already was) and nothing is fetched', async () => {
-    const ctx = s1ctx({ text: `see https://a.example/?k=${HEX64} please` }, emptyCalls(1));
+    const ctx = s1ctx({ text: `see https://a.example/?k=${HEX64} please` });
     const r = await s1.step(ctx);
     expect(r.kind === 'error' && r.code).toBe('SECRET_DETECTED');
     expect(ctx.fetcher.calls).toEqual([]);

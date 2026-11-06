@@ -72,7 +72,8 @@ export interface Config {
     indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
-  fetch: { max_bytes: number; timeout_ms: number; max_redirects: number };
+  /** `enabled: false` turns link reading off (privacy fix 5: a fetch goes straight from this machine). */
+  fetch: { enabled: boolean; max_bytes: number; timeout_ms: number; max_redirects: number };
   defaults: { timezone: string; autopay_time_of_day: string };
 }
 
@@ -523,6 +524,7 @@ export type ErrorCode =
   | 'SECRET_DETECTED'
   | 'ATTACHMENT_UNSUPPORTED'
   | 'URL_FETCH_FAILED'
+  | 'LINKS_OFF'
   | 'DOCUMENT_TOO_LARGE'
   | 'BALANCES_UNAVAILABLE'
   | 'MAINNET_NOT_SUPPORTED'
@@ -560,6 +562,7 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'SECRET_DETECTED',
   'ATTACHMENT_UNSUPPORTED',
   'URL_FETCH_FAILED',
+  'LINKS_OFF',
   'DOCUMENT_TOO_LARGE',
   'BALANCES_UNAVAILABLE',
   'MAINNET_NOT_SUPPORTED',

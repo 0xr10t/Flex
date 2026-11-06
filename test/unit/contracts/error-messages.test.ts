@@ -15,6 +15,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
     "I can only read text and PDF files. photo.png wasn't read, so nothing was done.",
   ],
   ['URL_FETCH_FAILED', { n: '2' }, "I couldn't open link 2, so nothing was done."],
+  [
+    'LINKS_OFF',
+    { n: '2' },
+    "Opening links is turned off for privacy, so link 2 wasn't read and nothing was done. Paste its text instead.",
+  ],
   ['DOCUMENT_TOO_LARGE', { item: 'pasted text 1' }, 'pasted text 1 is too long for me to read safely.'],
   [
     'BALANCES_UNAVAILABLE',
@@ -92,10 +97,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
 ];
 
 describe('C-395 §15 error messages', () => {
-  it('C-395 §15: the catalogue has exactly 35 codes, each with a message', () => {
-    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 37 cases over 35 codes.
+  it('C-395 §15: the catalogue has exactly 36 codes, each with a message', () => {
+    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 38 cases over 36 codes.
+    // Privacy fix 5 adds LINKS_OFF.
     const codes = [...new Set(CASES.map(([c]) => c))].sort();
-    expect(codes).toHaveLength(35);
+    expect(codes).toHaveLength(36);
     expect([...ERROR_CODES].sort()).toEqual(codes);
     expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });

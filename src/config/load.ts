@@ -110,8 +110,9 @@ const CONFIG_SCHEMA = {
     fetch: {
       type: 'object',
       additionalProperties: false,
-      required: ['max_bytes', 'timeout_ms', 'max_redirects'],
+      required: ['enabled', 'max_bytes', 'timeout_ms', 'max_redirects'],
       properties: {
+        enabled: { type: 'boolean' },
         max_bytes: POS_INT,
         timeout_ms: POS_INT,
         max_redirects: { type: 'integer', minimum: 0 },
