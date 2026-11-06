@@ -76,10 +76,8 @@ export function registerA55toA59(): void {
       await h.finish();
     });
 
-    // SQ-O-03 (spec conflict): §20.2 A-57 expects two i intents, but "and" splits the clauses (§8.3 rule 1) so the
-    // recipient's clause holds the other amount and check P4 (§8.9) rejects the pairing; §0 precedence puts §8 above
-    // §20. The code ends in PAIRING_FAILED, so the row is marked as an expected failure (not a faked pass).
-    it.fails('A-57: "10 usdc and 0.01 eth to mihir" -> two i intents with different tokens', async () => {
+    // SQ-O-03 F-11: one recipient, so the pairing is unambiguous and nothing is asked.
+    it('A-57: "10 usdc and 0.01 eth to mihir" -> two i intents with different tokens', async () => {
       const h = await harness('A-57');
       const r = await h.say('send 10 usdc and 0.01 eth to mihir');
       expect(h.asked).toEqual([]);
@@ -137,6 +135,24 @@ export function registerA55toA59(): void {
       expect(k.cre_job.cron).toBe('0 10 28 * *');
       expect(k.limits.per_period_cap).toEqual(usdc('10'));
       expect(k.limits.total_cap).toEqual(usdc('30')); // Nov 28, Dec 28, Jan 28
+      await h.finish();
+    });
+
+    it('SQ-O-03 F-11: "send 10 usdc and 20 usdc to mihir and aradhya" -> Q_PAIR_AMOUNT per amount, then the pairing stands', async () => {
+      const h = await harness('SQ-O-03');
+      const r1 = await h.say('send 10 usdc and 20 usdc to mihir and aradhya');
+      expect(r1.body.question?.code).toBe('Q_PAIR_AMOUNT');
+      expect(r1.body.question?.text).toBe('Who should get 10 USDC?');
+      expect(r1.body.question?.chips.map((c) => c.label)).toEqual(['Mihir', 'Aradhya']);
+      const r2 = await h.answer(r1, { chipLabel: 'Mihir' });
+      expect(r2.body.question?.code).toBe('Q_PAIR_AMOUNT');
+      expect(r2.body.question?.text).toBe('Who should get 20 USDC?');
+      const r3 = await h.answer(r2, { chipLabel: 'Aradhya' });
+      expect(r3.body.state).toBe('awaiting_confirmation');
+      expect(lines(r3)).toEqual([
+        'Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.',
+        'Send 20 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.',
+      ]);
       await h.finish();
     });
 

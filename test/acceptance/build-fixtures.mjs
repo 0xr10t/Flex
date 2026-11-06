@@ -248,7 +248,13 @@ F['A-57'] = [
   T('to mihir', ['i']),
   S('to mihir', ['mihir', 'name']),
   P(K, pay('i', a0, r0), pay('i', a1, r0)),
-  P('CORRECTION:', pay('i', a0, r0), pay('i', a1, r0)), // P4 rejects the first output (SQ-O-03)
+];
+// SQ-O-03 F-11: amounts and recipients in different clauses with more than one recipient -> Q_PAIR_AMOUNT per amount.
+F['SQ-O-03'] = [
+  A('send 10 usdc and 20 usdc to mihir and aradhya', ['10 usdc', '10', USDC], ['20 usdc', '20', USDC]),
+  T('to mihir and aradhya', ['i']),
+  S('to mihir and aradhya', ['mihir', 'name'], ['aradhya', 'name']),
+  P(K, pay('i', a0, r0), pay('i', a1, r1)),
 ];
 F['A-58'] = mihirK('pay mihir 10 usdc every month on the 31st for 3 months', {
   frequency: 'monthly',
