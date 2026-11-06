@@ -1,0 +1,29 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send 10 usdc to aradhya and swap eth",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "10 usdc",
+            "number": "10",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "swap",
+      "output": {
+        "request_type": "unsupported",
+        "actions": [],
+        "also_balance": false
+      }
+    }
+  ]
+}

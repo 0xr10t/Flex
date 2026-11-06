@@ -1,0 +1,66 @@
+{
+  "calls": [
+    {
+      "name": "quarantine",
+      "match": "Invoice #42",
+      "output": {
+        "items": [
+          {
+            "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111",
+            "ens_name": null,
+            "amount": "120",
+            "token": "USDC"
+          },
+          {
+            "address": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222",
+            "ens_name": null,
+            "amount": null,
+            "token": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "amounts",
+      "match": "pay this invoice",
+      "output": {
+        "amounts": []
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "pay this invoice",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "pay this invoice",
+      "output": {
+        "spans": []
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

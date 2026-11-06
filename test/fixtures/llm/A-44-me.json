@@ -1,0 +1,42 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send 10 usdc to me",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "10 usdc",
+            "number": "10",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "to me",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "to me",
+      "output": {
+        "spans": [
+          {
+            "text": "me",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    }
+  ]
+}

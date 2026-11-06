@@ -1,0 +1,20 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "swap my eth for usdc",
+      "output": {
+        "amounts": []
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "swap",
+      "output": {
+        "request_type": "unsupported",
+        "actions": [],
+        "also_balance": false
+      }
+    }
+  ]
+}

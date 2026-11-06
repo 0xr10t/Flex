@@ -1,0 +1,36 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send 5 more",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "5",
+            "number": "5",
+            "relative": null,
+            "token": null,
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "more",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "more",
+      "output": {
+        "spans": []
+      }
+    }
+  ]
+}

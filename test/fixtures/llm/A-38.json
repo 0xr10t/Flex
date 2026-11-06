@@ -1,0 +1,77 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send 10 each to aradhya and mihir",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "10",
+            "number": "10",
+            "relative": null,
+            "token": null,
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "each to",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "each to",
+      "output": {
+        "spans": [
+          {
+            "text": "aradhya",
+            "kind": "name",
+            "role": "payee"
+          },
+          {
+            "text": "mihir",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          },
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:1",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

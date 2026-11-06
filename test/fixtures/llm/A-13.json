@@ -1,0 +1,52 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "stop paying mihir",
+      "output": {
+        "amounts": []
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "stop paying",
+      "output": {
+        "request_type": "actions",
+        "actions": ["l"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "stop paying",
+      "output": {
+        "spans": [
+          {
+            "text": "mihir",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "l",
+            "amount": null,
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

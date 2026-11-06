@@ -1,0 +1,74 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "Pay Aradhya 50 usdc for the design work she did for my friend Kabir, she charged 500 last time",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "50 usdc",
+            "number": "50",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          },
+          {
+            "phrase": "500",
+            "number": "500",
+            "relative": null,
+            "token": null,
+            "fiat": null,
+            "role": "context"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "design work",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "design work",
+      "output": {
+        "spans": [
+          {
+            "text": "Aradhya",
+            "kind": "name",
+            "role": "payee"
+          },
+          {
+            "text": "Kabir",
+            "kind": "name",
+            "role": "mentioned"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "for the design work",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

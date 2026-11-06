@@ -1,0 +1,80 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send 10 usdc and 0.01 eth to mihir",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "10 usdc",
+            "number": "10",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          },
+          {
+            "phrase": "0.01 eth",
+            "number": "0.01",
+            "relative": null,
+            "token": "ETH",
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "to mihir",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "to mihir",
+      "output": {
+        "spans": [
+          {
+            "text": "mihir",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          },
+          {
+            "kind": "i",
+            "amount": "$amount:1",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "send all my usdc to everyone under iitr.eth",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "all my usdc",
+            "number": null,
+            "relative": "all",
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "everyone under",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "everyone under",
+      "output": {
+        "spans": [
+          {
+            "text": "iitr.eth",
+            "kind": "group",
+            "role": "payee"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": "unstated",
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}
