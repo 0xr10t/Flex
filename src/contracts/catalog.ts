@@ -4,7 +4,7 @@
 // SQ-UI-01: recipient questions explicitly request a wallet address and explain the accepted alternatives.
 // SQ-UI-02: new-recipient confirmation wording, retaining the full address and ENS chain context.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
-// Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
+// Items marked SQ-nn are interim answers to open spec questions.
 
 import type { Answer, Chip, ErrorCode, QuestionCode, QuestionId, QuestionInput, Question, Token } from './types.js';
 
@@ -372,7 +372,8 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   ETH_NOT_BRIDGEABLE: () => 'ETH cannot be bridged. Add ETH on the payment network or choose another network.',
   LIMIT_GROUP_SIZE: () => 'That group has more recipients than a single payment can accept.',
   LIMIT_INTENTS: () => 'This request needs more than 16 steps. Split it into smaller requests.',
-  EXECUTION_PLAN_INVALID: () => 'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
+  EXECUTION_PLAN_INVALID: () =>
+    'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
   AUTOPAY_NO_OCCURRENCES: () => 'That schedule has no payment dates. Check the start and end.',
   // SQ-08, F-10: `chains` per chain, "Base Sepolia (80) and Arbitrum Sepolia (60)" (insufficientFundsParams);
   // empty or absent → "…, and can use 0." with no "across" part.

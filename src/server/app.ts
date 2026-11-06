@@ -33,7 +33,7 @@ import { validateLimits } from './settings.js';
 
 /** §14.1 "Max body 20 MB". */
 export const MAX_BODY_BYTES = 20 * 1024 * 1024;
-export const REPORTS_PATH = '/v1/execution/reports';
+const REPORTS_PATH = '/v1/execution/reports';
 
 const HTTP_ERROR_NAME: Readonly<Record<number, string>> = {
   400: 'Bad Request',

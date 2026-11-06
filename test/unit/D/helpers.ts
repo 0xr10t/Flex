@@ -1,7 +1,6 @@
 // Lane D test helpers: scenario builders that fill an AgentRequest the way Lanes B/C would (S3–S7 outputs),
 // plus hand-built internal plans for S10–S12. Spec refs: §8.0, §8.9, §12.3, §19 setup.
 
-import { DateTime } from 'luxon';
 import { getAddress } from 'viem';
 import { expect } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
@@ -649,7 +648,11 @@ export function planK(
 ): PlanK {
   const token = o.token ?? 'USDC';
   const schedule = o.schedule ?? E6_SCHEDULE;
-  const executionSchedule = fixedSchedule(schedule, schedule.end.type === 'until_cancelled' ? ctx.limits.autopay_max_weeks : 3000, 3600).legs[0]!;
+  const executionSchedule = fixedSchedule(
+    schedule,
+    schedule.end.type === 'until_cancelled' ? ctx.limits.autopay_max_weeks : 3000,
+    3600,
+  ).legs[0]!;
   const amount = o.amountPh ?? mintAmount(ctx, o.amount ?? '10', token);
   const decimals = token === 'USDC' ? 6 : 18;
   const fee = ctx.config.autopay!.fee[token];
@@ -662,15 +665,27 @@ export function planK(
     token,
     chain_id,
     recipients: [{ recipient, amount, reused_from_chain_id: null }],
-    fee: { to: ctx.config.autopay!.fee_collector, amount: mintAmount(ctx, fee, token, { source: 'derived', origin: 'autopay_fee' }) },
+    fee: {
+      to: ctx.config.autopay!.fee_collector,
+      amount: mintAmount(ctx, fee, token, { source: 'derived', origin: 'autopay_fee' }),
+    },
     schedule: executionSchedule,
     limits: {
-      max_per_run: mintAmount(ctx, fromBaseUnits(maxPerRun, decimals), token, { source: 'derived', origin: 'autopay_max_per_run' }),
-      max_total: mintAmount(ctx, o.total ?? fromBaseUnits(maxPerRun * BigInt(executionSchedule.max_runs), decimals), token, { source: 'derived', origin: 'autopay_max_total' }),
+      max_per_run: mintAmount(ctx, fromBaseUnits(maxPerRun, decimals), token, {
+        source: 'derived',
+        origin: 'autopay_max_per_run',
+      }),
+      max_total: mintAmount(
+        ctx,
+        o.total ?? fromBaseUnits(maxPerRun * BigInt(executionSchedule.max_runs), decimals),
+        token,
+        { source: 'derived', origin: 'autopay_max_total' },
+      ),
     },
     executor: 'chainlink-cre',
     display: {
-      schedule, payment_index: 0,
+      schedule,
+      payment_index: 0,
       per_period_cap: mintAmount(ctx, o.per_period ?? '10', token, {
         source: 'derived',
         origin: 'autopay_per_period_cap',
@@ -721,12 +736,4 @@ export function expectQuestion(
 /** Log line assertion for INTERNAL_ERROR rule IDs (§11.1). */
 export function expectRuleLogged(ctx: TestContext, rule_id: string): void {
   expect(ctx.log.lines.some((l) => l.rule_id === rule_id)).toBe(true);
-}
-
-export function instant(iso: string): number {
-  return DateTime.fromISO(iso, { setZone: true }).toMillis();
-}
-
-export function db1Amount(ctx: TestContext, ph: string): string | undefined {
-  return ctx.repos.db1.get(ph as AmountPh)?.amount;
 }

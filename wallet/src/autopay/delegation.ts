@@ -11,7 +11,7 @@ import {
 } from '@metamask/smart-accounts-kit/utils';
 import { decodeAbiParameters, decodeFunctionData, keccak256, type Hex } from 'viem';
 import { executionsOf, redeemCalldata, type SignedDelegation } from '../chain/redeem.v2.js';
-import { intentHash, type Intent } from '../schemas/intent.v2.js';
+import { intentHash, type Intent } from '@flex/protocol/schemas/intent.v2';
 import { DELEGATION_MANAGER_ABI } from './abi.js';
 
 export type { SignedDelegation };

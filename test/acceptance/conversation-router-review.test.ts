@@ -121,9 +121,9 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
       ]);
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents[0]).toMatchObject({
-token: 'USDC',
-recipients: [{ recipient: RIYA, amount: { value: '10' } }]
-});
+        token: 'USDC',
+        recipients: [{ recipient: RIYA, amount: { value: '10' } }],
+      });
       expect(h.llm.remaining()).toEqual([]);
     },
   );
@@ -167,8 +167,8 @@ recipients: [{ recipient: RIYA, amount: { value: '10' } }]
     expect(summary.body.state).toBe('awaiting_confirmation');
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents[0]).toMatchObject({
-recipients: [{ recipient: RIYA, amount: { value: '10' } }]
-});
+      recipients: [{ recipient: RIYA, amount: { value: '10' } }],
+    });
     expect(h.repos.db2.findByNameKey('yash')).toEqual([]);
   });
 
@@ -196,8 +196,8 @@ recipients: [{ recipient: RIYA, amount: { value: '10' } }]
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents[0]).toMatchObject({
-recipients: [{ recipient: address, amount: { value: '10' } }]
-});
+        recipients: [{ recipient: address, amount: { value: '10' } }],
+      });
     },
   );
 
@@ -261,9 +261,9 @@ recipients: [{ recipient: address, amount: { value: '10' } }]
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents[0]).toMatchObject({
-chain_id: ARB,
-recipients: [{ recipient: MIHIR, amount: { value: '20' } }]
-});
+        chain_id: ARB,
+        recipients: [{ recipient: MIHIR, amount: { value: '20' } }],
+      });
     },
   );
 

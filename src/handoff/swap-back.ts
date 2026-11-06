@@ -50,7 +50,10 @@ function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
         token: it.token,
         token_address: tokenAddress(ctx, it.token, it.chain_id),
         chain_id: it.chain_id,
-        recipients: it.recipients.map((p) => ({ recipient: addressOf(ctx, p.recipient), amount: amountOf(ctx, p.amount) })),
+        recipients: it.recipients.map((p) => ({
+          recipient: addressOf(ctx, p.recipient),
+          amount: amountOf(ctx, p.amount),
+        })),
       };
     case 'j':
       return {
@@ -75,7 +78,10 @@ function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
         token: it.token,
         token_address: tokenAddress(ctx, it.token, it.chain_id),
         chain_id: it.chain_id,
-        recipients: it.recipients.map((p) => ({ recipient: addressOf(ctx, p.recipient), amount: amountOf(ctx, p.amount) })),
+        recipients: it.recipients.map((p) => ({
+          recipient: addressOf(ctx, p.recipient),
+          amount: amountOf(ctx, p.amount),
+        })),
         fee: { to: getAddress(it.fee.to), amount: amountOf(ctx, it.fee.amount) },
         schedule: {
           start_at: it.schedule.start_at,

@@ -37,16 +37,16 @@ function db6Rows(ctx: StepContext, it: EnvelopeIntent, deliverable: string, now:
   switch (it.intent_id) {
     case 'i':
       return it.recipients.map((payee) => ({
-          ...base,
-          kind: 'payment',
-          counts_toward_limit: true,
-          chain_id: it.chain_id,
-          token: it.token,
-          amount: payee.amount.value,
-          recipient_address: payee.recipient,
-          intent_id: 'i',
-          autopay_id: null,
-        }));
+        ...base,
+        kind: 'payment',
+        counts_toward_limit: true,
+        chain_id: it.chain_id,
+        token: it.token,
+        amount: payee.amount.value,
+        recipient_address: payee.recipient,
+        intent_id: 'i',
+        autopay_id: null,
+      }));
     case 'j': {
       const shared = {
         ...base,
@@ -80,8 +80,14 @@ function chainOfPayment(ctx: StepContext, plan: InternalIntent[], p: Payment): C
     if (it.intent_id === 'j' || it.intent_id !== p.kind) continue;
     if (it.intent_id === 'l') {
       if (it.recipient === p.recipient) return it.chain_id;
-    } else if (it.recipients.some((payee) => payee.amount === p.amount &&
-      (payee.recipient === p.recipient || ctx.repos.db3.get(payee.recipient)?.group_placeholder === p.recipient))) return it.chain_id;
+    } else if (
+      it.recipients.some(
+        (payee) =>
+          payee.amount === p.amount &&
+          (payee.recipient === p.recipient || ctx.repos.db3.get(payee.recipient)?.group_placeholder === p.recipient),
+      )
+    )
+      return it.chain_id;
   }
   return null;
 }
@@ -106,7 +112,10 @@ function prepareHandoff(ctx: StepContext, plan: InternalIntent[], envelope: Hand
           recipient_address: it.recipients[0]!.recipient,
           chain_id: it.chain_id,
           token: it.token,
-          amount_per_payment: fromBaseUnits(it.recipients.reduce((total, p) => total + BigInt(p.amount.base_units), 0n), decimalsOf(it.token)),
+          amount_per_payment: fromBaseUnits(
+            it.recipients.reduce((total, p) => total + BigInt(p.amount.base_units), 0n),
+            decimalsOf(it.token),
+          ),
           schedule_json: JSON.stringify(it.schedule),
           fee: it.fee.amount.value,
           recipients_json: JSON.stringify(it.recipients),
@@ -137,7 +146,11 @@ function envelopeFor(ctx: StepContext, plan: InternalIntent[]): HandoffEnvelope 
   if (ctx.req.envelope) return ctx.req.envelope;
   try {
     const envelope = swapBack(ctx, plan);
-    if (!validators.handoffEnvelope(envelope) || !checkEnvelope(envelope, { nowMs: ctx.now().toMillis(), delegationHashes: placeholderHashes(envelope) }).ok) return null;
+    if (
+      !validators.handoffEnvelope(envelope) ||
+      !checkEnvelope(envelope, { nowMs: ctx.now().toMillis(), delegationHashes: placeholderHashes(envelope) }).ok
+    )
+      return null;
     ctx.req.envelope = envelope;
     return envelope;
   } catch {

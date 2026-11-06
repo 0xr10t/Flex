@@ -1,7 +1,7 @@
 // Implements: OQ-01 (the user approves each payment in the wallet, then the wallet signs). How the user is asked is OQ-02,
 // which is still open, so this is the seam a real approval screen plugs into.
 
-import type { EnvelopeIntent, HandoffEnvelope } from './schemas/envelope.js';
+import type { EnvelopeIntent, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 
 export interface ApprovalRequest {
   envelope: HandoffEnvelope;

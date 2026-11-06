@@ -139,7 +139,8 @@ export interface Db5Limits {
 // ───────────────────────────── DB6 ─────────────────────────────
 
 /** autopay_prefund is retained only for historical v1 records. */
-export type Db6Kind = 'payment' | 'bridge_out' | 'bridge_buffer' | 'bridge_fee' | 'autopay_prefund' | 'autopay_payment' | 'autopay_fee';
+export type Db6Kind =
+  'payment' | 'bridge_out' | 'bridge_buffer' | 'bridge_fee' | 'autopay_prefund' | 'autopay_payment' | 'autopay_fee';
 
 export interface Db6Row {
   id: number;

@@ -245,10 +245,21 @@ describe('SQ-R-04 duplicate autopay reports', () => {
     h.repos.db5.putAll(limits, h.nowIso);
     const report: ExecutionReport = {
       kind: 'autopay_payment',
-      request_id: 'req_00000000aaaa', status: 'executed',
+      request_id: 'req_00000000aaaa',
+      status: 'executed',
       tx_hash: `0x${'aa'.repeat(32)}`,
       executed_at: h.nowIso,
-      autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', token: 'USDC', chain_id: BASE },
+      autopay: {
+        autopay_id: id,
+        plan_id: planIdFor(id),
+        executor_address: DELEGATE,
+        slot: 0,
+        status: 'active',
+        amount: '10',
+        fee: '0.05',
+        token: 'USDC',
+        chain_id: BASE,
+      },
     };
     expect(await h.report(report)).toBe(204);
     const first = h.rows('SELECT * FROM db6_spend_log');
@@ -267,10 +278,21 @@ describe('SQ-R-04 duplicate autopay reports', () => {
     expect(
       await h.report({
         kind: 'autopay_payment',
-      request_id: 'req_00000000aaaa', status: 'executed',
+        request_id: 'req_00000000aaaa',
+        status: 'executed',
         tx_hash,
         executed_at: h.nowIso,
-        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', token: 'USDC', chain_id: BASE },
+        autopay: {
+          autopay_id: id,
+          plan_id: planIdFor(id),
+          executor_address: DELEGATE,
+          slot: 0,
+          status: 'active',
+          amount: '10',
+          fee: '0.05',
+          token: 'USDC',
+          chain_id: BASE,
+        },
       }),
     ).toBe(204);
     expect(h.rows('SELECT * FROM db6_spend_log')).toHaveLength(before.length + 2);
@@ -295,9 +317,12 @@ describe('R1-F2 and R4-F2 consent through the request runner', () => {
     expect((await h.confirm(response, 'yes')).body.state).toBe('done');
     expect(h.envelope.intents).toMatchObject([
       {
-intent_id: 'i',
-recipients: [{ recipient: ARADHYA, amount: { value: '10' } }, { recipient: MIHIR, amount: { value: '20' } }]
-},
+        intent_id: 'i',
+        recipients: [
+          { recipient: ARADHYA, amount: { value: '10' } },
+          { recipient: MIHIR, amount: { value: '20' } },
+        ],
+      },
     ]);
   });
 
@@ -315,10 +340,21 @@ recipients: [{ recipient: ARADHYA, amount: { value: '10' } }, { recipient: MIHIR
     expect(
       await h.report({
         kind: 'autopay_payment',
-      request_id: 'req_00000000aaaa', status: 'executed',
+        request_id: 'req_00000000aaaa',
+        status: 'executed',
         tx_hash: `0x${'cc'.repeat(32)}`,
         executed_at: h.nowIso,
-        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', chain_id: BASE, token: 'USDC', amount: '20', fee: '0.05' },
+        autopay: {
+          autopay_id: id,
+          plan_id: planIdFor(id),
+          executor_address: DELEGATE,
+          slot: 0,
+          status: 'active',
+          chain_id: BASE,
+          token: 'USDC',
+          amount: '20',
+          fee: '0.05',
+        },
       }),
     ).toBe(204);
     const second = await h.answer(first, { chipLabel: 'Yes' });

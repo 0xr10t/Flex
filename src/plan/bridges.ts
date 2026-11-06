@@ -16,7 +16,7 @@ export interface PlannedBridge {
 }
 
 /** (100 + b) / 100 as an exact fraction, for a decimal-string percentage b. */
-export function bufferFraction(bufferPct: string): { num: bigint; den: bigint } {
+function bufferFraction(bufferPct: string): { num: bigint; den: bigint } {
   const fd = fractionDigits(bufferPct);
   const scale = 10n ** BigInt(fd);
   const b = toBaseUnits(bufferPct, fd);

@@ -173,8 +173,8 @@ describe('SQ-CHAT-02 wallet knowledge over HTTP', () => {
       expect(h.llm.names().filter((name) => name === 'amounts')).toHaveLength(1);
       expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
       expect(h.envelope.intents.at(-1)).toMatchObject({
-recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
-});
+        recipients: [{ recipient: MIHIR, amount: { value: '10' } }],
+      });
     },
   );
 

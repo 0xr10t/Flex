@@ -145,10 +145,12 @@ describe('real-model conversational replies', () => {
       expect(summary.body.state).toBe('awaiting_confirmation');
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents).toMatchObject([{
-intent_id: 'i',
-recipients: [{ recipient: RIYA, amount: { value: '10' } }]
-}]);
+      expect(h.envelope.intents).toMatchObject([
+        {
+          intent_id: 'i',
+          recipients: [{ recipient: RIYA, amount: { value: '10' } }],
+        },
+      ]);
     });
   });
 
@@ -176,10 +178,10 @@ recipients: [{ recipient: RIYA, amount: { value: '10' } }]
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents).toMatchObject([
         {
-intent_id: 'i',
-chain_id: BASE,
-recipients: [{ recipient: MIHIR, amount: { value: '5' } }]
-},
+          intent_id: 'i',
+          chain_id: BASE,
+          recipients: [{ recipient: MIHIR, amount: { value: '5' } }],
+        },
       ]);
     });
   });

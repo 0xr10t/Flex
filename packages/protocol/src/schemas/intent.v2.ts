@@ -24,137 +24,139 @@ const addr = z
 const decimalAmount = z.string().regex(/^(0|[1-9]\d*)(\.\d+)?$/, 'amount must be a positive decimal string');
 const iso = z.string().datetime({ offset: true });
 
-export const intentSchemaAt = (now: () => number = Date.now) => z
-  .object({
-    intentId: z.string().uuid(),
-    version: z.literal(1),
-    chainId: z.union([z.literal(11155111), z.literal(84532), z.literal(421614)]),
-    from: addr,
-    asset: z
-      .object({
-        type: z.enum(['native', 'erc20']),
-        token: addr.nullable(),
-        decimals: z.number().int().min(0).max(36),
-      })
-      .strict(),
-    recipients: z
-      .array(z.object({ to: addr, amount: decimalAmount }).strict())
-      .min(1)
-      .max(MAX_RECIPIENTS),
-    atomic: z.boolean(),
-    schedule: z
-      .object({
-        type: z.enum(['once', 'recurring']),
-        startAt: iso.nullable(),
-        interval: z.number().int().positive().nullable(),
-        maxRuns: z.number().int().positive().max(520).nullable(),
-        endAt: iso.nullable(),
-        lateWindow: z.number().int().positive().nullable(), // [C6] new: seconds a slot stays payable
-      })
-      .strict(),
-    execution: z
-      .object({
-        mode: z.enum(['immediate', 'automated']),
-        executor: z.enum(['chainlink-cre', 'backend']).nullable(),
-        fee: z.object({ to: addr, amount: decimalAmount }).strict().nullable(), // [B8] new: per-run fee, same asset
-      })
-      .strict(),
-    limits: z.object({ maxPerRun: decimalAmount, maxTotal: decimalAmount.nullable() }).strict(),
-  })
-  .strict()
-  .superRefine((i, ctx) => {
-    const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message });
-    const { asset, schedule: s, execution: e, limits } = i;
+export const intentSchemaAt = (now: () => number = Date.now) =>
+  z
+    .object({
+      intentId: z.string().uuid(),
+      version: z.literal(1),
+      chainId: z.union([z.literal(11155111), z.literal(84532), z.literal(421614)]),
+      from: addr,
+      asset: z
+        .object({
+          type: z.enum(['native', 'erc20']),
+          token: addr.nullable(),
+          decimals: z.number().int().min(0).max(36),
+        })
+        .strict(),
+      recipients: z
+        .array(z.object({ to: addr, amount: decimalAmount }).strict())
+        .min(1)
+        .max(MAX_RECIPIENTS),
+      atomic: z.boolean(),
+      schedule: z
+        .object({
+          type: z.enum(['once', 'recurring']),
+          startAt: iso.nullable(),
+          interval: z.number().int().positive().nullable(),
+          maxRuns: z.number().int().positive().max(520).nullable(),
+          endAt: iso.nullable(),
+          lateWindow: z.number().int().positive().nullable(), // [C6] new: seconds a slot stays payable
+        })
+        .strict(),
+      execution: z
+        .object({
+          mode: z.enum(['immediate', 'automated']),
+          executor: z.enum(['chainlink-cre', 'backend']).nullable(),
+          fee: z.object({ to: addr, amount: decimalAmount }).strict().nullable(), // [B8] new: per-run fee, same asset
+        })
+        .strict(),
+      limits: z.object({ maxPerRun: decimalAmount, maxTotal: decimalAmount.nullable() }).strict(),
+    })
+    .strict()
+    .superRefine((i, ctx) => {
+      const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message });
+      const { asset, schedule: s, execution: e, limits } = i;
 
-    if (asset.type === 'native' && (asset.token !== null || asset.decimals !== 18))
-      bad(['asset'], 'native asset needs token=null and decimals=18');
-    if (asset.type === 'erc20') {
-      if (asset.token === null) bad(['asset', 'token'], 'erc20 needs a token address');
-      else if (asset.token.toLowerCase() !== USDC[i.chainId].toLowerCase())
-        bad(['asset', 'token'], `not the registered USDC for chain ${i.chainId}`);
-      if (asset.decimals !== 6) bad(['asset', 'decimals'], 'USDC has 6 decimals');
-    }
-
-    const units = (x: string, p: (string | number)[]) => {
-      const frac = x.split('.')[1] ?? '';
-      if (frac.length > asset.decimals) {
-        bad(p, `more than ${asset.decimals} decimals`);
-        return 0n;
+      if (asset.type === 'native' && (asset.token !== null || asset.decimals !== 18))
+        bad(['asset'], 'native asset needs token=null and decimals=18');
+      if (asset.type === 'erc20') {
+        if (asset.token === null) bad(['asset', 'token'], 'erc20 needs a token address');
+        else if (asset.token.toLowerCase() !== USDC[i.chainId].toLowerCase())
+          bad(['asset', 'token'], `not the registered USDC for chain ${i.chainId}`);
+        if (asset.decimals !== 6) bad(['asset', 'decimals'], 'USDC has 6 decimals');
       }
-      return parseUnits(x, asset.decimals);
-    };
-    const amounts = i.recipients.map((r, k) => units(r.amount, ['recipients', k, 'amount']));
-    amounts.forEach((a, k) => a === 0n && bad(['recipients', k, 'amount'], 'amount must be > 0'));
-    const tos = i.recipients.map((r) => r.to.toLowerCase());
-    if (new Set(tos).size !== tos.length) bad(['recipients'], 'duplicate recipient');
-    if (tos.includes(i.from.toLowerCase())) bad(['recipients'], 'recipient equals from');
-    if (asset.token && tos.includes(asset.token.toLowerCase()))
-      bad(['recipients'], 'recipient is the token contract (tokens would be lost)');
 
-    // [B8] fee: required for automated (user pays per run), forbidden for immediate (user pays gas directly)
-    const fee = e.fee ? units(e.fee.amount, ['execution', 'fee', 'amount']) : 0n;
-    if (e.mode === 'automated' && !e.fee) bad(['execution', 'fee'], 'automated needs a per-run fee');
-    if (e.mode === 'immediate' && e.fee) bad(['execution', 'fee'], 'immediate has no executor fee');
-    if (e.fee && tos.includes(e.fee.to.toLowerCase())) bad(['execution', 'fee', 'to'], 'fee recipient is also a payee');
+      const units = (x: string, p: (string | number)[]) => {
+        const frac = x.split('.')[1] ?? '';
+        if (frac.length > asset.decimals) {
+          bad(p, `more than ${asset.decimals} decimals`);
+          return 0n;
+        }
+        return parseUnits(x, asset.decimals);
+      };
+      const amounts = i.recipients.map((r, k) => units(r.amount, ['recipients', k, 'amount']));
+      amounts.forEach((a, k) => a === 0n && bad(['recipients', k, 'amount'], 'amount must be > 0'));
+      const tos = i.recipients.map((r) => r.to.toLowerCase());
+      if (new Set(tos).size !== tos.length) bad(['recipients'], 'duplicate recipient');
+      if (tos.includes(i.from.toLowerCase())) bad(['recipients'], 'recipient equals from');
+      if (asset.token && tos.includes(asset.token.toLowerCase()))
+        bad(['recipients'], 'recipient is the token contract (tokens would be lost)');
 
-    const perRun = amounts.reduce((a, b) => a + b, 0n) + fee;
-    const maxPerRun = units(limits.maxPerRun, ['limits', 'maxPerRun']);
-    if (perRun > maxPerRun) bad(['limits', 'maxPerRun'], `recipients + fee ${perRun} exceeds maxPerRun ${maxPerRun}`);
-    if (e.mode === 'automated' && i.recipients.length > MAX_RECIPIENTS_AUTOMATED)
-      bad(
-        ['recipients'],
-        `automated payments allow at most ${MAX_RECIPIENTS_AUTOMATED} recipients (CRE 50 KB report limit)`,
-      );
-    if (i.recipients.length > 1 && !i.atomic)
-      bad(['atomic'], 'non-atomic multi-recipient is not supported: partial payment risk');
+      // [B8] fee: required for automated (user pays per run), forbidden for immediate (user pays gas directly)
+      const fee = e.fee ? units(e.fee.amount, ['execution', 'fee', 'amount']) : 0n;
+      if (e.mode === 'automated' && !e.fee) bad(['execution', 'fee'], 'automated needs a per-run fee');
+      if (e.mode === 'immediate' && e.fee) bad(['execution', 'fee'], 'immediate has no executor fee');
+      if (e.fee && tos.includes(e.fee.to.toLowerCase()))
+        bad(['execution', 'fee', 'to'], 'fee recipient is also a payee');
 
-    // [B7a/C1/C5] an automated intent must carry a concrete start time; it becomes TimestampEnforcer.afterThreshold
-    const start = s.startAt ? Date.parse(s.startAt) / 1000 : null;
-    if (e.mode === 'automated' && start === null)
-      bad(['schedule', 'startAt'], "automated needs a concrete startAt (code fills 'now' before signing)");
-    if (start !== null && start < now() / 1000 - 300) bad(['schedule', 'startAt'], 'startAt is in the past');
+      const perRun = amounts.reduce((a, b) => a + b, 0n) + fee;
+      const maxPerRun = units(limits.maxPerRun, ['limits', 'maxPerRun']);
+      if (perRun > maxPerRun) bad(['limits', 'maxPerRun'], `recipients + fee ${perRun} exceeds maxPerRun ${maxPerRun}`);
+      if (e.mode === 'automated' && i.recipients.length > MAX_RECIPIENTS_AUTOMATED)
+        bad(
+          ['recipients'],
+          `automated payments allow at most ${MAX_RECIPIENTS_AUTOMATED} recipients (CRE 50 KB report limit)`,
+        );
+      if (i.recipients.length > 1 && !i.atomic)
+        bad(['atomic'], 'non-atomic multi-recipient is not supported: partial payment risk');
 
-    if (s.type === 'once') {
-      if (s.interval !== null || s.maxRuns !== null || s.endAt !== null || s.lateWindow !== null)
-        bad(['schedule'], 'once: interval, maxRuns, endAt, lateWindow must be null');
-      if (limits.maxTotal !== null && units(limits.maxTotal, ['limits', 'maxTotal']) < perRun)
-        bad(['limits', 'maxTotal'], 'maxTotal below one run');
-    } else {
-      if (s.interval === null) bad(['schedule', 'interval'], 'recurring needs interval');
-      if (s.interval !== null && s.interval < 60)
-        bad(['schedule', 'interval'], 'interval below 60s (CRE cron min is 30s; keep headroom)');
-      // [C2/C6] slots are counted, so maxRuns is required (endAt alone no longer enough)
-      if (s.maxRuns === null) bad(['schedule', 'maxRuns'], 'recurring needs maxRuns (number of slots)');
-      if (s.lateWindow === null) bad(['schedule', 'lateWindow'], 'recurring needs lateWindow');
-      if (s.lateWindow !== null && s.interval !== null && (s.lateWindow < 60 || s.lateWindow > s.interval))
-        bad(['schedule', 'lateWindow'], 'lateWindow must be 60s..interval');
-      if (s.interval !== null && s.maxRuns !== null && s.interval * s.maxRuns > MAX_DURATION_S)
-        bad(['schedule'], 'longer than 52 weeks');
-      if (
-        start !== null &&
-        s.endAt &&
-        s.interval !== null &&
-        s.maxRuns !== null &&
-        Date.parse(s.endAt) / 1000 < start + s.interval * (s.maxRuns - 1) + (s.lateWindow ?? 0)
-      )
-        bad(['schedule', 'endAt'], 'endAt cuts off slots that maxRuns promises');
-      if (limits.maxTotal === null) bad(['limits', 'maxTotal'], 'recurring needs maxTotal (hard cap)');
-      if (
-        limits.maxTotal !== null &&
-        s.maxRuns !== null &&
-        units(limits.maxTotal, ['limits', 'maxTotal']) < perRun * BigInt(s.maxRuns)
-      )
-        bad(['limits', 'maxTotal'], 'maxTotal below (recipients + fee) x maxRuns: later runs would fail');
-    }
-    if (s.startAt && s.endAt && Date.parse(s.endAt) <= Date.parse(s.startAt))
-      bad(['schedule', 'endAt'], 'endAt before startAt');
+      // [B7a/C1/C5] an automated intent must carry a concrete start time; it becomes TimestampEnforcer.afterThreshold
+      const start = s.startAt ? Date.parse(s.startAt) / 1000 : null;
+      if (e.mode === 'automated' && start === null)
+        bad(['schedule', 'startAt'], "automated needs a concrete startAt (code fills 'now' before signing)");
+      if (start !== null && start < now() / 1000 - 300) bad(['schedule', 'startAt'], 'startAt is in the past');
 
-    if (e.mode === 'immediate' && (s.type !== 'once' || s.startAt !== null))
-      bad(['execution', 'mode'], 'immediate only fits once + startAt=null');
-    if (e.mode === 'immediate' && e.executor !== null)
-      bad(['execution', 'executor'], 'immediate is signed by the wallet itself: executor must be null');
-    if (e.mode === 'automated' && e.executor === null) bad(['execution', 'executor'], 'automated needs an executor');
-  });
+      if (s.type === 'once') {
+        if (s.interval !== null || s.maxRuns !== null || s.endAt !== null || s.lateWindow !== null)
+          bad(['schedule'], 'once: interval, maxRuns, endAt, lateWindow must be null');
+        if (limits.maxTotal !== null && units(limits.maxTotal, ['limits', 'maxTotal']) < perRun)
+          bad(['limits', 'maxTotal'], 'maxTotal below one run');
+      } else {
+        if (s.interval === null) bad(['schedule', 'interval'], 'recurring needs interval');
+        if (s.interval !== null && s.interval < 60)
+          bad(['schedule', 'interval'], 'interval below 60s (CRE cron min is 30s; keep headroom)');
+        // [C2/C6] slots are counted, so maxRuns is required (endAt alone no longer enough)
+        if (s.maxRuns === null) bad(['schedule', 'maxRuns'], 'recurring needs maxRuns (number of slots)');
+        if (s.lateWindow === null) bad(['schedule', 'lateWindow'], 'recurring needs lateWindow');
+        if (s.lateWindow !== null && s.interval !== null && (s.lateWindow < 60 || s.lateWindow > s.interval))
+          bad(['schedule', 'lateWindow'], 'lateWindow must be 60s..interval');
+        if (s.interval !== null && s.maxRuns !== null && s.interval * s.maxRuns > MAX_DURATION_S)
+          bad(['schedule'], 'longer than 52 weeks');
+        if (
+          start !== null &&
+          s.endAt &&
+          s.interval !== null &&
+          s.maxRuns !== null &&
+          Date.parse(s.endAt) / 1000 < start + s.interval * (s.maxRuns - 1) + (s.lateWindow ?? 0)
+        )
+          bad(['schedule', 'endAt'], 'endAt cuts off slots that maxRuns promises');
+        if (limits.maxTotal === null) bad(['limits', 'maxTotal'], 'recurring needs maxTotal (hard cap)');
+        if (
+          limits.maxTotal !== null &&
+          s.maxRuns !== null &&
+          units(limits.maxTotal, ['limits', 'maxTotal']) < perRun * BigInt(s.maxRuns)
+        )
+          bad(['limits', 'maxTotal'], 'maxTotal below (recipients + fee) x maxRuns: later runs would fail');
+      }
+      if (s.startAt && s.endAt && Date.parse(s.endAt) <= Date.parse(s.startAt))
+        bad(['schedule', 'endAt'], 'endAt before startAt');
+
+      if (e.mode === 'immediate' && (s.type !== 'once' || s.startAt !== null))
+        bad(['execution', 'mode'], 'immediate only fits once + startAt=null');
+      if (e.mode === 'immediate' && e.executor !== null)
+        bad(['execution', 'executor'], 'immediate is signed by the wallet itself: executor must be null');
+      if (e.mode === 'automated' && e.executor === null) bad(['execution', 'executor'], 'automated needs an executor');
+    });
 
 export const IntentSchema = intentSchemaAt();
 export type Intent = z.infer<typeof IntentSchema>;

@@ -6,7 +6,8 @@
 
 import type { StepContext } from '../contracts/step.js';
 import type { AmountPh, ChainId, ErrorCode, Frequency, Payment, RecipientPh, Weekday } from '../contracts/types.js';
-import { chainName, isGroupPh, recipientNameOf } from './common.js';
+import { chainName } from '../pipeline/step-util.js';
+import { isGroupPh, recipientNameOf } from './common.js';
 import { chainBindingProblems } from './chain-binding.js';
 import { parseCount } from './answers.js';
 import { WEEKDAYS } from './schedule.js';
@@ -38,7 +39,7 @@ function recipientClause(ctx: StepContext, ph: RecipientPh): number | null {
 }
 
 /** SQ-R-02: the amount sits in a clause holding a distributive word ("each", …). */
-export function isDistributiveAmount(ctx: StepContext, ph: AmountPh | null): boolean {
+function isDistributiveAmount(ctx: StepContext, ph: AmountPh | null): boolean {
   if (ph === null) return false;
   const ac = amountClause(ctx, ph);
   return ac !== null && ctx.req.scan.distributive.some((d) => d.clause_index === ac);
@@ -97,7 +98,7 @@ interface IntervalPhrase {
 }
 
 /** "every other <unit>" → 2, "every N <unit>s" / "every Nth <unit>" → N, "fortnightly" / "every fortnight" → weekly 2. */
-export function intervalPhrases(text: string): IntervalPhrase[] {
+function intervalPhrases(text: string): IntervalPhrase[] {
   const out: IntervalPhrase[] = [];
   const push = (phrase: string, interval: number, unit: string): void => {
     const fortnight = unit.toLowerCase() === 'fortnight';
@@ -119,7 +120,7 @@ export function intervalPhrases(text: string): IntervalPhrase[] {
 }
 
 /** "for N weeks/months/days/payments/times": how long, never how often. */
-export function durationPhrase(text: string): string | null {
+function durationPhrase(text: string): string | null {
   const re = new RegExp(
     `${B}for\\s+(?:the\\s+next\\s+)?(?:\\d+|${NUM_WORDS})\\s+(?:day|week|month|payment|time)s?${E}`,
     'i',
@@ -128,7 +129,7 @@ export function durationPhrase(text: string): string | null {
 }
 
 /** Weekdays named in the text ("monday", "fri", "mondays"; "weekdays" → MON–FRI, "weekends" → SAT, SUN). */
-export function namedDays(text: string): Set<Weekday> {
+function namedDays(text: string): Set<Weekday> {
   const out = new Set<Weekday>();
   for (const d of WEEKDAYS) {
     if (new RegExp(`${B}(?:${DAY_NAMES[d]})s?${E}`, 'i').test(text)) out.add(d);
@@ -168,7 +169,7 @@ function dayOrdinalWord(n: number): string {
 }
 
 /** Days of the month written as a day: "31st", "on the 15", "day 15", "the fifteenth". */
-export function namedDaysOfMonth(text: string): Set<number> {
+function namedDaysOfMonth(text: string): Set<number> {
   const out = new Set<number>();
   // "every 3rd month" / "every third day" are intervals, not days of the month.
   const notUnit = `(?!\\s+${UNIT}${E})`;
@@ -183,7 +184,7 @@ export function namedDaysOfMonth(text: string): Set<number> {
 }
 
 /** "N times a week" (also "once" / "twice" / "thrice", "per week", "weekly"); "daily" / "every day" stand for 7. */
-export function namedTimesPerWeek(text: string): Set<number> {
+function namedTimesPerWeek(text: string): Set<number> {
   const out = new Set<number>();
   const re = new RegExp(
     `${B}(\\d+|${NUM_WORDS}|once|twice|thrice)(?:\\s+times)?\\s+(?:a|per|each|every)\\s+week${E}|${B}(\\d+|${NUM_WORDS})\\s+times\\s+weekly${E}`,
@@ -230,7 +231,7 @@ function scheduleText(ctx: StepContext, pc: PairingContext, p: Payment): string 
  * `day_of_month` only a day written as one; `times_per_week` only with "N times a week". Problems name no amount,
  * address or name, only the schedule words the user typed.
  */
-export function scheduleProblems(ctx: StepContext, pc: PairingContext, payments: Payment[]): string[] {
+function scheduleProblems(ctx: StepContext, pc: PairingContext, payments: Payment[]): string[] {
   const problems: string[] = [];
   payments.forEach((p, i) => {
     if (p.kind !== 'k') return;
@@ -274,7 +275,7 @@ export function scheduleProblems(ctx: StepContext, pc: PairingContext, payments:
 }
 
 /** P8 (§8.9): split word + one amount + ≥ 2 recipients. Independent of the model output. */
-export function checkSplit(ctx: StepContext, pc: PairingContext): PairingOutcome {
+function checkSplit(ctx: StepContext, pc: PairingContext): PairingOutcome {
   if (ctx.req.scan.split.length > 0 && pc.amounts.length === 1 && pc.recipients.length >= 2) {
     return { kind: 'error', code: 'SPLIT_UNSUPPORTED' };
   }
@@ -391,7 +392,7 @@ export function pairsToConfirm(ctx: StepContext, pc: PairingContext, payments: P
 }
 
 /** P5 (k + group), P6, P7, P9 (pin conflict): terminal errors, no retry. */
-export function terminalError(ctx: StepContext, payments: Payment[]): PairingOutcome {
+function terminalError(ctx: StepContext, payments: Payment[]): PairingOutcome {
   // P5
   if (payments.some((p) => p.kind === 'k' && isGroupPh(p.recipient))) {
     return { kind: 'error', code: 'GROUP_AUTOPAY_UNSUPPORTED' };
@@ -430,8 +431,8 @@ export function terminalError(ctx: StepContext, payments: Payment[]): PairingOut
         code: 'CHAIN_CONFLICT',
         params: {
           name: recipientNameOf(ctx, p.recipient),
-          chain: chainName(ctx, pin),
-          other: chainName(ctx, p.chain),
+          chain: chainName(ctx.config, pin),
+          other: chainName(ctx.config, p.chain),
         },
       };
     }

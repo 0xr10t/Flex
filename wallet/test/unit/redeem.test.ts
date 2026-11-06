@@ -3,7 +3,7 @@
 import { decodeAbiParameters, decodeFunctionData, erc20Abi, getAddress, parseUnits, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { executionsOf, redeemCalldata } from '../../src/chain/redeem.v2.js';
-import { IntentSchema, USDC, type Intent } from '../../src/schemas/intent.v2.js';
+import { IntentSchema, USDC, type Intent } from '@flex/protocol/schemas/intent.v2';
 
 const ME = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const ALICE = '0x000000000000000000000000000000000000a11c' as Hex;

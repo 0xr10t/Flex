@@ -8,9 +8,9 @@ import type { EnsClient } from '../contracts/io.js';
 import type { Address, ChainId, Config } from '../contracts/types.js';
 
 /** ENSIP-19 default EVM coin type. */
-export const DEFAULT_EVM_COIN_TYPE = 0x80000000n;
+const DEFAULT_EVM_COIN_TYPE = 0x80000000n;
 /** SLIP-44 coin type of Ethereum, used for Sepolia (§9.3 step 3). */
-export const ETH_COIN_TYPE = 60n;
+const ETH_COIN_TYPE = 60n;
 
 /** §9.3 step 3: 60 for the L1 (Sepolia), `0x80000000 | chainId` (ENSIP-11) for L2s. */
 export function coinTypeFor(config: Config, chain_id: ChainId): bigint {

@@ -101,7 +101,19 @@ export function registerA33toA52(): void {
       expect(hist[0]!.amount).toBe(hist[1]!.amount);
       expect(hist[0]!.recipient).not.toBe(hist[1]!.recipient);
       expectEnvelope(h, r.body.request_id, [
-        { ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: ARADHYA }), recipients: [{ recipient: ARADHYA, amount: usdc('10') }, { recipient: MIHIR, amount: usdc('10') }] },
+        {
+          ...usdcIntent({
+            step: 0,
+            chain: BASE,
+            token_address: USDC_ADDR[BASE],
+            amount: usdc('10'),
+            recipient: ARADHYA,
+          }),
+          recipients: [
+            { recipient: ARADHYA, amount: usdc('10') },
+            { recipient: MIHIR, amount: usdc('10') },
+          ],
+        },
       ]);
       await h.finish();
     });
@@ -131,14 +143,14 @@ export function registerA33toA52(): void {
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
         {
-intent_id: 'i',
-step: 0,
-depends_on: [],
-token: 'ETH',
-token_address: null,
-chain_id: BASE,
-recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
-},
+          intent_id: 'i',
+          step: 0,
+          depends_on: [],
+          token: 'ETH',
+          token_address: null,
+          chain_id: BASE,
+          recipients: [{ amount: eth('0.049'), recipient: MIHIR }],
+        },
       ]);
       await h.finish();
     });
@@ -180,7 +192,9 @@ recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
       const r2 = await h.answer(r1, { text: '0.123456' });
       expect(lines(r2)).toEqual(['Send 0.123456 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expectHandedOff(await h.confirm(r2, 'yes'));
-      expect((h.envelope.intents[0] as { recipients: { amount: unknown }[] }).recipients[0]!.amount).toEqual(usdc('0.123456'));
+      expect((h.envelope.intents[0] as { recipients: { amount: unknown }[] }).recipients[0]!.amount).toEqual(
+        usdc('0.123456'),
+      );
       await h.finish();
     });
 

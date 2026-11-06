@@ -8,12 +8,15 @@ import type { BrokenLimit } from '../contracts/catalog.js';
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { InternalIntent, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
-import { db1BaseUnits, decimalsOf, fmt, nowUtcIso } from './common.js';
+import { nowUtcIso } from '../pipeline/step-util.js';
+import { db1BaseUnits, decimalsOf, fmt } from './common.js';
 import { TOKENS_ORDER } from './spendable.js';
 
 /** Tokens of the plan's `i`, `j`, `k` intents, in a fixed order (SQ-D-13: `l` moves no token). */
 export function tokensUsed(plan: InternalIntent[]): Token[] {
-  return TOKENS_ORDER.filter((t) => plan.some((it) => (it.intent_id !== 'l' && it.token === t) || (it.intent_id === 'j' && t === 'ETH')));
+  return TOKENS_ORDER.filter((t) =>
+    plan.some((it) => (it.intent_id !== 'l' && it.token === t) || (it.intent_id === 'j' && t === 'ETH')),
+  );
 }
 
 export function spentToday(ctx: StepContext, token: Token): bigint {
@@ -25,7 +28,8 @@ export function spentToday(ctx: StepContext, token: Token): bigint {
 export function thisRequest(ctx: StepContext, plan: InternalIntent[], token: Token): bigint {
   let sum = 0n;
   for (const it of plan) {
-    if (it.intent_id === 'i' && it.token === token) sum += it.recipients.reduce((total, p) => total + db1BaseUnits(ctx, p.amount).units, 0n);
+    if (it.intent_id === 'i' && it.token === token)
+      sum += it.recipients.reduce((total, p) => total + db1BaseUnits(ctx, p.amount).units, 0n);
     if (it.intent_id === 'j' && token === 'ETH') sum += toBaseUnits(it.fee_max_eth, 18);
     if (it.intent_id === 'j' && it.token === token) {
       sum += db1BaseUnits(ctx, it.amount).units - BigInt(it.deliverable_base_units);
@@ -100,7 +104,7 @@ export function dailyBreach(ctx: StepContext, plan: InternalIntent[], token: Tok
  * user confirmed it). Relative amounts are typed; derived amounts (bridge padding, autopay caps) follow the payment
  * amounts they come from, so only the request's own amounts are looked at.
  */
-export function hasContentAmount(ctx: StepContext): boolean {
+function hasContentAmount(ctx: StepContext): boolean {
   const { req, repos } = ctx;
   const own = [...req.amounts.map((a) => a.placeholder), ...(req.payments ?? []).map((p) => p.amount)];
   return own.some((ph) => ph !== null && repos.db1.get(ph)?.source === 'untrusted');

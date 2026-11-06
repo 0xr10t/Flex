@@ -104,8 +104,14 @@ export function createDb7(db: Database): Db7Autopays {
         sets.push('cre_job_id = ?');
         vals.push(patch.cre_job_id);
       }
-      if (patch.plan_id !== undefined) { sets.push('plan_id = ?'); vals.push(patch.plan_id); }
-      if (patch.executor_address !== undefined) { sets.push('executor_address = ?'); vals.push(patch.executor_address); }
+      if (patch.plan_id !== undefined) {
+        sets.push('plan_id = ?');
+        vals.push(patch.plan_id);
+      }
+      if (patch.executor_address !== undefined) {
+        sets.push('executor_address = ?');
+        vals.push(patch.executor_address);
+      }
       sets.push('updated_at = ?');
       vals.push(now);
       const res = db

@@ -233,7 +233,10 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
             r.status === 'pending' &&
             r.chain_id === chain_id &&
             r.token === token &&
-            (r.kind === 'payment' || r.kind === 'bridge_out' || r.kind === 'bridge_fee' || r.kind === 'autopay_prefund') &&
+            (r.kind === 'payment' ||
+              r.kind === 'bridge_out' ||
+              r.kind === 'bridge_fee' ||
+              r.kind === 'autopay_prefund') &&
             DateTime.fromISO(r.created_at, { zone: 'utc' }) > cutoff,
         )
         .map(clone);

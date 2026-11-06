@@ -8,11 +8,11 @@ import { decodeCancelBatch } from '../../src/autopay/cancel-l.js';
 import { ccipMessage, decodeBridgeBatch } from '../../src/bridge/bridge-j.js';
 import { redeemCalldata } from '../../src/chain/redeem.v2.js';
 import { encodeExecuteBatch } from '../../src/payments/payment-i.js';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
-import type { Intent } from '../../src/schemas/intent.v2.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 import { ALEX, ARBITRUM, BASE, BOB, WALLET, autopay, bridge, envelope } from '../support/envelopes.js';
-import { toPlan } from '../../src/mapping/to-plan.js';
+import { toPlan } from '@flex/protocol/mapping/to-plan';
 
 const ATTACKER: Hex = '0x000000000000000000000000000000000000bad0';
 

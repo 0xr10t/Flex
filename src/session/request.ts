@@ -51,7 +51,7 @@ export const REQUEST_STATES: readonly string[] = Object.keys({
 } satisfies Record<RequestState, true>);
 
 /** States after which a request accepts no further input. */
-export const TERMINAL_STATES: ReadonlySet<RequestState> = new Set<RequestState>([
+const TERMINAL_STATES: ReadonlySet<RequestState> = new Set<RequestState>([
   'ANSWERED',
   'HANDED_OFF',
   'DISCARDED',
@@ -63,7 +63,7 @@ export const isTerminal = (req: AgentRequest): boolean => TERMINAL_STATES.has(re
 /** Paused on a question (§13.4) and not finished. */
 export const isAwaitingAnswer = (req: AgentRequest): boolean => !isTerminal(req) && req.paused_at !== undefined;
 
-export function emptyScan(): LexicalScan {
+function emptyScan(): LexicalScan {
   return {
     clauses: [],
     addresses: [],

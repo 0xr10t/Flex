@@ -13,7 +13,7 @@ import {
 import { trackedMessage } from '../../src/bridge/bridge-j.js';
 import { CCIP_V2_EVENTS } from '../../src/bridge/ccip-v2-abi.js';
 import { decodeTokenMessage } from '../../src/bridge/message-v1.js';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
 import { WALLET, bridge } from '../support/envelopes.js';
 import { transferLog } from '../support/fake-chain.js';
 

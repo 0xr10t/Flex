@@ -7,7 +7,7 @@
 // Owner: Lane B (applied by S7, Lane C).
 
 import { PLACEHOLDER_TOKEN_RE } from './patterns.js';
-import { escapeRe, isIdentifierAt, overlapsAny, type Range } from './text.js';
+import { escapeRe, isIdentifierAt, nameKey, overlapsAny, type Range } from './text.js';
 
 /** One masking: `text` is the exact slice of the source at [start, end), replaced by `with`. */
 export interface Masking extends Range {
@@ -16,9 +16,6 @@ export interface Masking extends Range {
 }
 
 export const PERSON = '[person]';
-
-/** Case and whitespace-run insensitive key of a span text. */
-export const nameKey = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
 /** Regex source for one span text: the original text escaped (not lower-cased), whitespace runs as `\s+`. */
 const textSource = (text: string): string => escapeRe(text.trim()).replace(/\s+/g, '\\s+');

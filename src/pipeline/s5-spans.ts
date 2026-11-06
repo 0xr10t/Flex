@@ -39,10 +39,9 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, Answer, Chip, Question, RecipientSpan, Span, SpanKind } from '../contracts/types.js';
 import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
 import { ADDRESS_FULL_RE, PLACEHOLDER_TOKEN_RE } from '../lexical/patterns.js';
-import { lastHistoryPayments, qid } from '../lexical/step-util.js';
+import { lastHistoryPayments, qid } from './step-util.js';
 import { reaskPending } from '../amounts/verify.js';
-import { nameKey } from '../lexical/sweep.js';
-import { clauseIndexAt, findUnused, overlaps, type Range } from '../lexical/text.js';
+import { clauseIndexAt, findUnused, nameKey, overlaps, type Range } from '../lexical/text.js';
 import { maskedToTyped, type S3State } from './s3-amounts.js';
 
 interface LlmSpan {

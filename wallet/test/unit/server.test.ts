@@ -5,7 +5,7 @@ import { buildApp } from '../../src/server/app.js';
 import { Store } from '../../src/store/store.js';
 import { tempDb } from '../support/temp-db.js';
 import { ALEX, BASE, BOB, WALLET, envelope, payUsdc, requestId } from '../support/envelopes.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 
 const TOKEN = 'inbound-test-token';
 let store: Store;

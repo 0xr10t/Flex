@@ -23,11 +23,15 @@ const dir = resolve(root, '.local/cre-native-test');
 let world: World;
 async function cli(args: string[], cwd = resolve(root, 'wallet/cre')) {
   return new Promise<string>((done, reject) => {
-    const child = spawn(resolve(root, '.local/bin/cre.exe'), args, {
-      cwd,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      process.env.CRE_CLI_PATH || resolve(root, '.local/bin', process.platform === 'win32' ? 'cre.exe' : 'cre'),
+      args,
+      {
+        cwd,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     let output = '';
     child.stdout.on('data', (d) => {
       output += String(d);

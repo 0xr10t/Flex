@@ -2,7 +2,7 @@
 // verbatim), C-143 (LLM #2 verbatim), C-144 (LLM #3 verbatim incl. CANDIDATES), C-145 (Q-LLM verbatim), §12.1 (the
 // schema objects are the spec's), SQB-10 ({candidates_json} is a JSON array of strings), C-399 (builders take only the
 // text their step is allowed to show). Schemas and user slots stay verbatim to README.md. SQ-L-01 approved system
-// text is checked against reviewed golden fixtures; its live acceptance is recorded separately in PROMPT_CHANGES.md.
+// text is checked against reviewed golden fixtures.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildAmountsPrompt, fillSlots } from '../../../src/llm/prompt-builder/amounts.js';

@@ -31,7 +31,7 @@ import {
   SignatureRejected,
   type DelegationRequest,
 } from '../browser/delegation.js';
-import type { EnvelopeIntent, HandoffEnvelope } from '../schemas/envelope.js';
+import type { EnvelopeIntent, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import type { StepStatus, Store } from '../store/store.js';
 import type { Deployment, HandlerContext, StepHandler, StepOutcome } from './handler.js';
 

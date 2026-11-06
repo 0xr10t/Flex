@@ -29,7 +29,7 @@ import {
 import { buildAmountsPrompt } from '../llm/prompt-builder/amounts.js';
 import { COUNT_AFTER_RE, NUMBER_WORD_RUN_RE } from '../lexical/patterns.js';
 import { clauseIndexAt, escapeRe, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
-import { qid, unsupported } from '../lexical/step-util.js';
+import { qid, unsupported } from './step-util.js';
 
 interface LlmAmount {
   phrase: string;
@@ -66,7 +66,7 @@ export interface S3State {
   done: boolean;
 }
 
-export const AMOUNT_MASK = '[amount]';
+const AMOUNT_MASK = '[amount]';
 
 const RELATIVE_AMOUNT_RE = new RegExp(
   `^(?:all|half|max)(?:\\s+of)?(?:\\s+my)?\\s+(?:${Object.values(TOKENS)

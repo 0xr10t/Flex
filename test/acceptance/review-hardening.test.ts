@@ -28,7 +28,15 @@ function result(h: Harness, envelope: HandoffEnvelope = h.envelope): ExecutionRe
     tx_hash: tx,
     executed_at: h.nowIso,
     ...(first.intent_id === 'k'
-      ? { autopay: { autopay_id: first.autopay_id, plan_id: planIdFor(first.autopay_id), executor_address: DELEGATE, chain_id: first.chain_id, token: first.token } }
+      ? {
+          autopay: {
+            autopay_id: first.autopay_id,
+            plan_id: planIdFor(first.autopay_id),
+            executor_address: DELEGATE,
+            chain_id: first.chain_id,
+            token: first.token,
+          },
+        }
       : {}),
   };
 }
@@ -159,9 +167,21 @@ describe('B03 / B04 exact callback correlation and replay', () => {
     const created = result(h);
     expect(await h.report(created)).toBe(204);
     const id = created.autopay!.autopay_id;
-    expect(await h.report({ kind: 'autopay_status', request_id: created.request_id, autopay: { ...created.autopay, status: 'cancelled' } })).toBe(204);
+    expect(
+      await h.report({
+        kind: 'autopay_status',
+        request_id: created.request_id,
+        autopay: { ...created.autopay, status: 'cancelled' },
+      }),
+    ).toBe(204);
     expect(await h.report(created)).toBe(204);
-    expect(await h.report({ kind: 'autopay_status', request_id: created.request_id, autopay: { ...created.autopay, status: 'active' } })).toBe(400);
+    expect(
+      await h.report({
+        kind: 'autopay_status',
+        request_id: created.request_id,
+        autopay: { ...created.autopay, status: 'active' },
+      }),
+    ).toBe(400);
     expect(h.repos.db7.get(id)?.status).toBe('cancelled');
   });
 });

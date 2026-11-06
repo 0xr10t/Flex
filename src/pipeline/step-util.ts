@@ -1,8 +1,7 @@
-// Implements: helpers shared by Lane B's steps S0–S5: chain display names (§6.1 config, §13.1 "Chain display
-// names from config"), name lists in messages (SQ-06 interim join format, spec-questions/B.md SQB-01), question ids
-// (§7.3 `q_` + 12 hex via newId), §0 / SQ-19 "log the internal state code" for uncovered states,
-// §10.1 spendable balance (used by §8.4 step 6 relative amounts).
-// Owner: Lane B.
+// Implements: helpers shared by the pipeline steps: chain display names (§6.1 config, §13.1 "Chain display names
+// from config"), question ids (§7.3 `q_` + 12 hex via newId), the current time as stored in the DB, the last
+// handed-off request (§17.2), §0 / SQ-19 "log the internal state code" for uncovered states, and §10.1 spendable
+// balance (used by §8.4 step 6 relative amounts).
 
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Config, QuestionId, Token } from '../contracts/types.js';
@@ -10,6 +9,7 @@ import { TOKEN_DECIMALS } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { newId } from '../util/ids.js';
 
+/** Display name of a chain from config (§13.1). */
 export function chainName(config: Config, chain_id: ChainId): string {
   return config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
 }
@@ -19,7 +19,7 @@ export function qid(): QuestionId {
 }
 
 /** §17.2 step 1: session history = the last 5 handed-off requests. */
-export const HISTORY_LIMIT = 5;
+const HISTORY_LIMIT = 5;
 
 /**
  * §17.2 steps 3 and 6: the payments of the most recent history entry (parsed `payments_json`), objects only;

@@ -3,7 +3,7 @@
 // Keep always-batch encoding even for one recipient: the MetaMask kit encodes a single execution
 // differently and the batch delegation rejects it [B10], while this encoder works [B10b].
 import { encodeAbiParameters, encodeFunctionData, erc20Abi, parseUnits, type Hex } from 'viem';
-import type { Intent } from '../schemas/intent.v2.js';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
 
 export type SignedDelegation = {
   delegate: Hex;

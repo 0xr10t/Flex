@@ -480,7 +480,10 @@ describe('§11.3 per-intent limits', () => {
 
   it('SQ-D-16 F-5 C-259 §11 V-14 k lasting longer than autopay_max_weeks → LIMIT_AUTOPAY_DURATION', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
+    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', {
+      type: 'on_date',
+      date: '2028-01-01',
+    });
     const k = planK(ctx, 0, r, BASE, { schedule: long });
     const msg = expectError(await validateContent(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     expect(msg).toBe('Repeating payments can run for at most 52 weeks.');
@@ -834,7 +837,10 @@ describe('SQ-D-16 F-1…F-6 S10 asks Q_LIMIT_OVERRIDE for typed amounts', () => 
 
   it('v2 hard duration cap cannot be lifted by a typed request', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
+    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', {
+      type: 'on_date',
+      date: '2028-01-01',
+    });
     const k = planK(ctx, 0, r, BASE, { schedule: long });
     expectError(await validate(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     ctx.req.limit_override = true;

@@ -16,16 +16,7 @@ import { LOG_ALLOWED_FIELDS } from '../../src/contracts/io.js';
 import type { LlmCallArgs, LlmClient } from '../../src/contracts/llm.js';
 import type { Repos } from '../../src/contracts/repos.js';
 import { fromBaseUnits, toBaseUnits } from '../../src/contracts/money.js';
-import type {
-  AgentResponse,
-  Chip,
-  ChainId,
-  Config,
-  ExecutionReport,
-  Question,
-  QuestionCode,
-  Token,
-} from '../../src/contracts/types.js';
+import type { AgentResponse, Chip, ChainId, Config, Question, QuestionCode, Token } from '../../src/contracts/types.js';
 import { chainNames } from '../../src/config/load.js';
 import { getOrCreateDbKey, type KeyStore } from '../../src/db/keychain.js';
 import type { Database } from '../../src/db/database.js';
@@ -58,16 +49,10 @@ export const USDC_ADDR: Record<ChainId, string> = {
   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
   421614: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
 };
-export const CHAIN_NAME: Record<ChainId, string> = {
-  11155111: 'Sepolia',
-  84532: 'Base Sepolia',
-  421614: 'Arbitrum Sepolia',
-};
 /** Deterministic, valid EIP-55 test address #n. */
 export const addr = (n: number): `0x${string}` => getAddress(`0x${n.toString(16).padStart(40, '0')}`);
 /** ENS coin type for a chain (§9.3 step 3): 60 for Sepolia, 0x80000000 | chainId for L2s. */
 export const coinType = (c: ChainId): bigint => (c === SEPOLIA ? 60n : 0x80000000n | BigInt(c));
-export const DEFAULT_COIN_TYPE = 0x80000000n;
 export const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export type Balances = Partial<Record<ChainId, Partial<Record<Token, string>>>>;

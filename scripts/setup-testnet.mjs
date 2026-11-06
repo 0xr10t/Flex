@@ -89,17 +89,18 @@ if (missing.length) {
   cfg.llm.model = env.OLLAMA_MODEL || cfg.llm.model;
   cfg.ens.indexer_url = env.ENS_INDEXER_URL || cfg.ens.indexer_url;
   cfg.autopay = {
-    late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || 3600),
-    fee: { USDC: env.AUTOPAY_FEE_USDC || '0.05', ETH: env.AUTOPAY_FEE_ETH || '0.00002' },
+    late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || cfg.autopay.late_window_seconds),
+    fee: { USDC: env.AUTOPAY_FEE_USDC || cfg.autopay.fee.USDC, ETH: env.AUTOPAY_FEE_ETH || cfg.autopay.fee.ETH },
     fee_collector: env.AUTOPAY_FEE_COLLECTOR || env.FLEX_WALLET_ADDRESS,
   };
-  cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || '0.003' };
+  cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || cfg.bridge.ccip_fee_max_eth };
   validateConfig(cfg);
   const deploymentsPath = resolve(local, 'deployments.json');
   const deployments = existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {};
   const wallet = {
-    server: { host: '127.0.0.1', port: 8788 },
-    agent: { url: 'http://127.0.0.1:8787' },
+    // The wallet listens where the agent sends (execution.url) and reports to where the agent listens (server).
+    server: { host: '127.0.0.1', port: Number(new URL(cfg.execution.url).port || 80) },
+    agent: { url: `http://${cfg.server.host}:${cfg.server.port}` },
     auth: {
       inbound_token_file: cfg.execution.outbound_token_file,
       report_token_file: cfg.auth.execution_report_token_file,

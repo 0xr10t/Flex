@@ -19,7 +19,6 @@ import {
   ALICE_CS,
   ARB,
   BASE,
-  DELEGATE_CS,
   addAmount,
   addAutopay,
   addMihir,
@@ -567,7 +566,10 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it('SQ-D-16 F-5 content amount: C-234 §10.6 derived 3: 53 weekly payments end exactly on first + 52 weeks → allowed; 54 → LIMIT_AUTOPAY_DURATION', async () => {
     const ok = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 53 payments'));
-    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).display.schedule.end).toEqual({ type: 'after_count', count: 53 });
+    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).display.schedule.end).toEqual({
+      type: 'after_count',
+      count: 53,
+    });
     const bad = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 54 payments'));
     markContent(bad.ctx);
     expectError(await run(bad.ctx, [bad.payment]), 'LIMIT_AUTOPAY_DURATION');
