@@ -20,13 +20,13 @@ function body(r: SessionResult): AgentResponse {
   return r.body;
 }
 
-function open(h: Harness): string {
-  return h.manager.openSession('Asia/Kolkata').session_id;
+async function open(h: Harness): Promise<string> {
+  return (await h.manager.openSession('Asia/Kolkata')).session_id;
 }
 
 /** Opens a session and runs a message up to the S11 summary. */
 async function toConfirmation(h: Harness): Promise<{ sid: string; rid: string }> {
-  const sid = open(h);
+  const sid = await open(h);
   const r = body(await h.manager.handleMessage(sid, msg('send 50 usdc to aradhya')));
   expect(r.state).toBe('awaiting_confirmation');
   return { sid, rid: r.request_id };
@@ -43,7 +43,7 @@ async function toQuestion(h: Harness, q: Question = question()): Promise<{ sid: 
       return { kind: 'question', question: q };
     },
   });
-  const sid = open(h);
+  const sid = await open(h);
   const r = body(await h.manager.handleMessage(sid, msg('send 50 to aradhya')));
   expect(r.state).toBe('awaiting_answer');
   return { sid, rid: r.request_id, q };
@@ -53,42 +53,42 @@ const finals = (h: Harness): string[] =>
   h.log.lines.filter((l) => l.event === 'request_final').map((l) => l.state ?? '');
 
 describe('§17.1 session lifecycle', () => {
-  it('C-410 / C-339: openSession returns ses_<12hex>, stores the DB8 session row with its timezone', () => {
+  it('C-410 / C-339: openSession returns ses_<12hex>, stores the DB8 session row with its timezone', async () => {
     const h = makeHarness();
-    const { session_id } = h.manager.openSession('Europe/Berlin');
+    const { session_id } = await h.manager.openSession('Europe/Berlin');
     expect(session_id).toMatch(/^ses_[0-9a-f]{12}$/);
     expect(h.repos.db8.getSession(session_id)).toMatchObject({ timezone: 'Europe/Berlin' });
     expect(h.manager.openSessionId()).toBe(session_id);
   });
 
-  it('C-339: an invalid IANA timezone is refused', () => {
-    expect(() => makeHarness().manager.openSession('Mars/Olympus')).toThrow();
+  it('C-339: an invalid IANA timezone is refused', async () => {
+    await expect(makeHarness().manager.openSession('Mars/Olympus')).rejects.toThrow();
   });
 
   it('C-410 / C-452 §20.1 session: opening a session closes the previous one (one open session, I-08)', async () => {
     const h = makeHarness();
-    const first = open(h);
-    const second = open(h);
+    const first = await open(h);
+    const second = await open(h);
     expect(second).not.toBe(first);
     expect(h.repos.vacuumCount).toBe(1);
     expect((await h.manager.handleMessage(first, msg('hi'))).kind).toBe('not_found');
     expect(body(await h.manager.handleMessage(second, msg('hi'))).session_id).toBe(second);
   });
 
-  it('C-340: closeSession → true and clears; unknown id → false', () => {
+  it('C-340: closeSession → true and clears; unknown id → false', async () => {
     const h = makeHarness();
-    const sid = open(h);
-    expect(h.manager.closeSession('ses_000000000000')).toBe(false);
-    expect(h.manager.closeSession(sid)).toBe(true);
+    const sid = await open(h);
+    expect(await h.manager.closeSession('ses_000000000000')).toBe(false);
+    expect(await h.manager.closeSession(sid)).toBe(true);
     expect(h.repos.vacuumCount).toBe(1);
     expect(h.manager.openSessionId()).toBeNull();
-    expect(h.manager.closeSession(sid)).toBe(false);
+    expect(await h.manager.closeSession(sid)).toBe(false);
   });
 
-  it('C-340: a session left in DB8 by a crashed process can be closed (clears the stores)', () => {
+  it('C-340: a session left in DB8 by a crashed process can be closed (clears the stores)', async () => {
     const h = makeHarness();
     h.repos.db8.insertSession({ session_id: 'ses_aaaaaaaaaaaa', timezone: 'UTC', opened_at: 't' });
-    expect(h.manager.closeSession('ses_aaaaaaaaaaaa')).toBe(true);
+    expect(await h.manager.closeSession('ses_aaaaaaaaaaaa')).toBe(true);
     expect(h.repos.vacuumCount).toBe(1);
   });
 
@@ -96,7 +96,7 @@ describe('§17.1 session lifecycle', () => {
     const t = openTempDb();
     t.repos.db5.insertDefaultsIfMissing('t');
     const h = makeHarness({ repos: t.repos });
-    const sid = h.manager.openSession('Asia/Kolkata').session_id;
+    const sid = (await h.manager.openSession('Asia/Kolkata')).session_id;
     h.set('s3', {
       step: async (ctx) => {
         ctx.repos.db1.mint({
@@ -151,7 +151,7 @@ describe('§17.1 session lifecycle', () => {
     const n = (table: string): number => (t.db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n;
     expect(n('db1_amount_placeholders')).toBe(1);
     expect(n('db8_history')).toBe(1);
-    expect(h.manager.closeSession(sid)).toBe(true);
+    expect(await h.manager.closeSession(sid)).toBe(true);
     for (const table of [
       'db1_amount_placeholders',
       'db3_address_placeholders',
@@ -170,13 +170,13 @@ describe('§17.1 session lifecycle', () => {
   it('C-411: a request in progress is abandoned as DISCARDED when the session closes', async () => {
     const h = makeHarness();
     const { sid } = await toQuestion(h);
-    h.manager.closeSession(sid);
+    await h.manager.closeSession(sid);
     expect(finals(h)).toEqual(['DISCARDED']);
   });
 
-  it('C-411: a request whose step is still running when the session closes ends DISCARDED; the call gets 404', async () => {
+  it('C-411 / R1-F1: a request whose step is still running when the session closes: the close waits, the call completes normally, then the request is DISCARDED', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     let release: () => void = () => undefined;
     let started: () => void = () => undefined;
     const inS5 = new Promise<void>((r) => {
@@ -191,16 +191,55 @@ describe('§17.1 session lifecycle', () => {
     });
     const pending = h.manager.handleMessage(sid, msg('x'));
     await inS5;
-    h.manager.closeSession(sid);
+    let closed = false;
+    const closing = h.manager.closeSession(sid).then((r) => {
+      closed = true;
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(closed).toBe(false); // still waiting for the call in flight
+    // new calls on the closing session get not_found
+    expect((await h.manager.handleMessage(sid, msg('y'))).kind).toBe('not_found');
     release();
-    expect((await pending).kind).toBe('not_found');
+    // the in-flight call completes normally (reaches its summary)
+    expect(body(await pending).state).toBe('awaiting_confirmation');
+    expect(await closing).toBe(true);
     expect(finals(h)).toEqual(['DISCARDED']);
-    expect(stepNames(h.calls)).toEqual(['s0', 's1', 's2', 's3', 's4', 's5']);
+    expect(stepNames(h.calls)).toContain('s11');
+    expect(h.manager.openSessionId()).toBeNull();
+  });
+
+  it('R1-F1: openSession over an open session waits for the call in flight, too', async () => {
+    const h = makeHarness();
+    const sid = await open(h);
+    let release: () => void = () => undefined;
+    let started: () => void = () => undefined;
+    const inS5 = new Promise<void>((r) => {
+      started = r;
+    });
+    h.set('s5', {
+      step: () =>
+        new Promise<StepResult>((resolve) => {
+          release = () => resolve({ kind: 'continue' });
+          started();
+        }),
+    });
+    const pending = h.manager.handleMessage(sid, msg('x'));
+    await inS5;
+    const opening = h.manager.openSession('Asia/Kolkata');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.manager.openSessionId()).not.toBeNull();
+    release();
+    expect(body(await pending).state).toBe('awaiting_confirmation');
+    const second = (await opening).session_id;
+    expect(second).not.toBe(sid);
+    expect(finals(h)).toEqual(['DISCARDED']);
+    expect(h.manager.openSessionId()).toBe(second);
   });
 
   it('C-410: no idle timeout — the session still works days later', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     h.clock.iso = '2026-11-20T00:00:00.000Z';
     expect(body(await h.manager.handleMessage(sid, msg('x'))).state).toBe('awaiting_confirmation');
   });
@@ -217,7 +256,7 @@ describe('§17.1 session lifecycle', () => {
 describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it('§3.3: a new message runs S0…S11 in order and stops at the S11 summary (S12 only after "yes")', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('x')));
     expect(stepNames(h.calls)).toEqual(ALL);
     expect(r).toEqual({
@@ -240,7 +279,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
         },
       });
     }
-    const sid = open(h);
+    const sid = await open(h);
     await h.manager.handleMessage(sid, msg('x'));
     expect(seen).toEqual(['BALANCES_REFRESHED', 'AMOUNTS_MASKED', 'VALIDATED']);
     expect(h.contexts.at(-1)?.req.state).toBe('AWAITING_CONFIRMATION');
@@ -248,7 +287,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
 
   it('C-050: StepContext carries the in-memory request, the DB5 snapshot, the session timezone and its clock', async () => {
     const h = makeHarness();
-    h.manager.openSession('America/New_York');
+    await h.manager.openSession('America/New_York');
     const sid = h.manager.openSessionId() as string;
     await h.manager.handleMessage(sid, msg('pay 5'));
     const ctx = h.contexts[0];
@@ -264,7 +303,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
 
   it('C-050: the runner itself writes no typed/pasted prompt (S1 does, §8.2 step 6)', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     await h.manager.handleMessage(sid, msg('send 50 usdc'));
     expect(h.repos.tables.db8_prompts).toEqual([]);
   });
@@ -305,7 +344,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
       },
     });
     h.set('s6', { step: async () => ({ kind: 'question', question: q }) });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('x')));
     expect(r).toMatchObject({
       state: 'awaiting_answer',
@@ -340,7 +379,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it("'answer' → request ANSWERED, state done, messages returned", async () => {
     const h = makeHarness();
     h.set('s4', { step: async () => ({ kind: 'answer', messages: ['You have 80 USDC on Base Sepolia.'] }) });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('balance?')));
     expect(r).toMatchObject({ state: 'done', messages: [{ type: 'text', text: 'You have 80 USDC on Base Sepolia.' }] });
     expect(stepNames(h.calls)).toEqual(['s0', 's1', 's2', 's3', 's4']);
@@ -352,7 +391,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     h.set('s10', {
       step: async () => ({ kind: 'error', code: 'LIMIT_DAILY', params: { token: 'USDC', remaining: '20' } }),
     });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('x')));
     expect(r).toEqual({
       session_id: sid,
@@ -368,7 +407,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it("C-396: 'error' with final_state ANSWERED (refusal) → request ANSWERED", async () => {
     const h = makeHarness();
     h.set('s4', { step: async () => ({ kind: 'error', code: 'UNSUPPORTED_REQUEST', final_state: 'ANSWERED' }) });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('swap')));
     expect(r.error?.code).toBe('UNSUPPORTED_REQUEST');
     expect(finals(h)).toEqual(['ANSWERED']);
@@ -377,7 +416,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it("'error' whose catalog params are missing is a bug → INTERNAL_ERROR (§11.1)", async () => {
     const h = makeHarness();
     h.set('s9', { step: async () => ({ kind: 'error', code: 'NO_GAS' }) });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('x')));
     expect(r.error).toEqual({ code: 'INTERNAL_ERROR', message: ERROR_MESSAGE.INTERNAL_ERROR({}) });
   });
@@ -392,7 +431,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
 
     const h2 = makeHarness();
     h2.set('s6', { step: async () => ({ kind: 'discard', messages: ['custom'] }) });
-    const sid2 = open(h2);
+    const sid2 = await open(h2);
     expect(body(await h2.manager.handleMessage(sid2, msg('x'))).messages).toEqual([{ type: 'text', text: 'custom' }]);
   });
 
@@ -403,7 +442,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
         throw new LlmFailed('amounts');
       },
     });
-    const sid = open(h);
+    const sid = await open(h);
     expect(body(await h.manager.handleMessage(sid, msg('x'))).error?.code).toBe('MODEL_FAILED');
     h.set('s3', {
       step: async () => {
@@ -418,7 +457,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it('§14.4: model unavailable → every request fails with MODEL_FAILED and no step runs', async () => {
     const h = makeHarness();
     h.llm.available = false;
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleMessage(sid, msg('x')));
     expect(r.error).toEqual({ code: 'MODEL_FAILED', message: ERROR_MESSAGE.MODEL_FAILED({}) });
     expect(h.calls).toEqual([]);
@@ -428,13 +467,13 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     // summary from a step other than S11
     const h1 = makeHarness();
     h1.set('s5', { step: async () => ({ kind: 'summary', summary: SUMMARY }) });
-    let sid = open(h1);
+    let sid = await open(h1);
     expect(body(await h1.manager.handleMessage(sid, msg('x'))).error?.code).toBe('UNSUPPORTED_REQUEST');
     expect(h1.log.lines.some((l) => l.event === 'unsupported_state' && l.rule_id === 's5:summary')).toBe(true);
     // S11 returning continue
     const h2 = makeHarness();
     h2.set('s11', { step: async () => ({ kind: 'continue' }) });
-    sid = open(h2);
+    sid = await open(h2);
     expect(body(await h2.manager.handleMessage(sid, msg('x'))).error?.code).toBe('UNSUPPORTED_REQUEST');
     // a paused step without an AnswerHandler
     const h3 = makeHarness();
@@ -546,7 +585,7 @@ describe('§17.3 confirmation, answers and cancellation', () => {
 
   it('SQ-A-01 F-8: cancel with no matching active request -> 200 done "Cancelled. Nothing was sent.", nothing changes, repeatable', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     for (let n = 0; n < 2; n++) {
       const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
       expect(r).toEqual({
@@ -571,7 +610,7 @@ describe('§17.3 confirmation, answers and cancellation', () => {
   it('SQ-A-01 F-8: cancel of an ended (ANSWERED) request -> "Cancelled. Nothing was sent.", request unchanged', async () => {
     const h = makeHarness();
     h.set('s4', { step: async () => ({ kind: 'error', code: 'UNSUPPORTED_REQUEST', final_state: 'ANSWERED' }) });
-    const sid = open(h);
+    const sid = await open(h);
     const first = body(await h.manager.handleMessage(sid, msg('swap my eth for usdc')));
     expect(finals(h)).toEqual(['ANSWERED']);
     const r = body(await h.manager.handleCancel(sid, first.request_id));
@@ -679,7 +718,7 @@ describe('§17.3 confirmation, answers and cancellation', () => {
 
   it('C-343: confirm outside AWAITING_CONFIRMATION/HANDOFF_FAILED, or for another request → conflict', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     expect((await h.manager.handleConfirm(sid, 'req_000000000000', 'yes')).kind).toBe('conflict');
     const a = await toQuestion(h);
     expect((await h.manager.handleConfirm(a.sid, a.rid, 'yes')).kind).toBe('conflict');
@@ -826,7 +865,7 @@ describe('§8.14 step 6 / §17.3 HANDOFF_FAILED', () => {
 describe('§14.1 one call per session at a time', () => {
   it('C-348: a second concurrent call for the same session → conflict', async () => {
     const h = makeHarness();
-    const sid = open(h);
+    const sid = await open(h);
     let release: () => void = () => undefined;
     let started: () => void = () => undefined;
     const inS4 = new Promise<void>((r) => {
@@ -856,7 +895,7 @@ describe('§18 metrics in logs', () => {
     const h = makeHarness();
     const q = question('Q_WHO_IS');
     h.set('s6', { step: async () => ({ kind: 'question', question: q }) });
-    const sid = open(h);
+    const sid = await open(h);
     await h.manager.handleMessage(sid, msg('pay bob 5'));
     await h.manager.handleMessage(sid, msg('cancel'));
     expect(h.log.lines.find((l) => l.event === 'question')).toMatchObject({
