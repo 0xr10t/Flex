@@ -10,6 +10,7 @@ import {
   type SimBlock,
   type SimCallResult,
   type ChainLog,
+  type LogQuery,
   type ChainGateway,
   type SignedTx,
   type TxReceipt,
@@ -118,7 +119,7 @@ export class FakeChain implements ChainGateway {
     return 1_800_000_000;
   }
 
-  async getLogs(): Promise<ChainLog[]> {
+  async getLogs(_query: LogQuery): Promise<ChainLog[]> {
     return [];
   }
 

@@ -126,6 +126,14 @@ export class ChainUnavailableError extends Error {
   }
 }
 
+/** A provider explicitly requires a narrower eth_getLogs block range. */
+export class LogRangeLimitError extends ChainUnavailableError {
+  constructor(readonly maxBlocks?: number) {
+    super();
+    this.name = 'LogRangeLimitError';
+  }
+}
+
 /** `eth_simulateV1` couldn't run, so nothing can be signed: there's no fallback (user decision, 6 Nov 2026). */
 export class SimulationUnavailableError extends Error {
   constructor() {
@@ -300,24 +308,33 @@ export function createChainGateway(
       unavailable(pub.getBlock({ blockNumber: BigInt(blockNumber) }).then((b) => Number(b.timestamp))),
 
     getLogs: (q) =>
-      unavailable(
-        pub
-          .getLogs({
-            address: q.address,
-            event: q.event,
-            ...(q.args ? { args: q.args as never } : {}),
-            fromBlock: BigInt(q.fromBlock),
-            toBlock: BigInt(q.toBlock),
-          })
-          .then((logs) =>
-            logs.map((l) => ({
-              args: (l as unknown as { args: Record<string, unknown> }).args,
-              blockNumber: Number(l.blockNumber),
-              transactionHash: l.transactionHash as Hex,
-              logIndex: l.logIndex as number,
-            })),
-          ),
-      ),
+      pub
+        .getLogs({
+          address: q.address,
+          event: q.event,
+          ...(q.args ? { args: q.args as never } : {}),
+          fromBlock: BigInt(q.fromBlock),
+          toBlock: BigInt(q.toBlock),
+        })
+        .then((logs) =>
+          logs.map((l) => ({
+            args: (l as unknown as { args: Record<string, unknown> }).args,
+            blockNumber: Number(l.blockNumber),
+            transactionHash: l.transactionHash as Hex,
+            logIndex: l.logIndex as number,
+          })),
+        )
+        .catch((error: unknown) => {
+          const message = textOf(error);
+          if (/block\s*range|range.*blocks|blocks?.*(?:maximum|limit)|(?:maximum|limit).*blocks?/i.test(message)) {
+            const match =
+              message.match(/(?:up to|limited to|maximum(?: of)?|at most)\s+(?:a\s+)?(\d+)\s+block/i) ??
+              message.match(/(\d+)[ -]blocks?\s+(?:range|limit)/i);
+            const limit = match ? Number(match[1]) : undefined;
+            throw new LogRangeLimitError(limit && Number.isSafeInteger(limit) ? limit : undefined);
+          }
+          throw new ChainUnavailableError();
+        }),
 
     simulate: async (blocks) => {
       try {
