@@ -4,6 +4,8 @@
 // through), accepted types text/html (→ html-to-text), text/plain, application/pdf (→ pdf-parse). Any failure →
 // { ok: false } (S1 maps it to URL_FETCH_FAILED). URLs inside fetched content are never fetched (this module
 // fetches exactly the URL it is given). §16.4: user-supplied HTTPS URLs are the only hosts it contacts.
+// SQ-O-06: every URL about to be requested (the given URL and each redirect target) is secret-scanned first; a hit
+// returns `secretRefusal()` without a request.
 // Owner: Lane B.
 
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -11,6 +13,7 @@ import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import type { ContentFetcher, FetchResult } from '../contracts/io.js';
 import type { Config } from '../contracts/types.js';
+import { secretRefusal, urlHasSecret } from '../guard/urls.js';
 import { decodeUtf8, htmlToText, pdfToText } from './extract.js';
 import { isBlockedIp } from './ssrf.js';
 
@@ -126,6 +129,7 @@ export function createContentFetcher(config: Config, deps: FetcherDeps = {}): Co
       return { ok: false };
     }
     for (let redirects = 0; ;) {
+      if (urlHasSecret(url.href)) return secretRefusal();
       if (url.protocol !== 'https:') return { ok: false };
       if (url.username !== '' || url.password !== '') return { ok: false };
       if (!(await hostAllowed(url, resolve))) return { ok: false };
@@ -134,6 +138,7 @@ export function createContentFetcher(config: Config, deps: FetcherDeps = {}): Co
         res.destroy();
         const loc = res.headers.location;
         if (loc === undefined) return { ok: false };
+        if (urlHasSecret(loc)) return secretRefusal();
         redirects++;
         if (redirects > max_redirects) return { ok: false };
         try {

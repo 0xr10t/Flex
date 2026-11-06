@@ -2,9 +2,12 @@
 // typed text are removed from `typed_text` and replaced by `[link N]`; `http://` URLs → URL_FETCH_FAILED. I-17.
 // Link numbers: `urls[]` entries are links 1…u, typed URLs continue from u+1 in order of appearance
 // (spec-questions/B.md SQB-02).
+// SQ-O-06 (human, 2026-11-06): every `urls[]` entry and every redirect target is secret-scanned before it is fetched.
 // Owner: Lane B.
 
+import type { FetchResult } from '../contracts/io.js';
 import { LINK_MARKER } from '../quarantine/labels.js';
+import { detectSecret } from './secrets.js';
 
 export interface LinkRef {
   /** 1-based link number used in `[link N]` and URL_FETCH_FAILED. */
@@ -61,4 +64,30 @@ export function extractUrls(text: string, urls: readonly string[]): UrlExtractio
 
 export function isHttpsUrl(url: string): boolean {
   return /^https:\/\//i.test(url.trim());
+}
+
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, ' '));
+  } catch {
+    return s;
+  }
+}
+
+/** SQ-O-06: true when the URL, as written or percent-decoded, carries a secret (§8.2 step 2 detectors). */
+export function urlHasSecret(url: string): boolean {
+  return detectSecret(url) !== null || detectSecret(safeDecode(url)) !== null;
+}
+
+/**
+ * SQ-O-06: the fetcher's refusal when a redirect target carries a secret. To the `ContentFetcher` contract it is a
+ * plain `{ ok: false }`; S1 tells it apart with `isSecretRefusal` and answers SECRET_DETECTED.
+ */
+export function secretRefusal(): FetchResult {
+  const r: { ok: false; secret: true } = { ok: false, secret: true };
+  return r;
+}
+
+export function isSecretRefusal(r: FetchResult): boolean {
+  return !r.ok && (r as { secret?: unknown }).secret === true;
 }
