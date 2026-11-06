@@ -24,7 +24,13 @@ import {
 import { runCheck } from '../guard/check.js';
 import { decodeExecuteBatch } from '../guard/decode.js';
 import type { Logger } from '../log.js';
-import { paymentHandler } from '../payments/payment-i.js';
+import { paymentHandler, encodeExecuteBatch } from '../payments/payment-i.js';
+import {
+  browserDelegationSigner,
+  SignaturePending,
+  SignatureRejected,
+  type DelegationRequest,
+} from '../browser/delegation.js';
 import type { EnvelopeIntent, HandoffEnvelope } from '../schemas/envelope.js';
 import type { StepStatus, Store } from '../store/store.js';
 import type { Deployment, HandlerContext, StepHandler, StepOutcome } from './handler.js';
@@ -140,9 +146,18 @@ export class Runner {
       if (store.step(id, intent.step).status === 'waiting') await this.waitFor(ctx, handler, intent);
       return;
     }
-    if (this.deps.browserWallet && intent.intent_id !== 'i' && intent.intent_id !== 'j') {
-      this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_INTENT_UNSUPPORTED' });
-      return;
+    if (this.deps.browserWallet && intent.intent_id === 'k') {
+      ctx.gateway = { ...ctx.gateway, signTypedData: browserDelegationSigner(store, id, intent.step) };
+      const approval = store.stepData<DelegationRequest>(id, intent.step);
+      if (approval?.rejected) {
+        this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
+        return;
+      }
+      if (approval?.typedData && !approval.signature) {
+        if (this.now().getTime() >= intent.schedule.start_at * 1000)
+          this.finish(id, intent, { status: 'failed', error_code: 'START_PASSED' });
+        return;
+      }
     }
 
     // The check comes first, so nothing unverified reaches the approval. It runs again after a restart, as things may have changed.
@@ -178,6 +193,11 @@ export class Runner {
       try {
         return await work();
       } catch (e) {
+        if (e instanceof SignaturePending) return false;
+        if (e instanceof SignatureRejected) {
+          this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
+          return false;
+        }
         if (e instanceof WouldFailError) {
           this.finish(id, intent, { status: 'failed', error_code: 'WOULD_FAIL' });
           return false;
@@ -250,12 +270,26 @@ export class Runner {
   private signStep(ctx: HandlerContext, handler: StepHandler, intent: EnvelopeIntent): Promise<boolean> {
     const id = ctx.envelope.request_id;
     return this.attempt(ctx, intent, 'sign', async () => {
+      if (
+        this.deps.browserWallet &&
+        intent.intent_id === 'k' &&
+        (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
+      ) {
+        this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' });
+        return false;
+      }
       const prepared = await handler.prepare(ctx, intent);
       if (prepared.kind === 'finished') {
         this.finish(id, intent, prepared.outcome);
         return false;
       }
       if (this.deps.browserWallet) {
+        // Registration is one exact executor call, wrapped in the same account batch verified on receipt.
+        if (intent.intent_id === 'k')
+          prepared.tx = {
+            to: this.deps.walletAddress,
+            data: encodeExecuteBatch([{ target: prepared.tx.to, callData: prepared.tx.data, value: 0n }]),
+          };
         const calls = decodeExecuteBatch(prepared.tx.data);
         if (!calls || prepared.tx.to.toLowerCase() !== this.deps.walletAddress.toLowerCase())
           throw new Error('unsupported wallet batch');

@@ -118,6 +118,47 @@ async function send(batch) {
     await refresh();
   }
 }
+async function signDelegation(request) {
+  if (sending) return;
+  sending = true;
+  render();
+  let signature;
+  try {
+    await accountCheck(request.typedData.domain.chainId);
+    signature = await provider.request({
+      method: 'eth_signTypedData_v4',
+      params: [
+        state.wallet,
+        JSON.stringify({
+          ...request.typedData,
+          types: {
+            EIP712Domain: [
+              { name: 'name', type: 'string' },
+              { name: 'version', type: 'string' },
+              { name: 'chainId', type: 'uint256' },
+              { name: 'verifyingContract', type: 'address' },
+            ],
+            ...request.typedData.types,
+          },
+        }),
+      ],
+    });
+    await api('/browser/delegation', { id: request.id, signature });
+    notify(
+      'Permission approved. Review the separate registration transaction next. CRE is running in simulation mode.',
+    );
+  } catch (e) {
+    if (e.code === 4001 && !signature) await api('/browser/reject-delegation', { id: request.id });
+    notify(
+      e.code === 4001
+        ? 'Recurring permission rejected.'
+        : 'Permission approval could not be saved. Refresh and try again; no registration was sent.',
+    );
+  } finally {
+    sending = false;
+    await refresh();
+  }
+}
 function render() {
   if (!state) return;
   $('prepare').disabled = !connected || sending;
@@ -127,6 +168,36 @@ function render() {
   if (container.querySelector('input:focus')) return;
   const expanded = new Set([...container.querySelectorAll('details[open]')].map((d) => d.dataset.batchId));
   container.replaceChildren();
+  for (const request of state.delegations ?? []) {
+    const card = el('article', undefined, 'card');
+    const intent = request.intent;
+    card.append(el('h3', 'Approve recurring payment permission'));
+    for (const recipient of intent.recipients)
+      card.append(el('p', `${recipient.amount.value} ${intent.token} to ${recipient.recipient} per run`));
+    card.append(
+      el(
+        'p',
+        `Fee per run: ${intent.fee.amount.value} ${intent.token}. Maximum ${intent.schedule.max_runs} runs, every ${intent.schedule.interval_seconds} seconds.`,
+      ),
+    );
+    card.append(
+      el(
+        'p',
+        `Starts ${new Date(intent.schedule.start_at * 1000).toISOString()}. Total cap: ${intent.limits.max_total.value} ${intent.token}.`,
+      ),
+    );
+    card.append(
+      el(
+        'p',
+        'This grants a bounded onchain permission. Registration is a separate wallet transaction. Local CRE simulation does not send scheduled payments.',
+      ),
+    );
+    card.append(
+      action('Review permission in MetaMask', () => signDelegation(request)),
+      action('Reject permission', () => api('/browser/reject-delegation', { id: request.id }), true),
+    );
+    container.append(card);
+  }
   const queued = state.requests.filter((r) => !state.batches.some((b) => b.requestId === r.id));
   const pending = queued.filter((r) => r.steps.some((s) => !['executed', 'failed'].includes(s.status)));
   const stopped = queued.filter((r) => r.steps.some((s) => s.status === 'failed'));
@@ -149,13 +220,17 @@ function render() {
         'h3',
         intent?.intent_id === 'j'
           ? `${intent.amount.value} USDC · ${names[intent.source_chain_id]} → ${names[intent.dest_chain_id]}`
-          : `Payment on ${names[batch.chainId]}`,
+          : `${intent?.intent_id === 'k' ? 'Register recurring payment' : intent?.intent_id === 'l' ? 'Cancel recurring payment' : 'Payment'} on ${names[batch.chainId]}`,
       ),
     );
     const complete = ['executed', 'failed'].includes(batch.stepStatus);
     const label =
       batch.stepStatus === 'executed'
-        ? 'Delivered and verified'
+        ? intent?.intent_id === 'k'
+          ? 'Recurring plan registered. Local CRE only simulates scheduled runs.'
+          : intent?.intent_id === 'l'
+            ? 'Plan cancelled and permission revoked'
+            : 'Delivered and verified'
         : batch.stepStatus === 'failed'
           ? `Stopped: ${batch.errorCode || 'check wallet activity'}`
           : batch.tracking === 'destination_unfinalized'
