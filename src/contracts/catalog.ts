@@ -112,6 +112,9 @@ export const QUESTION_VARIANT = {
   ADDRESS_CORRECT_UNTRUSTED_SUFFIX: () => 'This address comes from the attached content, not from you.',
   /** §9.4 "No address now" variant of Q_ENS_CHANGED. */
   ENS_CHANGED_NO_ADDRESS: (p: P) => `${req(p, 'ens')} no longer has an address. Keep the saved one?`,
+  /** Privacy fix 4: an ENS name found in attached content is looked up only after the user says so. */
+  WHO_IS_UNTRUSTED_ENS: (p: P) =>
+    `The attached content names ${req(p, 'ens')}. Should I look it up? You can also paste the wallet address.`,
   /** §9.6 step 4: parent unknown to ENS → Q_GROUP_PARENT. */
   GROUP_PARENT_NOT_IN_ENS: (p: P) => `${req(p, 'parent')} isn't in ENS. Which .eth name should I use instead?`,
 } as const;
@@ -148,6 +151,8 @@ export const CHIPS = {
   NO: chip('no', 'No'),
   NO_REENTER: chip('no_reenter', 'No, re-enter'),
   DONT_PAY: chip('dont_pay', "Don't pay this one"),
+  /** Privacy fix 4: look up an ENS name that came from attached content. */
+  ENS_LOOKUP: chip('ens_lookup', 'Look it up'),
   USDC: chip('USDC', 'USDC'),
   ETH: chip('ETH', 'ETH'),
   USE_AMOUNT: chip('use_amount', 'Use this amount'),

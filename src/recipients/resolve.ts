@@ -5,6 +5,7 @@
 // §7.2 / §16.4 DB2 written only by add_contact after "Yes" + name, §15 SELF_PAYMENT / ENS_INDEXER_UNAVAILABLE /
 // GROUP_EMPTY / TOO_MANY_RETRIES.
 // SQ-S-01: failed-payment corrections preserve the resolved recipient's ENS chain restrictions.
+// Privacy fix 4: an ENS name from attached content is looked up only after "Look it up".
 
 import {
   CHIPS,
@@ -185,6 +186,17 @@ async function nameFlow(ctx: StepContext, text: string, origin: Origin): Promise
   return ask({ t: 'who_is', origin }, whoIsQuestion(ctx, text));
 }
 
+/** Privacy fix 4: Q_WHO_IS for an ENS name from attached content; nothing is looked up before "Look it up". */
+function untrustedEnsQuestion(ens: string): Question {
+  return buildQuestion({
+    question_id: qid(),
+    code: 'Q_WHO_IS',
+    params: { name: ens },
+    text: QUESTION_VARIANT.WHO_IS_UNTRUSTED_ENS({ ens }),
+    chips: [CHIPS.ENS_LOOKUP, CHIPS.DONT_PAY],
+  });
+}
+
 function whoIsQuestion(ctx: StepContext, name: string, text?: string): Question {
   const chips = closeContacts(ctx.repos.db2.listAll(), nameKey(name)).map((c) =>
     plainChip(`contact:${c.name_key}`, c.name),
@@ -210,6 +222,14 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
   // §9.3 step 2.
   const saved = savedRows(ctx, origin, ctx.repos.db2.findByEnsName(name));
   if (saved.length > 0) return contactOutcome(ctx, saved);
+  // Privacy fix 4: a name from attached content could point at a resolver its author runs, so it goes to the network
+  // only after the user says "Look it up".
+  if (origin.untrusted) return ask({ t: 'who_is', origin }, untrustedEnsQuestion(name));
+  return ensLookup(ctx, name, origin, attempt);
+}
+
+/** §9.3 steps 3–7 for a normalized name: the network lookup and what follows. */
+async function ensLookup(ctx: StepContext, name: string, origin: Origin, attempt: number): Promise<Outcome> {
   // §9.3 step 3.
   const target = statedChain(ctx.req.scan, origin.clause_index);
   const chains = target !== null ? [target] : okChains(ctx);
@@ -695,7 +715,15 @@ async function answerWhoIs(
   answer: Answer,
   origin: Origin,
 ): Promise<StepResult> {
-  const chip = matchChip(q, answer);
+  // A typed "yes" / "no" stands for the fix-4 chips; contact chips are matched by label.
+  const chip = matchChip(q, answer, { yes: CHIPS.ENS_LOOKUP.id, no: CHIPS.DONT_PAY.id });
+  // Privacy fix 4: the user agreed to look up the name from attached content; it stays untrusted.
+  if (chip?.id === CHIPS.ENS_LOOKUP.id) {
+    const name = normalizeEns(origin.text);
+    if (name === null) return { kind: 'error', code: 'INTERNAL_ERROR' };
+    return proceed(ctx, st, await ensLookup(ctx, name, origin, 1));
+  }
+  if (chip?.id === CHIPS.DONT_PAY.id) return proceed(ctx, st, { k: 'removed' });
   if (chip !== null) {
     // §9.1 step 4: contact chip → that contact; no alias is saved.
     const rows = ctx.repos.db2.findByNameKey(chip.id.replace(/^contact:/, ''));

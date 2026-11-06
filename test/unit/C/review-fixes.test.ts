@@ -24,6 +24,7 @@ describe('R3-1: an untrusted payee resolved via a same-request DB2 row stays unt
     const ctx = docCtx();
     const d = new Driver(ctx);
     await d.start();
+    await d.chip('ens_lookup'); // privacy fix 4
     expectQuestion(d, 'Q_ADDRESS_CORRECT');
     await d.chip('yes');
     expectQuestion(d, 'Q_NAME_FOR_ADDRESS');
@@ -37,6 +38,7 @@ describe('R3-1: an untrusted payee resolved via a same-request DB2 row stays unt
     const ctx = docCtx();
     const d = new Driver(ctx);
     await d.start();
+    await d.chip('ens_lookup'); // privacy fix 4
     await d.chip('yes');
     await d.text('Bob');
     const before = ctx.repos.db2.findByAddress(EVIL_A).length;
@@ -54,6 +56,7 @@ describe('R3-1: an untrusted payee resolved via a same-request DB2 row stays unt
     const ctx = docCtx();
     const d = new Driver(ctx);
     await d.start();
+    await d.chip('ens_lookup'); // privacy fix 4
     await d.chip('yes');
     await d.text('Bob');
     await d.chip('dont_pay');
@@ -73,8 +76,12 @@ describe('R3-1: an untrusted payee resolved via a same-request DB2 row stays unt
     ctx.ens.set('bob.eth', coinTypeFor(ctx.config, BASE), EVIL_A);
     const d = new Driver(ctx);
     await d.start();
+    await d.chip('ens_lookup'); // privacy fix 4
     await d.chip('yes');
     await d.text('Bob');
+    // Privacy fix 4: the second document name is asked about before any lookup, even though it matches the first.
+    expectQuestion(d, 'Q_WHO_IS');
+    await d.chip('ens_lookup');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
     expect(q.text).toMatch(CONTENT_WORDING);
     expect(ctx.req.resolved).toHaveLength(1);
