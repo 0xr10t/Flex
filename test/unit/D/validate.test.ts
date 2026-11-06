@@ -62,6 +62,15 @@ async function validate(ctx: TestContext, plan: InternalIntent[]) {
   return s10.step(ctx);
 }
 
+/**
+ * SQ-D-16 F-5/F-6: any amount of the request that came from attached content (DB1 source 'untrusted') keeps the old
+ * hard limit errors. Adds one such amount to the request, then validates.
+ */
+async function validateContent(ctx: TestContext, plan: InternalIntent[]) {
+  addAmount(ctx, '1', { source: 'untrusted' });
+  return validate(ctx, plan);
+}
+
 function iOf(ctx: TestContext, amount: string, r: AddressPh, step = 0): InternalIntent {
   return planI(step, mintAmount(ctx, amount), r, BASE);
 }
@@ -325,12 +334,12 @@ describe('§11.1 INTERNAL_ERROR (C-261)', () => {
 });
 
 describe('§11.2 funding rules', () => {
-  it('C-255 §11 V-10 need > spendable → INSUFFICIENT_FUNDS with the §15 template (SQ-08)', async () => {
+  it('C-255 §11 V-10 SQ-08 F-10 need > spendable → INSUFFICIENT_FUNDS listing only the chains with a positive amount', async () => {
     const { ctx, r } = base({ balances: usdc('0', '10', '5') });
     const res = await validate(ctx, [iOf(ctx, '50', r)]);
     const msg = expectError(res, 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '50', have: '15' });
     expect(msg).toBe(
-      "You don't have enough USDC: you need 50, and can use 15 across Sepolia, Base Sepolia and Arbitrum Sepolia.",
+      "You don't have enough USDC: you need 50, and can use 15 across Base Sepolia (10) and Arbitrum Sepolia (5).",
     );
   });
 
@@ -398,9 +407,9 @@ describe('§11.2 funding rules', () => {
     return { ctx, plan };
   }
 
-  it('C-257 §11 V-12 more bridges than max_bridges_per_request → LIMIT_BRIDGES', async () => {
+  it('SQ-D-16 F-5 C-257 §11 V-12 more bridges than max_bridges_per_request → LIMIT_BRIDGES', async () => {
     const { ctx, plan } = manyBridges(4);
-    const msg = expectError(await validate(ctx, plan), 'LIMIT_BRIDGES', { n: '4', max: '3' });
+    const msg = expectError(await validateContent(ctx, plan), 'LIMIT_BRIDGES', { n: '4', max: '3' });
     expect(msg).toBe('This needs 4 transfers between chains; your limit is 3.');
   });
 
@@ -411,9 +420,9 @@ describe('§11.2 funding rules', () => {
 });
 
 describe('§11.3 per-intent limits', () => {
-  it('C-258 C-384 §11 V-13 §15 i amount over per_tx_max → LIMIT_PER_TX with the catalog message', async () => {
+  it('SQ-D-16 F-5 C-258 C-384 §11 V-13 §15 i amount over per_tx_max → LIMIT_PER_TX with the catalog message', async () => {
     const { ctx, r } = base();
-    const msg = expectError(await validate(ctx, [iOf(ctx, '101', r)]), 'LIMIT_PER_TX', {
+    const msg = expectError(await validateContent(ctx, [iOf(ctx, '101', r)]), 'LIMIT_PER_TX', {
       amount: '101',
       token: 'USDC',
       max: '100',
@@ -421,14 +430,14 @@ describe('§11.3 per-intent limits', () => {
     expect(msg).toBe('101 USDC is over your per-payment limit of 100.');
   });
 
-  it('C-258 §11 V-13 amount equal to per_tx_max passes; ETH uses its own max', async () => {
+  it('SQ-D-16 F-5 C-258 §11 V-13 amount equal to per_tx_max passes; ETH uses its own max', async () => {
     const { ctx, r } = base();
-    expect(await validate(ctx, [iOf(ctx, '100', r)])).toEqual({ kind: 'continue' });
+    expect(await validateContent(ctx, [iOf(ctx, '100', r)])).toEqual({ kind: 'continue' });
     const eth = planI(0, mintAmount(ctx, '0.06', 'ETH'), r, BASE, { token: 'ETH' });
-    expectError(await validate(ctx, [eth]), 'LIMIT_PER_TX', { amount: '0.06', token: 'ETH', max: '0.05' });
+    expectError(await validateContent(ctx, [eth]), 'LIMIT_PER_TX', { amount: '0.06', token: 'ETH', max: '0.05' });
   });
 
-  it('C-258 §11 V-13 group members are checked one by one (60 + 60 passes, 101 each fails)', async () => {
+  it('SQ-D-16 F-5 C-258 §11 V-13 group members are checked one by one (60 + 60 passes, 101 each fails)', async () => {
     const { ctx } = base();
     const { members } = addGroup(ctx, {
       parent: 'iitr.eth',
@@ -443,25 +452,25 @@ describe('§11.3 per-intent limits', () => {
       planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE),
       planI(1, a, members['bob.iitr.eth'] as AddressPh, BASE),
     ];
-    expect(await validate(ctx, plan)).toEqual({ kind: 'continue' });
+    expect(await validateContent(ctx, plan)).toEqual({ kind: 'continue' });
     const big = mintAmount(ctx, '101');
     const bad = [
       planI(0, big, members['alice.iitr.eth'] as AddressPh, BASE),
       planI(1, big, members['bob.iitr.eth'] as AddressPh, BASE),
     ];
-    expectError(await validate(ctx, bad), 'LIMIT_PER_TX', { amount: '101' });
+    expectError(await validateContent(ctx, bad), 'LIMIT_PER_TX', { amount: '101' });
   });
 
-  it('C-259 §11 V-14 k amount_per_payment over per_tx_max → LIMIT_PER_TX', async () => {
+  it('SQ-D-16 F-5 C-259 §11 V-14 k amount_per_payment over per_tx_max → LIMIT_PER_TX', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     const k = planK(ctx, 0, r, BASE, { amount: '101', per_period: '10', total: '800' });
-    expectError(await validate(ctx, [k]), 'LIMIT_PER_TX', { amount: '101', token: 'USDC', max: '100' });
+    expectError(await validateContent(ctx, [k]), 'LIMIT_PER_TX', { amount: '101', token: 'USDC', max: '100' });
   });
 
-  it('C-259 §11 V-14 k per_period_cap over autopay_max_per_period → LIMIT_AUTOPAY_PERIOD', async () => {
+  it('SQ-D-16 F-5 C-259 §11 V-14 k per_period_cap over autopay_max_per_period → LIMIT_AUTOPAY_PERIOD', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101', total: '800' });
-    const msg = expectError(await validate(ctx, [k]), 'LIMIT_AUTOPAY_PERIOD', {
+    const msg = expectError(await validateContent(ctx, [k]), 'LIMIT_AUTOPAY_PERIOD', {
       cap: '101',
       token: 'USDC',
       max: '100',
@@ -469,11 +478,11 @@ describe('§11.3 per-intent limits', () => {
     expect(msg).toBe('This pays 101 USDC a week, over your autopay limit of 100 a week.');
   });
 
-  it('C-259 §11 V-14 k lasting longer than autopay_max_weeks → LIMIT_AUTOPAY_DURATION', async () => {
+  it('SQ-D-16 F-5 C-259 §11 V-14 k lasting longer than autopay_max_weeks → LIMIT_AUTOPAY_DURATION', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     const long: Schedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
     const k = planK(ctx, 0, r, BASE, { schedule: long, total: '100' });
-    const msg = expectError(await validate(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
+    const msg = expectError(await validateContent(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     expect(msg).toBe('Repeating payments can run for at most 52 weeks.');
   });
 
@@ -547,11 +556,11 @@ describe('§11.3 V-15 daily limit', () => {
     return [planI(0, a, r, BASE), planI(1, a, r, BASE)];
   }
 
-  it('C-260 C-385 §11 V-15 counts pending/executed/counting rows of today in the session timezone only; remaining = 300 − 170.4', async () => {
+  it('SQ-D-16 F-5 C-260 C-385 §11 V-15 counts pending/executed/counting rows of today in the session timezone only; remaining = 300 − 170.4', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     seedRows(ctx);
     // spent_today = 100 + 20 + 50 + 0.4 = 170.4, this request 2 × 65 = 130 → 300.4 > 300
-    const res = await validate(ctx, twoI(ctx, r, '65'));
+    const res = await validateContent(ctx, twoI(ctx, r, '65'));
     const msg = expectError(res, 'LIMIT_DAILY', { token: 'USDC', remaining: '129.6' });
     expect(msg).toBe("This would go over today's USDC limit. You can still send 129.6 today.");
   });
@@ -563,7 +572,7 @@ describe('§11.3 V-15 daily limit', () => {
     expect(await validate(ctx, twoI(ctx, r, '64.8'))).toEqual({ kind: 'continue' });
   });
 
-  it('C-260 §11 V-15 yesterday-local rows (even if the UTC date is today) never count; with only them anything up to 300 passes', async () => {
+  it('SQ-D-16 F-5 C-260 §11 V-15 yesterday-local rows (even if the UTC date is today) never count; with only them anything up to 300 passes', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '999', status: 'pending', created_at: T('2026-11-04T18:29:59.000Z') }),
@@ -575,11 +584,11 @@ describe('§11.3 V-15 daily limit', () => {
         executed_at: T('2026-11-04T18:29:59.000Z'),
       }),
     ]);
-    expect(await validate(ctx, twoI(ctx, r, '100'))).toEqual({ kind: 'continue' });
+    expect(await validateContent(ctx, twoI(ctx, r, '100'))).toEqual({ kind: 'continue' });
     const third = [...twoI(ctx, r, '100'), planI(2, mintAmount(ctx, '100'), r, BASE)];
-    expect(await validate(ctx, third)).toEqual({ kind: 'continue' });
+    expect(await validateContent(ctx, third)).toEqual({ kind: 'continue' });
     const over = [...third, planI(3, mintAmount(ctx, '0.01'), r, BASE)];
-    expectError(await validate(ctx, over), 'LIMIT_DAILY', { remaining: '300' });
+    expectError(await validateContent(ctx, over), 'LIMIT_DAILY', { remaining: '300' });
   });
 
   it('C-260 §11 V-15 a failed row never counts (alone it leaves the full 300 allowance)', async () => {
@@ -590,7 +599,7 @@ describe('§11.3 V-15 daily limit', () => {
     expect(await validate(ctx, twoI(ctx, r, '100'))).toEqual({ kind: 'continue' });
   });
 
-  it('C-260 §11 V-15 spent_today above the max → remaining reported as 0', async () => {
+  it('SQ-D-16 F-5 C-260 §11 V-15 spent_today above the max → remaining reported as 0', async () => {
     const { ctx, r } = base();
     ctx.repos.db6.insertMany([
       db6Row({
@@ -601,10 +610,10 @@ describe('§11.3 V-15 daily limit', () => {
         executed_at: '2026-11-05T10:00:00.000Z',
       }),
     ]);
-    expectError(await validate(ctx, [iOf(ctx, '1', r)]), 'LIMIT_DAILY', { remaining: '0' });
+    expectError(await validateContent(ctx, [iOf(ctx, '1', r)]), 'LIMIT_DAILY', { remaining: '0' });
   });
 
-  it('C-260 §11 V-15 the same rows in UTC (timezone shifts the day boundary): 18:30Z rows of Nov 4 no longer count', async () => {
+  it('SQ-D-16 F-5 C-260 §11 V-15 the same rows in UTC (timezone shifts the day boundary): 18:30Z rows of Nov 4 no longer count', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0'), timezone: 'UTC' });
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '250', status: 'pending', created_at: T('2026-11-04T19:00:00.000Z') }),
@@ -612,7 +621,7 @@ describe('§11.3 V-15 daily limit', () => {
     ]);
     // UTC day starts at 2026-11-05T00:00Z: only the 10 counts → remaining 290
     expectError(
-      await validate(ctx, [
+      await validateContent(ctx, [
         iOf(ctx, '100', r),
         planI(1, mintAmount(ctx, '100'), r, BASE),
         planI(2, mintAmount(ctx, '100'), r, BASE),
@@ -622,7 +631,7 @@ describe('§11.3 V-15 daily limit', () => {
     );
   });
 
-  it('C-216 §10.4 V-15 a j buffer (padded − deliverable) counts toward the daily limit; the deliverable does not', async () => {
+  it('SQ-D-16 F-5 C-216 §10.4 V-15 a j buffer (padded − deliverable) counts toward the daily limit; the deliverable does not', async () => {
     const { ctx, r } = base({ balances: usdc('0', '30', '60') });
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '249.7', status: 'pending', created_at: T('2026-11-05T10:00:00.000Z') }),
@@ -630,13 +639,13 @@ describe('§11.3 V-15 daily limit', () => {
     // request: i 50 + buffer 0.4 = 50.4 → 300.1 > 300
     const j = planJ(ctx, 0, ARB, BASE, '20.4', '20', [1]);
     const i = planI(1, mintAmount(ctx, '50'), r, BASE, { depends_on: [0] });
-    expectError(await validate(ctx, [j, i]), 'LIMIT_DAILY', { remaining: '50.3' });
+    expectError(await validateContent(ctx, [j, i]), 'LIMIT_DAILY', { remaining: '50.3' });
     // without the buffer (50 alone) the same spend would fit: 249.7 + 50 = 299.7
     const c2 = base({ balances: usdc('0', '100', '0') });
     c2.ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '249.7', status: 'pending', created_at: T('2026-11-05T10:00:00.000Z') }),
     ]);
-    expect(await validate(c2.ctx, [iOf(c2.ctx, '50', c2.r)])).toEqual({ kind: 'continue' });
+    expect(await validateContent(c2.ctx, [iOf(c2.ctx, '50', c2.r)])).toEqual({ kind: 'continue' });
   });
 
   it('C-260 §11 V-15 k creation adds 0 to the request total', async () => {
@@ -657,7 +666,7 @@ describe('§11.3 V-15 daily limit', () => {
   });
 });
 
-describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
+describe('§13.4 Q_LIMIT_OVERRIDE (C-326, SQ-D-16, F-1…F-6)', () => {
   function groupSetup(): { ctx: TestContext; plan: InternalIntent[] } {
     const ctx = ctxD({ balances: usdc('0', '500', '0') });
     const { group, members } = addGroup(ctx, {
@@ -680,10 +689,10 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
     return { ctx, plan };
   }
 
-  it('C-326 E4 §11 V-15: a group request over the daily limit asks Q_GROUP_OVER_LIMIT with Yes, this once / No', async () => {
+  it('C-326 E4 §11 V-15: SQ-D-16 F-1 a group request over the daily limit asks Q_LIMIT_OVERRIDE with Yes, this once / No', async () => {
     const { ctx, plan } = groupSetup();
     const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
-    expect(q.text).toBe("This sends 20 USDC, but only 10 is left of today's 300 limit. Go ahead this once?");
+    expect(q.text).toBe("This is 20 USDC, over today's limit of 300 (only 10 is left). Go ahead this once?");
     expect(q.chips.map((c) => [c.id, c.label])).toEqual([
       ['override', 'Yes, this once'],
       ['no', 'No'],
@@ -701,9 +710,9 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' }); // re-entrant: note not duplicated
     expect(ctx.req.notes.filter((n) => n === NOTES.LIMIT_LIFTED())).toHaveLength(1);
-    expect(NOTES.LIMIT_LIFTED()).toBe("Today's limit was lifted once for this group payment.");
+    expect(NOTES.LIMIT_LIFTED()).toBe('A limit was lifted once for this request.');
     const summary = buildSummary(ctx, plan);
-    expect(summary.notes).toContain("Today's limit was lifted once for this group payment.");
+    expect(summary.notes).toContain('A limit was lifted once for this request.');
     // DB5 is unchanged by the override
     expect(ctx.repos.db5.getAll().daily_max.USDC).toBe('300');
   });
@@ -745,23 +754,30 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
     expect(ctx.req.limit_override).toBe(false);
   });
 
-  it('C-326 §11 V-15 without a group payment the same overage is LIMIT_DAILY, not a question', async () => {
+  it('SQ-D-16 F-5 without a group payment a typed amount over the daily limit asks the same question', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '290', status: 'pending', created_at: '2026-11-05T10:00:00.000Z' }),
     ]);
     ctx.req.payments = [];
-    const a = mintAmount(ctx, '20');
-    expectError(await validate(ctx, [planI(0, a, r, BASE)]), 'LIMIT_DAILY', { remaining: '10' });
+    const a = addAmount(ctx, '20');
+    const q = expectQuestion(await validate(ctx, [planI(0, a, r, BASE)]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe("This is 20 USDC, over today's limit of 300 (only 10 is left). Go ahead this once?");
   });
 
-  it('C-326 §11 V-15 the override applies to the whole request but only to the daily limit (per-tx still enforced)', async () => {
+  it('SQ-D-16 F-5 with a content (untrusted) amount in the group request the old LIMIT_DAILY error stays', async () => {
+    const { ctx, plan } = groupSetup();
+    expectError(await validateContent(ctx, plan), 'LIMIT_DAILY', { remaining: '10' });
+  });
+
+  it('SQ-D-16 F-2 once overridden, every limit of the request is lifted (per-payment too)', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
     ctx.req.limit_override = true;
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '290', status: 'pending', created_at: '2026-11-05T10:00:00.000Z' }),
     ]);
-    expectError(await validate(ctx, [iOf(ctx, '101', r)]), 'LIMIT_PER_TX');
+    expect(await validate(ctx, [iOf(ctx, '101', r)])).toEqual({ kind: 'continue' });
+    expect(ctx.req.notes).toContain('A limit was lifted once for this request.');
   });
 
   it('C-326 an unknown question code answered to S10 → INTERNAL_ERROR', async () => {
@@ -771,3 +787,105 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
     expect(res).toEqual({ kind: 'error', code: 'INTERNAL_ERROR' });
   });
 });
+
+describe('SQ-D-16 F-1…F-6 S10 asks Q_LIMIT_OVERRIDE for typed amounts', () => {
+  it('SQ-D-16 V-13 a typed amount over the per-payment limit asks, with Yes, this once / No', async () => {
+    const { ctx, r } = base();
+    const q = expectQuestion(await validate(ctx, [iOf(ctx, '120', r)]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe('This is 120 USDC, over your per-payment limit of 100. Go ahead this once?');
+    expect(q.chips.map((c) => [c.id, c.label])).toEqual([
+      ['override', 'Yes, this once'],
+      ['no', 'No'],
+    ]);
+    expect(ctx.req.limit_override).toBe(false);
+  });
+
+  it('SQ-D-16 F-1 per-payment and daily broken together give one combined question', async () => {
+    const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
+    ctx.repos.db6.insertMany([
+      db6Row({ kind: 'payment', amount: '260', status: 'pending', created_at: '2026-11-05T10:00:00.000Z' }),
+    ]);
+    const q = expectQuestion(await validate(ctx, [iOf(ctx, '150', r)]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe(
+      "This is 150 USDC, over your per-payment limit of 100 and today's limit of 300 (only 40 is left). Go ahead this once?",
+    );
+  });
+
+  it('SQ-D-16 F-4 V-12 too many bridges asks "This needs 4 transfers between chains; your limit is 3."', async () => {
+    const { ctx, plan } = manyBridgesPlan(4);
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe('This needs 4 transfers between chains; your limit is 3. Go ahead this once?');
+    expect(q.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
+  });
+
+  it('SQ-D-16 F-3 V-14 autopay per-period over the limit asks "Set it up anyway?" with Yes, set it up / No', async () => {
+    const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
+    const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101', total: '800' });
+    const q = expectQuestion(await validate(ctx, [k]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe('This repeating payment is over your weekly autopay limit of 100. Set it up anyway?');
+    expect(q.chips.map((c) => [c.id, c.label])).toEqual([
+      ['override', 'Yes, set it up'],
+      ['no', 'No'],
+    ]);
+  });
+
+  it('SQ-D-16 F-3 V-14 autopay duration over the limit asks about the 52-week limit', async () => {
+    const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
+    const long: Schedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
+    const k = planK(ctx, 0, r, BASE, { schedule: long, total: '100' });
+    const q = expectQuestion(await validate(ctx, [k]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe('This repeating payment is over the 52-week limit for repeating payments. Set it up anyway?');
+  });
+
+  it('SQ-D-16 F-5 content amounts keep the old errors for bridges, per-payment and autopay limits', async () => {
+    const a = manyBridgesPlan(4);
+    expectError(await validateContent(a.ctx, a.plan), 'LIMIT_BRIDGES', { n: '4', max: '3' });
+    const { ctx, r } = base();
+    expectError(await validateContent(ctx, [iOf(ctx, '120', r)]), 'LIMIT_PER_TX');
+    const c2 = base({ balances: usdc('0', '5000', '0') });
+    const k = planK(c2.ctx, 0, c2.r, BASE, { amount: '10', per_period: '101', total: '800' });
+    expectError(await validateContent(c2.ctx, [k]), 'LIMIT_AUTOPAY_PERIOD');
+  });
+
+  it('SQ-D-16 F-2 answering Yes lifts the limit: S10 continues and the DB5 limits are unchanged', async () => {
+    const { ctx, r } = base();
+    const plan = [iOf(ctx, '120', r)];
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
+    expect(await s10.onAnswer?.(ctx, q, chip('override'))).toEqual({ kind: 'continue' });
+    expect(ctx.req.limit_override).toBe(true);
+    expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.req.notes.filter((n) => n === NOTES.LIMIT_LIFTED())).toHaveLength(1);
+    expect(ctx.repos.db5.getAll().per_tx_max.USDC).toBe('100');
+  });
+
+  it('SQ-D-16 F-2 answering No discards the request with "Cancelled. Nothing was sent."', async () => {
+    const { ctx, r } = base();
+    const q = expectQuestion(await validate(ctx, [iOf(ctx, '120', r)]), 'Q_LIMIT_OVERRIDE');
+    expect(await s10.onAnswer?.(ctx, q, chip('no'))).toEqual({
+      kind: 'discard',
+      messages: ['Cancelled. Nothing was sent.'],
+    });
+    expect(ctx.req.limit_override).toBe(false);
+  });
+
+  it('SQ-D-16 F-2 an unrelated answer re-asks with attempt + 1', async () => {
+    const { ctx, r } = base();
+    const q = expectQuestion(await validate(ctx, [iOf(ctx, '120', r)]), 'Q_LIMIT_OVERRIDE');
+    const res = await s10.onAnswer?.(ctx, q, text('hmm'));
+    expect(res?.kind).toBe('question');
+    if (res?.kind === 'question') expect(res.question.attempt).toBe(q.attempt + 1);
+  });
+
+  it('SQ-D-16 funding errors come before the limit question (V-10 before V-13)', async () => {
+    const { ctx, r } = base({ balances: usdc('0', '10', '0') });
+    expectError(await validate(ctx, [iOf(ctx, '120', r)]), 'INSUFFICIENT_FUNDS');
+  });
+});
+
+function manyBridgesPlan(n: number): { ctx: TestContext; plan: InternalIntent[] } {
+  const { ctx, r } = base({ balances: usdc('0', '0', '1000') });
+  const plan: InternalIntent[] = [];
+  for (let st = 0; st < n; st++) plan.push(planJ(ctx, st, ARB, BASE, '10.2', '10', [n]));
+  plan.push(planI(n, mintAmount(ctx, String(10 * n)), r, BASE, { depends_on: Array.from({ length: n }, (_, k) => k) }));
+  return { ctx, plan };
+}
