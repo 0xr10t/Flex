@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CRE testnet setup</title>
+    <link rel="stylesheet" href="/setup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Set up recurring payments</h1>
+      <p>
+        Connect your test wallet, deploy its payment executor on each chain, and enable smart-account transactions where
+        needed. MetaMask shows the gas cost before each approval.
+      </p>
+      <p>
+        Payments will run locally through CRE build and simulate with broadcasting. Your signed recipient, amount,
+        schedule and cancellation limits remain onchain.
+      </p>
+      <p id="account"></p>
+      <button id="connect">Connect MetaMask</button>
+      <p id="message" role="status"></p>
+      <section id="chains"></section>
+      <p>
+        After all three chains are ready, return to the <a href="http://127.0.0.1:8788">wallet approval page</a> to
+        approve recurring permissions and register plans.
+      </p>
+    </main>
+    <script src="/setup.js"></script>
+  </body>
+</html>

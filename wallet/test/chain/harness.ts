@@ -1,7 +1,7 @@
 // Local anvil chains that look like the real testnets: MetaMask's real contracts, placed at their real addresses, and a
 // test USDC at the registered USDC address. So the wallet runs with its production constants and no test-only paths.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import type { SmartAccountsEnvironment } from '@metamask/smart-accounts-kit';
@@ -35,6 +35,10 @@ export const artifact = (file: string, name: string) =>
   };
 
 const MOCK_USDC = artifact('TestHelpers.sol', 'MockUSDC').deployedBytecode.object;
+// Older stable Anvil releases don't expose --network and don't infer OP rules from the Base chain ID.
+const explicitNetwork = execFileSync('anvil', ['--help'], { encoding: 'utf8', windowsHide: true }).includes(
+  '--network ',
+);
 
 export const freePort = () =>
   new Promise<number>((resolve, reject) => {
@@ -79,14 +83,13 @@ export async function startChain(chainId: LocalChain['chainId'], timestamp?: num
       String(port),
       '--chain-id',
       String(chainId),
-      '--network',
-      'ethereum',
+      ...(explicitNetwork ? ['--network', 'ethereum'] : []),
       '--hardfork',
       'prague',
       '--silent',
       ...(timestamp === undefined ? [] : ['--timestamp', String(timestamp)]),
     ],
-    { stdio: 'ignore' },
+    { stdio: 'ignore', windowsHide: true },
   );
 
   const rpc = async (method: string, params: unknown[] = []) => {

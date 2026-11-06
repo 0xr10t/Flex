@@ -436,6 +436,7 @@ describe('each run (CRE plays its part here; the rules are the contract’s)', (
     await world.base.setTime(start + 30);
     await world.deliver(world.base, row.redeem);
     await world.base.setTime(k.schedule.end_at + 10);
+    await world.base.rpc('anvil_mine', ['0x41', '0x0']);
     await vi.waitFor(
       () =>
         expect(reportsFor(e.request_id).map((r) => r.kind)).toEqual([

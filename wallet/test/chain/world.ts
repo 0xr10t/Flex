@@ -175,6 +175,8 @@ export async function startWorld(timestamp?: number): Promise<World> {
           gas: 9_000_000n,
         });
         const receipt = await chain.pub.waitForTransactionReceipt({ hash });
+        // Payment-history watchers consume finalized events. Anvil finalizes 64 blocks behind its head.
+        await chain.rpc('anvil_mine', ['0x41', '0x0']);
         return { paid: parseEventLogs({ abi: EXECUTOR_ABI, logs: receipt.logs, eventName: 'Executed' }).length === 1 };
       } catch {
         return { paid: false };

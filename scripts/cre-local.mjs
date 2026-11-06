@@ -331,15 +331,33 @@ async function tick(options, signal) {
       }
     } catch (error) {
       if (config.mode !== 'testnet-dry-run' || signal.aborted) throw error;
+      const waitingFinality = error.message === 'EXECUTOR_NOT_FINALIZED';
+      if (waitingFinality) {
+        caughtUp = false;
+        progress.push({ chainId: chain.chainId, caughtUp: false });
+      }
       results.push({
         chainId: chain.chainId,
         executor: chain.executor,
-        status: 'blocked',
+        status: waitingFinality ? 'waiting_finality' : 'blocked',
         code: /^[A-Z_]+$/.test(error.message) ? error.message : 'CHAIN_RUN_FAILED',
       });
     }
   }
-  if (config.mode === 'testnet-dry-run')
+  if (config.mode === 'testnet-dry-run') {
+    // Keep hashes visible while finalized payment reports catch up, including after a restart.
+    for (const entry of Object.values(journal.entries).slice(-100)) {
+      if (!entry.tx || !['submitted', 'pending', 'mined'].includes(entry.state)) continue;
+      if (results.some((r) => r.chainId === entry.chainId && r.id === entry.id && r.slot === entry.slot)) continue;
+      results.push({
+        chainId: entry.chainId,
+        executor: entry.executor,
+        id: entry.id,
+        slot: entry.slot,
+        status: entry.state,
+        tx: entry.tx,
+      });
+    }
     return {
       status: results.some(
         (entry) => entry.status === 'blocked' || entry.skipped || ['failed', 'receiver_failed'].includes(entry.status),
@@ -354,6 +372,7 @@ async function tick(options, signal) {
       progress,
       result: { mode: options.command === 'broadcast' ? 'testnet-broadcast' : 'testnet-dry-run', results },
     };
+  }
   if (!caughtUp) return { status: 'catching_up', progress };
   const result = await simulate(config, 'staging-settings', signal);
   result.results = result.results.map((entry) => ({

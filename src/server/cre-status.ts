@@ -30,11 +30,21 @@ export function readCreStatus(path: string, now = Date.now()) {
       code?: string;
     }> = [];
     const broadcast = raw.result?.mode === 'testnet-broadcast' && raw.broadcast === true;
+    const chains: Array<{ chainId: number; status: string; code: string | null }> = [];
     if (
       ['dry-run', 'testnet-dry-run', 'testnet-broadcast'].includes(raw.result?.mode) &&
       Array.isArray(raw.result.results)
     ) {
       for (const item of raw.result.results.slice(0, 100)) {
+        if (
+          [11155111, 84532, 421614].includes(item.chainId) &&
+          ['idle', 'waiting_finality', 'blocked'].includes(item.status)
+        )
+          chains.push({
+            chainId: item.chainId,
+            status: item.status,
+            code: typeof item.code === 'string' && /^[A-Z_]{1,80}$/.test(item.code) ? item.code : null,
+          });
         if (
           ![11155111, 84532, 421614].includes(item.chainId) ||
           !/^0x[0-9a-fA-F]{40}$/.test(item.executor) ||
@@ -73,8 +83,9 @@ export function readCreStatus(path: string, now = Date.now()) {
       lastCheckedAt: new Date(time).toISOString(),
       code: typeof raw.code === 'string' && /^[A-Z_]{1,80}$/.test(raw.code) ? raw.code : null,
       results: stale ? [] : results,
+      chains: stale ? [] : chains,
     };
   } catch {
-    return { ...base, status: 'unavailable', lastCheckedAt: null, code: null, results: [] };
+    return { ...base, status: 'unavailable', lastCheckedAt: null, code: null, results: [], chains: [] };
   }
 }

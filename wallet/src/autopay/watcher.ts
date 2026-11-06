@@ -1,5 +1,5 @@
-// Implements: §14.3 `autopay_payment` and `autopay_status`, §14.2 rule 8, A.5 rule 5. CRE pays runs in the cloud and can't reach
-// an agent on 127.0.0.1, so the wallet watches the chain and tells the agent (OQ-14, provisional).
+// Implements: §14.3 `autopay_payment` and `autopay_status`, §14.2 rule 8, A.5 rule 5. The wallet observes finalized
+// executor events and reports them to the local agent, independently of whether CRE runs locally or on a DON.
 //
 // Only an `Executed` event counts: the forwarder's transaction succeeds even when the payment inside it fails. The event
 // carries no amounts, but the signed batch fixes them, so the stored ones match what was paid. The cursor is saved with the
@@ -13,7 +13,7 @@ import type { ChainGateway } from '../chain/gateway.js';
 import type { Logger } from '../log.js';
 import type { AutopayRow, Store } from '../store/store.js';
 import { EXECUTOR_ABI } from './abi.js';
-import { SCAN_BLOCKS } from './scan.js';
+import { SCAN_BLOCKS, scanLogs } from './scan.js';
 
 const EXECUTED_EVENT = getAbiItem({ abi: EXECUTOR_ABI, name: 'Executed' });
 
@@ -84,7 +84,7 @@ export class RunWatcher {
     const plans = store.watchedPlans(chainId).filter((p) => p.executor.toLowerCase() === executor.toLowerCase());
     if (plans.length === 0) return;
     const byPlan = new Map(plans.map((p) => [p.plan_id, p]));
-    const latest = await gateway.latestBlock();
+    const latest = await gateway.finalizedBlock();
     const cursor = store.watchCursor(chainId);
     const firstBlock = Math.min(...plans.map((p) => p.registered_block ?? latest.number));
     let from = cursor === null ? firstBlock : cursor + 1;
@@ -93,7 +93,7 @@ export class RunWatcher {
       const to = Math.min(from + SCAN_BLOCKS - 1, latest.number);
       // Privacy fix 9: every run on the shared executor, not filtered by this user's plan ids, so the RPC can't tell which
       // plans are being watched. Other users' runs are dropped below (`byPlan`).
-      const logs = await gateway.getLogs({ address: executor, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
+      const logs = await scanLogs(gateway, { address: executor, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
       const ordered = [...logs].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
       const times = new Map<number, number>();
       for (const log of ordered) {
