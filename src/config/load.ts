@@ -78,7 +78,11 @@ const CONFIG_SCHEMA = {
       type: 'object',
       additionalProperties: false,
       required: ['enabled', 'think'],
-      properties: { enabled: { type: 'boolean' }, think: { type: 'boolean' } },
+      properties: {
+        enabled: { type: 'boolean' },
+        think: { type: 'boolean' },
+        model: { ...NON_EMPTY, pattern: '\\S' },
+      },
     },
     chains: {
       type: 'array',

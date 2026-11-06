@@ -713,18 +713,29 @@ describe('§17.3 confirmation, answers and cancellation', () => {
     ]);
   });
 
-  it('C-425 / C-305: other text while awaiting confirmation → pending DISCARDED, new request with the line prepended', async () => {
+  it('C-425 / C-305: a complete new request while awaiting confirmation replaces the pending request', async () => {
     const h = makeHarness();
     const { sid, rid } = await toConfirmation(h);
-    const r = body(await h.manager.handleMessage(sid, msg('actually send 20 to mihir')));
+    const r = body(await h.manager.handleMessage(sid, msg('send 20 usdc to mihir on base')));
     expect(r.request_id).not.toBe(rid);
     expect(r.state).toBe('awaiting_confirmation');
     expect(r.messages).toEqual([
       { type: 'text', text: 'I dropped the previous plan and started on your new request.' },
     ]);
-    expect(h.contexts.at(-1)?.req.input?.text).toBe('actually send 20 to mihir');
+    expect(h.contexts.at(-1)?.req.input?.text).toBe('send 20 usdc to mihir on base');
     expect(finals(h)).toEqual(['DISCARDED']);
     expect((await h.manager.handleConfirm(sid, rid, 'yes')).kind).toBe('conflict');
+  });
+
+  it('SQ-CV-02: an edit cannot inherit fields when the stub summary has no validated draft rows', async () => {
+    const h = makeHarness();
+    const { sid, rid } = await toConfirmation(h);
+    const response = body(await h.manager.handleMessage(sid, msg('actually send 20 to mihir')));
+    expect(response.request_id).toBe(rid);
+    expect(response.state).toBe('awaiting_confirmation');
+    expect(response.summary).toEqual(SUMMARY);
+    expect(finals(h)).toEqual([]);
+    expect(h.calls.some((call) => call.step === 's12')).toBe(false);
   });
 
   it('C-343: confirm outside AWAITING_CONFIRMATION/HANDOFF_FAILED, or for another request → conflict', async () => {

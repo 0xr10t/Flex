@@ -3,6 +3,7 @@
 // unavailable → BALANCES_UNAVAILABLE). §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s
 // timeout, no retries. FR-02, NFR-07, I-12. §13.1 note "{Chain} balance couldn't be read right now, …".
 // S0 runs only for new messages (the runner never calls it for answers; it asks no questions, so no onAnswer).
+// SQ-CHAT-02 also refreshes read-only wallet questions on a disposable context, preserving any active draft.
 // Owner: Lane B.
 
 import { createPublicClient, erc20Abi, http, type PublicClient, type Transport } from 'viem';
@@ -50,7 +51,7 @@ export function createRpcClients(config: Config, transportFor: RpcTransportFacto
   };
 }
 
-async function s0Step(ctx: StepContext): Promise<StepResult> {
+export async function refreshBalances(ctx: StepContext): Promise<StepResult> {
   const { req, repos, rpc, config, limits } = ctx;
   const nowIso = ctx.now().toUTC().toISO() ?? new Date().toISOString();
   const chains = limits.allowed_chain_ids;
@@ -109,4 +110,4 @@ async function s0Step(ctx: StepContext): Promise<StepResult> {
   return { kind: 'continue' };
 }
 
-export const s0: StepEntry = { step: s0Step };
+export const s0: StepEntry = { step: refreshBalances };

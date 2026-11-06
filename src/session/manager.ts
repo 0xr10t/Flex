@@ -8,6 +8,7 @@
 // → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
 // cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
 // SQ-S-01 / SQ-S-02: retain an unsubmitted failed payment for the next follow-up, without adding DB8 history.
+// SQ-CHAT-02: natural read-only wallet answers refresh a separate context, preserving the active payment state.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
@@ -50,6 +51,7 @@ import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
 import { failedPaymentContext } from './failed-payment.js';
+import { prepareDraftCorrection } from './draft-correction.js';
 import {
   answerOnlyReply,
   explicitDraftCancellation,
@@ -66,10 +68,13 @@ import {
   ChatInputTooLong,
   classifyChatMessage,
   generateChatReply,
+  generateWalletReply,
   rememberChat,
   type ChatContext,
   type ChatTurn,
 } from './general-chat.js';
+import { buildWalletContext } from './wallet-context.js';
+import { refreshBalances } from '../pipeline/s0-balances.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -257,6 +262,19 @@ export class SessionManager {
   /** POST /v1/sessions/{id}/messages: a new request, or an answer/confirmation per §17.3. */
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
+      // SQ-CV-02: interpret an explicit edit against the validated draft before generic chat or replacement.
+      // A fresh request identity prevents a confirmation for the old summary from approving its revision.
+      const pending = s.active;
+      if (pending?.req.state === 'AWAITING_CONFIRMATION' && classifyConfirmationText(input.text) === 'other') {
+        const correction = prepareDraftCorrection(this.context(s, pending), input);
+        if (correction?.kind === 'clarify') return ok(this.chatReply(s, pending, correction.message));
+        if (correction?.kind === 'replace') {
+          this.markDiscarded(pending.req);
+          return ok(
+            await this.newRequest(s, correction.input, ['I updated your draft. Please review the revised summary.']),
+          );
+        }
+      }
       if (this.deps.config.chat?.enabled) {
         const chat = await this.generalChat(s, input);
         if (chat !== null) return ok(chat);
@@ -412,7 +430,30 @@ export class SessionManager {
       const intent = await classifyChatMessage(this.deps.llm, text, context, s.chatHistory);
       this.assertOpen(s);
       if (intent === 'wallet') return null;
-      const reply = await generateChatReply(this.deps.llm, text, context, s.chatHistory, settings.think);
+      if (intent === 'wallet_info') {
+        // Only DB4 may change. No step mutates the active draft or resets its questions/confirmation.
+        const readContext = this.context(s, {
+          req: newAgentRequest(this.newId('request') as RequestId, s.session_id, {
+            text: '',
+            pasted_blocks: [],
+            attachments: [],
+            urls: [],
+          }),
+          limits: this.deps.repos.db5.getAll(),
+        });
+        const result = await refreshBalances(readContext);
+        this.assertOpen(s);
+        if (result.kind !== 'continue' && !(result.kind === 'error' && result.code === 'BALANCES_UNAVAILABLE'))
+          throw new Error('Wallet refresh failed');
+        context.wallet = buildWalletContext(readContext);
+      }
+      const reply = await (intent === 'wallet_info' ? generateWalletReply : generateChatReply)(
+        this.deps.llm,
+        text,
+        context,
+        s.chatHistory,
+        settings.think,
+      );
       this.assertOpen(s);
       const history = rememberChat(s.chatHistory, text, reply);
       s.chatHistoryOmitted ||= history.length < s.chatHistory.length + 1;
@@ -421,21 +462,17 @@ export class SessionManager {
     } catch (error) {
       this.assertOpen(s);
       // An unavailable/invalid chat response is never reinterpreted as a payment or a field answer.
-      return this.chatReply(
-        s,
-        a,
-        error instanceof ChatInputTooLong
-          ? 'Please shorten your message and try again.'
-          : "I couldn't answer that right now. Please try again.",
-      );
+      return this.chatReply(s, a, error instanceof ChatInputTooLong ? REPLY.CHAT_TOO_LONG() : REPLY.CHAT_UNAVAILABLE());
     }
   }
 
-  /** No raw question text, choices, documents, contacts, submitted envelope or DB records enter chat context. */
+  /** Current public wallet address and draft context only; balance facts are added after a wallet_info refresh. */
   private chatContext(s: OpenSession, a: Active | null): ChatContext {
-    if (a === null) return { state: 'IDLE', older_chat_omitted: s.chatHistoryOmitted };
+    const wallet_address = this.deps.config.wallet.address;
+    if (a === null) return { state: 'IDLE', wallet_address, older_chat_omitted: s.chatHistoryOmitted };
     const context: ChatContext = {
       state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state,
+      wallet_address,
       older_chat_omitted: s.chatHistoryOmitted,
     };
     const text = a.req.typed_text;

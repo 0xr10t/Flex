@@ -67,7 +67,7 @@ export interface Config {
     think?: boolean;
   };
   /** SQ-CHAT-01: optional read-only general conversation, independently configured from wallet extraction. */
-  chat?: { enabled: boolean; think: boolean };
+  chat?: { enabled: boolean; think: boolean; model?: string };
   chains: ChainConfig[];
   ens: {
     rpc_chain_id: ChainId;

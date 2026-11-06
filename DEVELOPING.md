@@ -21,14 +21,18 @@ Run `npm ci` in each fresh checkout or worktree. `better-sqlite3-multiple-cipher
 Start Ollama with `ollama serve` if it is not already running. In another terminal:
 
 ```sh
+ollama pull qwen2.5:7b-instruct
 ollama pull qwen3:8b
 curl --fail --silent http://127.0.0.1:11434/api/tags
 ```
 
-The user-selected model profile is `config.qwen3.example.json`: `qwen3:8b`, `llm.think: false`, temperature `0`, seed `42`,
-context `8192`, and timeout `60000` milliseconds. The explicit Ollama `think` setting selects non-thinking mode for
-the wallet's structured extraction calls. An omitted `think` retains the model's default; only boolean values are
-accepted. The original `config.example.json` remains the Qwen2.5 specification/baseline profile. Ollama must use an
+The hackathon model selected in SQ-M-02 is `qwen2.5:7b-instruct` from `config.example.json`, with temperature `0`,
+seed `42`, context `8192`, and timeout `60000` milliseconds. The optional `llm.think` field may be omitted for this
+profile. SQ-M-03 enables thinking for chat using a separate model:
+`chat: { "enabled": true, "think": true, "model": "qwen3:8b" }`, as in the local demo. Qwen2.5 handles intent
+routing, follow-ups and wallet extraction; Qwen3 handles chat and wallet-information replies. Qwen2.5 rejects
+Ollama's `think: true` setting. Omitting `chat.model` retains the existing single-model behavior.
+`config.qwen3.example.json` remains available for experiments that use Qwen3 for wallet extraction too. Ollama must use an
 `http://127.0.0.1` URL; configuration rejects remote hosts. A fixed seed does not make model output fully deterministic.
 
 Create a local configuration from the template, preserving an existing configuration:
@@ -37,16 +41,19 @@ Create a local configuration from the template, preserving an existing configura
 umask 077
 mkdir -p "$HOME/.agent-layer"
 if [ ! -e "$HOME/.agent-layer/config.json" ]; then
-  cp config.qwen3.example.json "$HOME/.agent-layer/config.json"
+  cp config.example.json "$HOME/.agent-layer/config.json"
 fi
 ```
 
 Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the RPC and ENS-indexer URL placeholders with working endpoints. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires the baseline fields and rejects unknown fields; `llm.think` is optional. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
 
-For an existing configured installation, set `llm.model` to `qwen3:8b`, add `llm.think: false`, and add
-`chat: { "enabled": true, "think": true }`; retain its wallet, endpoints, tokens and database paths. The profile
-enables general chat and explanations with thinking. Intent routing uses thinking off; wallet extraction keeps
-its separate non-thinking setting. Omitting `chat` or setting `enabled: false` preserves wallet-only behavior.
+For an existing configured installation, set `llm.model` to `qwen2.5:7b-instruct`, omit `llm.think` or set it to
+`false`, and use `chat: { "enabled": true, "think": true, "model": "qwen3:8b" }` for thinking chat. Retain its wallet,
+endpoints, tokens and database paths, then restart the service to load the configuration. Omitting `chat` or
+setting `enabled: false` preserves wallet-only behavior. The local test frontend selects Qwen2.5 for wallet calls
+and Qwen3 for thinking chat on its next launch; existing demo processes keep the configuration they loaded at startup.
+Both models must be installed locally. The existing health check reports the primary wallet model's availability;
+a missing chat model produces the normal chat-unavailable reply without switching wallet calls to another model.
 
 General chat uses the existing messages and text-answer endpoints. It preserves pending questions and confirmations,
 and has no execution, browsing or live-data tools. It can explain a current summary without approving it. It keeps
@@ -55,6 +62,17 @@ omitted history is identified in the model context. Individual routed messages a
 and oversized messages receive a request to shorten them. Initial wallet wording, question guidance and the current
 summary have separate bounds; chat cannot derive a current plan from stale original wording. These bounds retain
 space for Qwen's thinking within the configured context. Reasoning traces are neither returned nor logged.
+
+With chat enabled, address and balance questions use a read-only `wallet_info` path. Code refreshes DB4 with the
+existing S0 balance reader on a separate request context, so asking while a payment is open preserves its question,
+attempt count and confirmation. The model selects relevant verified fact IDs; code displays the exact address,
+per-network balances, spendable amounts, pending spending and gas reserves. Unreadable networks have no current
+amount, and partial totals are explicitly labelled subtotals. General conversation uses model-written text and the
+configured public wallet address, with no balance refresh or wallet writes. Neither path can approve a payment.
+
+The experimental Qwen3 wallet-chat check is `LIVE_MODEL=qwen3:8b npm run test:live -- test/live/wallet-chat.test.ts`.
+That suite enables Qwen3 chat thinking and does not validate the Qwen2.5 hackathon chat configuration.
+Its synthetic-data results are written under the ignored `test_frontend/runtime/wallet-chat-live.json`.
 
 The default configuration path is `~/.agent-layer/config.json`; `AGENT_CONFIG=/absolute/path/config.json` selects another file. Leading `~/` in configured filesystem paths is expanded. Keep local credentials, token files and database keys out of the repository. The wallet setting is a public address; the agent does not need a wallet private key or seed phrase.
 
@@ -117,7 +135,8 @@ node test/live/summarize.mjs validation-2026-11-06
 
 Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, questions and latency in the results, not only Vitest's exit status. SQ-L-01 prompt changes require a full live run with zero wrong hand-offs and fewer unnecessary stops. Recheck unstable cases. A reviewer other than the production-code author grades final acceptance.
 
-Live tests default to the original Qwen2.5 fixture profile for reproducibility. Select the new model explicitly:
+The historical wallet and conversation suites default to the Qwen2.5 hackathon model. Select the experimental
+Qwen3 model explicitly for comparisons:
 
 ```sh
 LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_CHAT=true LIVE_SET=all LIVE_TAG=qwen3-validation npm run test:live -- test/live/live.test.ts

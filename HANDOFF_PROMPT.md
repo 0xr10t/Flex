@@ -1,5 +1,54 @@
 # Hand-off prompt for the next agent
 
+## Current payment corrections — SQ-CV-02
+
+The human approved fixing confirmation-stage edits that discarded known fields. `draft-correction.ts` now resolves
+bounded amount, recipient, token and network edits from the current validated single-payment draft, before chat
+routing. It prepares the complete revised request in code and reruns normal S0–S11 checks. Each revision gets a new
+request identity and confirmation; stale confirmation requests return 409. Ambiguous edits keep the current draft.
+Automatic inheritance is limited to trusted, absolute, single one-time payments; complex drafts need a full request.
+
+Verification: all **2,374 unit/acceptance tests passed**, plus typecheck, changed-code lint and an isolated build.
+The real Qwen2.5 replay passed eight turns: unknown Soham address/name resolution, 40 USDC to Soham, the same amount
+to Riya, an amount edit to 50 and back to 40, then explicit final confirmation. It asked no repeated token/recipient
+questions after the edits, rejected two stale confirmations and captured exactly one final 40-USDC Base Sepolia
+payment locally. Edits took approximately 14–17 seconds. One earlier replay hit a shared Ollama model-load timeout;
+the successful retry and both raw reports are retained under `/private/tmp/flex-draft-correction-k4rgknv0/`.
+The frontend at **http://127.0.0.1:8790/** was rebuilt and restarted with a fresh demo session. Its compiled
+correction and session modules match the live-tested runtime byte for byte. The prior demo state was saved locally
+in that evidence directory before restart; other running demo services were preserved.
+
+## Thinking chat with the hackathon wallet model — SQ-M-03
+
+The human requested chat with thinking enabled while retaining the Qwen2.5 hackathon choice. Local Ollama rejects
+`think: true` for Qwen2.5. The implementation keeps `llm.model: "qwen2.5:7b-instruct"` for wallet extraction,
+conversation interpretation and intent routing, and uses
+`chat: { "enabled": true, "think": true, "model": "qwen3:8b" }` for read-only chat and wallet-information replies.
+The local demo uses this split on its next build/start. Existing demo processes retain their startup configuration.
+This supersedes the earlier chat-thinking-off setting below; the wallet model remains Qwen2.5.
+
+Verification: 217 targeted config/client/chat regressions and 13 isolated demo tests passed, along with typecheck,
+changed-code lint and an isolated production build. Three real-model turns passed: thinking chat, a Qwen2.5
+10-USDC payment preview, and a wallet-address question preserving that pending confirmation. Transport inspection
+confirmed Qwen3 thinking and Qwen2.5 wallet calls; no handoff was submitted. Evidence is retained in
+`/private/tmp/flex-chat-thinking-_e6kdntz/live-smoke.json`. Existing running demos were not restarted.
+
+## Latest wallet-aware conversation request — SQ-CHAT-02
+
+Wallet address/balance questions now refresh an isolated read-only context and answer with verified facts; ordinary
+conversation uses the local model. Pending questions, confirmations, failed-payment corrections and submitted
+envelopes are preserved. See [WALLET_CHAT_REPORT.md](WALLET_CHAT_REPORT.md) for final independent, deterministic,
+live-model and browser evidence, plus the remaining native extraction limitation. The updated ignored test UI is
+**http://127.0.0.1:8893/**. Other demos remain running; no push or README change was made for this task.
+
+## Hackathon model decision — SQ-M-02
+
+The human subsequently selected **`qwen2.5:7b-instruct` for the hackathon** after the full wallet comparison
+(129/154 exact outcomes for Qwen2.5 versus 115/154 for Qwen3). This supersedes the Qwen3 model selection below.
+Use `config.example.json`; the local demo enables general chat with `think: false` for Qwen2.5. The Qwen3 profile
+remains experimental. Preserve the approved chat and wallet-information behavior. The comparison includes
+code/prompt changes and had general chat disabled, so it does not certify the current chat-enabled demo.
+
 ## Latest model and chat request — SQ-M-01 / SQ-CHAT-01
 
 The human subsequently selected `qwen3:8b` and explicitly approved general chat/explanations with thinking on,
