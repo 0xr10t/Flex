@@ -8,8 +8,16 @@ import { DB_KEY } from './envelopes.js';
 
 const root = mkdtempSync(join(tmpdir(), 'flex-wallet-'));
 let count = 0;
+const opened: ReturnType<typeof openDatabase>[] = [];
 
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => {
+  for (const db of opened) if (db.open) db.close();
+  rmSync(root, { recursive: true, force: true });
+});
 
 export const tempDbPath = (): string => join(root, `wallet-${++count}.db`);
-export const tempDb = () => openDatabase(tempDbPath(), DB_KEY);
+export const tempDb = () => {
+  const db = openDatabase(tempDbPath(), DB_KEY);
+  opened.push(db);
+  return db;
+};

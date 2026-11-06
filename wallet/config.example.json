@@ -1,15 +1,57 @@
 {
-  "server": { "host": "127.0.0.1", "port": 8788 },
-  "agent": { "url": "http://127.0.0.1:8787" },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8788
+  },
+  "agent": {
+    "url": "http://127.0.0.1:8787"
+  },
   "auth": {
     "inbound_token_file": "~/.agent-layer/execution_outbound_token",
     "report_token_file": "~/.agent-layer/execution_report_token"
   },
-  "db": { "path": "~/.flex-wallet/wallet.db" },
-  "approval": { "mode": "reject_all" },
+  "db": {
+    "path": "~/.flex-wallet/wallet.db"
+  },
+  "approval": {
+    "mode": "reject_all"
+  },
   "chains": [
-    { "chain_id": 11155111, "rpc_url": "https://<rpc>/sepolia" },
-    { "chain_id": 84532, "rpc_url": "https://<rpc>/base-sepolia" },
-    { "chain_id": 421614, "rpc_url": "https://<rpc>/arbitrum-sepolia" }
+    {
+      "chain_id": 11155111,
+      "rpc_url": "https://<rpc>/sepolia",
+      "simulation": {
+        "rpc_urls": [
+          "https://simulator-a.example/rpc",
+          "https://simulator-b.example/rpc",
+          "https://simulator-c.example/rpc"
+        ],
+        "quorum": 2
+      }
+    },
+    {
+      "chain_id": 84532,
+      "rpc_url": "https://<rpc>/base-sepolia",
+      "simulation": {
+        "rpc_urls": [
+          "https://simulator-a.example/rpc",
+          "https://simulator-b.example/rpc",
+          "https://simulator-c.example/rpc"
+        ],
+        "quorum": 2
+      }
+    },
+    {
+      "chain_id": 421614,
+      "rpc_url": "https://<rpc>/arbitrum-sepolia",
+      "simulation": {
+        "rpc_urls": [
+          "https://simulator-a.example/rpc",
+          "https://simulator-b.example/rpc",
+          "https://simulator-c.example/rpc"
+        ],
+        "quorum": 2
+      }
+    }
   ]
 }

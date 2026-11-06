@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { Hex } from 'viem';
+import { validateSimulationConfig, type SimulationConfig } from './chain/simulation.js';
 
 export type ApprovalMode = 'reject_all' | 'auto_approve_testnets';
 
@@ -17,6 +18,8 @@ export interface WalletConfig {
   chains: {
     chain_id: 11155111 | 84532 | 421614;
     rpc_url: string;
+    /** Separate, provider-neutral simulation backends. Omission preserves the legacy single-RPC mode. */
+    simulation?: SimulationConfig;
     /** Absent until `IntentExecutorV3` is deployed on that chain. Autopay and cancel are refused without it. */
     executor?: { address: Hex; deployment_block: number };
   }[];
@@ -71,6 +74,21 @@ const SCHEMA = {
         properties: {
           chain_id: { enum: [11155111, 84532, 421614] },
           rpc_url: { type: 'string', pattern: '^https?://' },
+          simulation: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['rpc_urls', 'quorum'],
+            properties: {
+              rpc_urls: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 3,
+                uniqueItems: true,
+                items: { type: 'string', pattern: '^https?://' },
+              },
+              quorum: { type: 'integer', minimum: 1, maximum: 3 },
+            },
+          },
           executor: {
             type: 'object',
             additionalProperties: false,
@@ -92,6 +110,14 @@ export const expandHome = (path: string): string => (path.startsWith('~/') ? joi
 
 export function parseConfig(raw: unknown): WalletConfig {
   if (!validate(raw)) throw new Error('wallet config is invalid');
+  for (const chain of raw.chains)
+    if (chain.simulation) {
+      try {
+        validateSimulationConfig(chain.simulation);
+      } catch {
+        throw new Error('wallet simulation config is invalid');
+      }
+    }
   return raw;
 }
 

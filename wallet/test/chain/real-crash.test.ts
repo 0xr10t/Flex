@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 // The wallet's main promise, tested the hard way: the service runs in its own process, and is killed with SIGKILL while a
 // payment is in flight. It gets no chance to clean up. A new process then starts on the same database.
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -13,8 +14,8 @@ import { BASE, DB_KEY, envelope, payUsdc, WALLET } from '../support/envelopes.js
 import { freePort, startChain, type LocalChain } from './harness.js';
 
 const ALEX: Hex = '0x000000000000000000000000000000000000a11c';
-const VITE_NODE = new URL('../../node_modules/.bin/vite-node', import.meta.url).pathname;
-const SERVE = new URL('./serve.ts', import.meta.url).pathname;
+const VITE_NODE = fileURLToPath(new URL('../../node_modules/vite-node/vite-node.mjs', import.meta.url));
+const SERVE = fileURLToPath(new URL('./serve.ts', import.meta.url));
 const units = (v: string) => parseUnits(v, 6);
 
 let chain: LocalChain;
@@ -29,7 +30,7 @@ let proc: ChildProcess | null = null;
 
 const startProcess = () =>
   new Promise<void>((resolve, reject) => {
-    const child = spawn(VITE_NODE, [SERVE, configPath], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = spawn(process.execPath, [VITE_NODE, SERVE, configPath], { stdio: ['ignore', 'pipe', 'ignore'] });
     proc = child;
     child.on('error', reject);
     child.stdout.on('data', (d: Buffer) => {

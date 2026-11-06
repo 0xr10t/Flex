@@ -16,6 +16,7 @@ import {
 } from 'viem';
 import type { SignTypedData } from '../autopay/delegation.js';
 import { EIP7702_DELEGATOR } from './addresses.js';
+import { createSimulator, type SimulationConfig } from './simulation.js';
 
 export interface TxRequest {
   to: Hex;
@@ -85,11 +86,14 @@ export interface ChainGateway {
   broadcast(raw: Hex): Promise<void>;
   /** Null until the transaction is mined. */
   getReceipt(hash: Hex): Promise<TxReceipt | null>;
+  /** Canonical receipt at or below the chain's finalized head. No fallback to latest. */
+  getFinalizedReceipt(hash: Hex): Promise<TxReceipt | null>;
   /** The account's mined transaction count. */
   minedNonce(): Promise<number>;
   /** A read. Throws WouldFailError if the call reverts. */
   call(to: Hex, data: Hex): Promise<Hex>;
   latestBlock(): Promise<BlockInfo>;
+  finalizedBlock(): Promise<BlockInfo>;
   blockTime(blockNumber: number): Promise<number>;
   getLogs(query: LogQuery): Promise<ChainLog[]>;
   /** `eth_simulateV1`, with ETH transfers traced as logs. One result list per block. Throws SimulationUnavailableError. */
@@ -137,7 +141,12 @@ const ALREADY_SEEN = /already known|already imported|nonce too low|nonce has alr
 
 const textOf = (e: unknown): string => (e instanceof BaseError ? `${e.shortMessage} ${e.details ?? ''}` : String(e));
 
-export function createChainGateway(chainId: number, rpcUrl: string, account: LocalAccount): ChainGateway {
+export function createChainGateway(
+  chainId: number,
+  rpcUrl: string,
+  account: LocalAccount,
+  simulation?: SimulationConfig,
+): ChainGateway {
   const chain = defineChain({
     id: chainId,
     name: `chain-${chainId}`,
@@ -147,6 +156,7 @@ export function createChainGateway(chainId: number, rpcUrl: string, account: Loc
   const transport = http(rpcUrl, { timeout: 10_000, retryCount: 0 });
   const pub = createPublicClient({ chain, transport, pollingInterval: 250 });
   const wallet = createWalletClient({ account, chain, transport });
+  const simulate = createSimulator(chainId, simulation ?? { rpc_urls: [rpcUrl], quorum: 1 });
 
   const unavailable = <T>(work: Promise<T>): Promise<T> =>
     work.catch((e: unknown) => {
@@ -212,6 +222,25 @@ export function createChainGateway(chainId: number, rpcUrl: string, account: Loc
       }
     },
 
+    getFinalizedReceipt: async (hash) => {
+      try {
+        const r = await pub.getTransactionReceipt({ hash });
+        const finalized = await pub.getBlock({ blockTag: 'finalized' });
+        if (r.blockNumber > finalized.number) return null;
+        const canonical = await pub.getBlock({ blockNumber: r.blockNumber });
+        if (canonical.hash !== r.blockHash) return null;
+        return {
+          status: r.status,
+          logs: r.logs,
+          blockNumber: Number(r.blockNumber),
+          executedAt: new Date(Number(canonical.timestamp) * 1000).toISOString(),
+        };
+      } catch (e) {
+        if (e instanceof BaseError && e.name === 'TransactionReceiptNotFoundError') return null;
+        throw new ChainUnavailableError();
+      }
+    },
+
     minedNonce: () => unavailable(pub.getTransactionCount({ address: account.address, blockTag: 'latest' })),
 
     call: (to, data) =>
@@ -231,6 +260,13 @@ export function createChainGateway(chainId: number, rpcUrl: string, account: Loc
       unavailable(
         pub
           .getBlock({ blockTag: 'latest' })
+          .then((b) => ({ number: Number(b.number), timestamp: Number(b.timestamp) })),
+      ),
+
+    finalizedBlock: () =>
+      unavailable(
+        pub
+          .getBlock({ blockTag: 'finalized' })
           .then((b) => ({ number: Number(b.number), timestamp: Number(b.timestamp) })),
       ),
 
@@ -258,33 +294,16 @@ export function createChainGateway(chainId: number, rpcUrl: string, account: Loc
       ),
 
     simulate: async (blocks) => {
-      let result: { calls: { status: string; logs?: unknown[] }[] }[];
       try {
-        result = (await pub.request({
-          method: 'eth_simulateV1' as never,
-          params: [
-            {
-              blockStateCalls: blocks.map((b) => ({
-                calls: b.calls,
-                ...(b.time === undefined ? {} : { blockOverrides: { time: `0x${b.time.toString(16)}` } }),
-                ...(b.stateOverrides ? { stateOverrides: b.stateOverrides } : {}),
-              })),
-              traceTransfers: true,
-              validation: false,
-            },
-            'latest',
-          ] as never,
-        })) as never;
+        const b = await pub.getBlock({ blockTag: 'latest' });
+        return await simulate(blocks, {
+          number: `0x${b.number.toString(16)}`,
+          hash: b.hash,
+          timestamp: `0x${b.timestamp.toString(16)}`,
+        });
       } catch {
         throw new SimulationUnavailableError();
       }
-      if (!Array.isArray(result) || result.length !== blocks.length) throw new SimulationUnavailableError();
-      return result.map((block) =>
-        block.calls.map((c) => ({
-          status: c.status === '0x1' ? ('success' as const) : ('failure' as const),
-          logs: (c.logs ?? []) as Log[],
-        })),
-      );
     },
 
     signTypedData: (typed) => account.signTypedData(typed as never),

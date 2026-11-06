@@ -51,7 +51,7 @@ export function createService(
   const db = openDatabase(config.db.path, secrets.dbKeyHex);
   const store = new Store(db);
   const gateways = new Map<number, ChainGateway>(
-    config.chains.map((c) => [c.chain_id, createChainGateway(c.chain_id, c.rpc_url, secrets.account)]),
+    config.chains.map((c) => [c.chain_id, createChainGateway(c.chain_id, c.rpc_url, secrets.account, c.simulation)]),
   );
   const envFor = overrides.envFor ?? ((chainId: number) => getSmartAccountsEnvironment(chainId));
   const deployments = new Map<number, Deployment>(

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -78,7 +79,7 @@ describe('the config', () => {
   };
 
   it('accepts the example file', () => {
-    expect(loadConfig(new URL('../../config.example.json', import.meta.url).pathname).approval.mode).toBe('reject_all');
+    expect(loadConfig(fileURLToPath(new URL('../../config.example.json', import.meta.url))).approval.mode).toBe('reject_all');
   });
   it('refuses a host other than 127.0.0.1 (§16.4)', () => {
     expect(() => parseConfig({ ...valid, server: { host: '0.0.0.0', port: 8788 } })).toThrow();
