@@ -54,7 +54,7 @@ vi.mock('../../../src/amounts/parse.js', async () => {
 
 const now = (): string => new Date(NOW_E6).toISOString();
 
-describe('§10.1 spendable balance', () => {
+describe('C-448 §20.1 plan: §10.1 spendable balance', () => {
   // Base 80, Arbitrum 60: a 50 payment to Aradhya (Base + Arbitrum) picks Base unless Base's spendable drops below 50.
   async function chainWithPending(rows: Parameters<typeof db6Row>[0][]): Promise<ChainId> {
     const ctx = ctxD({ balances: usdc('0', '80', '60') });

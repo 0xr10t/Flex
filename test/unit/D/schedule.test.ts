@@ -72,7 +72,7 @@ const withEnd = (o: KOpts, end = 'for 4 payments'): KOpts => ({
   clause: `${o.clause ?? 'pay mihir 10 usdc every friday'} ${end}`,
 });
 
-describe('schedule.ts pure functions (§10.6)', () => {
+describe('C-449 §20.1 schedule: schedule.ts pure functions (§10.6)', () => {
   it.each([
     [1, ['THU']],
     [2, ['MON', 'THU']],
@@ -262,7 +262,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     return { ctx, k: asK(plan[plan.length - 1]) };
   };
 
-  it('C-224 §10.6 frequency null → Q_AUTOPAY_FREQUENCY with chips Daily, Weekly, Monthly; no DB1 mint yet', async () => {
+  it('C-327 C-224 §10.6 frequency null → Q_AUTOPAY_FREQUENCY with chips Daily, Weekly, Monthly; no DB1 mint yet', async () => {
     const { ctx, payment } = kSetup(withEnd({ frequency: null, days_of_week: null }));
     const before = db1Count(ctx);
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_FREQUENCY');
@@ -408,7 +408,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(ms(b.schedule.first_occurrence)).toBe(ms('2026-11-06T23:00:00+05:30'));
   });
 
-  it('C-230 §10.6 start date in the past → Q_AUTOPAY_START (date input); a future answer is used', async () => {
+  it('C-328 C-230 §10.6 start date in the past → Q_AUTOPAY_START (date input); a future answer is used', async () => {
     const { ctx, payment } = kSetup(withEnd({ chrono: [{ kind: 'start', date: '2026-11-01' }] }));
     const before = db1Count(ctx);
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_START');
@@ -420,7 +420,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(ms(k.schedule.first_occurrence)).toBe(ms('2026-11-13T10:00:00+05:30'));
   });
 
-  it('C-230 §10.6 Q_AUTOPAY_START: "tomorrow" is parsed relative to now in the session timezone; today is accepted', async () => {
+  it('C-335 C-230 §10.6 Q_AUTOPAY_START: "tomorrow" is parsed relative to now in the session timezone; today is accepted', async () => {
     const { ctx, payment } = kSetup(
       withEnd({ frequency: 'daily', days_of_week: null, chrono: [{ kind: 'start', date: '2026-11-01' }] }),
     );
@@ -469,7 +469,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(k.schedule.end).toEqual({ type: 'on_date', date: '2026-12-01' });
   });
 
-  it('C-231 §10.6 nothing stated → Q_AUTOPAY_END with chips After a number of payments / Until a date / Until I cancel', async () => {
+  it('C-329 C-231 §10.6 nothing stated → Q_AUTOPAY_END with chips After a number of payments / Until a date / Until I cancel', async () => {
     const { ctx, payment } = kSetup();
     const before = db1Count(ctx);
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_END');
@@ -477,7 +477,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(db1Count(ctx)).toBe(before);
   });
 
-  it('C-231 §13.4 Q_AUTOPAY_END → "After a number of payments" → Q_AUTOPAY_COUNT; 1–520 whole numbers only', async () => {
+  it('C-330 C-231 §13.4 Q_AUTOPAY_END → "After a number of payments" → Q_AUTOPAY_COUNT; 1–520 whole numbers only', async () => {
     const { ctx, payment } = kSetup();
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_END');
     const { answer } = await answerAndReenter(ctx, q, chip(q.chips[0]?.id ?? ''));
@@ -499,7 +499,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expectError(r.next as never, 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
   });
 
-  it('C-231 §13.4 Q_AUTOPAY_END → "Until a date" → Q_AUTOPAY_DATE: must be after the first occurrence date', async () => {
+  it('C-331 C-231 §13.4 Q_AUTOPAY_END → "Until a date" → Q_AUTOPAY_DATE: must be after the first occurrence date', async () => {
     const { ctx, payment } = kSetup();
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_END');
     const { answer } = await answerAndReenter(ctx, q, chip(q.chips[1]?.id ?? ''));
@@ -713,7 +713,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     return { ctx, mi, payment: pay(ctx, 'l', null, mi) };
   };
 
-  it('C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id, delegate_address from DB7; refund_remaining true', async () => {
+  it('C-206 C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id, delegate_address from DB7; refund_remaining true', async () => {
     const { ctx, mi, payment } = lSetup();
     addAutopay(ctx, { autopay_id: 'ap_0000000000f7', chain_id: ARB, delegate: ALICE_CS });
     const plan = await runOk(ctx, [payment]);
@@ -774,7 +774,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     });
   }
 
-  it('C-244 §10.7 several active → Q_AUTOPAY_PICK with chips like "10 USDC weekly on MON, Base Sepolia, since 2026-11-10"', async () => {
+  it('C-332 C-244 §10.7 several active → Q_AUTOPAY_PICK with chips like "10 USDC weekly on MON, Base Sepolia, since 2026-11-10"', async () => {
     const { ctx, payment } = lSetup();
     two(ctx);
     const before = db1Count(ctx);

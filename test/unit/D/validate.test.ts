@@ -72,7 +72,7 @@ function expectInternal(ctx: TestContext, res: Awaited<ReturnType<typeof validat
   expectRuleLogged(ctx, rule);
 }
 
-describe('S10 happy path', () => {
+describe('C-450 §20.1 validate: S10 happy path', () => {
   it('§8.12 a valid plan → continue, state VALIDATED, one info log', async () => {
     const { ctx, r } = base();
     expect(await validate(ctx, [iOf(ctx, '5', r)])).toEqual({ kind: 'continue' });

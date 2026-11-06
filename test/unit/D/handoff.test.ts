@@ -55,7 +55,7 @@ async function handoff(ctx: TestContext, plan: InternalIntent[], payments?: Paym
   return s12.step(ctx);
 }
 
-describe('§8.14 step 1 / §12.5 swap_back envelope', () => {
+describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () => {
   it('C-150 C-275 C-276 C-277 E1: i intent → exact spec envelope (token_address, base_units, checksummed recipient)', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '60') });
     const a = addAradhya(ctx);

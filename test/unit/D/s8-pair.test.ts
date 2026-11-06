@@ -52,7 +52,7 @@ function hasCorrection(user: string): boolean {
   return user.split('\n').some((l) => l.startsWith('CORRECTION: '));
 }
 
-describe('S8 call and output (§8.9)', () => {
+describe('C-447 §20.1 pairing/checks: S8 call and output (§8.9)', () => {
   it('C-131 C-129 E3: payments in model order with the DB1 token; continue', async () => {
     const { ctx, a1, a2, r1, r2 } = e3();
     const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a2, r2, ARB), llmItem('i', a1, r1, BASE)])]);
