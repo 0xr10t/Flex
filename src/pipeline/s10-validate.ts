@@ -1,6 +1,6 @@
 // Implements: §8.12 / §11 S10 — Validate: V-01…V-09 structural (§11.1), V-10…V-11 funding (§11.2), V-12…V-15 limits
-// (§11.3) with the one-time Q_LIMIT_OVERRIDE question (SQ-D-16, F-1…F-6; human-approved difference from §11.3), §11.1 INTERNAL_ERROR logging the rule ID, §16.1 / V-08
-// keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
+// (§11.3) with the one-time Q_LIMIT_OVERRIDE question (SQ-D-16, F-1…F-6; human-approved difference from §11.3),
+// §11.1 INTERNAL_ERROR logging the rule ID, §16.1 / V-08 keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
 
 import { getAddress, zeroAddress } from 'viem';
 import {
@@ -198,15 +198,17 @@ function breaches(ctx: StepContext, plan: InternalIntent[]): LimitBreach[] {
     }
   }
   found.push(...tokensUsed(plan).map((t) => dailyBreach(ctx, plan, t)));
-  // One fragment per limit and token (F-1): two payments over the per-payment limit name it once.
-  const seen = new Set<string>();
-  return found.filter((x): x is LimitBreach => {
-    if (x === null) return false;
+  // One fragment per limit and token (F-1): two payments over the per-payment limit name it once; it counts as a
+  // repeating payment's limit when any of them repeats.
+  const byKey = new Map<string, LimitBreach>();
+  for (const x of found) {
+    if (x === null) continue;
     const key = `${x.limit.kind}:${'token' in x.limit ? x.limit.token : ''}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const prev = byKey.get(key);
+    if (prev === undefined) byKey.set(key, x);
+    else if (x.limit.repeating && prev.limit.kind === 'per_payment') prev.limit.repeating = true;
+  }
+  return [...byKey.values()];
 }
 
 /** "This is {total} {token}, …": the one-time payments' total when every broken amount limit has one token. */
