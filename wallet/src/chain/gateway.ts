@@ -170,8 +170,9 @@ export function createChainGateway(
     rpcUrls: { default: { http: [rpcUrl] } },
   });
   const transport = http(rpcUrl, { timeout: 10_000, retryCount: 0 });
-  const pub = createPublicClient({ chain, transport, pollingInterval: 250 });
-  const wallet = createWalletClient({ account, chain, transport });
+  // Privacy fix 3: a contract that answers with an offchain lookup would make viem fetch a URL it names, outside the RPC.
+  const pub = createPublicClient({ chain, transport, pollingInterval: 250, ccipRead: false });
+  const wallet = createWalletClient({ account, chain, transport, ccipRead: false });
   const simulate = createSimulator(chainId, simulation ?? { rpc_urls: [rpcUrl], quorum: 1 });
 
   const unavailable = <T>(work: Promise<T>): Promise<T> =>

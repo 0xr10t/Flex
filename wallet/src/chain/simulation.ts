@@ -36,6 +36,7 @@ export function createSimulator(chainId: number, config: SimulationConfig) {
   const clients = config.rpc_urls.map((url) =>
     createPublicClient({
       transport: http(url, { timeout: 10_000, retryCount: 0, fetchOptions: { redirect: 'error' } }),
+      ccipRead: false,
     }),
   );
   return async (blocks: SimBlock[], anchor: SimulationAnchor): Promise<SimCallResult[][]> => {
