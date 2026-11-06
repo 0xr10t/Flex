@@ -155,7 +155,7 @@ its final acceptance, including the SQ-L-01 prompt condition, is tracked separat
 | C-127 | §8.9 | S8 schema: schedule fields enums | D | implemented + tested |
 | C-128 | §8.9 | S8 schema: maxItems = min(50, A×R+R) | D | implemented + tested |
 | C-129 | §8.9 | S8 token = DB1 token of amount placeholder | D | implemented + tested |
-| C-130 | §8.9 | S8 retry once with CORRECTION: line; second failure → PAIRING_FAILED | D | implemented + tested |
+| C-130 | §8.9 | S8 retry once with CORRECTION: line; second failure → PAIRING_FAILED | D | implemented + tested (G01 explicit chain checks include document-only payments) |
 | C-131 | §8.9 | S8 output payments[] in model order | D | implemented + tested |
 | C-132 | §8.9 | P1 kind fields | D | implemented + tested |
 | C-133 | §8.9 | P2 amount coverage / distributive reuse | D | implemented + tested (human-approved distributive scope, SQ-R-02) |

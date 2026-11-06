@@ -4,8 +4,8 @@ The checklist has 513 rows supported by deterministic checks, including three ex
 from worked examples. C-514 is implemented but remains pending until the full 154-case live evaluation satisfies
 SQ-L-01. A passing unit suite does not establish that live-model condition.
 
-Production reviewed through `33518a2`, including the merged core, understanding, schedule, durable-handoff,
-secret-screening, chain-binding and confirmation changes. The independent reviewer authored tests and this report,
+Production reviewed through `33518a2`, plus the narrow document-only chain guard `ef69e31`, including the merged
+core, understanding, schedule, durable-handoff, secret-screening, chain-binding and confirmation changes. The independent reviewer authored tests and this report,
 not those production changes. The review uses `README.md` together with the binding answers in
 [SPEC_QUESTIONS.md](SPEC_QUESTIONS.md) and [SPEC_ANSWERS_FOLLOWUP.md](SPEC_ANSWERS_FOLLOWUP.md).
 The later human answers and the current request to fix all review findings govern the differences below.
@@ -52,6 +52,7 @@ These differences are recorded rather than presented as literal compliance with 
 | --- | --- |
 | SQ-L-01 | The system text of amounts, requestType, spans and payments may change, subject to the full live gate. All USER slots and §12 schemas remain unchanged. Only repeated valid action kinds are deduplicated before normal schema validation; invalid kinds, missing fields and extra fields still fail. Exact old/new text, reasons and live evidence belong in [PROMPT_CHANGES.md](PROMPT_CHANGES.md). Retention is still conditional until C-514 is accepted. |
 | Current request, B03/B04/B19/G02 | An additive encrypted `handoff_journal` migration records the confirmed envelope and original idempotency key, with DB6/DB7 reservations committed before submission. This changes the old post-2xx write timing. Timeout/5xx retain identity and reservations; definite rejection releases reservations. Reports are checked against request, step, intent and autopay identity. Executed spend and terminal autopays cannot be rolled back by stale reports. |
+| Current request, G01 | Explicit chain choices are checked independently of the model, including document-only payments with no typed amount/recipient spans. One unique typed chain binds those payments; an omitted chain triggers correction and then PAIRING_FAILED. Existing clause/sentence binding governs payments with typed spans. |
 | Current request, G03 and B19 | Before the first submission, balances and settings are refreshed and funding/limits revalidated. Changed settings or newly broken limits require replanning or renewed consent. After an ambiguous submission, retry preserves the original envelope/key; late-start replanning applies before first submission. This supersedes the original “S0 only on new messages” rule and clarifies SQ-R-05. |
 | SQ-R-01/02, SQ-O-01/F-12, SQ-O-03/F-11 | Exact repeated tagged names are masked with Unicode identifier boundaries; mixed payee/story roles ask Q_NAME_ROLE. Distributive scope is local to the amount's clause. Ambiguous pairing asks for every affected amount, with independent attempt counters. |
 | SQ-D-16/F-1–F-6, R4-F2 | Q_LIMIT_OVERRIDE replaces Q_GROUP_OVER_LIMIT. Only the named limits are lifted for that request; new breaches ask again. Attached-content amounts retain the error. DB5 is not changed. |
@@ -91,6 +92,13 @@ Machine-readable inventory and comparison results are saved in
   failing regressions, and asked a different author to fix them: `.0`/`.000` must not turn into a positive amount,
   and “starting on”/“beginning on” must preserve reversed explicit dates. Corrected S3/date/HTTP checks pass 104/104;
   parser checks pass 8/8. Additional probes preserve local fields across Lord Howe, Chatham and Dublin DST changes.
+- An adjacent G01 probe found that “pay this invoice on arbitrum” could confirm on Base when both amount and
+  recipient came from content and the model returned unstated. Root fixed the missing binding in `ef69e31`; four
+  independent HTTP regressions cover rejection, correction, an accurate first response and no-chain automatic
+  selection. The combined chain/S8 rerun passes **48/48**. This source change followed the live freeze: the unchanged
+  154-case manifest has content only in A-15, A-45 and A-46, none with a typed chain. A-45/A-46 stop before S8.
+  Corpus hashes and scope evidence are in `document-chain-live-scope.json`; the final-toolchain A-15 live smoke
+  remains a separate coordinator check.
 - Prompt checks pass 15/15; S8 and the independent LIVE-P061/LIVE-P073 interval regressions pass 52/52. Wrong-twice
   duration-as-interval output stops; wrong-then-right and explicit every-other/every-two/fortnightly controls pass.
 - The separate durable-handoff reviewer reports 42/42 HTTP checks, 207/207 adapted legacy checks, and 6/6 error-audit
@@ -124,4 +132,4 @@ question/stop counts, and the comparison with the unchanged baseline before mark
 `pairing_exact` field measures S8 passing without a correction retry or model error; report it as first-pass pairing
 validation, alongside semantic exact outcomes. The live oracle compares expected `i`/`k`/`l` outcomes and selected
 schedule fields; bridge calculations, complete schedule timing and persistence also rely on the deterministic suites.
-No additional unresolved production defect was found in this review's assigned scope after `33518a2`.
+No additional unresolved production defect was found in this review's assigned scope after `ef69e31`.
