@@ -52,7 +52,9 @@ import { classifyConfirmationText, isCancelText } from './texts.js';
 import { failedPaymentContext } from './failed-payment.js';
 import {
   answerOnlyReply,
+  explicitDraftCancellation,
   interpretReply,
+  literalRecipientAddress,
   needsConversation,
   recipientOnlyReply,
   replyGuidance,
@@ -516,16 +518,16 @@ export class SessionManager {
     }
     if (decision.intent === 'cancel') {
       this.recordAnswer(s, a, text);
-      return /\b(?:cancel|stop|abort|drop|forget|never\s*mind)\b/i.test(text) &&
-        !/\b(?:not|don't|dont|why|how|what)\b/i.test(text)
-        ? this.discard(s, a, REPLY.CANCELLED())
-        : clarify();
+      return explicitDraftCancellation(text) ? this.discard(s, a, REPLY.CANCELLED()) : clarify();
     }
     if (decision.intent === 'recipient' && decision.value !== null && recipientOnlyReply(text, decision.value)) {
       if (paused.question.code === 'Q_NO_PAYEE')
         return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
       this.recordAnswer(s, a, text);
-      if (!canCorrectPendingRecipient(ctx)) return clarify();
+      if (!canCorrectPendingRecipient(ctx))
+        return clarify(
+          'I need the full updated request to change the recipient here. Include the amount and schedule you want to keep.',
+        );
       // Re-read current settings/balances. The normal S6 → S11 path resolves, validates and summarizes the change.
       a.limits = this.deps.repos.db5.getAll();
       const balances = await this.invoke(s, a, 's0', (current) => this.deps.registry.s0.step(current));
@@ -545,7 +547,11 @@ export class SessionManager {
         q.input === 'number' ||
         q.input === 'date' ||
         ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_NAME_FOR_ADDRESS', 'Q_GROUP_PARENT'].includes(q.code);
-      if (freeValue && (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)))
+      if (
+        freeValue &&
+        (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)) &&
+        (!['Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(q.code) || literalRecipientAddress(decision.value))
+      )
         return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
     }
     this.recordAnswer(s, a, text);
