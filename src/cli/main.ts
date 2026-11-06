@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `flex` command-line entry. For now it plays the designed splash ("Flex Terminal") and the gateway scene
+// `flexx` command-line entry (macOS already ships an unrelated `/usr/bin/flex`). For now it plays the designed splash ("Flex Terminal") and the gateway scene
 // ("Flex ASCII"); the wallet commands land behind the splash's `flex $` prompt next.
 
 import { realpathSync } from 'node:fs';
@@ -11,7 +11,7 @@ import type { View } from './render/layout.js';
 import type { SplashShape } from './render/splash.js';
 import { detectColorMode, renderStatic, runInteractive, type ViewOptions } from './terminal.js';
 
-export const USAGE = `Usage: flex [splash|scene] [options]
+export const USAGE = `Usage: flexx [splash|scene] [options]
 
 Views:
   splash            80 × 24 terminal splash; move the mouse over it to steer (default)
@@ -83,7 +83,7 @@ export async function runCli(argv: string[]): Promise<number> {
     args = parseCliArgs(argv);
   } catch (err) {
     if (!(err instanceof UsageError)) throw err;
-    process.stderr.write(`flex: ${err.message}\n\n${USAGE}`);
+    process.stderr.write(`flexx: ${err.message}\n\n${USAGE}`);
     return 2;
   }
   if (args.help) {
@@ -109,7 +109,7 @@ export async function runCli(argv: string[]): Promise<number> {
   return reason === 'interrupt' ? 130 : 0;
 }
 
-/** True when this module is the program being run, including through the `flex` bin symlink npm installs. */
+/** True when this module is the program being run, including through the `flexx` bin symlink npm installs. */
 function isEntry(): boolean {
   const entry = process.argv[1];
   if (entry === undefined) return false;
@@ -126,7 +126,7 @@ if (isEntry()) {
       process.exitCode = code;
     },
     (err: unknown) => {
-      process.stderr.write(`flex: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`flexx: ${err instanceof Error ? err.message : String(err)}\n`);
       process.exitCode = 1;
     },
   );
