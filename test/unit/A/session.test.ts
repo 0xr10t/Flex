@@ -359,9 +359,9 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     const h = makeHarness();
     const { sid, rid, q } = await toQuestion(h);
     h.set('s3', { onAnswer: async () => ({ kind: 'question', question: question('Q_TOKEN', 1) }) });
-    await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'usdc please' });
+    await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'usdc' });
     expect(h.repos.tables.db8_prompts).toEqual([
-      { session_id: sid, request_id: rid, kind: 'answer', text: 'usdc please', created_at: '2026-11-05T17:30:00.000Z' },
+      { session_id: sid, request_id: rid, kind: 'answer', text: 'usdc', created_at: '2026-11-05T17:30:00.000Z' },
     ]);
   });
 
