@@ -18,6 +18,89 @@ function missingFixture(): FixtureFile {
 }
 
 describe('amount answer currencies through HTTP', () => {
+  it.each(
+    [
+      { label: 'recorded empty recipient output stays safe', spans: [], askRecipient: true },
+      {
+        label: 'an invented example recipient stays safe',
+        spans: [{ text: 'neha', kind: 'name', role: 'payee' }],
+        askRecipient: true,
+      },
+      {
+        label: 'a mentioned-only recipient stays safe',
+        spans: [{ text: 'mihir', kind: 'name', role: 'mentioned' }],
+        askRecipient: true,
+      },
+      {
+        label: 'corrected extraction preserves Mihir',
+        spans: [{ text: 'mihir', kind: 'name', role: 'payee' }],
+        askRecipient: false,
+      },
+      {
+        label: 'the model-returned pronoun is not invented as a recipient',
+        typed: 'pay her',
+        spans: [{ text: 'her', kind: 'name', role: 'payee' }],
+        askRecipient: true,
+      },
+    ].map((test) => ({ typed: 'pay mihir', ...test })),
+  )('SQ-M-01: Qwen3 $label through thanks and a natural USD answer', async ({ typed, spans, askRecipient }) => {
+    const fixture: FixtureFile = {
+      calls: [
+        { name: 'amounts', match: typed, output: { amounts: [] } },
+        {
+          name: 'request_type',
+          match: typed,
+          output: { request_type: 'actions', actions: ['i'], also_balance: false },
+        },
+        { name: 'conversation', match: 'thanks', output: { intent: 'clarify', value: null } },
+        { name: 'conversation', match: 'please send 10 usd', output: { intent: 'answer', value: '10 usd' } },
+        { name: 'spans', match: typed, output: { spans } },
+        ...(askRecipient ? [] : [structuredClone(loadFixture('A-55').calls[3]!)]),
+      ],
+    };
+    const h = new Harness('qwen3-empty-amount-and-recipient', fixture, {});
+    try {
+      const pending = await h.say(typed);
+      expect(pending.body.question?.code).toBe('Q_AMOUNT_MISSING');
+      const thanked = await h.answer(pending, { text: 'thanks' });
+      expect(thanked.body.question).toEqual(pending.body.question);
+      expect(thanked.body.request_id).toBe(pending.body.request_id);
+      const summary = await h.answer(thanked, { text: 'please send 10 usd' });
+      const recipientCall = h.llm.recorded.find((call) => call.name === 'spans');
+      expect(recipientCall?.user).toContain(`Message: <<<${typed}>>>`);
+      expect(recipientCall?.user).toContain('CANDIDATES: []');
+      expect(recipientCall?.user).not.toContain('10 usd');
+      expect(h.exec.submissions).toHaveLength(0);
+      expect(summary.body.request_id).toBe(pending.body.request_id);
+      expect(h.rows('SELECT amount, token, source, confirmed FROM db1_amount_placeholders')).toEqual([
+        { amount: '10', token: 'USDC', source: 'user', confirmed: 1 },
+      ]);
+      if (askRecipient) {
+        expect(summary.body.state).toBe('awaiting_answer');
+        expect(summary.body.question?.code).toBe('Q_NO_PAYEE');
+        expect(h.rows('SELECT * FROM db3_address_placeholders')).toEqual([]);
+        expect(h.llm.names()).toEqual(['amounts', 'request_type', 'conversation', 'conversation', 'spans']);
+        expect(h.llm.remaining()).toEqual([]);
+        return;
+      }
+      expect(summary.body.state, JSON.stringify(summary.body)).toBe('awaiting_confirmation');
+      expect(summary.body.summary?.text).toContain('Send 10 USDC to Mihir');
+      expect(summary.body.summary?.notes).toContain("You wrote '10 usd' → 10 USDC.");
+      expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+      expect(h.exec.submissions).toHaveLength(1);
+      expect(h.envelope.intents).toHaveLength(1);
+      expect(h.envelope.intents[0]).toMatchObject({
+        intent_id: 'i',
+        recipient: MIHIR,
+        token: 'USDC',
+        amount: { value: '10', base_units: '10000000', decimals: 6 },
+      });
+      expect(h.llm.remaining()).toEqual([]);
+    } finally {
+      await h.finish({ allowUnused: true });
+    }
+  });
+
   it.each([
     { number: null, relative: null, token: null, fiat: null },
     { number: '10', relative: null, token: 'ETH', fiat: 'OTHER' },
