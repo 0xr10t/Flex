@@ -1,6 +1,5 @@
-// Starts the wallet. The database key and signing key come from the OS keychain, never from config or the environment.
-// OQ-01 says the wallet holds the key on the user's device. How it gets there (create or import) is not built yet, so a
-// missing key stops the start with a clear message.
+// MetaMask mode needs only a public address; the user signs in the browser. The database encryption key stays in
+// the OS keychain. The existing local signing mode reads a separate key only when explicitly configured.
 
 import { randomBytes } from 'node:crypto';
 import { Entry } from '@napi-rs/keyring';
@@ -9,6 +8,7 @@ import type { Hex } from 'viem';
 import { loadConfig, readToken } from './config.js';
 import { stderrLogger } from './log.js';
 import { createService } from './service.js';
+import { browserAccount } from './browser/account.js';
 
 const KEYCHAIN_SERVICE = 'flex-wallet';
 
@@ -36,7 +36,10 @@ const config = loadConfig(configPath);
 const service = createService(
   config,
   {
-    account: privateKeyToAccount(signingKey()),
+    account:
+      config.approval.mode === 'metamask'
+        ? browserAccount(config.approval.wallet_address!)
+        : privateKeyToAccount(signingKey()),
     dbKeyHex: dbKey(),
     inboundToken: readToken(config.auth.inbound_token_file),
     reportToken: readToken(config.auth.report_token_file),

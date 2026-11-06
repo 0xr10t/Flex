@@ -99,6 +99,9 @@ export class FakeChain implements ChainGateway {
   getFinalizedReceipt(hash: Hex): Promise<TxReceipt | null> {
     return this.getReceipt(hash);
   }
+  async getTransaction(): Promise<import('../../src/chain/gateway.js').ChainTransaction | null> {
+    return null;
+  }
   finalizedBlock(): Promise<{ number: number; timestamp: number }> {
     return this.latestBlock();
   }

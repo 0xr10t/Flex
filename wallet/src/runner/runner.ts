@@ -7,7 +7,8 @@
 // Signing and source settlement remain serialized to preserve nonce ordering. Once a source transaction settles,
 // bridge polling yields between passes so unrelated requests, including cancellation, can progress.
 
-import type { Hex } from 'viem';
+import { randomBytes } from 'node:crypto';
+import { toHex, type Hex } from 'viem';
 import type { Approver } from '../approval.js';
 import { autopayHandler } from '../autopay/autopay-k.js';
 import { cancelHandler } from '../autopay/cancel-l.js';
@@ -20,6 +21,7 @@ import {
   type ChainGateway,
 } from '../chain/gateway.js';
 import { runCheck } from '../guard/check.js';
+import { decodeExecuteBatch } from '../guard/decode.js';
 import type { Logger } from '../log.js';
 import { paymentHandler } from '../payments/payment-i.js';
 import type { EnvelopeIntent, HandoffEnvelope } from '../schemas/envelope.js';
@@ -41,6 +43,9 @@ export interface RunnerDeps {
   maxTries?: number;
   /** How long before a still-pending bridge is marked delayed; never permission to resend. */
   bridgeTimeoutMs?: number;
+  /** User-controlled EIP-5792 submission. The service never signs or broadcasts in this mode. */
+  browserWallet?: boolean;
+  bridgeFeeMaxEth?: string;
 }
 
 const OUTCOME_UNKNOWN_DELAY_FACTOR = 4;
@@ -61,6 +66,7 @@ export class Runner {
   private readonly now: () => Date;
   private readonly pollMs: number;
   private readonly maxTries: number;
+  private readonly summaries = new Map<string, string[]>();
 
   constructor(private readonly deps: RunnerDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -128,6 +134,16 @@ export class Runner {
     const handler = HANDLERS[intent.intent_id];
     const ctx = this.contextFor(envelope, handler.chainOf(intent));
 
+    if (this.deps.browserWallet && status === 'approved' && store.walletBatch(id, intent.step)) {
+      await this.settleWallet(ctx, handler, intent);
+      if (store.step(id, intent.step).status === 'waiting') await this.waitFor(ctx, handler, intent);
+      return;
+    }
+    if (this.deps.browserWallet && intent.intent_id !== 'i' && intent.intent_id !== 'j') {
+      this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_INTENT_UNSUPPORTED' });
+      return;
+    }
+
     // The check comes first, so nothing unverified reaches the approval. It runs again after a restart, as things may have changed.
     if ((status === 'pending' || status === 'approved') && !(await this.gate(ctx, handler, intent, status))) return;
     if (store.step(id, intent.step).status === 'approved' && !(await this.signStep(ctx, handler, intent))) return;
@@ -145,6 +161,7 @@ export class Runner {
       deploymentFor: this.deps.deploymentFor ?? (() => null),
       now: this.now,
       bridgeTimeoutMs: this.deps.bridgeTimeoutMs ?? DEFAULT_BRIDGE_TIMEOUT_MS,
+      bridgeFeeMaxEth: this.deps.bridgeFeeMaxEth ?? '0.003',
     };
   }
 
@@ -202,6 +219,7 @@ export class Runner {
         this.finish(id, intent, { status: 'failed', error_code: failure });
         return false;
       }
+      if (this.deps.browserWallet) this.summaries.set(`${id}:${intent.step}`, planned.check.summary);
       if (status === 'pending') {
         const approved = await this.deps.approver.approve({
           envelope: ctx.envelope,
@@ -227,6 +245,34 @@ export class Runner {
         this.finish(id, intent, prepared.outcome);
         return false;
       }
+      if (this.deps.browserWallet) {
+        const calls = decodeExecuteBatch(prepared.tx.data);
+        if (!calls || prepared.tx.to.toLowerCase() !== this.deps.walletAddress.toLowerCase())
+          throw new Error('unsupported wallet batch');
+        const summaryKey = `${id}:${intent.step}`;
+        this.deps.store.saveWalletBatch(
+          id,
+          intent.step,
+          handler.chainOf(intent),
+          {
+            calls: {
+              version: '2.0.0',
+              id: `0x${randomBytes(32).toString('hex')}`,
+              from: this.deps.walletAddress,
+              chainId: toHex(handler.chainOf(intent)),
+              atomicRequired: true,
+              calls: calls.map((c) => ({ to: c.target, data: c.callData, value: toHex(c.value) })),
+            },
+            expectedTx: prepared.tx,
+            sourceBlock: (await ctx.gateway.latestBlock()).number,
+            minNonce: await ctx.gateway.minedNonce(),
+            summary: this.summaries.get(summaryKey) ?? [],
+          },
+          this.now().getTime(),
+        );
+        this.summaries.delete(summaryKey);
+        return false;
+      }
       const upgrade = await ensureUpgraded(ctx.gateway, this.deps.walletAddress);
       if (upgrade !== 'ready') {
         this.finish(id, intent, { status: 'failed', error_code: upgrade });
@@ -236,6 +282,37 @@ export class Runner {
       this.deps.store.saveSigned(id, intent.step, signed);
       return true;
     });
+  }
+
+  /** Wallet-provided hashes are independently checked by the browser controller before entering this state. */
+  private async settleWallet(ctx: HandlerContext, handler: StepHandler, intent: EnvelopeIntent): Promise<void> {
+    const id = ctx.envelope.request_id;
+    const batch = this.deps.store.walletBatch(id, intent.step)!;
+    if (batch.status === 'rejected') {
+      this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
+      return;
+    }
+    if (!batch.tx_hash || batch.status !== 'received') return;
+    try {
+      // Bridges yield as soon as their source tx is mined; their poll checks finality on both chains.
+      const receipt =
+        intent.intent_id === 'j'
+          ? await ctx.gateway.getReceipt(batch.tx_hash)
+          : await ctx.gateway.getFinalizedReceipt(batch.tx_hash);
+      if (!receipt) return;
+      if (receipt.status !== 'success') {
+        const final = await ctx.gateway.getFinalizedReceipt(batch.tx_hash);
+        if (final?.status === 'reverted')
+          this.finish(id, intent, { status: 'failed', tx_hash: batch.tx_hash, error_code: 'TX_REVERTED' });
+        return;
+      }
+      const result = await handler.settled(ctx, intent, receipt, batch.tx_hash);
+      if (result.kind === 'finished') this.finish(id, intent, result.outcome);
+      else this.deps.store.markWalletWaiting(id, intent.step, result.data);
+    } catch (e) {
+      if (!(e instanceof ChainUnavailableError)) throw e;
+      this.deps.log('chain_unavailable', { request_id: id, step: intent.step, stage: 'wallet_settle' });
+    }
   }
 
   /** Sends the saved transaction and waits for its outcome. Repeating this is always safe. */

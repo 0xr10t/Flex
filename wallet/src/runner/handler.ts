@@ -28,6 +28,7 @@ export interface HandlerContext {
   deploymentFor: (chainId: number) => Deployment | null;
   now: () => Date;
   bridgeTimeoutMs: number;
+  bridgeFeeMaxEth?: string;
 }
 
 /** What to check before asking the user. `finished` means there's nothing to sign. */

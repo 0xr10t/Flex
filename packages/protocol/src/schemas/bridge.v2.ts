@@ -72,7 +72,7 @@ export const CancelSchema = z
   .strict();
 export type Cancel = z.infer<typeof CancelSchema>;
 
-/** README envelope: ordered steps, bridges first, each payment lists the bridges that fund it. */
+/** Ordered steps, bridges first. A standalone self-transfer has no dependent payments. */
 export const planSchemaAt = (now: () => number = Date.now) => z
   .object({
     requestId: z.string().regex(/^req_[a-f0-9]{12}$/),
@@ -83,7 +83,7 @@ export const planSchemaAt = (now: () => number = Date.now) => z
             .object({
               step: z.number().int().min(0),
               kind: z.literal('bridge'),
-              funds: z.array(z.number().int().min(0)).min(1),
+              funds: z.array(z.number().int().min(0)),
               intent: BridgeSchema,
             })
             .strict(),

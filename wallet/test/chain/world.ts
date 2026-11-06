@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { encodeAbiParameters, parseEventLogs, parseUnits, type Hex } from 'viem';
 import { EXECUTOR_ABI } from '../../src/autopay/abi.js';
 import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
+import { browserAccount } from '../../src/browser/account.js';
 import type { WalletConfig } from '../../src/config.js';
 import { silentLogger } from '../../src/log.js';
 import { CCIP } from '../../src/schemas/bridge.v2.js';
@@ -107,7 +108,10 @@ export async function startWorld(): Promise<World> {
         agent: { url: agentUrl },
         auth: { inbound_token_file: 'unused', report_token_file: 'unused' },
         db: { path: join(dir, options.dbName ?? `wallet-${++dbCount}.db`) },
-        approval: { mode: options.approval ?? 'auto_approve_testnets' },
+        approval: {
+          mode: options.approval ?? 'auto_approve_testnets',
+          ...(options.approval === 'metamask' ? { wallet_address: WALLET } : {}),
+        },
         chains: [base, arbitrum].map((chain) => {
           const d = deployments.get(chain) as { executor: Hex; block: number };
           return {
@@ -119,7 +123,12 @@ export async function startWorld(): Promise<World> {
       };
       const service = createService(
         config,
-        { account: userAccount, dbKeyHex: DB_KEY, inboundToken: 'in', reportToken: 'report' },
+        {
+          account: options.approval === 'metamask' ? browserAccount(WALLET) : userAccount,
+          dbKeyHex: DB_KEY,
+          inboundToken: 'in',
+          reportToken: 'report',
+        },
         silentLogger,
         {
           pollMs: 40,

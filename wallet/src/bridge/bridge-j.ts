@@ -210,7 +210,7 @@ export const bridgeHandler: StepHandler<BridgeJ> = {
         encodeFunctionData({ abi: ROUTER_ABI, functionName: 'getFee', args: [selector, message] }),
       ),
     });
-    if (quoted > parseEther(intent.fee_max_eth)) {
+    if (quoted > parseEther(intent.fee_max_eth) || quoted > parseEther(ctx.bridgeFeeMaxEth ?? '0.003')) {
       return finished({ status: 'failed', error_code: 'FEE_TOO_HIGH' });
     }
     const onRamp = decodeFunctionResult({

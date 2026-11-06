@@ -4,17 +4,18 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
-import type { Hex } from 'viem';
+import { isAddress, parseEther, type Hex } from 'viem';
 import { validateSimulationConfig, type SimulationConfig } from './chain/simulation.js';
 
-export type ApprovalMode = 'reject_all' | 'auto_approve_testnets';
+export type ApprovalMode = 'reject_all' | 'auto_approve_testnets' | 'metamask';
 
 export interface WalletConfig {
   server: { host: '127.0.0.1'; port: number };
   agent: { url: string };
   auth: { inbound_token_file: string; report_token_file: string };
   db: { path: string };
-  approval: { mode: ApprovalMode };
+  approval: { mode: ApprovalMode; wallet_address?: Hex };
+  bridge?: { ccip_fee_max_eth: string };
   chains: {
     chain_id: 11155111 | 84532 | 421614;
     rpc_url: string;
@@ -62,7 +63,16 @@ const SCHEMA = {
       type: 'object',
       additionalProperties: false,
       required: ['mode'],
-      properties: { mode: { enum: ['reject_all', 'auto_approve_testnets'] } },
+      properties: {
+        mode: { enum: ['reject_all', 'auto_approve_testnets', 'metamask'] },
+        wallet_address: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' },
+      },
+    },
+    bridge: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['ccip_fee_max_eth'],
+      properties: { ccip_fee_max_eth: { type: 'string', pattern: '^(0|[1-9][0-9]*)(\\.[0-9]{1,18})?$' } },
     },
     chains: {
       type: 'array',
@@ -110,6 +120,18 @@ export const expandHome = (path: string): string => (path.startsWith('~/') ? joi
 
 export function parseConfig(raw: unknown): WalletConfig {
   if (!validate(raw)) throw new Error('wallet config is invalid');
+  if (
+    raw.approval.mode === 'metamask' &&
+    (!raw.approval.wallet_address ||
+      !isAddress(raw.approval.wallet_address) ||
+      /^0x0{40}$/.test(raw.approval.wallet_address))
+  )
+    throw new Error('MetaMask requires a public wallet address');
+  if (
+    raw.bridge &&
+    (parseEther(raw.bridge.ccip_fee_max_eth) <= 0n || parseEther(raw.bridge.ccip_fee_max_eth) > parseEther('0.01'))
+  )
+    throw new Error('invalid CCIP fee ceiling');
   for (const chain of raw.chains)
     if (chain.simulation) {
       try {

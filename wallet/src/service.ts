@@ -13,6 +13,8 @@ import { ReportSender } from './runner/reports.js';
 import { Runner } from './runner/runner.js';
 import { buildApp } from './server/app.js';
 import { openDatabase, Store } from './store/store.js';
+import { BrowserWalletController } from './browser/controller.js';
+import { registerBrowserWallet } from './browser/routes.js';
 
 export interface ServiceSecrets {
   account: LocalAccount;
@@ -48,6 +50,11 @@ export function createService(
     envFor?: (chainId: number) => SmartAccountsEnvironment;
   } = {},
 ): Service {
+  if (
+    config.approval.mode === 'metamask' &&
+    config.approval.wallet_address?.toLowerCase() !== secrets.account.address.toLowerCase()
+  )
+    throw new Error('MetaMask account does not match the configured public wallet address');
   const db = openDatabase(config.db.path, secrets.dbKeyHex);
   const store = new Store(db);
   const gateways = new Map<number, ChainGateway>(
@@ -74,7 +81,9 @@ export function createService(
   const runner = new Runner({
     store,
     walletAddress: secrets.account.address,
-    approver: approverFor(config.approval.mode),
+    approver: config.approval.mode === 'metamask' ? autoApprove : approverFor(config.approval.mode),
+    browserWallet: config.approval.mode === 'metamask',
+    bridgeFeeMaxEth: config.bridge?.ccip_fee_max_eth ?? '0.003',
     gatewayFor: (chainId) => {
       const gateway = gateways.get(chainId);
       if (!gateway) throw new Error('chain not configured');
@@ -102,10 +111,29 @@ export function createService(
     walletAddress: secrets.account.address,
     inboundToken: secrets.inboundToken,
     chainIds: config.chains.map((c) => c.chain_id),
-    executorChainIds: [...deployments.keys()],
+    executorChainIds: config.approval.mode === 'metamask' ? [] : [...deployments.keys()],
     onAccepted: () => void runner.kick(),
     log,
   });
+  if (config.approval.mode === 'metamask') {
+    registerBrowserWallet(
+      app,
+      new BrowserWalletController({
+        store,
+        walletAddress: secrets.account.address,
+        chainIds: config.chains.map((c) => c.chain_id),
+        feeMaxEth: config.bridge?.ccip_fee_max_eth ?? '0.003',
+        gatewayFor: (id) => {
+          const gateway = gateways.get(id);
+          if (!gateway) throw new Error('chain unavailable');
+          return gateway;
+        },
+        kick: () => {
+          void runner.kick();
+        },
+      }),
+    );
+  }
   return {
     app,
     store,

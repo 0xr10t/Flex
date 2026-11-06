@@ -30,6 +30,13 @@ export interface TxReceipt {
   blockNumber: number;
 }
 
+export interface ChainTransaction extends TxRequest {
+  from: Hex;
+  value: bigint;
+  nonce: number;
+  blockNumber: number | null;
+}
+
 export interface LogQuery {
   address: Hex;
   event: AbiEvent;
@@ -88,6 +95,7 @@ export interface ChainGateway {
   getReceipt(hash: Hex): Promise<TxReceipt | null>;
   /** Canonical receipt at or below the chain's finalized head. No fallback to latest. */
   getFinalizedReceipt(hash: Hex): Promise<TxReceipt | null>;
+  getTransaction(hash: Hex): Promise<ChainTransaction | null>;
   /** The account's mined transaction count. */
   minedNonce(): Promise<number>;
   /** A read. Throws WouldFailError if the call reverts. */
@@ -218,6 +226,24 @@ export function createChainGateway(
         };
       } catch (e) {
         if (e instanceof BaseError && e.name === 'TransactionReceiptNotFoundError') return null;
+        throw new ChainUnavailableError();
+      }
+    },
+
+    getTransaction: async (hash) => {
+      try {
+        const tx = await pub.getTransaction({ hash });
+        if (!tx.to) return null;
+        return {
+          from: tx.from,
+          to: tx.to,
+          data: tx.input,
+          value: tx.value,
+          nonce: tx.nonce,
+          blockNumber: tx.blockNumber === null ? null : Number(tx.blockNumber),
+        };
+      } catch (e) {
+        if (e instanceof BaseError && e.name === 'TransactionNotFoundError') return null;
         throw new ChainUnavailableError();
       }
     },
