@@ -9,7 +9,16 @@
 // Shared by S3 (src/pipeline/s3-amounts.ts) and S4's Q_AMOUNT_MISSING (src/pipeline/s4-type.ts).
 // Owner: Lane B.
 
-import { CHIPS, QUESTION_TEXT, REASK_HINT, buildQuestion, matchChip, withHint } from '../contracts/catalog.js';
+import {
+  CHIPS,
+  QUESTION_TEXT,
+  REASK_HINT,
+  buildQuestion,
+  insufficientFundsParams,
+  joinList,
+  matchChip,
+  withHint,
+} from '../contracts/catalog.js';
 import { fractionDigits, fromBaseUnits, isDecimalString, toBaseUnits } from '../contracts/money.js';
 import type { StepContext, StepResult } from '../contracts/step.js';
 import {
@@ -25,7 +34,7 @@ import {
   type Token,
   type TokenWordKind,
 } from '../contracts/types.js';
-import { chainName, joinNames, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
+import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
 import { parseAmountText } from './parse.js';
 
 /** One amount being verified. Lives in `req.step_state` (S3 / S4), so it must stay JSON-serialisable. */
@@ -213,7 +222,7 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
       if (best === null || sp > best.sp) best = { chain: c, sp };
     }
     if (best === null) {
-      const names = joinNames(ctx.limits.allowed_chain_ids.map((c) => chainName(ctx.config, c)));
+      const names = joinList(ctx.limits.allowed_chain_ids.map((c) => chainName(ctx.config, c)));
       return { kind: 'stop', result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: names } } };
     }
     chain = best.chain;
@@ -221,13 +230,19 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
   }
   const value = item.relative === 'half' ? amount / 2n : amount;
   if (value === 0n) {
-    // spec-questions/B.md SQB-11 (params of INSUFFICIENT_FUNDS for a zero relative amount)
+    // SQB-11 with SQ-08 / F-10: a zero chain is not listed, so "…, and can use 0." (no "across" part).
+    const have = fromBaseUnits(amount, decimals);
     return {
       kind: 'stop',
       result: {
         kind: 'error',
         code: 'INSUFFICIENT_FUNDS',
-        params: { token, need: '0', have: fromBaseUnits(amount, decimals), chains: chainName(ctx.config, chain) },
+        params: insufficientFundsParams({
+          token,
+          need: '0',
+          have,
+          chains: [{ name: chainName(ctx.config, chain), spendable: have }],
+        }),
       },
     };
   }
