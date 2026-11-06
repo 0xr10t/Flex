@@ -16,6 +16,7 @@ import {
   REASK_HINT,
   SKIP_REASON,
   buildQuestion,
+  joinList,
   matchChip,
   reask,
   withHint,
@@ -38,7 +39,7 @@ import type {
 } from '../contracts/types.js';
 import { newId } from '../util/ids.js';
 import { checkAddress, isSelf, looksLikeAddress, sameAddress, type AddressCheck } from './address.js';
-import { chainName, joinNames, okChains, statedChain } from './chains.js';
+import { chainName, okChains, statedChain } from './chains.js';
 import { firstLabel, normalizeEns, resolveOnChain, resolveOnChains, type ChainAddress } from './ens.js';
 import { resolveMembers, triageMembers } from './group.js';
 import { checkContactName, closeContacts, nameKey } from './names.js';
@@ -315,7 +316,7 @@ function correctQuestion(
       ? QUESTION_VARIANT.ADDRESS_CORRECT_ENS({
           ens: ens.name,
           addr: address,
-          chains: joinNames(ens.chain_ids.map((c) => chainName(ctx, c))),
+          chains: joinList(ens.chain_ids.map((c) => chainName(ctx, c))),
         })
       : QUESTION_TEXT.Q_ADDRESS_CORRECT({ addr: address });
   if (origin.untrusted) text = `${text} ${QUESTION_VARIANT.ADDRESS_CORRECT_UNTRUSTED_SUFFIX()}`;

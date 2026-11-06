@@ -10,7 +10,7 @@
 // Owner: Lane B.
 
 import { normalize } from 'viem/ens';
-import { QUESTION_TEXT, buildQuestion, matchChip } from '../contracts/catalog.js';
+import { QUESTION_TEXT, buildQuestion, joinList, matchChip } from '../contracts/catalog.js';
 import { LlmFailed } from '../contracts/llm.js';
 import { shortAddress } from '../contracts/money.js';
 import {
@@ -24,7 +24,7 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, Answer, Chip, Question, RecipientSpan, Span, SpanKind } from '../contracts/types.js';
 import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
 import { ADDRESS_FULL_RE, PLACEHOLDER_TOKEN_RE } from '../lexical/patterns.js';
-import { joinNames, lastHistoryPayments, qid } from '../lexical/step-util.js';
+import { lastHistoryPayments, qid } from '../lexical/step-util.js';
 import { reaskPending } from '../amounts/verify.js';
 import { clauseIndexAt, findUnused, overlaps, type Range } from '../lexical/text.js';
 import { maskedToTyped, type S3State } from './s3-amounts.js';
@@ -232,7 +232,7 @@ async function s5Step(ctx: StepContext): Promise<StepResult> {
         if (only !== undefined) {
           req.spans = [followupSpan(only)];
         } else if (prev.length > 1) {
-          const base_text = QUESTION_TEXT.Q_FOLLOWUP_WHO({ names: joinNames(prev.map((c) => c.label)) });
+          const base_text = QUESTION_TEXT.Q_FOLLOWUP_WHO({ names: joinList(prev.map((c) => c.label)) });
           st.pending = { code: 'Q_FOLLOWUP_WHO', base_text, choices: prev };
           const chips: Chip[] = prev.map((c) => ({ id: c.placeholder, label: c.label, disabled: false, detail: '' }));
           return {
