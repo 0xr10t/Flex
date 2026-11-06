@@ -1,4 +1,5 @@
-// Implements: §10.4 LIMIT_BRIDGES, §10.6 derived 3–5 / V-12…V-14 limit errors (shared by S9 and S10); §11.3 V-15 quantities shared with the §13.1 footer: spent_today (Σ DB6 rows of the local calendar day in
+// Implements: §10.4 LIMIT_BRIDGES and §10.6 derived 3–5 / V-12…V-14 limit errors (shared by S9 and S10);
+// §11.3 V-15 quantities shared with the §13.1 footer: spent_today (Σ DB6 rows of the local calendar day in
 // the session timezone), this_request (Σ `i` amounts + Σ `j` buffers, SQ-17; `k` creation adds 0, D-19; each `j` counts
 // only its buffer, D-20) and the tokens a plan uses.
 

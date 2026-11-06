@@ -69,3 +69,13 @@ The rule does not say whether "needs" is per token.
 The E9 invoice is 120 USDC, above the default `per_tx_max` USDC 100, so V-13 ends E9 with `LIMIT_PER_TX`; §19 does
 not mention it.
 *Now:* V-13 as written (`LIMIT_PER_TX`). Tests also run E9 with `per_tx_max` raised.
+
+**SQ-D-17** · §9.5 "Recipients pinned by ENS (§9.3 step 6) are never reused on another chain"
+A saved ENS contact (`source='contact'`, DB2 rows only on the chains where its record resolved, no `Q_ENS_CHAIN` pin in
+this request) can still be silently reused on another stated chain or by §10.3 rule 4.
+*Now:* only a recipient pinned in this request (DB3 `chain_id`, the `Q_ENS_CHAIN` choice) is never reused; saved ENS
+contacts follow §10.3 rule 4 / §9.5 like any contact.
+
+**SQ-D-18** · §14.2 contract 4 / §10.6 weekly `interval > 1`
+"weeks since `schedule.first_occurrence`" can mean 7-day blocks from the first occurrence or calendar weeks.
+*Now:* 7-day blocks from the first occurrence's date (occurrence enumeration for limits and caps).

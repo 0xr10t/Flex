@@ -168,8 +168,12 @@ function buildLines(ctx: StepContext, plan: InternalIntent[]): string[] {
         texts.push(lineI(ctx, it));
         continue;
       }
+      // One line per group payment: P3 makes (amount, group) unique, so the amount placeholder separates two payments
+      // to the same group.
       const members = [it];
-      for (let next = plan[n + 1]; next?.intent_id === 'i' && groupOf(ctx, next) === group; next = plan[n + 1]) {
+      const samePayment = (x: InternalIntent | undefined): x is PlanI =>
+        x?.intent_id === 'i' && x.amount === it.amount && groupOf(ctx, x) === group;
+      for (let next = plan[n + 1]; samePayment(next); next = plan[n + 1]) {
         members.push(next);
         n++;
       }
