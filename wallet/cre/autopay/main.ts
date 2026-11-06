@@ -89,7 +89,11 @@ function discover(runtime: Runtime<Config>, config: PaymentConfig) {
   return anchored.map(({ chain, verify, logs }) => {
     if (verify && chain.snapshot) {
       const header = verify.result().header;
-      if (!header || bytesToHex(header.hash).toLowerCase() !== chain.snapshot.blockHash.toLowerCase())
+      if (
+        !header?.blockNumber ||
+        protoBigIntToBigint(header.blockNumber) !== BigInt(chain.snapshot.blockNumber) ||
+        bytesToHex(header.hash).toLowerCase() !== chain.snapshot.blockHash.toLowerCase()
+      )
         throw new Error('snapshot reorg detected');
       return { chain, plans: snapshotPlans(chain.snapshot) };
     }

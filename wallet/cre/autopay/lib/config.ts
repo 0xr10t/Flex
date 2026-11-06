@@ -68,7 +68,7 @@ export function validateConfig(input: unknown): Config {
   if (!['local-simulation', 'dry-run', 'broadcast'].includes(String(c.mode))) fail();
   const local = c.mode === 'local-simulation';
   keys(c, local ? ['mode', 'schedule', 'chains'] : ['mode', 'schedule', 'maxSimulationsPerRun', 'workflow', 'chains']);
-  if (typeof c.schedule !== 'string' || !/^[0-9*,/\-]+(?:\s+[0-9*,/\-]+){5}$/.test(c.schedule)) fail();
+  if (typeof c.schedule !== 'string' || !/^[0-9*,/-]+(?:\s+[0-9*,/-]+){5}$/.test(c.schedule)) fail();
   if (!Array.isArray(c.chains) || c.chains.length < 1 || c.chains.length > (local ? 1 : 3)) fail();
   if (!local) {
     if (

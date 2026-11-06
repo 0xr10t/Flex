@@ -68,12 +68,21 @@ export interface LocalChain {
   stop: () => void;
 }
 
-export async function startChain(chainId: LocalChain['chainId']): Promise<LocalChain> {
+export async function startChain(chainId: LocalChain['chainId'], timestamp?: number): Promise<LocalChain> {
   const port = await freePort();
   const rpcUrl = `http://127.0.0.1:${port}`;
   const proc: ChildProcess = spawn(
     'anvil',
-    ['--port', String(port), '--chain-id', String(chainId), '--hardfork', 'prague', '--silent'],
+    [
+      '--port',
+      String(port),
+      '--chain-id',
+      String(chainId),
+      '--hardfork',
+      'prague',
+      '--silent',
+      ...(timestamp === undefined ? [] : ['--timestamp', String(timestamp)]),
+    ],
     { stdio: 'ignore' },
   );
 
