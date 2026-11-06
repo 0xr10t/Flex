@@ -69,11 +69,11 @@ describe('§9.3 helpers', () => {
 });
 
 describe('C-446 §9.3 ENS flow (S6)', () => {
-  it('C-175 §9.3 step 1: normalize failure → Q_WHO_IS "That isn\'t a valid ENS name. Who is it?"', async () => {
+  it('C-175 §9.3 step 1: normalize failure asks for a wallet address or valid ENS name', async () => {
     const { ctx, d } = await run(ensSpan('bad..eth'), []);
     const q = expectQuestion(d, 'Q_WHO_IS', 1);
     expect(q.text).toBe(QUESTION_VARIANT.WHO_IS_INVALID_ENS());
-    expect(q.text).toBe("That isn't a valid ENS name. Who is it?");
+    expect(q.text).toBe("That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.");
     expect(ctx.ens.calls).toEqual([]);
     await d.text(NEWADDR);
     expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);

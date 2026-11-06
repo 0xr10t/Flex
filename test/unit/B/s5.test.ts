@@ -463,7 +463,10 @@ describe('S5 follow-ups (rule 7, §17.2 steps 2-3, C-115, C-413, C-414, C-316, C
   it('no previous payee (empty history) → Q_NO_PAYEE', async () => {
     const ctx = await setup(typed, { amounts: [{ phrase: '5 usdc', number: '5' }], spans: [] });
     const r = await run(ctx);
-    expect(r.questions[0]).toMatchObject({ code: 'Q_NO_PAYEE', text: 'Who should receive this?' });
+    expect(r.questions[0]).toMatchObject({
+      code: 'Q_NO_PAYEE',
+      text: 'Who should receive this? Enter their wallet address, ENS name or saved contact name.',
+    });
   });
 
   it('only the MOST RECENT history entry counts, and group recipients are not offered', async () => {

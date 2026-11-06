@@ -327,7 +327,7 @@ describe('§9.2 step 5 / §16.1 untrusted (document) addresses', () => {
     await d.chip('dont_pay');
     await d.text("Don't pay this one");
     const q = expectQuestion(d, 'Q_NO_PAYEE', 1);
-    expect(q.text).toBe('Who should receive this?');
+    expect(q.text).toBe('Who should receive this? Enter their wallet address, ENS name or saved contact name.');
     expect(q.input).toBe('text');
     await d.text('mihir');
     expect(d.last).toEqual({ kind: 'continue' });

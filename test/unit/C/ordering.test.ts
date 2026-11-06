@@ -28,7 +28,9 @@ describe('§9.7 ordering and counting', () => {
     });
     const d = new Driver(ctx);
     await d.start();
-    expect(expectQuestion(d, 'Q_WHO_IS').text).toBe('Who is "riya"?');
+    expect(expectQuestion(d, 'Q_WHO_IS').text).toBe(
+      'What is the wallet address for "riya"? You can also enter an ENS name.',
+    );
     expect(ctx.req.resolved).toEqual([]);
     await d.text(OTHER);
     expectQuestion(d, 'Q_ADDRESS_CORRECT');

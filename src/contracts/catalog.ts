@@ -1,6 +1,7 @@
 // Implements: §13.4 question texts + fixed chips, §15 error messages, §13.1 notes, §13.3 fixed replies,
 // re-ask / variant wordings quoted in §8.4, §9.1–§9.6. Verbatim from the spec.
 // SQ-S-01: summary note for a correction to an insufficient-funds request.
+// SQ-UI-01: recipient questions explicitly request a wallet address and explain the accepted alternatives.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
 // Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
 
@@ -34,9 +35,9 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   Q_FIAT_OTHER: (p) => `I can't convert ${req(p, 'phrase')}. How much in ${p.token ?? 'USDC or ETH'}?`,
   Q_UNTRUSTED_AMOUNT: (p) => `The attached content says ${req(p, 'amount')} ${req(p, 'token')}. Use this amount?`,
   Q_RECURRING: () => 'Should this payment repeat?',
-  Q_NO_PAYEE: () => 'Who should receive this?',
+  Q_NO_PAYEE: () => 'Who should receive this? Enter their wallet address, ENS name or saved contact name.',
   Q_FOLLOWUP_WHO: (p) => `Who should get this: ${req(p, 'names')}?`,
-  Q_WHO_IS: (p) => `Who is "${req(p, 'name')}"?`,
+  Q_WHO_IS: (p) => `What is the wallet address for "${req(p, 'name')}"? You can also enter an ENS name.`,
   Q_ADDRESS_CORRECT: (p) => `Is ${req(p, 'addr')} correct?`,
   // "Paste the address{ for name}." — `name` optional.
   Q_ADDRESS_REENTER: (p) => `Paste the address${p.name !== undefined ? ` for ${p.name}` : ''}.`,
@@ -98,7 +99,7 @@ export const QUESTION_INPUT: Record<QuestionCode, QuestionInput> = {
 /** Variant wordings quoted in §8.4 / §9. */
 export const QUESTION_VARIANT = {
   /** §9.3 step 1: ENS normalize failure → Q_WHO_IS. */
-  WHO_IS_INVALID_ENS: () => "That isn't a valid ENS name. Who is it?",
+  WHO_IS_INVALID_ENS: () => "That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.",
   /** §9.3 step 4: ENS has no address on any queried chain → Q_ADDRESS_REENTER. */
   REENTER_ENS_NO_ADDRESS: (p: P) => `${req(p, 'ens')} has no address for these chains. Paste an address instead?`,
   /** §9.3 step 7: Q_ADDRESS_CORRECT for an ENS-resolved address. SQ-06: `chains` join format when several match. */

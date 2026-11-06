@@ -333,3 +333,12 @@ recipient's chain or correction note; a mentioned-person ambiguity asks `Q_NO_PA
 `Q_AMOUNT_MISSING`; the previous amount is never copied. Repeating/cancel/group/split requests, conflicting tokens
 and messages with attachments, pasted content or URLs do not receive this implicit failed-payment reference.
 The prior eligibility, session lifetime, submission safety and fresh-confirmation requirements remain in force.
+
+## Recipient-question wording (2026-11-06)
+
+**SQ-UI-01 — requested by the human in chat.** When the agent asks about a person, it should explicitly say that
+it needs an address. `Q_WHO_IS` now asks “What is the wallet address for \"{name}\"? You can also enter an ENS name.”
+`Q_NO_PAYEE` says “Who should receive this? Enter their wallet address, ENS name or saved contact name.” The
+invalid-ENS variant says “That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.”
+These wording changes override the corresponding §9 / §13.4 texts; accepted inputs, saved-contact chips, validation
+and confirmation requirements are unchanged. `README.md` remains unchanged.

@@ -79,7 +79,7 @@ export function registerA17toA32(): void {
       h.addContact('Riyan', addr(0xc3), [BASE]);
       const r1 = await h.say('send 10 usdc to riya');
       expect(r1.body.question?.code).toBe('Q_WHO_IS');
-      expect(r1.body.question?.text).toBe('Who is "riya"?');
+      expect(r1.body.question?.text).toBe('What is the wallet address for "riya"? You can also enter an ENS name.');
       // Levenshtein <= 2, sorted by distance then alphabetically, at most 3 (Aradhya and Mihir are too far).
       expect(r1.body.question?.chips.map((c) => c.label)).toEqual(['Diya', 'Priya', 'Riyan']);
       const r2 = await h.answer(r1, { chipLabel: 'Priya' });

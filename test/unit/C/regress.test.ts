@@ -337,7 +337,7 @@ describe('C-172 C-118 S6 → S7 alignment after "Don\'t pay this one"', () => {
     await d.chip('dont_pay');
     await d.chip('dont_pay');
     const q = expectQuestion(d, 'Q_NO_PAYEE', 1);
-    expect(q.text).toBe('Who should receive this?');
+    expect(q.text).toBe('Who should receive this? Enter their wallet address, ENS name or saved contact name.');
     await d.text('mihir');
     expect(d.last).toEqual({ kind: 'continue' });
     expect(ctx.req.spans).toHaveLength(1);

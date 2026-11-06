@@ -301,7 +301,9 @@ export function registerA01toA16(): void {
       expect(r1.body.question?.code).toBe('Q_TOKEN');
       const r2 = await h.answer(r1, { chipLabel: 'USDC' });
       expect(r2.body.question?.code).toBe('Q_NO_PAYEE');
-      expect(r2.body.question?.text).toBe('Who should receive this?');
+      expect(r2.body.question?.text).toBe(
+        'Who should receive this? Enter their wallet address, ENS name or saved contact name.',
+      );
       expect(r2.body.question?.input).toBe('text');
       expect(h.asked).toEqual(['Q_TOKEN', 'Q_NO_PAYEE']);
       noSubmission(h);
