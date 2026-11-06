@@ -73,11 +73,14 @@ export async function startChain(chainId: LocalChain['chainId'], timestamp?: num
   const rpcUrl = `http://127.0.0.1:${port}`;
   const proc: ChildProcess = spawn(
     'anvil',
+    // Anvil infers Base's OP-stack rules from chain id 84532 and then refuses `prague`; keep every chain plain Ethereum.
     [
       '--port',
       String(port),
       '--chain-id',
       String(chainId),
+      '--network',
+      'ethereum',
       '--hardfork',
       'prague',
       '--silent',
