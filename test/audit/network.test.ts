@@ -1,6 +1,7 @@
 // Phase 3 audit (§3.2): outbound hosts (§16.4), SSRF (§8.2 step 3), DNS rebinding, server binding and tokens.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { validateConfig } from '../../src/config/load.js';
 import { createContentFetcher, type HttpResponse } from '../../src/quarantine/fetch.js';
@@ -17,6 +18,55 @@ function walk(d: string): string[] {
   });
 }
 const files = walk(SRC).map((p) => ({ path: relative(SRC, p), text: readFileSync(p, 'utf8') }));
+
+const VIEM_NETWORK_FACTORIES = new Set([
+  'createPublicClient',
+  'createWalletClient',
+  'createClient',
+  'http',
+  'webSocket',
+  'custom',
+  'fallback',
+]);
+
+/** Inspect runtime capabilities, including aliases; comments, strings and type-only imports open no sockets. */
+function importsViemNetworkFactory(text: string): boolean {
+  const source = ts.createSourceFile('inventory.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const namespaces = new Set<string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const module = statement.moduleSpecifier.text;
+    if (module !== 'viem' && !module.startsWith('viem/')) continue;
+    const clause = statement.importClause;
+    if (clause === undefined || clause.isTypeOnly) continue;
+    const bindings = clause.namedBindings;
+    if (bindings !== undefined && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    if (
+      bindings !== undefined &&
+      ts.isNamedImports(bindings) &&
+      bindings.elements.some(
+        (item) => !item.isTypeOnly && VIEM_NETWORK_FACTORIES.has((item.propertyName ?? item.name).text),
+      )
+    )
+      return true;
+  }
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      if (namespaces.has(node.expression.text) && VIEM_NETWORK_FACTORIES.has(node.name.text)) found = true;
+    } else if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      ts.isStringLiteral(node.argumentExpression)
+    ) {
+      if (namespaces.has(node.expression.text) && VIEM_NETWORK_FACTORIES.has(node.argumentExpression.text))
+        found = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
 
 describe('§16.4 outbound network calls (static inventory)', () => {
   it('only these modules open sockets: Ollama, RPC (S0 + ENS), ENS indexer, execution client, URL fetcher', () => {
@@ -38,10 +88,23 @@ describe('§16.4 outbound network calls (static inventory)', () => {
 
   it('every other src file that imports viem uses only pure helpers (no transport / client)', () => {
     const offenders = files
-      .filter((f) => /createPublicClient|createWalletClient|createClient|\btransport\b|\bhttp\(/.test(f.text))
+      .filter((f) => importsViemNetworkFactory(f.text))
       .map((f) => f.path)
       .sort();
     expect(offenders).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
+  });
+
+  it('viem inventory ignores prose and types, but includes aliased and namespace network factories', () => {
+    expect(
+      importsViemNetworkFactory(
+        "import type { PublicClient, http } from 'viem'; // ambiguous transport failures: createClient()\n" +
+          "import { getAddress } from 'viem'; const text = 'http(transport)'; getAddress('0x1');",
+      ),
+    ).toBe(false);
+    expect(importsViemNetworkFactory("import { http as rpcTransport } from 'viem'; rpcTransport(url);")).toBe(true);
+    expect(importsViemNetworkFactory("import * as rpc from 'viem'; rpc.createPublicClient({});")).toBe(true);
+    expect(importsViemNetworkFactory("import * as rpc from 'viem'; rpc['http'](url);")).toBe(true);
+    expect(importsViemNetworkFactory("import * as address from 'viem'; address.getAddress(value);")).toBe(false);
   });
 
   it("O6 fixed: the Ollama client sets redirect:'error' and config accepts only http://127.0.0.1 for ollama_url", () => {
