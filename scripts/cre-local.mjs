@@ -143,7 +143,8 @@ export function parseSimulationOutput(output) {
 }
 
 async function cli(args, signal) {
-  const command = process.env.CRE_CLI_PATH || join(root, '.local/bin/cre.exe');
+  const command =
+    process.env.CRE_CLI_PATH || join(root, '.local/bin', process.platform === 'win32' ? 'cre.exe' : 'cre');
   return await new Promise((done, reject) => {
     const child = spawn(command, args, {
       cwd: project,
