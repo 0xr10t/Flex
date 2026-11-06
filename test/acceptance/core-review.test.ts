@@ -283,7 +283,7 @@ describe('R1-F2 and R4-F2 consent through the request runner', () => {
       expect(response.body.question?.code).toBe('Q_PAIR_AMOUNT');
       expect(response.body.question?.attempt).toBe(1);
       for (const attempt of [2, 3, 4]) {
-        response = await h.answer(response, { text: 'someone else' });
+        response = await h.answer(response, { chip: 'unoffered-contact' });
         expect(response.body.question?.code).toBe('Q_PAIR_AMOUNT');
         expect(response.body.question?.attempt).toBe(attempt);
       }

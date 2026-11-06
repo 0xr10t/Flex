@@ -3,7 +3,7 @@
 // cancel table, §8.14 step 6 HANDOFF_FAILED retries, §13.3 fixed replies, §15 error responses, §14.1 409 rules,
 // §18 metrics lines.
 import { describe, expect, it } from 'vitest';
-import { ERROR_MESSAGE, REPLY } from '../../../src/contracts/catalog.js';
+import { CHIPS, ERROR_MESSAGE, REPLY } from '../../../src/contracts/catalog.js';
 import { LOG_ALLOWED_FIELDS } from '../../../src/contracts/io.js';
 import { LlmFailed } from '../../../src/contracts/llm.js';
 import type { StepResult } from '../../../src/contracts/step.js';
@@ -12,6 +12,7 @@ import { CANCEL_TEXTS, CONFIRM_NO_TEXTS, CONFIRM_YES_TEXTS } from '../../../src/
 import { MAX_ATTEMPTS, MAX_HANDOFF_ATTEMPTS, type SessionResult } from '../../../src/session/manager.js';
 import { openTempDb } from './helpers.js';
 import { SUMMARY, makeHarness, msg, question, stepNames, type Harness } from './session-harness.js';
+import { FixtureLlmClient } from '../../fakes/llm.js';
 
 const ALL = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11'];
 
@@ -358,8 +359,13 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
   it('C-039 §7.2: the session manager writes each answer to db8_prompts (kind answer)', async () => {
     const h = makeHarness();
     const { sid, rid, q } = await toQuestion(h);
-    h.set('s3', { onAnswer: async () => ({ kind: 'question', question: question('Q_TOKEN', 1) }) });
-    await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'usdc please' });
+    const interpreter = new FixtureLlmClient({
+      calls: [{ name: 'conversation', match: 'usdc please', output: { intent: 'clarify', value: null } }],
+    });
+    h.llm.call = interpreter.call.bind(interpreter);
+    const response = body(await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'usdc please' }));
+    expect(response.question).toEqual(q);
+    expect(interpreter.remaining()).toEqual([]);
     expect(h.repos.tables.db8_prompts).toEqual([
       { session_id: sid, request_id: rid, kind: 'answer', text: 'usdc please', created_at: '2026-11-05T17:30:00.000Z' },
     ]);
@@ -370,10 +376,12 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     const { sid, q } = await toQuestion(h);
     const q2 = question('Q_AMOUNT_PRECISION');
     h.set('s3', { onAnswer: async () => ({ kind: 'question', question: q2 }) });
-    const r = body(await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'x' }));
+    const r = body(await h.manager.handleAnswer(sid, { question_id: q.question_id, chip_id: 'unoffered' }));
     expect(r.question).toEqual(q2);
-    expect((await h.manager.handleAnswer(sid, { question_id: q.question_id, text: 'x' })).kind).toBe('conflict');
-    expect((await h.manager.handleAnswer(sid, { question_id: q2.question_id, text: 'x' })).kind).toBe('ok');
+    expect((await h.manager.handleAnswer(sid, { question_id: q.question_id, chip_id: 'unoffered' })).kind).toBe(
+      'conflict',
+    );
+    expect((await h.manager.handleAnswer(sid, { question_id: q2.question_id, chip_id: 'unoffered' })).kind).toBe('ok');
   });
 
   it("'answer' → request ANSWERED, state done, messages returned", async () => {
@@ -479,9 +487,9 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     const h3 = makeHarness();
     const { sid: sid3, q } = await toQuestion(h3);
     h3.set('s3', { onAnswer: undefined });
-    expect(body(await h3.manager.handleAnswer(sid3, { question_id: q.question_id, text: 'x' })).error?.code).toBe(
-      'UNSUPPORTED_REQUEST',
-    );
+    expect(
+      body(await h3.manager.handleAnswer(sid3, { question_id: q.question_id, chip_id: 'unoffered' })).error?.code,
+    ).toBe('UNSUPPORTED_REQUEST');
   });
 });
 
@@ -489,18 +497,21 @@ describe('§9.7 / §13.4 attempts', () => {
   it('C-201 / C-389 / C-420: re-asks up to attempt 4; the 4th failed answer → TOO_MANY_RETRIES, FAILED', async () => {
     expect(MAX_ATTEMPTS).toBe(4);
     const h = makeHarness();
-    let current = question('Q_AMOUNT_MISSING', 1);
+    let current: Question = { ...question('Q_AMOUNT_MISSING', 1), input: 'number' };
     const { sid } = await toQuestion(h, current);
     h.set('s3', {
-      onAnswer: async (_ctx, q) => ({ kind: 'question', question: { ...question(q.code), attempt: q.attempt + 1 } }),
+      onAnswer: async (_ctx, q) => ({
+        kind: 'question',
+        question: { ...question(q.code), input: q.input, attempt: q.attempt + 1 },
+      }),
     });
     for (const attempt of [2, 3, 4]) {
-      const r = body(await h.manager.handleAnswer(sid, { question_id: current.question_id, text: 'zero' }));
+      const r = body(await h.manager.handleAnswer(sid, { question_id: current.question_id, text: '0' }));
       expect(r.state).toBe('awaiting_answer');
       expect(r.question?.attempt).toBe(attempt);
       current = r.question as Question;
     }
-    const last = body(await h.manager.handleAnswer(sid, { question_id: current.question_id, text: 'zero' }));
+    const last = body(await h.manager.handleAnswer(sid, { question_id: current.question_id, text: '0' }));
     expect(last).toMatchObject({
       state: 'error',
       error: { code: 'TOO_MANY_RETRIES', message: "Let's start over. Nothing was sent." },
@@ -513,16 +524,16 @@ describe('§9.7 / §13.4 attempts', () => {
 
   it('C-420: free-text re-asks via the messages call count the same way', async () => {
     const h = makeHarness();
-    const { sid } = await toQuestion(h, question('Q_AMOUNT_MISSING', 4));
+    const { sid } = await toQuestion(h, { ...question('Q_AMOUNT_MISSING', 4), input: 'number' });
     h.set('s3', { onAnswer: async (_c, q) => ({ kind: 'question', question: { ...q, attempt: q.attempt + 1 } }) });
-    expect(body(await h.manager.handleMessage(sid, msg('nope'))).error?.code).toBe('TOO_MANY_RETRIES');
+    expect(body(await h.manager.handleMessage(sid, msg('0'))).error?.code).toBe('TOO_MANY_RETRIES');
   });
 });
 
 describe('§17.3 confirmation, answers and cancellation', () => {
-  it('C-421: awaiting an answer + messages call → the text is a free-text answer to the pending question', async () => {
+  it('C-421: awaiting an answer + messages call → a native literal reaches the pending field handler', async () => {
     const h = makeHarness();
-    const { sid, rid } = await toQuestion(h);
+    const { sid, rid } = await toQuestion(h, { ...question('Q_TOKEN'), chips: [CHIPS.USDC, CHIPS.ETH] });
     const r = body(await h.manager.handleMessage(sid, msg('ETH')));
     expect(r.request_id).toBe(rid);
     expect(h.calls.find((c) => c.kind === 'answer')?.answer).toEqual({ kind: 'text', text: 'ETH' });
