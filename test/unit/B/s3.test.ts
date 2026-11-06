@@ -124,6 +124,38 @@ describe('S3 rules 1-2 and 8 (verbatim, context, none)', () => {
     expect(ctx.req.masked_text_s3).toBe('stop paying riya');
   });
 
+  it.each(["what's my balance", 'stop paying mihir', 'show my eth balance'])(
+    'B13: invented context rows cannot erase a no-amount request: %s',
+    async (typed) => {
+      for (const number of [null, '5']) {
+        const { ctx, result } = await run(typed, [{ phrase: typed, number, role: 'context' }]);
+        expect(result).toEqual({ kind: 'continue' });
+        expect(ctx.req.masked_text_s3).toBe(typed);
+        expect(ctx.req.amounts).toEqual([]);
+        expect(ctx.repos.tables.db1.size).toBe(0);
+      }
+    },
+  );
+
+  it('B13: a whole context sentence cannot hide its real amount or recipient', async () => {
+    const typed = 'send 5 usdc to mihir';
+    const r = await run(typed, [{ phrase: typed, number: '5', token: 'USDC', role: 'context' }]);
+    expect(q(r)?.code).toBe('Q_AMOUNT_UNCOVERED');
+    expect(r.ctx.req.amounts).toEqual([]);
+    expect(r.ctx.repos.tables.db1.size).toBe(0);
+  });
+
+  it('B13: independently stated numeric and relative context amounts are still masked', async () => {
+    const typed = 'I used all my eth after paying one hundred usdc yesterday';
+    const { ctx, result } = await run(typed, [
+      { phrase: 'all my eth', number: null, relative: 'all', token: 'ETH', role: 'context' },
+      { phrase: 'one hundred usdc', number: '100', token: 'USDC', role: 'context' },
+    ]);
+    expect(result).toEqual({ kind: 'continue' });
+    expect(ctx.req.masked_text_s3).toBe('I used [amount] after paying [amount] yesterday');
+    expect(ctx.repos.tables.db1.size).toBe(0);
+  });
+
   it('C-390: LLM #1 failing twice → MODEL_FAILED with the catalog message', async () => {
     const typed = 'send 5 usdc to a';
     const ctx = await scannedCtx(typed, {
@@ -247,6 +279,36 @@ describe('S3 rule 3 (number, parse, mismatch)', () => {
     expect(r.ctx.req.amounts[0]).toMatchObject({ amount: '5000', code_verified: true });
     const r2 = await run('send 1.50 usdc to riya', [{ phrase: '1.50', number: '1.5', token: 'USDC' }]);
     expect(r2.ctx.req.amounts[0]?.amount).toBe('1.5');
+  });
+
+  it.each(['0', 'zero', '0.000'])(
+    'B01: a typed %s cannot become a positive amount without clarification',
+    async (zero) => {
+      const typed = `send ${zero} usdc to Mihir`;
+      const amounts: A[] = [{ phrase: `${zero} usdc`, number: '5', token: 'USDC' }];
+      const r = await run(typed, amounts);
+      expect(q(r)).toMatchObject({ code: 'Q_AMOUNT_MISMATCH', text: 'Did you mean 0 or 5?' });
+      expect(r.ctx.repos.tables.db1.size).toBe(0);
+      expect(r.ctx.req.amounts).toEqual([]);
+
+      const keepZero = await run(typed, amounts, [chip('code')]);
+      expect(keepZero.questions.map((question) => question.code)).toEqual(['Q_AMOUNT_MISMATCH', 'Q_AMOUNT_MISSING']);
+      expect(q(keepZero)?.text).toContain('amount must be more than 0');
+      expect(keepZero.ctx.repos.tables.db1.size).toBe(0);
+
+      const choosePositive = await run(typed, amounts, [chip('llm')]);
+      expect(choosePositive.result).toEqual({ kind: 'continue' });
+      expect(choosePositive.ctx.req.amounts[0]).toMatchObject({ amount: '5', code_verified: false });
+    },
+  );
+
+  it('B01: zero glued to a supported token still requires mismatch clarification', async () => {
+    const r = await run('send 0usdc to Mihir', [{ phrase: '0usdc', number: '5', token: 'USDC' }]);
+    expect(q(r)?.code).toBe('Q_AMOUNT_MISMATCH');
+    expect(r.ctx.repos.tables.db1.size).toBe(0);
+    const valid = await run('send 50usdc to Mihir', [{ phrase: '50usdc', number: '50', token: 'USDC' }]);
+    expect(valid.result).toEqual({ kind: 'continue' });
+    expect(valid.ctx.req.amounts[0]).toMatchObject({ amount: '50', code_verified: true });
   });
 });
 

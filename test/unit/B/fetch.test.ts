@@ -194,6 +194,23 @@ describe('SSRF additional ranges (SQ-O-08, F-13)', () => {
 
 describe('fetcher secret scan (SQ-O-06)', () => {
   const HEX = 'ab'.repeat(32);
+  it.each(['&discount=50%', '&label=%FF'])(
+    'B15: an encoded key with malformed %s is blocked before any secret-bearing hop',
+    async (suffix) => {
+      const encoded = [...HEX].map((ch) => `%${ch.charCodeAt(0).toString(16)}`).join('');
+      const target = `https://b.example.com/?key=${encoded}${suffix}`;
+      const direct = setup({});
+      expect(isSecretRefusal(await direct.fetcher.fetchUrl(target))).toBe(true);
+      expect(direct.requested).toEqual([]);
+      expect(direct.resolved).toEqual([]);
+
+      const redirect = setup({ 'https://a.example.com/': resp(302, { location: target }) });
+      expect(isSecretRefusal(await redirect.fetcher.fetchUrl('https://a.example.com/'))).toBe(true);
+      expect(redirect.requested).toEqual(['https://a.example.com/']);
+      expect(redirect.resolved).toEqual(['a.example.com']);
+    },
+  );
+
   it('SQ-O-06 a URL carrying a key is never requested', async () => {
     const { fetcher, requested } = setup({});
     const r = await fetcher.fetchUrl(`https://a.example.com/?k=${HEX}`);

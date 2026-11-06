@@ -257,6 +257,32 @@ describe('S1 secret scan (§8.2 step 2, C-061…C-068, C-360, C-442)', () => {
 describe('S1 secret scan of links (SQ-O-06)', () => {
   const SEED_PCT = SEED.replace(/ /g, '%20');
   const SEED_PLUS = SEED.replace(/ /g, '+');
+  const KEY_PCT = [...HEX64].map((ch) => `%${ch.charCodeAt(0).toString(16)}`).join('');
+
+  it.each(['&discount=50%', '&label=%FF', '%FF', '%'])(
+    'B15: malformed URL encoding %s cannot hide an encoded key',
+    async (suffix) => {
+      const url = `https://a.example/?key=${KEY_PCT}${suffix}`;
+      expect(urlHasSecret(url)).toBe(true);
+      for (const channel of ['typed', 'urls'] as const) {
+        const ctx = s1ctx(channel === 'typed' ? { text: `read ${url}` } : { text: 'read invoice', urls: [url] });
+        expect(await s1.step(ctx)).toEqual({ kind: 'error', code: 'SECRET_DETECTED' });
+        expect(ctx.fetcher.calls).toEqual([]);
+        expect(ctx.llm.recorded).toEqual([]);
+        expect(ctx.repos.tables.db8_prompts).toHaveLength(0);
+        expect(ctx.repos.tables.db1.size).toBe(0);
+        expect(ctx.repos.tables.db3.size).toBe(0);
+        expect(JSON.stringify(ctx.log.lines)).not.toContain(HEX64);
+      }
+    },
+  );
+
+  it('B15: malformed path bytes do not suppress query, path or seed decoding', () => {
+    expect(urlHasSecret(`https://a.example/%FF?key=${KEY_PCT}`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/%FF${KEY_PCT}?discount=50%`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/?seed=${SEED_PCT}&label=%FF`)).toBe(true);
+    expect(urlHasSecret('https://a.example/%FF?discount=50%&name=Jos%C3%A9')).toBe(false);
+  });
 
   it('SQ-O-06 urlHasSecret: as written and percent-decoded, "+" as space; clean URLs pass', () => {
     expect(urlHasSecret(`https://a.example/?k=${HEX64}`)).toBe(true);

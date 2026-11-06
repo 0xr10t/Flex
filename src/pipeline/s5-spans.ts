@@ -86,7 +86,7 @@ function normalizes(text: string): boolean {
 
 /** Rule 2 word list: chain aliases (config, plus `eth`), token aliases (§6.2, incl. fiat words), back-references, me/my/I. */
 function droppedWords(ctx: StepContext): Set<string> {
-  const words = new Set<string>(['eth']);
+  const words = new Set<string>(['eth', 'myself']); // Handoff LIVE-P046: self references are never payees.
   for (const c of ctx.config.chains) for (const a of c.aliases) words.add(a.toLowerCase());
   for (const t of [...TOKENS.USDC.aliases, ...TOKENS.ETH.aliases, ...FIAT_USD_WORDS, ...FIAT_OTHER_WORDS]) {
     words.add(t.toLowerCase());
@@ -126,7 +126,7 @@ function filterSpans(
   const usedByText = new Map<string, Range[]>();
   const claim = (text: string): Range | null => {
     const used = usedByText.get(text) ?? [];
-    const range = findUnused(masked, text, used, true);
+    const range = findUnused(masked, text, used, 'identifier');
     if (range !== null) usedByText.set(text, [...used, range]);
     return range;
   };

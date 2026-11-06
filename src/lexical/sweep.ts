@@ -7,7 +7,7 @@
 // Owner: Lane B (applied by S7, Lane C).
 
 import { PLACEHOLDER_TOKEN_RE } from './patterns.js';
-import { escapeRe, overlapsAny, type Range } from './text.js';
+import { escapeRe, isIdentifierAt, overlapsAny, type Range } from './text.js';
 
 /** One masking: `text` is the exact slice of the source at [start, end), replaced by `with`. */
 export interface Masking extends Range {
@@ -19,29 +19,6 @@ export const PERSON = '[person]';
 
 /** Case and whitespace-run insensitive key of a span text. */
 export const nameKey = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
-
-/** A letter, combining mark, digit or underscore: two of these side by side are one word ("Mihirs", "Mihir2"). */
-const WORD_CHAR = /[\p{L}\p{M}\p{N}_]/u;
-
-/** The code point that ends just before `i` / starts at `i` (surrogate pairs kept whole). */
-function charBefore(s: string, i: number): string {
-  if (i <= 0) return '';
-  const lo = s.charCodeAt(i - 1);
-  return lo >= 0xdc00 && lo <= 0xdfff && i >= 2 ? s.slice(i - 2, i) : s.slice(i - 1, i);
-}
-function charAt(s: string, i: number): string {
-  const cp = s.codePointAt(i);
-  return cp === undefined ? '' : String.fromCodePoint(cp);
-}
-
-/** Whole word (SQ-R-01): no word character glued on either side of the match. Unicode-aware ("İrems", "Josés"). */
-function isWholeWord(source: string, r: Range): boolean {
-  const glued = (a: string, b: string): boolean => WORD_CHAR.test(a) && WORD_CHAR.test(b);
-  return (
-    !glued(charBefore(source, r.start), charAt(source, r.start)) &&
-    !glued(charBefore(source, r.end), charAt(source, r.end))
-  );
-}
 
 /** Regex source for one span text: the original text escaped (not lower-cased), whitespace runs as `\s+`. */
 const textSource = (text: string): string => escapeRe(text.trim()).replace(/\s+/g, '\\s+');
@@ -78,7 +55,7 @@ export function sweepRepeats(
     const re = new RegExp(alts.join('|'), 'giu');
     for (let m = re.exec(source); m !== null; m = re.exec(source)) {
       const r = { start: m.index, end: m.index + m[0].length };
-      if (isWholeWord(source, r) && !overlapsAny(r, taken)) {
+      if (isIdentifierAt(source, r) && !overlapsAny(r, taken)) {
         out.push({ ...r, text: m[0], with: first.with });
         taken.push(r);
       } else {

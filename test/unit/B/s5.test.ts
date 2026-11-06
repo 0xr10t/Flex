@@ -62,6 +62,54 @@ function expectOffsetContract(ctx: TestContext): void {
 }
 
 describe('S5 rules 1-3 (filtering)', () => {
+  it('LIVE-P046: myself is never resolved as a named payee', async () => {
+    const ctx = await setup('transfer 20 usdc to myself', {
+      amounts: [{ phrase: '20 usdc', number: '20' }],
+      spans: [{ text: 'myself', kind: 'name' }],
+    });
+    const r = await run(ctx);
+    expect(r.questions[0]?.code).toBe('Q_NO_PAYEE');
+    expect(ctx.req.spans).toEqual([]);
+    expect(ctx.repos.tables.db3.size).toBe(0);
+  });
+
+  it('LIVE-P084/P085: a lexical all-ENS-members group overrides a person interpretation', async () => {
+    const ctx = await setup('send 5 usdc to all iitr.eth members', {
+      amounts: [{ phrase: '5 usdc', number: '5' }],
+      spans: [{ text: 'iitr.eth', kind: 'ens' }],
+    });
+    const r = await run(ctx);
+    expect(r.result).toEqual({ kind: 'continue' });
+    expect(payees(ctx)).toEqual([['iitr.eth', 'group']]);
+    expectOffsetContract(ctx);
+  });
+
+  it.each(['Mihir2', '2Mihir', 'Mihir_2', 'Mihiré', 'éMihir', 'Mihir\u0301', 'Mihir२', '𐐀Mihir', 'Mihir𐐀'])(
+    'B11: a partial name span cannot resolve the distinct identifier %s',
+    async (identifier) => {
+      const ctx = await setup(`send 10 usdc to ${identifier}`, {
+        amounts: [{ phrase: '10 usdc', number: '10' }],
+        spans: [{ text: 'Mihir', kind: 'name' }],
+        s3answers: [chip('no')], // a leading digit is separately checked as an uncovered amount
+      });
+      const r = await run(ctx);
+      expect(r.questions[0]?.code).toBe('Q_NO_PAYEE');
+      expect(ctx.req.spans).toEqual([]);
+      expect(ctx.repos.tables.db3.size).toBe(0);
+    },
+  );
+
+  it('B11: skips a partial identifier and claims a later complete name with punctuation', async () => {
+    const ctx = await setup('send 10 usdc to Mihir2, ask Mihir.', {
+      amounts: [{ phrase: '10 usdc', number: '10' }],
+      spans: [{ text: 'Mihir', kind: 'name' }],
+    });
+    await run(ctx);
+    expect(payees(ctx)).toEqual([['Mihir', 'name']]);
+    expect(ctx.req.spans[0]?.span?.start).toBe(ctx.req.masked_text_s3?.lastIndexOf('Mihir'));
+    expectOffsetContract(ctx);
+  });
+
   it('C-144: LLM #3 prompt = masked_text_s3 + CANDIDATES (every S2 address/ens/group candidate), no raw amounts', async () => {
     const ctx = await setup(`send 5 usdc to ${ADDR} and riya.eth`, {
       amounts: [{ phrase: '5 usdc', number: '5' }],

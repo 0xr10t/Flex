@@ -142,6 +142,17 @@ describe('S4 request type', () => {
 });
 
 describe('S4 recurrence cross-check (C-105, C-314, SQB-21)', () => {
+  it.each(['twice a week', 'every day'])(
+    'LIVE-P065/P074: explicit %s and kind k agree without another question',
+    async (phrase) => {
+      const ctx = await afterS3(`pay mihir 5 usdc ${phrase}`, [F5], [rt('actions', ['k'])]);
+      const r = await run(ctx);
+      expect(r.result).toEqual({ kind: 'continue' });
+      expect(r.questions).toEqual([]);
+      expect(ctx.req.actions).toEqual(['k']);
+    },
+  );
+
   it('k without a recurrence phrase → Q_RECURRING (chips "Yes, repeat it" / "No, just once"); Yes keeps k', async () => {
     const ctx = await afterS3('send 5 usdc to riya', [F5], [rt('actions', ['k'])]);
     const r = await run(ctx, [chip('repeat')]);
