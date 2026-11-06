@@ -30,8 +30,9 @@ Rule (see `Standing decisions and gotchas` below): code writers = Opus 5.5 (`mod
 | Lane B agent #2 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | done @ `fcbfc77`; verified 297/297; merged |
 | Docs clean-up agent | delete obsolete docs | sonnet | `agentic_layer` | 2026-11-06 | done @ `8d7556d` |
 | Acceptance Tester | §3.1 harness + A-01…A-60 | sonnet | `phase2/acceptance` (from `186e548`) | 2026-11-06 | done @ `9c9cc6f`; 70/70; merged |
-| Privacy & Security Auditor | §3.2 | sonnet | `phase3/audit` (from `69bbbf1`) | 2026-11-06 | running |
-| Spec Compliance Reviewer | §3.3 | sonnet | `phase3/compliance` (from `69bbbf1`) | 2026-11-06 | running |
+| Privacy & Security Auditor | §3.2 | sonnet | `phase3/audit` (from `69bbbf1`) | 2026-11-06 | done @ `c548096`, merged `ab8d665`; 2 violations (spec gaps: SQ-O-06, SQ-O-01), 8 observations; 142 audit tests |
+| Fix-up agent (O6, O7, contract tests) | Phase 3 fixes | opus (+ sonnet tester) | `phase3/fixes` (from `ab8d665`) | 2026-11-06 | running |
+| Spec Compliance Reviewer | §3.3 | sonnet | `phase3/compliance` (from `69bbbf1`) | 2026-11-06 | done @ `a4d840d`, merged; 503 tested / 6 no test / 1 missing / 4 deviates (all known SQs); verbatim artefacts identical |
 | Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | done @ `06d7efa`; Orchestrator re-ran typecheck ✅ lint ✅ test 220/220 ✅ |
 | Lane C Tester | Lane C tests | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; 47 tests, no production bugs |
 | Lane C Reviewer | Lane C review | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; R-1…R-4 fixed |
