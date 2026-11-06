@@ -1,0 +1,17 @@
+{
+  "name": "flex-autopay-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.23.0",
+    "viem": "2.57.16"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

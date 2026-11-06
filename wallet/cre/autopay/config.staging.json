@@ -1,0 +1,32 @@
+{
+  "schedule": "*/30 * * * * *",
+  "maxSimulationsPerRun": 14,
+  "workflow": {
+    "id": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "name": "0x00000000000000000000",
+    "owner": "0x0000000000000000000000000000000000000000"
+  },
+  "chains": [
+    {
+      "selector": "16015286601757825753",
+      "executor": "0x0000000000000000000000000000000000000000",
+      "forwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
+      "deploymentBlock": "0",
+      "simulationUrl": "https://eth-sepolia.g.alchemy.com/v2/"
+    },
+    {
+      "selector": "10344971235874465080",
+      "executor": "0x0000000000000000000000000000000000000000",
+      "forwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
+      "deploymentBlock": "0",
+      "simulationUrl": "https://base-sepolia.g.alchemy.com/v2/"
+    },
+    {
+      "selector": "3478487238524512106",
+      "executor": "0x0000000000000000000000000000000000000000",
+      "forwarder": "0x76c9cf548b4179F8901cda1f8623568b58215E62",
+      "deploymentBlock": "0",
+      "simulationUrl": "https://arb-sepolia.g.alchemy.com/v2/"
+    }
+  ]
+}
