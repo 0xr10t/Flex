@@ -182,27 +182,28 @@ function buildLines(ctx: StepContext, plan: InternalIntent[]): string[] {
 /** The §13.1 notes that depend on what the plan finally uses; the other steps collected theirs in req.notes. */
 function addPlanNotes(ctx: StepContext, plan: InternalIntent[]): void {
   const { req, repos } = ctx;
-  const used = new Set<AmountPh>();
-  for (const it of plan) {
-    if (it.intent_id === 'i') used.add(it.amount);
-    if (it.intent_id === 'k') used.add(it.amount_per_payment);
-  }
+  const paid = plan.flatMap((it) =>
+    it.intent_id === 'i'
+      ? [{ amount: it.amount, recipient: it.recipient }]
+      : it.intent_id === 'k'
+        ? [{ amount: it.amount_per_payment, recipient: it.recipient }]
+        : [],
+  );
+  const used = new Set(paid.map((p) => p.amount));
   for (const a of req.amounts) {
     if (!used.has(a.placeholder)) continue;
-    const amount = displayAmount(ctx, a.placeholder);
-    const { token } = db1BaseUnits(ctx, a.placeholder);
     const unverified = !a.code_verified || a.relative !== null || a.fiat === 'USD';
-    if (unverified && a.phrase !== null) pushNote(ctx, NOTES.YOU_WROTE({ phrase: a.phrase, amount, token }));
-    if (repos.db1.get(a.placeholder)?.source === 'untrusted') {
-      pushNote(ctx, NOTES.FROM_CONTENT({ what: `${amount} ${token}` }));
-    }
+    if (!unverified || a.phrase === null) continue;
+    const { token } = db1BaseUnits(ctx, a.placeholder);
+    pushNote(ctx, NOTES.YOU_WROTE({ phrase: a.phrase, amount: displayAmount(ctx, a.placeholder), token }));
   }
-  for (const it of plan) {
-    if (it.intent_id === 'j') continue;
-    const row = repos.db3.get(it.recipient);
-    if (row?.source === 'untrusted' && row.address) {
-      pushNote(ctx, NOTES.FROM_CONTENT({ what: shortAddress(row.address) }));
-    }
+  // SQ-D-10, worded as §19 E9: one note per payment that uses an untrusted amount or recipient,
+  // "From attached content: 120 USDC to 0xAAAA…1111. You confirmed it."
+  for (const p of paid) {
+    if (repos.db1.get(p.amount)?.source !== 'untrusted' && repos.db3.get(p.recipient)?.source !== 'untrusted') continue;
+    const { token } = db1BaseUnits(ctx, p.amount);
+    const what = `${displayAmount(ctx, p.amount)} ${token} to ${address(ctx, p.recipient)}`;
+    pushNote(ctx, NOTES.FROM_CONTENT({ what }));
   }
 }
 

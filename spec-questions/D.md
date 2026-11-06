@@ -41,8 +41,9 @@ on. (b) An ENS-pinned recipient paired with a relative amount pinned to another 
 *Now:* `EXECUTION_REJECTED` with the message `HTTP <status>`.
 
 **SQ-D-10** · §13.1 note "From attached content: {what}. You confirmed it."
-`{what}` has no wording.
-*Now:* one note per untrusted value used in the plan: `40 USDC` for an amount, the short address for a recipient.
+`{what}` has no wording in §13.1; §19 E9 shows "From attached content: 120 USDC to 0xAAAA…1111. You confirmed it."
+*Now:* as E9: one note per `i`/`k` payment that uses an untrusted amount or recipient, `{what}` =
+`{amount} {token} to {short address}`.
 
 **SQ-D-11** · §13.1 `{end text}` "for {n} payments" with n = 1
 *Now:* the template as written: "for 1 payments".
@@ -58,3 +59,13 @@ A plan with only `l` intents moves no token.
 **SQ-D-14** · §10.5 rule 2 "the first payment that needs their destination chain"
 The rule does not say whether "needs" is per token.
 *Now:* same token and destination chain.
+
+**SQ-D-15** · §19 E6 `expires_at` vs §10.6 derived 8
+"every friday for 8 weeks" from Thu 2026-11-05: §10.6 puts `expires_at` at 23:59:59 on the last occurrence date
+(Fri 2026-12-25 → `2026-12-25T18:29:59Z`); §19 E6 shows `2026-12-31T18:29:59Z` (the `on_date` end).
+*Now:* the §10.6 rule (last occurrence date); the end date and summary still read "until 31 Dec 2026".
+
+**SQ-D-16** · §19 E9 vs V-13 with the default limits
+The E9 invoice is 120 USDC, above the default `per_tx_max` USDC 100, so V-13 ends E9 with `LIMIT_PER_TX`; §19 does
+not mention it.
+*Now:* V-13 as written (`LIMIT_PER_TX`). Tests also run E9 with `per_tx_max` raised.

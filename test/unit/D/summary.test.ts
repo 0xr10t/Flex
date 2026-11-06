@@ -450,16 +450,13 @@ describe('§13.1 notes', () => {
     expect(build(ctx, [planI(0, a, addAradhya(ctx), BASE)]).notes).toEqual([]);
   });
 
-  it('C-293 SQ-D-10 §13.1 note "From attached content: {what}. You confirmed it." for an untrusted amount and an untrusted address', () => {
+  it('C-293 SQ-D-10 §13.1 note "From attached content: {what}. You confirmed it." for a payment with an untrusted amount and address: one note worded as §19 E9 (SQ-D-10)', () => {
     const ctx = ctxD({ balances: usdc('0', '500', '0') });
     setLimits(ctx, { per_tx_max: { USDC: '200', ETH: '0.05' } });
     const a = addAmount(ctx, '120', { source: 'untrusted', confirmed: true });
     const doc = addRecipient(ctx, { name: 'Vendor', address: DOC_ADDR_CS, source: 'untrusted' });
     const s = build(ctx, [planI(0, a, doc, BASE)]);
-    expect(s.notes).toEqual([
-      'From attached content: 120 USDC. You confirmed it.',
-      `From attached content: ${shortAddress(DOC_ADDR_CS)}. You confirmed it.`,
-    ]);
+    expect(s.notes).toEqual([`From attached content: 120 USDC to ${shortAddress(DOC_ADDR_CS)}. You confirmed it.`]);
   });
 
   it('C-298 §13.1 note "Today\'s limit was lifted once for this group payment." passes through from req.notes', () => {

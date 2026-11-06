@@ -467,13 +467,12 @@ describe('§19 worked examples end to end', () => {
     expectError(run.s10 as StepResult, 'LIMIT_PER_TX', { amount: '120', max: '100' });
   });
 
-  it('C-293 E9: with per_tx_max raised, the summary carries "From attached content: 120 USDC … / the address … You confirmed it."; only the confirmed pair is handed off', async () => {
+  it('C-293 E9: with per_tx_max raised, the summary carries "From attached content: 120 USDC to 0xaAAA…1111. You confirmed it."; only the confirmed pair is handed off', async () => {
     const { ctx } = e9();
     setLimits(ctx, { per_tx_max: { USDC: '200', ETH: '0.05' } });
     const run = await toSummary(ctx);
     const text = summaryText(run);
-    expect(text).toContain('- From attached content: 120 USDC. You confirmed it.');
-    expect(text).toContain('- From attached content: 0xaAAA…1111. You confirmed it.');
+    expect(text).toContain('- From attached content: 120 USDC to 0xaAAA…1111. You confirmed it.');
     expect(text).toContain('1. Send 120 USDC to Vendor (0xaAAA…1111) on Base Sepolia.');
     await s12.step(ctx);
     expect(ctx.exec.submissions[0]?.envelope.intents).toHaveLength(1);
