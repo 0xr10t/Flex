@@ -1,6 +1,6 @@
 // Lane D tester: S8 pair payments (§8.9 checks P1–P9, retry path, distributive reuse), §20.1 pairing/checks.
 import { describe, expect, it } from 'vitest';
-import type { AddressPh, AmountPh } from '../../../src/contracts/types.js';
+import type { Answer, AddressPh, AmountPh } from '../../../src/contracts/types.js';
 import { s8 } from '../../../src/pipeline/s8-pair.js';
 import type { TestContext } from '../../fakes/context.js';
 import { FixtureLlmClient, type FixtureCall } from '../../fakes/llm.js';
@@ -23,8 +23,10 @@ import {
   addWord,
   ctxD,
   expectError,
+  expectQuestion,
   llmItem,
   paymentsCall,
+  setClauses,
 } from './helpers.js';
 
 function useFixture(ctx: TestContext, calls: FixtureCall[]): FixtureLlmClient {
@@ -479,5 +481,120 @@ describe('S8 checks without retry (P5–P9)', () => {
     ctx.req.masked_text_s8 = `send ${a1} to ${r1} on base`;
     useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1, BASE)])]);
     expect((await s8.step(ctx)).kind).toBe('continue');
+  });
+});
+
+describe('SQ-O-03 F-11 Q_PAIR_AMOUNT', () => {
+  const chip = (id: string): Answer => ({ kind: 'chip', chip_id: id });
+
+  /** "send 10 usdc and 20 usdc to mihir and aradhya": the amounts and the payees sit in different clauses. */
+  function twoByTwo(): { ctx: TestContext; a1: AmountPh; a2: AmountPh; r1: AddressPh; r2: AddressPh } {
+    const ctx = ctxD();
+    setClauses(ctx, ['send 10 usdc', 'and 20 usdc', 'to mihir', 'and aradhya']);
+    const a1 = addAmount(ctx, '10', { clause: 0 });
+    const a2 = addAmount(ctx, '20', { clause: 1 });
+    const r1 = addMihir(ctx, 2);
+    const r2 = addAradhya(ctx, 3);
+    ctx.req.masked_text_s8 = `send ${a1} and ${a2} to ${r1} and ${r2}`;
+    return { ctx, a1, a2, r1, r2 };
+  }
+
+  it('SQ-O-03 F-11 amounts and payees in different clauses with two payees -> Q_PAIR_AMOUNT per amount', async () => {
+    const { ctx, a1, a2, r1, r2 } = twoByTwo();
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r2)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect(q1.text).toBe('Who should get 10 USDC?');
+    expect(q1.chips.map((c) => [c.id, c.label])).toEqual([
+      [r1, 'Mihir'],
+      [r2, 'Aradhya'],
+    ]);
+    expect(ctx.req.payments).toBeUndefined();
+  });
+
+  it('SQ-O-03 F-11 the answers decide the pairing; the model is not called again', async () => {
+    const { ctx, a1, a2, r1, r2 } = twoByTwo();
+    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r2)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    // the user swaps the model's pairing: 10 -> Aradhya, 20 -> Mihir
+    expect((await s8.onAnswer?.(ctx, q1, chip(r2)))?.kind).toBe('continue');
+    const q2 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect(q2.text).toBe('Who should get 20 USDC?');
+    expect((await s8.onAnswer?.(ctx, q2, chip(r1)))?.kind).toBe('continue');
+    expect((await s8.step(ctx)).kind).toBe('continue');
+    expect(ctx.req.payments?.map((p) => [p.amount, p.recipient])).toEqual([
+      [a1, r2],
+      [a2, r1],
+    ]);
+    expect(llm.recorded).toHaveLength(1);
+  });
+
+  it('SQ-O-03 F-11 a typed recipient name is accepted like the chip', async () => {
+    const { ctx, a1, a2, r1, r2 } = twoByTwo();
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r2)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect((await s8.onAnswer?.(ctx, q1, { kind: 'text', text: ' mihir ' }))?.kind).toBe('continue');
+    expect(ctx.req.step_state.s8).toMatchObject({ choices: { '0': r1 } });
+  });
+
+  it('SQ-O-03 F-11 an unrelated answer re-asks with attempt + 1', async () => {
+    const { ctx, a1, a2, r1, r2 } = twoByTwo();
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r2)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    const again = await s8.onAnswer?.(ctx, q1, { kind: 'text', text: 'whoever' });
+    expect(again?.kind).toBe('question');
+    if (again?.kind === 'question') expect(again.question.attempt).toBe(q1.attempt + 1);
+  });
+
+  it('SQ-O-03 F-11 choices that leave a payee unpaid re-ask the first question with a hint', async () => {
+    const { ctx, a1, a2, r1, r2 } = twoByTwo();
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r2)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    await s8.onAnswer?.(ctx, q1, chip(r1));
+    const q2 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    await s8.onAnswer?.(ctx, q2, chip(r1)); // both amounts to Mihir: Aradhya left with nothing
+    const q3 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect(q3.text).toBe('That would leave Aradhya with nothing. Who should get 10 USDC?');
+    expect(q3.attempt).toBe(2);
+  });
+
+  it('SQ-O-03 F-11 "send 10 usdc. send 20 usdc to Mihir": payee in another sentence than the first amount -> asks', async () => {
+    const ctx = ctxD();
+    setClauses(ctx, ['send 10 usdc', 'send 20 usdc to mihir']);
+    ctx.req.typed_text = 'send 10 usdc. send 20 usdc to mihir';
+    const a1 = addAmount(ctx, '10', { clause: 0 });
+    const a2 = addAmount(ctx, '20', { clause: 1 });
+    const r1 = addMihir(ctx, 1);
+    ctx.req.masked_text_s8 = `send ${a1}. send ${a2} to ${r1}`;
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r1)])]);
+    const q1 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect(q1.text).toBe('Who should get 10 USDC?');
+    expect(q1.chips.map((c) => c.label)).toEqual(['Mihir']);
+    expect((await s8.onAnswer?.(ctx, q1, chip(r1)))?.kind).toBe('continue');
+    expect((await s8.step(ctx)).kind).toBe('continue'); // the 20 sits in the payee's clause: no second question
+    expect(ctx.req.payments).toHaveLength(2);
+  });
+
+  it('SQ-O-03 F-11 "10 usdc and 0.01 eth to mihir": one payee, one sentence -> no question', async () => {
+    const ctx = ctxD();
+    setClauses(ctx, ['send 10 usdc', 'and 0.01 eth to mihir']);
+    const a1 = addAmount(ctx, '10', { clause: 0 });
+    const a2 = addAmount(ctx, '0.01', { token: 'ETH', clause: 1 });
+    const r1 = addMihir(ctx, 1);
+    ctx.req.masked_text_s8 = `send ${a1} and ${a2} to ${r1}`;
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1), llmItem('i', a2, r1)])]);
+    expect((await s8.step(ctx)).kind).toBe('continue');
+  });
+
+  it('SQ-O-03 F-11 "10 to A and 20 to B": each amount in its payee clause -> no question', async () => {
+    const { ctx, a1, a2, r1, r2 } = e3();
+    useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, r1, BASE), llmItem('i', a2, r2, ARB)])]);
+    expect((await s8.step(ctx)).kind).toBe('continue');
+  });
+
+  it('SQ-O-03 F-11 a swapped pairing in the same clauses is still rejected (retry, then PAIRING_FAILED)', async () => {
+    const { ctx, a1, a2, r1, r2 } = e3();
+    const crossed = [llmItem('i', a1, r2, BASE), llmItem('i', a2, r1, ARB)];
+    useFixture(ctx, [paymentsCall(a1, crossed), paymentsCall('CORRECTION: ', crossed)]);
+    expectError(await s8.step(ctx), 'PAIRING_FAILED');
   });
 });
