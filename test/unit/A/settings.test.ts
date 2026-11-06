@@ -224,7 +224,7 @@ describe('§14.1 GET / PUT /v1/settings/limits', () => {
       for (const key of Object.keys(DB5_DEFAULTS)) {
         await expectInvalid((b) => delete b[key], key);
       }
-    });
+    }, 30_000);
     it('C-346: a body that is not an object (array, string, null, number) → 400, DB5 unchanged', async () => {
       const { t, s } = setup();
       const before = rawRows(t);

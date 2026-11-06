@@ -114,7 +114,7 @@ describe('C-448 §20.1 plan: §10.1 spendable balance', () => {
     // spendable ETH: Sepolia 0 (0.01 − 0.01), Base 0 (0.001 − 0.002 floored), Arbitrum 0.001
     expectError(await run(ctx, [iPay(ctx, '0.01', r, 'unstated', { token: 'ETH' })]), 'INSUFFICIENT_FUNDS', {
       token: 'ETH',
-      need: '0.01',
+      need: '0.01018',
       have: '0.001',
     });
   });
@@ -123,7 +123,7 @@ describe('C-448 §20.1 plan: §10.1 spendable balance', () => {
     const ctx = ctxD({ balances: usdc('0', '30', '500') });
     ctx.repos.db4.markUnavailable(ARB, 'Arbitrum Sepolia', now());
     const r = addAradhya(ctx);
-    expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { need: '50', have: '30' });
+    expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { need: '50.4', have: '30' });
   });
 
   it('C-202 §10.1 unavailable chain is skipped when another candidate qualifies', async () => {

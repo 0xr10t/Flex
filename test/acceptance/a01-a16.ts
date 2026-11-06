@@ -413,11 +413,11 @@ export function registerA01toA16(): void {
       const r = await h.say('pay mihir 10 usdc 3 times a week until I cancel');
       expect(h.asked).toEqual([]); // end is stated ("until I cancel")
       expectError(r, 'INSUFFICIENT_FUNDS');
-      // SQ-08 (per-chain wording) is OPEN: the interim §15 template names the need and the usable total.
-      expect(r.body.error?.message).toContain('you need 1560');
+      // R4-F4: total_cap 1560 plus 2% of the 1480 shortfall on Base is 1589.6.
+      expect(r.body.error?.message).toContain('you need 1589.6');
       expect(r.body.error?.message).toContain('USDC');
       // The caps (30 and 1560) are not observable after the error: the code mints the DB1 cap rows only once the
-      // plan has passed funding (§10.6 step 7 does not fix the order). The need of 1560 in the message proves total_cap.
+      // plan has passed funding (§10.6 step 7 does not fix the order). The padded need proves the total-cap funding.
 
       noSubmission(h);
       expect(spend(h)).toEqual([]);
