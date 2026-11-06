@@ -129,19 +129,20 @@ describe('opening', () => {
     expect(lines[5 + 35]).toContain('[ AI MODEL ]');
   });
 
-  it('keeps the title and footer while the objects turn to dust', () => {
+  it('takes the title with the objects and keeps the footer', () => {
     const all = at('snap', SNAP_SECONDS + 0.01).join('\n');
-    expect(all).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    expect(all).not.toMatch(/THE ACCESS LAYER|█|FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
     expect(all).toContain('flex.access');
-    expect(all).not.toMatch(/FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
   });
 
-  it('brings the splash up under the title', () => {
+  it('brings the splash up centred above the footer', () => {
     const lines = at('splash');
-    expect(lines[5 + 10]).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
-    const tag = lines.findIndex((l) => l.includes('the access layer between AI and ethereum'));
-    expect(tag).toBeGreaterThan(5 + 10);
-    expect(lines.findIndex((l) => l.includes('flex $ █'))).toBe(tag + 4);
+    expect(lines.join('\n')).not.toContain('THE ACCESS LAYER');
+    const top = lines.findIndex((l) => l.includes('█'));
+    const prompt = lines.findIndex((l) => l.includes('flex $ █'));
+    // footer on row 5 + 38: the text block (13 rows) sits centred in the 43 rows above it
+    expect(top).toBe(Math.floor((43 - 13) / 2));
+    expect(prompt).toBe(top + 12);
     expect(lines[5 + 38]).toContain('flex.access');
   });
 
@@ -155,22 +156,21 @@ describe('opening', () => {
 
 describe('stage layout', () => {
   it('centres the opening scene when it fits', () => {
-    expect(stageLayout(120, 40)).toMatchObject({ scene: { x: 0, y: 0 }, title: { x: 0, y: 0 } });
+    expect(stageLayout(120, 40)).toMatchObject({ scene: { x: 0, y: 0 }, footer: { x: 0, y: 0 } });
     expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 10 } });
   });
 
-  it('keeps the title without the scene on a mid-sized terminal', () => {
+  it('keeps the footer without the scene on a mid-sized terminal', () => {
     const l = stageLayout(100, 32)!;
     expect(l.scene).toBeNull();
-    expect(l.title).not.toBeNull();
-    expect(l.footer).not.toBeNull();
+    expect(l.footer).toMatchObject({ y: 30 - 38 });
     expect(l.splash.objectX).not.toBeNull();
   });
 
   it('shows the splash alone, then without its logo, as the terminal shrinks', () => {
-    const l = stageLayout(80, 24)!;
-    expect(l.title).toBeNull();
-    expect(l.splash.objectX).toBeNull();
+    const l = stageLayout(80, 22)!;
+    expect(l.footer).toBeNull();
+    expect(stageLayout(80, 24)!.splash.objectX).toBeNull();
     expect(stageLayout(95, 20)!.splash.objectX).not.toBeNull();
     expect(stageLayout(95, 16)!.splash.objectX).toBeNull();
     expect(stageLayout(55, 20)).toBeNull();
@@ -178,7 +178,7 @@ describe('stage layout', () => {
   });
 
   it('lays out the splash alone when asked', () => {
-    expect(stageLayout(200, 60, false)).toMatchObject({ scene: null, title: null, footer: null });
+    expect(stageLayout(200, 60, false)).toMatchObject({ scene: null, footer: null });
   });
 });
 
@@ -198,8 +198,9 @@ describe('painting', () => {
   it('prints plain text without colour', () => {
     const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
-    expect(out).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    expect(out).not.toContain('THE ACCESS LAYER');
     expect(out).toContain('flex $');
+    expect(out).toContain('flex.access');
     expect(out.split('\n')).toHaveLength(SCENE_ROWS + 1);
   });
 });

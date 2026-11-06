@@ -1,8 +1,8 @@
 // Runs the CLI full-screen in the terminal: alternate screen, hidden cursor, ~30 fps redraw that rewrites only the
 // rows that changed, SGR mouse reporting so the pointer steers the splash's logo, and a full restore on every exit
-// path. The opening plays the gateway scene over the starfield, snaps its objects away into dust and brings the splash
-// up under the title that stays. Everything is laid out for the terminal's current size. Also renders a single still
-// frame for pipes and `--static`.
+// path. The opening plays the gateway scene over the starfield, snaps its title and objects away into dust and brings
+// the splash up over the stars and footer that stay. Everything is laid out for the terminal's current size. Also
+// renders a single still frame for pipes and `--static`.
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
@@ -113,7 +113,7 @@ function paintFrame(f: Frame, palette: Palette, mode: ColorMode): string[] {
   return frameRows(f).map((row) => paintRow(row, f.cols, palette, mode));
 }
 
-/** Composes one screen of the opening (or the splash under its title) for `phase`. */
+/** Composes one screen of the opening (or the splash that follows it) for `phase`. */
 export function composeOpening(
   layout: StageLayout,
   phase: Phase,

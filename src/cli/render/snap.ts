@@ -1,5 +1,5 @@
-// The "snap": the opening scene's globe, gateway and Ethereum diamond disintegrate into dust while the title and the
-// stars stay. Each drawn cell holds on for a moment, dims, then breaks off as a particle that drifts right and upward
+// The "snap": the opening scene's FLEX title, globe, gateway and Ethereum diamond disintegrate into dust while the
+// stars and the footer stay. Each drawn cell holds on for a moment, dims, then breaks off as a particle that drifts right and upward
 // on the wind while it crumbles through finer glyphs and fades out; whatever it was covering (stars) shows through
 // again. The right side goes first, so the dust blows off the edge rather than across what is still standing. A pure
 // function of the source layer and elapsed time.
