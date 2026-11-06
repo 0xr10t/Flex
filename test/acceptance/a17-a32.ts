@@ -56,7 +56,7 @@ export function registerA17toA32(): void {
       expectError(
         r,
         'UNSUPPORTED_REQUEST',
-        "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't help with that part.",
+        "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
       );
       noSubmission(h);
       await h.finish();

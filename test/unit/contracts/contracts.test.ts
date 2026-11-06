@@ -88,7 +88,7 @@ describe('contracts-v1', () => {
       expect(QUESTION_INPUT[c]).toBeTruthy();
     }
     for (const c of ERROR_CODES) expect(ERROR_MESSAGE[c]).toBeTypeOf('function');
-    expect(QUESTION_CODES).toHaveLength(26);
+    expect(QUESTION_CODES).toHaveLength(28); // contracts-v4: -Q_GROUP_OVER_LIMIT, +Q_LIMIT_OVERRIDE, Q_PAIR_AMOUNT, Q_NAME_ROLE
     expect(ERROR_CODES).toHaveLength(35);
   });
 

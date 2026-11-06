@@ -31,7 +31,7 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   [
     'UNSUPPORTED_REQUEST',
     {},
-    "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't help with that part.",
+    "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
   ],
   ['SPLIT_UNSUPPORTED', {}, 'Tell me how much each person should get, e.g. "15 to A and 15 to B".'],
   ['RELATIVE_AMOUNT_NOT_ALLOWED', {}, "I can use 'all' or 'half' only for a one-time payment to one person."],
@@ -77,18 +77,30 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ['MODEL_FAILED', {}, "I couldn't understand that right now. Please try again."],
   ['EXECUTION_REJECTED', { message: 'nonce too low' }, "Your wallet couldn't accept this: nonce too low"],
   ['EXECUTION_UNAVAILABLE', {}, "I couldn't reach your wallet. Confirm again to retry."],
+  [
+    'EXECUTION_UNAVAILABLE',
+    { final: 'timeout' },
+    "I couldn't confirm your wallet received this after 3 tries. Check your wallet before trying again.",
+  ],
+  [
+    'EXECUTION_UNAVAILABLE',
+    { final: 'server_error' },
+    "I couldn't reach your wallet after 3 tries. Nothing was sent. Please try again later.",
+  ],
   ['INTERNAL_ERROR', {}, 'Something went wrong preparing this. Nothing was sent.'],
   ['CANCELLED', {}, 'Cancelled. Nothing was sent.'],
 ];
 
 describe('C-395 §15 error messages', () => {
   it('C-395 §15: the catalogue has exactly 35 codes, each with a message', () => {
-    expect(CASES).toHaveLength(35);
-    expect([...ERROR_CODES].sort()).toEqual(CASES.map(([c]) => c).sort());
-    expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(CASES.map(([c]) => c).sort());
+    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 37 cases over 35 codes.
+    const codes = [...new Set(CASES.map(([c]) => c))].sort();
+    expect(codes).toHaveLength(35);
+    expect([...ERROR_CODES].sort()).toEqual(codes);
+    expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });
 
-  it.each(CASES)('C-395 §15: %s renders the spec text', (code, params, text) => {
+  it.each(CASES)('C-395 §15 SQ-A-06 F-7 F-9: %s renders the spec text', (code, params, text) => {
     expect(ERROR_MESSAGE[code](params)).toBe(text);
   });
 });
