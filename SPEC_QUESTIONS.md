@@ -272,3 +272,11 @@ previous plan…"; after F-12 "No", rules 7–8 run before `Q_NO_PAYEE`; the 10-
 the group summary line has no " After step n."; an `l`-only request's `request_id` is not recorded (reports match by
 `autopay_id`); the subgraph `skip` cap (> 6000 subnames → `ENS_INDEXER_UNAVAILABLE`); `Q_ADDRESS_REENTER` for an
 untrusted payee has no "Don't pay this one" chip; `INSUFFICIENT_FUNDS` `{need}` now includes the bridge fee (fix below).
+
+## Prompt changes approved by the human (2026-11-06)
+
+**SQ-L-01** (from the live-model evaluation): the human approved changing the §8.10 prompt texts, and normalising
+LLM output in code where the model's answer is reasonable but fails a strict schema rule (e.g. `actions: ["i","i"]` →
+deduplicated). Conditions: every change is re-tested on the full live set (`test/live`, 154 prompts); it is kept only if
+the wrong-hand-off count stays 0 and the number of unnecessary stops falls; every changed prompt is recorded as a
+human-approved difference from §8.10 (the compliance check reports it as such). `README.md` stays unchanged.
