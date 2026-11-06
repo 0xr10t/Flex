@@ -214,6 +214,39 @@ function noPayeeQuestion(st: S5State): StepResult {
   return { kind: 'question', question: buildQuestion({ question_id: qid(), code: 'Q_NO_PAYEE', text: base_text }) };
 }
 
+/** LLM #3 over masked_text_s3 and the S2 candidates, then rules 1–5. null: the model failed (MODEL_FAILED). */
+async function tagSpans(ctx: StepContext): Promise<Tagged[] | null> {
+  const req = ctx.req;
+  const masked = req.masked_text_s3 ?? req.typed_text;
+  // CANDIDATES: every address, ENS and group candidate from S2, text as in the masked text.
+  const candidates: Array<{ text: string; kind: SpanKind }> = [];
+  const seen = new Set<string>();
+  const add = (text: string, kind: SpanKind): void => {
+    if (seen.has(text) || !masked.includes(text)) return;
+    seen.add(text);
+    candidates.push({ text, kind });
+  };
+  const all = [
+    ...req.scan.addresses.map((s) => ({ s, kind: 'address' as const, text: s.text })),
+    ...req.scan.ens.map((s) => ({ s, kind: 'ens' as const, text: s.text })),
+    ...req.scan.groups.map((s) => ({ s, kind: 'group' as const, text: s.parent })),
+  ].sort((a, b) => a.s.start - b.s.start);
+  for (const c of all) add(c.text, c.kind);
+
+  const p = buildSpansPrompt(
+    masked,
+    candidates.map((c) => c.text),
+  );
+  let out: { spans: LlmSpan[] };
+  try {
+    out = await ctx.llm.call<{ spans: LlmSpan[] }>({ name: 'spans', ...p });
+  } catch (e) {
+    if (e instanceof LlmFailed) return null;
+    throw e;
+  }
+  return filterSpans(ctx, masked, out.spans, candidates);
+}
+
 async function s5Step(ctx: StepContext): Promise<StepResult> {
   const req = ctx.req;
   const st = s5State(ctx);
@@ -221,34 +254,8 @@ async function s5Step(ctx: StepContext): Promise<StepResult> {
 
   if (!st.tagged) {
     if (st.raw == null) {
-      const masked = req.masked_text_s3 ?? req.typed_text;
-      // CANDIDATES: every address, ENS and group candidate from S2, text as in the masked text.
-      const candidates: Array<{ text: string; kind: SpanKind }> = [];
-      const seen = new Set<string>();
-      const add = (text: string, kind: SpanKind): void => {
-        if (seen.has(text) || !masked.includes(text)) return;
-        seen.add(text);
-        candidates.push({ text, kind });
-      };
-      const all = [
-        ...req.scan.addresses.map((s) => ({ s, kind: 'address' as const, text: s.text })),
-        ...req.scan.ens.map((s) => ({ s, kind: 'ens' as const, text: s.text })),
-        ...req.scan.groups.map((s) => ({ s, kind: 'group' as const, text: s.parent })),
-      ].sort((a, b) => a.s.start - b.s.start);
-      for (const c of all) add(c.text, c.kind);
-
-      const p = buildSpansPrompt(
-        masked,
-        candidates.map((c) => c.text),
-      );
-      let out: { spans: LlmSpan[] };
-      try {
-        out = await ctx.llm.call<{ spans: LlmSpan[] }>({ name: 'spans', ...p });
-      } catch (e) {
-        if (e instanceof LlmFailed) return { kind: 'error', code: 'MODEL_FAILED' };
-        throw e;
-      }
-      st.raw = filterSpans(ctx, masked, out.spans, candidates);
+      st.raw = await tagSpans(ctx);
+      if (st.raw === null) return { kind: 'error', code: 'MODEL_FAILED' };
     }
     // F-12: one name tagged with both roles → ask, one name at a time.
     const conflict = roleConflict(st.raw);
