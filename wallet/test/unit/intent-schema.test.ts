@@ -1,4 +1,4 @@
-// Ported from lab src/schema.test.ts (TESTED_2 §4.1, 43 cases). Fixtures are mutated freely, hence the `any`.
+// Ported from lab src/schema.test.ts (TEST_MAP §4.1, 43 cases). Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
 import { IntentSchema, USDC } from '../../src/schemas/intent.v2.js';
@@ -106,11 +106,7 @@ const fromOnchainFailures: [string, unknown, boolean][] = [
   ['B1 USDC declared with 18 decimals', mut((c) => (c.asset.decimals = 18), usdcSep), false],
   ['B1 recipient is the token contract', mut((c) => (c.recipients[1].to = USDC[11155111]), usdcSep), false],
   ['B7a/C1 automated with startAt null', mut((c) => (c.schedule.startAt = null)), false],
-  [
-    'B7a startAt in the past',
-    mut((c) => (c.schedule.startAt = new Date(Date.now() - 86400e3).toISOString())),
-    false,
-  ],
+  ['B7a startAt in the past', mut((c) => (c.schedule.startAt = new Date(Date.now() - 86400e3).toISOString())), false],
   [
     'B7b one-time automated payment tomorrow',
     mut((c) => {
@@ -184,7 +180,7 @@ const fromOnchainFailures: [string, unknown, boolean][] = [
   ],
 ];
 
-describe('IntentSchema (TESTED_2 §4.1)', () => {
+describe('IntentSchema (TEST_MAP §4.1)', () => {
   it('has all 43 cases', () => expect(original.length + fromOnchainFailures.length).toBe(43));
   it.each(original)('%s', (_name, input, accepted) => {
     expect(IntentSchema.safeParse(input).success).toBe(accepted);

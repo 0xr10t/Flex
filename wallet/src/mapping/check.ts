@@ -1,4 +1,4 @@
-// Implements: README_2 §12.5 and D3 (the two checks), §14.2 (a rejected envelope is a 4xx with `message`) and §15
+// Implements: AGENT_SPEC §12.5 and D3 (the two checks), §14.2 (a rejected envelope is a 4xx with `message`) and §15
 // (messages shown to the user never contain amounts or addresses).
 
 import { validateEnvelope, type HandoffEnvelope } from '../schemas/envelope.js';

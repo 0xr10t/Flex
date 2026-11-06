@@ -1,11 +1,14 @@
-// Ported from lab src/flex.handoff.test.ts (TESTED_2 §4.4, 29 cases), run against the real translator, plus new cases
+// Ported from lab src/flex.handoff.test.ts (TEST_MAP §4.4, 29 cases), run against the real translator, plus new cases
 // for what the test translator did not cover. Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { parseUnits } from 'viem';
+import { readFileSync } from 'node:fs';
+import { formatUnits, parseUnits } from 'viem';
 import { describe, expect, it } from 'vitest';
+import { executionsOf } from '../../src/chain/redeem.v2.js';
 import { checkEnvelope } from '../../src/mapping/check.js';
-import { intentIdFor } from '../../src/mapping/to-plan.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { intentIdFor, toPlan } from '../../src/mapping/to-plan.js';
+import { MAX_STEPS_PER_PLAN, PlanSchema } from '../../src/schemas/bridge.v2.js';
+import { MAX_RECIPIENTS, MAX_RECIPIENTS_AUTOMATED, USDC, type Intent } from '../../src/schemas/intent.v2.js';
 
 const WALLET = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const ARADHYA = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC';
@@ -80,8 +83,7 @@ const kLeg = (start: number, runs: number): any => ({
   token: 'USDC',
   token_address: USDC[84532],
   chain_id: 84532,
-  recipient: MIHIR,
-  amount_per_payment: usdc('10'),
+  recipients: [{ recipient: MIHIR, amount: usdc('10') }],
   fee: { to: FEE_TO, amount: usdc('0.05') },
   schedule: {
     start_at: start,
@@ -90,7 +92,7 @@ const kLeg = (start: number, runs: number): any => ({
     late_window_seconds: 3600,
     end_at: start + 604800 * (runs - 1) + 3600,
   },
-  limits: { max_per_run: usdc('10.05'), max_total: usdc((10.05 * runs).toFixed(2)) },
+  limits: { max_per_run: usdc('10.05'), max_total: usdc(formatUnits(parseUnits('10.05', 6) * BigInt(runs), 6)) },
   executor: 'chainlink-cre',
 });
 const E6 = env([kLeg(now + 86400, 8)]);
@@ -100,7 +102,6 @@ const cancel: any = {
   autopay_id: 'ap_0123456789ab',
   chain_id: 84532,
   plan_id: PLAN_ID,
-  recipient: MIHIR,
 };
 const E7 = env([cancel]);
 const A64 = env([
@@ -153,7 +154,10 @@ describe('rejected by the §12.5 schema', () => {
       ]),
     ],
     ['k without a fee', env([without(k8, 'fee')])],
-    ['old l: delegate_address + refund_remaining', env([{ ...cancel, delegate_address: WALLET, refund_remaining: true }])],
+    [
+      'old l: delegate_address + refund_remaining',
+      env([{ ...cancel, delegate_address: WALLET, refund_remaining: true }]),
+    ],
     ['l without plan_id', env([without(cancel, 'plan_id')])],
     [
       'old i: single amount and recipient',
@@ -180,7 +184,12 @@ describe('valid envelope, rejected by the verified plan', () => {
       env([
         {
           ...k8,
-          schedule: { ...k8.schedule, interval_seconds: 600, late_window_seconds: 3600, end_at: now + 86400 + 600 * 7 + 3600 },
+          schedule: {
+            ...k8.schedule,
+            interval_seconds: 600,
+            late_window_seconds: 3600,
+            end_at: now + 86400 + 600 * 7 + 3600,
+          },
         },
       ]),
     ],
@@ -189,7 +198,9 @@ describe('valid envelope, rejected by the verified plan', () => {
     ['k fee collector is the payee', env([{ ...k8, fee: { to: MIHIR, amount: usdc('0.05') } }])],
     [
       'i pays the zero address',
-      env([{ ...group, recipients: [{ recipient: '0x0000000000000000000000000000000000000000', amount: usdc('10') }] }]),
+      env([
+        { ...group, recipients: [{ recipient: '0x0000000000000000000000000000000000000000', amount: usdc('10') }] },
+      ]),
     ],
     [
       'i duplicate recipient',
@@ -239,7 +250,7 @@ describe('fields the test translator did not check (new)', () => {
     const wrong = { ...usdc('10'), base_units: '1000000000' };
     expect(stageOf(env([{ ...group, recipients: [{ recipient: ALICE, amount: wrong }] }]))).toBe('consistency');
     expect(stageOf(env([{ ...j0, amount: wrong }, i1, i2]))).toBe('consistency');
-    expect(stageOf(env([{ ...k8, amount_per_payment: wrong }]))).toBe('consistency');
+    expect(stageOf(env([{ ...k8, recipients: [{ recipient: MIHIR, amount: wrong }] }]))).toBe('consistency');
     expect(stageOf(env([{ ...k8, fee: { to: FEE_TO, amount: wrong } }]))).toBe('consistency');
   });
 
@@ -288,7 +299,10 @@ describe('fields the test translator did not check (new)', () => {
 describe('rejection output never carries values (§15)', () => {
   it.each([
     ['schema', { ...E6, version: '1' }],
-    ['consistency', env([{ ...group, recipients: [{ recipient: ALICE, amount: { ...usdc('10'), base_units: '7' } }] }])],
+    [
+      'consistency',
+      env([{ ...group, recipients: [{ recipient: ALICE, amount: { ...usdc('10'), base_units: '7' } }] }]),
+    ],
     ['plan', env([{ ...k8, limits: { max_per_run: usdc('10.05'), max_total: usdc('80') } }])],
   ])('%s', (_stage, envelope) => {
     const r = checkEnvelope(envelope);
@@ -313,5 +327,154 @@ describe('intentIdFor (provisional, OQ-09)', () => {
     expect(a.ok && b.ok && a.plan.steps.map((s) => s.intent.intentId)).toEqual(
       a.ok && b.ok && b.plan.steps.map((s) => s.intent.intentId),
     );
+  });
+});
+
+describe('envelope changes (docs/wallet/ARCHITECTURE_CHANGES.md)', () => {
+  const stageOf = (envelope: unknown) => {
+    const r = checkEnvelope(envelope, options);
+    return r.ok ? 'ok' : r.stage;
+  };
+  const address = (n: number) => `0x${(n + 1).toString(16).padStart(40, '0')}`;
+  const payees = (count: number) =>
+    Array.from({ length: count }, (_, n) => ({ recipient: address(n), amount: usdc(String(n + 1)) }));
+  /** A payroll autopay: each person's own amount, one fee, one plan. */
+  const payroll = (count: number, runs = 4) => {
+    const total = payees(count).reduce((sum, p) => sum + BigInt(p.amount.base_units), 0n);
+    const perRun = total + parseUnits('0.05', 6);
+    return {
+      ...kLeg(now + 86400, runs),
+      recipients: payees(count),
+      limits: { max_per_run: usdc(formatUnits(perRun, 6)), max_total: usdc(formatUnits(perRun * BigInt(runs), 6)) },
+    };
+  };
+
+  describe('C-1: k pays a list', () => {
+    it('accepts 50 people with different amounts, and turns them into one batch ending in the fee', () => {
+      const r = checkEnvelope(env([payroll(50)]));
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const executions = executionsOf(r.plan.steps[0]?.intent as Intent);
+        expect(executions).toHaveLength(51);
+        expect(executions.at(-1)?.callData.toLowerCase()).toContain(FEE_TO.slice(2).toLowerCase());
+      }
+    });
+    it('rejects 51 people at the schema', () => {
+      expect(stageOf(env([{ ...payroll(50), recipients: payees(51) }]))).toBe('schema');
+    });
+    it('rejects an empty list', () => {
+      expect(stageOf(env([{ ...k8, recipients: [] }]))).toBe('schema');
+    });
+    it('rejects the old single recipient shape', () => {
+      const { recipients: _recipients, ...rest } = k8;
+      expect(stageOf(env([{ ...rest, recipient: MIHIR, amount_per_payment: usdc('10') }]))).toBe('schema');
+    });
+    it('rejects limits that do not cover everyone', () => {
+      const low = { ...payroll(2), limits: { max_per_run: usdc('3'), max_total: usdc('100') } };
+      expect(stageOf(env([low]))).toBe('plan');
+    });
+    it('rejects the same person twice', () => {
+      const twice = [
+        { recipient: ALICE, amount: usdc('1') },
+        { recipient: ALICE, amount: usdc('1') },
+      ];
+      expect(stageOf(env([{ ...k8, recipients: twice }]))).toBe('plan');
+    });
+    it('rejects the fee collector as a payee', () => {
+      const r = [{ recipient: FEE_TO, amount: usdc('10') }];
+      expect(stageOf(env([{ ...k8, recipients: r }]))).toBe('plan');
+    });
+    it('checks every amount against its base_units', () => {
+      const wrong = [
+        { recipient: ALICE, amount: usdc('1') },
+        { recipient: BOB, amount: { ...usdc('1'), base_units: '7' } },
+      ];
+      expect(checkEnvelope(env([{ ...k8, recipients: wrong }]))).toMatchObject({
+        stage: 'consistency',
+        paths: ['/intents/0.recipients[1].amount.base_units'],
+      });
+    });
+  });
+
+  describe('C-2: l carries no recipient', () => {
+    it('rejects the old field', () => {
+      expect(stageOf(env([{ ...cancel, recipient: MIHIR }]))).toBe('schema');
+    });
+  });
+
+  describe('C-3: plan size', () => {
+    const payment = (step: number) => ({
+      ...group,
+      step,
+      recipients: [{ recipient: address(step), amount: usdc('1') }],
+    });
+    const steps = (count: number) => env(Array.from({ length: count }, (_, n) => payment(n)));
+
+    it('accepts the worst case the limit is sized for: 3 j + 6 i + 7 k legs', () => {
+      const j = (step: number, source: 11155111 | 421614) => ({
+        ...j0,
+        step,
+        source_chain_id: source,
+        source_token_address: USDC[source],
+        funds_steps: [3],
+      });
+      const i = [84532, 84532, 11155111, 11155111, 421614, 421614].map((chain, n) => ({
+        intent_id: 'i',
+        step: n + 3,
+        depends_on: n === 0 ? [0, 1, 2] : [],
+        token: n % 2 === 0 ? 'USDC' : 'ETH',
+        token_address: n % 2 === 0 ? USDC[chain as 84532] : null,
+        chain_id: chain,
+        recipients: [{ recipient: address(n), amount: n % 2 === 0 ? usdc('1') : eth('0.01') }],
+      }));
+      const k = Array.from({ length: 7 }, (_, n) => ({
+        ...k8,
+        step: n + 9,
+        autopay_id: `ap_${n.toString(16).padStart(12, '0')}`,
+      }));
+      expect(stageOf(env([j(0, 421614), j(1, 11155111), j(2, 421614), ...i, ...k]))).toBe('ok');
+    });
+    it('accepts 9 separate payments, which the old limit of 8 refused', () => {
+      expect(stageOf(steps(9))).toBe('ok');
+    });
+    it('accepts 16 and rejects 17 at the schema', () => {
+      expect(stageOf(steps(16))).toBe('ok');
+      expect(stageOf(steps(17))).toBe('schema');
+    });
+    it('PlanSchema enforces the same limit on its own', () => {
+      expect(PlanSchema.safeParse(toPlan(steps(16) as never)).success).toBe(true);
+      expect(PlanSchema.safeParse(toPlan(steps(17) as never)).success).toBe(false);
+    });
+  });
+
+  describe('C-4: one spelling per amount', () => {
+    const amount = (value: string) => ({ value, base_units: parseUnits(value, 6).toString(), decimals: 6 });
+    it.each(['10.50', '10.0', '010', '00.5'])('rejects %s at the schema', (value) => {
+      expect(stageOf(env([{ ...group, recipients: [{ recipient: ALICE, amount: amount(value) }] }]))).toBe('schema');
+    });
+    it.each(['10', '10.5', '0.05', '100'])('accepts %s', (value) => {
+      expect(stageOf(env([{ ...group, recipients: [{ recipient: ALICE, amount: amount(value) }] }]))).toBe('ok');
+    });
+  });
+
+  describe('C-5: timestamps have an upper bound', () => {
+    it.each([
+      ['start_at', { start_at: 9e15, end_at: 9e15 + 1e7 }],
+      ['end_at', { end_at: 9e15 }],
+    ])('rejects a far-future %s as a 4xx instead of throwing, which would become a retried 5xx', (_name, times) => {
+      const envelope = env([{ ...k8, schedule: { ...k8.schedule, ...times } }]);
+      expect(() => checkEnvelope(envelope)).not.toThrow();
+      expect(stageOf(envelope)).toBe('schema');
+    });
+  });
+
+  describe('the JSON schema and the verified schemas agree on limits', () => {
+    const schema = JSON.parse(
+      readFileSync(new URL('../../src/schemas/handoff-envelope.schema.json', import.meta.url), 'utf8'),
+    );
+    it('steps', () => expect(schema.properties.intents.maxItems).toBe(MAX_STEPS_PER_PLAN));
+    it('one-time recipients', () => expect(schema.$defs.payment_i.properties.recipients.maxItems).toBe(MAX_RECIPIENTS));
+    it('automated recipients', () =>
+      expect(schema.$defs.autopay_k.properties.recipients.maxItems).toBe(MAX_RECIPIENTS_AUTOMATED));
   });
 });

@@ -1,5 +1,5 @@
 // Ported from lab src/plan.test.ts (5), the P cases of src/ccip.test.ts (13) and src/scenarios.test.ts (5).
-// TESTED_2 §4.2, §4.3. Fixtures are mutated freely, hence the `any`.
+// TEST_MAP §4.2, §4.3. Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
 import { PlanSchema } from '../../src/schemas/bridge.v2.js';
@@ -62,7 +62,7 @@ const payArb = () =>
   });
 const plan = (steps: any[]) => ({ requestId: REQUEST, steps });
 
-describe('plan cases (TESTED_2 §4.2, 5)', () => {
+describe('plan cases (TEST_MAP §4.2, 5)', () => {
   const autopay = pay({
     recipients: [
       { to: ALICE, amount: '10' },
@@ -110,7 +110,7 @@ describe('plan cases (TESTED_2 §4.2, 5)', () => {
   });
 });
 
-describe('P cases (TESTED_2 §4.2, 13)', () => {
+describe('P cases (TEST_MAP §4.2, 13)', () => {
   const pBridge = (o: any = {}) =>
     bridge({ sourceChainId: 11155111, destChainId: 84532, asset: usdc(11155111), amount: '10.2', ...o });
   const readme = plan([
@@ -190,7 +190,7 @@ describe('P cases (TESTED_2 §4.2, 13)', () => {
   });
 });
 
-describe('user scenarios, verified plan side (TESTED_2 §4.3, 5)', () => {
+describe('user scenarios, verified plan side (TEST_MAP §4.3, 5)', () => {
   const j = (src: number, dst: number, asset: unknown, amount: string) =>
     bridge({ sourceChainId: src, destChainId: dst, asset, amount });
   const i = (chainId: number, asset: unknown, amount: string) =>

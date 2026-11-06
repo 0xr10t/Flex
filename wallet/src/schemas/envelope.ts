@@ -1,5 +1,5 @@
-// Implements: README_2 §12.5 (hand-off envelope v2). The JSON file is the §12.5 schema; its parsed content was
-// compared with the README on 6 Nov 2026.
+// Implements: AGENT_SPEC §12.5 (hand-off envelope v2), as changed by docs/wallet/ARCHITECTURE_CHANGES.md.
+// handoff-envelope.schema.json is the authority for the envelope's shape.
 
 import { readFileSync } from 'node:fs';
 import { Ajv2020, type ErrorObject } from 'ajv/dist/2020.js';
@@ -18,6 +18,11 @@ export interface Amount {
   decimals: 6 | 18;
 }
 
+export interface Payee {
+  recipient: Hex;
+  amount: Amount;
+}
+
 export interface PaymentI {
   intent_id: 'i';
   step: number;
@@ -25,7 +30,7 @@ export interface PaymentI {
   token: Token;
   token_address: Hex | null;
   chain_id: ChainId;
-  recipients: { recipient: Hex; amount: Amount }[];
+  recipients: Payee[];
 }
 
 export interface BridgeJ {
@@ -58,8 +63,7 @@ export interface AutopayK {
   token: Token;
   token_address: Hex | null;
   chain_id: ChainId;
-  recipient: Hex;
-  amount_per_payment: Amount;
+  recipients: Payee[];
   fee: { to: Hex; amount: Amount };
   schedule: Schedule;
   limits: { max_per_run: Amount; max_total: Amount };
@@ -72,7 +76,6 @@ export interface CancelL {
   autopay_id: string;
   chain_id: ChainId;
   plan_id: Hex;
-  recipient: Hex;
 }
 
 export type EnvelopeIntent = PaymentI | BridgeJ | AutopayK | CancelL;

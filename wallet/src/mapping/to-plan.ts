@@ -1,9 +1,18 @@
-// Implements: README_2 §12.5 mapping table (envelope -> verified schemas of intent.v2.ts and bridge.v2.ts).
+// Implements: AGENT_SPEC §12.5 mapping table (envelope -> verified schemas of intent.v2.ts and bridge.v2.ts).
 // Ported from toPlan() in flex.handoff.test.ts, with two differences: amounts are summed as bigint (the test code used
 // Number, which truncates ETH to 6 decimals), and delegationHash is the real hash, not the plan_id stand-in.
 
 import { formatUnits, keccak256, parseUnits, toBytes } from 'viem';
-import type { AutopayK, BridgeJ, CancelL, EnvelopeIntent, HandoffEnvelope, Hex, PaymentI, Token } from '../schemas/envelope.js';
+import type {
+  AutopayK,
+  BridgeJ,
+  CancelL,
+  EnvelopeIntent,
+  HandoffEnvelope,
+  Hex,
+  PaymentI,
+  Token,
+} from '../schemas/envelope.js';
 import { USDC } from '../schemas/intent.v2.js';
 
 export class MappingError extends Error {
@@ -79,7 +88,7 @@ function mapPayment(env: HandoffEnvelope, x: PaymentI, path: string) {
 
 function mapAutopay(env: HandoffEnvelope, x: AutopayK, path: string) {
   assertTokenAddress(x.token, x.token_address, `${path}.token_address`);
-  assertAmount(x.amount_per_payment, x.token, `${path}.amount_per_payment`);
+  x.recipients.forEach((r, k) => assertAmount(r.amount, x.token, `${path}.recipients[${k}].amount`));
   assertAmount(x.fee.amount, x.token, `${path}.fee.amount`);
   assertAmount(x.limits.max_per_run, x.token, `${path}.limits.max_per_run`);
   assertAmount(x.limits.max_total, x.token, `${path}.limits.max_total`);
@@ -94,7 +103,7 @@ function mapAutopay(env: HandoffEnvelope, x: AutopayK, path: string) {
       chainId: x.chain_id,
       from: env.wallet_address,
       asset: asset(x.token, x.token_address),
-      recipients: [{ to: x.recipient, amount: x.amount_per_payment.value }],
+      recipients: x.recipients.map((r) => ({ to: r.recipient, amount: r.amount.value })),
       atomic: true,
       schedule: {
         type: 'recurring',
