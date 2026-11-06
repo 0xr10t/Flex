@@ -20,6 +20,12 @@ const manifestPath = join(local, 'build.json');
 const rpcNames = { 11155111: 'SEPOLIA_RPC_URL', 84532: 'BASE_SEPOLIA_RPC_URL', 421614: 'ARBITRUM_SEPOLIA_RPC_URL' };
 const hash = (v) => createHash('sha256').update(v).digest('hex');
 
+export function assertLocalNetwork(walletConfig) {
+  // Native CRE HTTP/EVM capabilities do not inherit the Node wallet's SOCKS transport.
+  // Until a verified local capability proxy exists, refusing is safer than silently sending wallet data directly.
+  if (walletConfig?.network?.socks_proxy != null) throw new Error('CRE_LOCAL_PROXY_UNSUPPORTED');
+}
+
 export function optionsOf(args) {
   const options = {
     command: args[0] ?? 'qualify',
@@ -300,6 +306,8 @@ async function tick(options, signal) {
 
 export async function main(args = process.argv.slice(2)) {
   const options = optionsOf(args);
+  const walletConfigPath = join(root, '.local/wallet.config.json');
+  if (existsSync(walletConfigPath)) assertLocalNetwork(JSON.parse(readFileSync(walletConfigPath, 'utf8')));
   const release = await acquireLock(join(local, 'runner.lock'));
   const controller = new globalThis.AbortController();
   const stop = () => controller.abort();

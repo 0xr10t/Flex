@@ -1,20 +1,20 @@
 # Testnet setup: CRE, RPCs and CCIP
 
-Checked 6 November 2026. This is a setup checklist, not a declaration of live readiness.
+Updated 7 November 2026. This is a setup checklist, not a declaration of all-layer live readiness.
 
 ## CRE account status
 
 - Browser login completed and `cre whoami` succeeded.
 - The private registry is available to the current organization.
 - The tenant chain list includes Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia. Their production forwarder addresses match the tracked workflow template.
-- `cre whoami` reports **Deploy Access: Not enabled**. An access request was submitted with the user's authorization; Chainlink approval is pending. Login, registry availability and deployment approval are separate states.
+- `cre whoami` reports **Deploy Access: Not enabled**. The user reports Chainlink denied the request. The selected operating path is local build-and-simulate; login, registry availability and hosted deployment approval are separate states.
 - The local credential file has owner-only permissions. Do not commit it or copy its contents into chat.
 
 API-key troubleshooting: CLI 1.39.0 has no key-creation command. The CRE workflow SDK exposes workflow capabilities, not organization key administration. Official documentation describes key creation in **Org settings > API Keys > Create API Key** and requires an eligible Platform role. API-key authentication also requires deployment approval. No supported SDK/CLI key-creation alternative was found; no CRE API key was created. The disabled website button is not confirmed to be a UI bug. Existing browser login remains sufficient for the private-registry path once approval is granted.
 
 Sources: [Authentication](https://docs.chain.link/cre/guides/cli/managing-auth), [API-key roles and creation](https://docs.chain.link/chainlink-platform/api-keys), [SDK scope](https://docs.chain.link/cre/reference/sdk/overview-ts).
 
-Local build and simulation can continue while access is pending. Private registry management needs no mainnet gas or linked wallet key. The application still needs executor deployments, workflow identity, configured secrets and quota-safe event discovery before running on a DON.
+The [implemented local CRE runner](CRE_LOCAL_SIMULATION.md) builds and simulates without hosted deployment access. Native provider qualification passed on all three testnets. Public-testnet registered-plan evaluation still needs real executor and identity configuration. Private registry management removes mainnet gas, not the hosted-access requirement.
 
 Sources: [Deploy access](https://docs.chain.link/cre/guides/operations/deploy-access), [Private versus onchain registry](https://docs.chain.link/cre/guides/operations/deploying-workflows).
 
@@ -96,18 +96,15 @@ Sources: [Service responsibilities](https://docs.chain.link/ccip/concepts/servic
 
 ## CRE implementation gates
 
-The code builds to WASM, but the native CRE workflow has not yet passed simulation or run on a DON. Before the private-registry workflow is published:
+The workflow builds to WASM and passed native CRE qualification on all three testnets. A native CRE test against local Anvil contracts verified a due registered payment without moving funds and skipped its slot after actual local execution. The local runner supports bounded discovery, private checkpoints, repeated execution and artifact verification. It cannot broadcast. Commands and trust boundaries are documented in [CRE local simulation](CRE_LOCAL_SIMULATION.md).
 
-1. Validate all configuration and deploy the application executor on each intended testnet. Bind the correct forwarder and private-registry organization owner. Resolve workflow identity without assuming that a configured ID survives rebuilding/changing configuration.
-2. Replace the deployment-to-head log scan in `autopay/main.ts:51` with bounded discovery that preserves older active plans and respects the log-range and capability quotas.
-3. Run native CRE simulation with real runtime configuration. Zero transaction-hash fallback removal, write-result validation and SDK-compatible encoding are implemented and unit-tested.
-4. Validate runtime quotas after the implemented batching/concurrency changes: independent log handles, batched secrets and concurrent provider reads now avoid unnecessary serial waiting. Keep same-account writes serialized.
-5. Extend the existing actual-handler tests with live simulation evidence and resolve the pinned SDK dependency audit gate.
+Remaining public-testnet payment prerequisites are actual executor deployments, matching forwarder/receiver metadata, and wallet-approved recurring registration. These are not replaced by the receiver-free qualification probe. Hosted DON operation and its production quotas remain outside the selected local mode. The pinned SDK dependency audit remains a release gate.
 
-After real runtime configuration and executor addresses exist, the non-broadcast native simulation command from the repository root is:
+From the repository root, qualify infrastructure now or evaluate registered plans after their configuration is complete:
 
 ```powershell
-.\.local\bin\cre.exe workflow simulate wallet/cre/autopay --project-root wallet/cre --env .env --target staging-settings --non-interactive --trigger-index 0
+npm.cmd run cre:simulate
+npm.cmd run cre:run
 ```
 
-This command is documented, not reported as passed. Only after simulation passes and Chainlink grants organization access should Vault secrets be configured through the browser-authenticated CLI and the private-registry workflow be published and verified end to end. Browser login is sufficient; a CRE API key is optional. User-approved CCIP transactions have occurred independently of CRE; no workflow has been published.
+`cre:simulate` has passed against the configured live providers. `cre:run` correctly refuses missing executor configuration; public-testnet registered-plan execution is not claimed. Browser login is sufficient and a CRE API key is optional. CCIP operates independently; no hosted CRE workflow has been published.

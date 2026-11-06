@@ -7,7 +7,7 @@ import { encodeAbiParameters, encodeEventTopics, keccak256 } from 'viem';
 // @ts-expect-error Host ESM helpers intentionally also run directly under Node without a TS build.
 import { EVENTS, indexPlans, rpcClient } from '../../../scripts/cre-indexer.mjs';
 // @ts-expect-error See above.
-import { acquireLock, optionsOf, parseSimulationOutput } from '../../../scripts/cre-local.mjs';
+import { acquireLock, assertLocalNetwork, optionsOf, parseSimulationOutput } from '../../../scripts/cre-local.mjs';
 
 const executor = `0x${'ab'.repeat(20)}`;
 const chain = { chainId: 11155111, executor, deploymentBlock: '1' };
@@ -50,6 +50,12 @@ function fakeRpc(head = 25n, limit = 10n) {
 }
 
 describe('CRE local runner safety', () => {
+  it('refuses to bypass a configured wallet Tor proxy', () => {
+    expect(() => assertLocalNetwork({ network: { socks_proxy: 'socks5h://127.0.0.1:9050' } })).toThrow(
+      'CRE_LOCAL_PROXY_UNSUPPORTED',
+    );
+    expect(() => assertLocalNetwork({ network: { socks_proxy: null } })).not.toThrow();
+  });
   it('enforces exclusive ownership and recovers an informational stale file after release', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'flex-cre-lock-'));
     const path = join(dir, 'runner.lock');
