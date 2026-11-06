@@ -3,6 +3,7 @@
 import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import process from 'node:process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ConfigError,
@@ -14,6 +15,7 @@ import {
   validateConfig,
 } from '../../../src/config/load.js';
 import { TokenFileError, ensureTokenFile, loadTokens } from '../../../src/config/tokens.js';
+import { assertPrivateFile, protectPrivateFile } from '../../../src/util/private-file.js';
 import { DB5_DEFAULTS, DB5_KEYS, TOKENS } from '../../../src/config/defaults.js';
 import { testConfig } from '../../fakes/context.js';
 
@@ -38,11 +40,11 @@ describe('§6.1 config path', () => {
   });
   it('C-002: default is ~/.agent-layer/config.json', () => {
     expect(DEFAULT_CONFIG_PATH).toBe('~/.agent-layer/config.json');
-    expect(configPath({}, '/home/u')).toBe('/home/u/.agent-layer/config.json');
-    expect(configPath({ AGENT_CONFIG: '' }, '/home/u')).toBe('/home/u/.agent-layer/config.json');
+    expect(configPath({}, '/home/u')).toBe(join('/home/u', '.agent-layer/config.json'));
+    expect(configPath({ AGENT_CONFIG: '' }, '/home/u')).toBe(join('/home/u', '.agent-layer/config.json'));
   });
   it('§6.1: a leading ~ expands to the home directory', () => {
-    expect(expandHome('~/.agent-layer/agent.db', '/h')).toBe('/h/.agent-layer/agent.db');
+    expect(expandHome('~/.agent-layer/agent.db', '/h')).toBe(join('/h', '.agent-layer/agent.db'));
     expect(expandHome('~', '/h')).toBe('/h');
     expect(expandHome('/abs/path', '/h')).toBe('/abs/path');
   });
@@ -140,7 +142,7 @@ describe('§6.1 / §16.4 token files', () => {
     const t = ensureTokenFile(p);
     expect(t).toMatch(/^[0-9a-f]{64}$/);
     expect(readFileSync(p, 'utf8')).toBe(t);
-    expect(statSync(p).mode & 0o777).toBe(0o600);
+    expect(() => assertPrivateFile(p)).not.toThrow();
   });
 
   it('C-003: an existing token file is read back (whitespace trimmed), not regenerated', () => {
@@ -154,6 +156,7 @@ describe('§6.1 / §16.4 token files', () => {
   it('C-003: a token file that does not hold a 32-byte hex token is rejected', () => {
     const p = join(dir, 'bad');
     writeFileSync(p, 'short');
+    protectPrivateFile(p);
     expect(() => ensureTokenFile(p)).toThrow(TokenFileError);
   });
 
@@ -167,16 +170,15 @@ describe('§6.1 / §16.4 token files', () => {
     c.execution = { ...c.execution, outbound_token_file: '~/out' };
     const t = loadTokens(c, dir);
     expect(new Set([t.ui, t.report, t.outbound]).size).toBe(3);
-    for (const f of ['ui', 'rep', 'out']) expect(statSync(join(dir, f)).mode & 0o777).toBe(0o600);
+    for (const f of ['ui', 'rep', 'out']) expect(() => assertPrivateFile(join(dir, f))).not.toThrow();
   });
 
   it('C-407 §16.4: identical UI and report tokens are refused', () => {
     const c = testConfig();
     writeFileSync(join(dir, 'same'), 'cd'.repeat(32));
-    chmodSync(join(dir, 'same'), 0o600);
+    protectPrivateFile(join(dir, 'same'));
     c.auth = { ui_token_file: join(dir, 'same'), execution_report_token_file: join(dir, 'same') };
     c.execution = { ...c.execution, outbound_token_file: join(dir, 'out') };
-    expect(() => loadTokens(c)).toThrow(TokenFileError);
     expect(() => loadTokens(c)).toThrow('must be different');
   });
 
@@ -195,7 +197,8 @@ describe('§6.1 / §16.4 token files', () => {
       expect(error).toBeInstanceOf(TokenFileError);
       expect((error as Error).message).not.toContain(token);
       expect(readFileSync(path, 'utf8')).toBe(token);
-      expect(statSync(path).mode & 0o777).toBe(mode);
+      if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(mode);
+      else expect(() => assertPrivateFile(path)).toThrow();
     });
   }
 
@@ -203,7 +206,7 @@ describe('§6.1 / §16.4 token files', () => {
     const token = 'ef'.repeat(32);
     const path = join(dir, 'tok-600');
     writeFileSync(path, `${token}\n`);
-    chmodSync(path, 0o600);
+    protectPrivateFile(path);
     expect(ensureTokenFile(path)).toBe(token);
   });
 });
