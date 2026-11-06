@@ -159,16 +159,17 @@ describe('§7.2 / §16.4 write paths', () => {
     });
   }
   const files = walk(SRC).map((p) => ({ path: relative(SRC, p), text: readFileSync(p, 'utf8') }));
+  // `file#function`: each call site named by its enclosing top-level function, so edits elsewhere don't move it.
   const callers = (re: RegExp): string[] =>
     files
       .filter((f) => !f.path.startsWith('db/') && !f.path.startsWith('contracts/'))
-      .flatMap((f) =>
-        f.text
-          .split('\n')
-          .map((l, i) => ({ l, n: i + 1 }))
-          .filter(({ l }) => re.test(l) && !/^\s*(\/\/|\*)/.test(l))
-          .map(({ n }) => `${f.path}:${n}`),
-      );
+      .flatMap((f) => {
+        let fn = '';
+        return f.text.split('\n').flatMap((l) => {
+          fn = /^(?:export )?(?:async )?function (\w+)/.exec(l)?.[1] ?? fn;
+          return re.test(l) && !/^\s*(\/\/|\*)/.test(l) ? [`${f.path}#${fn}`] : [];
+        });
+      });
 
   it('no SQL outside src/db', () => {
     const sql = files.filter(
@@ -178,16 +179,16 @@ describe('§7.2 / §16.4 write paths', () => {
   });
 
   it('DB5 has exactly one write caller outside startup defaults: PUT /v1/settings/limits', () => {
-    expect(callers(/db5\.putAll\(/)).toEqual(['server/app.ts:149']);
-    expect(callers(/db5\.insertDefaultsIfMissing\(/)).toEqual(['index.ts:85']);
+    expect(callers(/db5\.putAll\(/)).toEqual(['server/app.ts#createApp']);
+    expect(callers(/db5\.insertDefaultsIfMissing\(/)).toEqual(['index.ts#main']);
     // Nothing else on the db5 handle besides reads.
     const other = callers(/\.db5\.(?!getAll|putAll|insertDefaultsIfMissing)/);
     expect(other).toEqual([]);
   });
 
   it('DB2 writers: addContact only in S6 answerName (after Yes + name); updateAddressForName only for the §9.4 "Use new address" chip', () => {
-    expect(callers(/db2\.addContact\(/)).toEqual(['recipients/resolve.ts:751']);
-    expect(callers(/db2\.updateAddressForName\(/)).toEqual(['recipients/resolve.ts:818']);
+    expect(callers(/db2\.addContact\(/)).toEqual(['recipients/resolve.ts#answerName']);
+    expect(callers(/db2\.updateAddressForName\(/)).toEqual(['recipients/resolve.ts#answerEnsChanged']);
     expect(callers(/db2\.(?!find|list|get|addContact|updateAddressForName)\w+\(/)).toEqual([]);
   });
 
