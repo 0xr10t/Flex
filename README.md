@@ -1,5 +1,8 @@
 # Agent Layer — Implementation Handoff Specification
 
+> **Start at [`docs/README.md`](docs/README.md).** This file is spec v1, which the agent code was built from. The current design is
+> [`docs/spec/AGENT_SPEC_v1.1.md`](docs/spec/AGENT_SPEC_v1.1.md), plus [`docs/wallet/ARCHITECTURE_CHANGES.md`](docs/wallet/ARCHITECTURE_CHANGES.md).
+
 > **Audience:** the coding agent (and engineers) implementing the agent layer of the Wallet Access Layer.
 > **Status:** final, v1. Every behaviour below is decided. Build exactly this.
 > **Owner of this layer:** this team. Other layers (UI, execution/signing, bridging, autopay contracts, CRE jobs) are built by other teams and appear here only as interface contracts.

@@ -1,5 +1,8 @@
 # Agent Layer — Implementation Handoff Specification
 
+> **Changed for the wallet:** the hand-off envelope and some planning rules below were changed after this spec. See
+> [`docs/wallet/ARCHITECTURE_CHANGES.md`](../wallet/ARCHITECTURE_CHANGES.md), which wins where they disagree.
+
 > **Audience:** the coding agent (and engineers) implementing the agent layer of the Wallet Access Layer.
 > **Status:** final, v1.1. Every behaviour below is decided. Build exactly this.
 > **v1.1 (6 Nov 2026):** the AI part (S0–S8, prompts, LLM schemas §12.1–§12.2, recipients, guardrails, sessions) is
@@ -1441,6 +1444,9 @@ type InternalIntent = PlanI | PlanJ | PlanK | PlanL;
 | `token_address`, `wallet_address`, `request_id`, `created_at`, `version`, `fee_max_eth`, `executor` | Code at hand-off |
 
 ### 12.5 Hand-off envelope (what the execution layer receives)
+
+> **Changed:** the schema here is not the current one. The current schema is `wallet/src/schemas/handoff-envelope.schema.json`; the
+> differences are C-1 to C-5 in [`docs/wallet/ARCHITECTURE_CHANGES.md`](../wallet/ARCHITECTURE_CHANGES.md).
 
 This is the **only** data that leaves the agent toward the chain. It has no field for names, ENS names, prompt text, the
 summary, the timezone or the local time of day.
