@@ -289,6 +289,16 @@ export class SessionManager {
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
       if (cancellable) return ok(this.discard(s, a, this.cancelText(a)));
+      const submitted = this.deps.repos.handoffs.get(request_id);
+      if (submitted !== undefined) {
+        const text =
+          submitted.status === 'accepted'
+            ? REPLY.CANCEL_AFTER_HANDOFF()
+            : submitted.status === 'submitted'
+              ? REPLY.CANCEL_AFTER_TIMEOUT()
+              : REPLY.CANCELLED();
+        return ok(this.noopReply(s, request_id, text));
+      }
       // SQ-A-01, F-8: nothing to cancel → HTTP 200, state done, nothing changed, safe to repeat. A request already
       // handed off gets its own reply, also when it is no longer the active request (R1-F3: looked up in
       // db8_history / DB6).
@@ -421,10 +431,27 @@ export class SessionManager {
 
   /** S12 hand-off (§8.14): counts attempts; EXECUTION_UNAVAILABLE → HANDOFF_FAILED until 3 attempts in total. */
   private async handoff(s: OpenSession, a: Active): Promise<AgentResponse> {
+    // G03: fresh limits and balances gate the first submission. Retries must preserve the submitted envelope.
+    const firstSubmission = this.deps.repos.handoffs.get(a.req.request_id) === undefined;
+    const oldSummary = JSON.stringify(a.req.summary);
+    let limitsChanged = false;
+    if (firstSubmission && a.req.plan !== undefined) {
+      const current = this.deps.repos.db5.getAll();
+      limitsChanged = JSON.stringify(current) !== JSON.stringify(a.limits);
+      a.limits = current;
+      if (limitsChanged) {
+        a.req.limit_override = false;
+        delete a.req.step_state.s10;
+        delete a.req.envelope;
+      }
+      const refreshed = await this.invoke(s, a, 's0', (ctx) => this.deps.registry.s0.step(ctx));
+      if (refreshed.kind !== 'continue') return this.finish(s, a, 's0', refreshed);
+      a.req.notes = [...new Set(a.req.notes)];
+    }
     // SQ-R-05: an autopay whose first occurrence has passed is never handed off; S9 asks Q_AUTOPAY_START and the
     // answer re-plans (S9 → S10 → S11) for a fresh confirmation.
     const recheck = this.deps.registry.s9.beforeHandoff;
-    if (recheck !== undefined) {
+    if (firstSubmission && recheck !== undefined) {
       const res = await this.invoke(s, a, 's9', async (ctx) => recheck(ctx) ?? { kind: 'continue' });
       if (res.kind !== 'continue') {
         if (res.kind === 'question') {
@@ -435,6 +462,17 @@ export class SessionManager {
         }
         return this.finish(s, a, 's9', res);
       }
+    }
+    if (firstSubmission && a.req.plan !== undefined) {
+      // Changed settings may alter chain selection, bridge padding, caps, or consent. Always show the new plan.
+      if (limitsChanged) return this.run(s, a, STEP_ORDER.indexOf('s9'));
+      const checked = await this.invoke(s, a, 's10', (ctx) => this.deps.registry.s10.step(ctx));
+      if (checked.kind !== 'continue') return this.finish(s, a, 's10', checked);
+      const prepend = [...a.req.prepend_messages];
+      const summary = await this.invoke(s, a, 's11', (ctx) => this.deps.registry.s11.step(ctx));
+      if (summary.kind !== 'summary') return this.finish(s, a, 's11', summary);
+      if (JSON.stringify(summary.summary) !== oldSummary) return this.finish(s, a, 's11', summary);
+      a.req.prepend_messages = prepend;
     }
     a.req.handoff_attempts += 1;
     const res = await this.invoke(s, a, 's12', (ctx) => this.deps.registry.s12.step(ctx));

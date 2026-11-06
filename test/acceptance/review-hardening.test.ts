@@ -4,7 +4,7 @@ import type { ExecutionReport, HandoffEnvelope } from '../../src/contracts/types
 import { openDatabase } from '../../src/db/open.js';
 import { createRepos } from '../../src/db/repos/index.js';
 import { applyReport } from '../../src/server/reports.js';
-import { Harness, harness, loadFixture } from './harness.js';
+import { Harness, harness, loadFixture, BASE, ARB, SEPOLIA } from './harness.js';
 import { DELEGATE } from './seed.js';
 
 const live = new Set<Harness>();
@@ -169,5 +169,62 @@ describe('B08 answers are screened before persistence', () => {
     expect(h.rows<{ text: string }>('SELECT text FROM db8_prompts').some((r) => r.text.includes(secret))).toBe(false);
     expect(h.llm.names()).toEqual(names);
     expect(h.exec.submissions).toHaveLength(0);
+  });
+});
+
+describe('G03 confirmation validates current balances and settings', () => {
+  it('does not submit a stale payment after available balances disappear', async () => {
+    const h = await make();
+    const summary = await h.say(pay);
+    h.advance(30 * 24 * 60);
+    h.setBalances({ [BASE]: { USDC: '0' }, [ARB]: { USDC: '0' }, [SEPOLIA]: { USDC: '0' } });
+    const response = await h.confirm(summary, 'yes');
+    expect(response.body.error?.code).toBe('INSUFFICIENT_FUNDS');
+    expect(h.exec.submissions).toHaveLength(0);
+  });
+
+  it('a reduced limit requires an explicit override and a fresh confirmation', async () => {
+    const h = await make();
+    const summary = await h.say(pay);
+    const limits = h.repos.db5.getAll();
+    limits.per_tx_max.USDC = '1';
+    h.repos.db5.putAll(limits, h.nowIso);
+    const response = await h.confirm(summary, 'yes');
+    expect(response.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+    expect(h.exec.submissions).toHaveLength(0);
+    const renewed = await h.answer(response, { chipLabel: 'Yes, this once' });
+    expect(renewed.body.state).toBe('awaiting_confirmation');
+    expect(h.exec.submissions).toHaveLength(0);
+    expect((await h.confirm(renewed, 'yes')).body.state).toBe('done');
+  });
+
+  it('changed allowed chains produce a new summary before any external submission', async () => {
+    const h = await make();
+    const summary = await h.say(pay);
+    h.setBalances({ [SEPOLIA]: { USDC: '100', ETH: '0.1' } });
+    const limits = h.repos.db5.getAll();
+    limits.allowed_chain_ids = [SEPOLIA];
+    h.repos.db5.putAll(limits, h.nowIso);
+    const renewed = await h.confirm(summary, 'yes');
+    expect(renewed.body.state).toBe('awaiting_confirmation');
+    expect(renewed.body.summary).not.toEqual(summary.body.summary);
+    expect(h.exec.submissions).toHaveLength(0);
+    expect((await h.confirm(renewed, 'yes')).body.state).toBe('done');
+    expect(h.envelope.intents[0]).toMatchObject({ chain_id: SEPOLIA });
+  });
+
+  it('an ambiguous autopay retry keeps its original envelope even after its first occurrence and settings change', async () => {
+    const h = await make('A-58');
+    h.exec.responses.push({ status: 'unavailable', cause: 'timeout' });
+    const failed = await h.sayAndConfirm(repeat);
+    expect(failed.body.error?.code).toBe('EXECUTION_UNAVAILABLE');
+    const first = structuredClone(h.exec.submissions[0]);
+    h.advance(120 * 24 * 60);
+    const limits = h.repos.db5.getAll();
+    limits.allowed_chain_ids = [SEPOLIA];
+    h.repos.db5.putAll(limits, h.nowIso);
+    expect((await h.confirm(failed, 'yes')).body.state).toBe('done');
+    expect(h.exec.submissions[1]).toEqual(first);
+    expect(h.count('db7_autopays')).toBe(1);
   });
 });
