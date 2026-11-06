@@ -78,8 +78,48 @@ describe('the config', () => {
     chains: [{ chain_id: 84532, rpc_url: 'https://rpc.example' }],
   };
 
-  it('accepts the example file', () => {
-    expect(loadConfig(fileURLToPath(new URL('../../config.example.json', import.meta.url))).approval.mode).toBe('reject_all');
+  it('accepts the example file once its anon-rpc placeholders are filled in, and refuses it before', () => {
+    const path = fileURLToPath(new URL('../../config.example.json', import.meta.url));
+    expect(() => loadConfig(path)).toThrow(/rpc_url must be https/);
+    const filled = join(tempDir(), 'config.json');
+    writeFileSync(filled, readFileSync(path, 'utf8').replaceAll('<anon-rpc>', 'anon-rpc.example'));
+    const config = loadConfig(filled);
+    expect(config.approval.mode).toBe('reject_all');
+    expect(config.chains.every((c) => c.rpc_url.startsWith('https://anon-rpc.example/'))).toBe(true);
+  });
+
+  describe('privacy fixes 1 and 10: where the wallet connects', () => {
+    const withRpc = (rpc_url: string) => ({ ...valid, chains: [{ chain_id: 84532, rpc_url }] });
+    it.each([
+      'http://rpc.example/base',
+      'http://10.0.0.2:8545',
+      'http://localhost:8545',
+      'http://127.0.0.1.evil.example:8545',
+      'http://user:pw@127.0.0.1:8545',
+      'ws://rpc.example',
+    ])('refuses rpc_url %s', (url) => {
+      expect(() => parseConfig(withRpc(url))).toThrow();
+    });
+    it.each(['https://anon-rpc.example/base-sepolia', 'http://127.0.0.1:8545', 'https://127.0.0.1:8545'])(
+      'accepts rpc_url %s',
+      (url) => {
+        expect(parseConfig(withRpc(url)).chains[0]?.rpc_url).toBe(url);
+      },
+    );
+    it.each(['http://agent.example:8787', 'https://127.0.0.1:8787', 'http://0.0.0.0:8787', 'http://localhost:8787'])(
+      'refuses agent.url %s',
+      (url) => {
+        expect(() => parseConfig({ ...valid, agent: { url } })).toThrow(/agent\.url must be http:\/\/127\.0\.0\.1/);
+      },
+    );
+    it('the error never repeats the URL (it may hold an API key)', () => {
+      try {
+        parseConfig(withRpc('http://provider.example/v2/KEY123'));
+        expect.unreachable();
+      } catch (e) {
+        expect(String(e)).not.toContain('KEY123');
+      }
+    });
   });
   it('refuses a host other than 127.0.0.1 (§16.4)', () => {
     expect(() => parseConfig({ ...valid, server: { host: '0.0.0.0', port: 8788 } })).toThrow();

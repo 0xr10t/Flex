@@ -1,4 +1,6 @@
 // Implements: OQ-15 (provisional): the wallet's own config file. It holds paths and URLs, never keys or tokens.
+// Privacy fixes 1 and 10: chain RPC URLs are https (the anon-rpc endpoints) or http://127.0.0.1 (your own node); there is
+// no fallback RPC. agent.url is http://127.0.0.1 only.
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -118,6 +120,12 @@ const validate = new Ajv2020({ strict: true }).compile<WalletConfig>(SCHEMA);
 
 export const expandHome = (path: string): string => (path.startsWith('~/') ? join(homedir(), path.slice(2)) : path);
 
+/** http on 127.0.0.1 with no credentials in the URL. */
+const isLoopbackHttp = (u: URL): boolean =>
+  u.protocol === 'http:' && u.hostname === '127.0.0.1' && u.username === '' && u.password === '';
+
+const parse = (url: string): URL | null => (URL.canParse(url) ? new URL(url) : null);
+
 export function parseConfig(raw: unknown): WalletConfig {
   if (!validate(raw)) throw new Error('wallet config is invalid');
   if (
@@ -140,6 +148,16 @@ export function parseConfig(raw: unknown): WalletConfig {
         throw new Error('wallet simulation config is invalid');
       }
     }
+  // Privacy fix 10: reports carry tx hashes and amounts, so the agent is reached on this machine only.
+  const agent = parse(raw.agent.url);
+  if (!agent || !isLoopbackHttp(agent)) throw new Error('wallet config: agent.url must be http://127.0.0.1');
+  // Privacy fix 1: chain traffic goes over TLS to anon-rpc, or in plain http only to a node on this machine.
+  for (const c of raw.chains) {
+    const u = parse(c.rpc_url);
+    if (!u || !(u.protocol === 'https:' || isLoopbackHttp(u))) {
+      throw new Error(`wallet config: chain ${c.chain_id} rpc_url must be https (anon-rpc), or http://127.0.0.1`);
+    }
+  }
   return raw;
 }
 
