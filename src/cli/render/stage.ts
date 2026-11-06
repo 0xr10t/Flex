@@ -1,11 +1,10 @@
 // Lays the CLI out over the whole terminal. The dark background and the starfield fill the screen.
 //
-// The opening: across the top the steerable cube beside FLEXX and its tagline (the header); below it the gateway
-// scene's globe, gateway and Ethereum diamond, with the footer under them.
+// The opening: across the top FLEXX and its tagline (the header); below it the gateway scene's globe, gateway and
+// Ethereum diamond, with the footer under them.
 //
-// After it (the final layout): the cube and FLEXX shrink into a small logo on the left and the command box runs from
-// the top of the screen down the rest of it, the footer under the box. A narrower terminal puts the small FLEXX in a
-// bar above the box instead; the smallest shows the box alone.
+// After it (the final layout): FLEXX shrinks into a bar along the top, a small cube appearing to its left, and the
+// command box fills the screen under the bar, the footer under the box. The smallest terminals show the box alone.
 //
 // Below 120 × 43 there is no room for the opening's objects, so only the header plays before it shrinks; when even
 // the header does not fit, the CLI starts on the final layout.
@@ -22,7 +21,6 @@ import {
 import {
   placeSplash,
   SMALL_PITCH,
-  SPLASH_GROUP_WIDTH,
   SPLASH_PITCH,
   SPLASH_TEXT_WIDTH,
   SPLASH_WORD,
@@ -36,7 +34,7 @@ export interface Origin {
   y: number;
 }
 
-/** The small logo: cube and FLEXX at half size, and the tagline under (or beside) them. */
+/** The small logo: the small cube, FLEXX at half size beside it, and the tagline after them. */
 export interface SmallLogo {
   morph: LogoMorph;
   tagline: { x: number; y: number; lines: string[] } | null;
@@ -52,7 +50,7 @@ export interface FinalLayout {
 export interface StageLayout {
   cols: number;
   rows: number;
-  /** The opening's cube, FLEXX and tagline; null when there is no room (the CLI then starts on `final`). */
+  /** The opening's FLEXX and tagline; null when there is no room (the CLI then starts on `final`). */
   header: SplashPlacement | null;
   /** The opening's globe, gateway and diamond; null when the terminal is too small for them. */
   scene: Origin | null;
@@ -61,24 +59,24 @@ export interface StageLayout {
   final: FinalLayout;
 }
 
-/** Header rows with the cube (it reaches eight rows either side of its centre) and with the text alone. */
-const HEADER_ROWS = 17;
-const HEADER_TEXT_ROWS = 12;
-/** The header's text block starts this far below its top, with and without the cube. */
-const HEADER_TEXT_TOP = 3;
-const HEADER_TEXT_ONLY_TOP = 1;
+/** The opening's header: a row of margin, FLEXX (7 rows), its tagline two rows down, the rule two more. */
+const HEADER_ROWS = 12;
+const HEADER_TEXT_TOP = 1;
 /** Header, a gap, the objects (rows 14–35 of the scene), the gap to the footer and the footer. */
 const OPENING_ROWS = HEADER_ROWS + 1 + (SCENE_OBJECTS_BOTTOM - SCENE_OBJECTS_TOP + 1) + 2 + 1;
 
 const TAGLINE = 'the access layer between AI and ethereum';
-/** The small FLEXX: five letters of five columns, six apart, in four rows of half blocks. */
+/** The top bar: the small cube on the left, the small FLEXX (five letters of five columns, six apart, four rows of
+ * half blocks) beside it, the tagline after that when it fits. */
 const SMALL_WORD_WIDTH = (SPLASH_WORD.length - 1) * SMALL_PITCH + 5;
-const SMALL_WORD_ROWS = 4;
-/** The sidebar: two columns of margin, the small logo, three columns of gap before the box. */
-const SIDEBAR_X = 2;
-const SIDEBAR_COLS = SIDEBAR_X + SMALL_WORD_WIDTH + 3;
-/** Small cube, a gap, small FLEXX, a gap, two tagline rows. */
-const SIDEBAR_ROWS = 10 + 1 + SMALL_WORD_ROWS + 1 + 2;
+const SMALL_CUBE_SCALE = 0.35;
+const CUBE_X = 8;
+const CUBE_Y = 3.5;
+const WORD_X = 17;
+const WORD_Y = 2;
+const TAGLINE_X = WORD_X + SMALL_WORD_WIDTH + 4;
+/** Rows the bar takes before the box: the small cube reaches about four rows either side of its centre. */
+const BAR_ROWS = 8;
 const BOX_MIN_ROWS = 6;
 const BOX_MIN_COLS = 40;
 /** The footer's line plus a column either side. */
@@ -88,82 +86,54 @@ const FOOTER_MIN_COLS = 58;
 export const MIN_COLS = BOX_MIN_COLS + 2;
 export const MIN_ROWS = BOX_MIN_ROWS;
 
-/** Word-wraps `s` to lines of at most `width` columns. */
-function wrapWords(s: string, width: number): string[] {
-  const lines: string[] = [];
-  for (const word of s.split(' ')) {
-    const last = lines.at(-1);
-    if (last !== undefined && last.length + 1 + word.length <= width) lines[lines.length - 1] = `${last} ${word}`;
-    else lines.push(word);
-  }
-  return lines;
-}
-
 /** The footer centred under a box, on the screen's last row. */
 function footerUnder(box: Rect, rows: number): Origin {
   return { x: box.x + Math.floor((box.w - SCENE_COLS) / 2), y: rows - 1 - SCENE_FOOTER_ROW };
 }
 
-/** Where everything goes once the opening is over. */
+/** Where everything goes once the opening is over: the bar on top, the box under it, the footer last. */
 export function finalLayout(cols: number, rows: number): FinalLayout {
-  const footerRoom = rows >= BOX_MIN_ROWS + 2;
+  if (cols < WORD_X + SMALL_WORD_WIDTH + 1 || rows < BAR_ROWS + BOX_MIN_ROWS)
+    return { logo: null, box: { x: 0, y: 0, w: cols, h: rows }, footer: null };
 
-  if (cols >= SIDEBAR_COLS + BOX_MIN_COLS && rows >= SIDEBAR_ROWS) {
-    const w = cols - SIDEBAR_COLS - 1;
-    const footer = footerRoom && w >= FOOTER_MIN_COLS;
-    const box = { x: SIDEBAR_COLS, y: 0, w, h: footer ? rows - 2 : rows };
-    const wordY = 11;
-    return {
-      logo: {
-        morph: {
-          cubeX: SIDEBAR_X + Math.floor(SMALL_WORD_WIDTH / 2),
-          cubeY: 5,
-          cubeScale: 0.5,
-          wordX: SIDEBAR_X,
-          wordY,
-          wordScale: 0.5,
-          pitch: SMALL_PITCH,
-        },
-        tagline: { x: SIDEBAR_X, y: wordY + SMALL_WORD_ROWS + 1, lines: wrapWords(TAGLINE, SMALL_WORD_WIDTH) },
+  const w = cols - 2;
+  const footer = rows >= BAR_ROWS + BOX_MIN_ROWS + 2 && w >= FOOTER_MIN_COLS;
+  const box = { x: 1, y: BAR_ROWS, w, h: rows - BAR_ROWS - (footer ? 2 : 0) };
+  return {
+    logo: {
+      morph: {
+        cubeX: CUBE_X,
+        cubeY: CUBE_Y,
+        cubeScale: SMALL_CUBE_SCALE,
+        wordX: WORD_X,
+        wordY: WORD_Y,
+        wordScale: 0.5,
+        pitch: SMALL_PITCH,
       },
-      box,
-      footer: footer ? footerUnder(box, rows) : null,
-    };
-  }
-
-  if (rows >= SMALL_WORD_ROWS + 1 + BOX_MIN_ROWS) {
-    const tagX = 1 + SMALL_WORD_WIDTH + 3;
-    return {
-      logo: {
-        morph: { cubeX: null, cubeY: 0, cubeScale: 0, wordX: 1, wordY: 0, wordScale: 0.5, pitch: SMALL_PITCH },
-        tagline: cols - tagX >= TAGLINE.length ? { x: tagX, y: 1, lines: [TAGLINE] } : null,
-      },
-      box: { x: 0, y: SMALL_WORD_ROWS + 1, w: cols, h: rows - SMALL_WORD_ROWS - 1 },
-      footer: null,
-    };
-  }
-
-  return { logo: null, box: { x: 0, y: 0, w: cols, h: rows }, footer: null };
+      tagline: cols - TAGLINE_X - 1 >= TAGLINE.length ? { x: TAGLINE_X, y: WORD_Y + 2, lines: [TAGLINE] } : null,
+    },
+    box,
+    footer: footer ? footerUnder(box, rows) : null,
+  };
 }
 
 /** The layout for a `cols` × `rows` terminal; null when even the command box does not fit. */
 export function stageLayout(cols: number, rows: number): StageLayout | null {
   if (cols < MIN_COLS || rows < MIN_ROWS) return null;
   const final = finalLayout(cols, rows);
+  const header = (top: number): SplashPlacement => placeSplash(cols, top + HEADER_TEXT_TOP, false);
 
   if (cols >= SCENE_COLS && rows >= OPENING_ROWS) {
     const top = Math.floor((rows - OPENING_ROWS) / 2);
     // the scene's objects start on the row after the header
     const scene = { x: Math.floor((cols - SCENE_COLS) / 2), y: top + HEADER_ROWS + 1 - SCENE_OBJECTS_TOP };
-    return { cols, rows, header: placeSplash(cols, top + HEADER_TEXT_TOP, true), scene, footer: scene, final };
+    return { cols, rows, header: header(top), scene, footer: scene, final };
   }
 
-  // no room for the objects: the header alone plays (centred) before it shrinks, if it fits and has a logo to become
-  const cube = cols >= SPLASH_GROUP_WIDTH && rows >= HEADER_ROWS;
-  const headerRows = cube ? HEADER_ROWS : HEADER_TEXT_ROWS;
-  const textTop = Math.floor((rows - headerRows) / 2) + (cube ? HEADER_TEXT_TOP : HEADER_TEXT_ONLY_TOP);
-  const fits = cols >= SPLASH_TEXT_WIDTH + 2 && rows >= headerRows && final.logo !== null;
-  return { cols, rows, header: fits ? placeSplash(cols, textTop, cube) : null, scene: null, footer: null, final };
+  // no room for the objects: FLEXX alone plays (centred) before it shrinks, if it fits and has a bar to go to
+  const fits = cols >= SPLASH_TEXT_WIDTH + 2 && rows >= HEADER_ROWS && final.logo !== null;
+  const top = Math.floor((rows - HEADER_ROWS) / 2);
+  return { cols, rows, header: fits ? header(top) : null, scene: null, footer: null, final };
 }
 
 /** The opening's full-size logo as a morph, the starting point of the shrink. */
@@ -182,6 +152,8 @@ export function headerMorph(h: SplashPlacement): LogoMorph {
 /** Share of the shrink each part uses: the cube flies to the corner first, FLEXX follows once it is out of the way. */
 const CUBE_SPAN = [0, 0.6] as const;
 const WORD_SPAN = [0.4, 1] as const;
+/** A cube that only exists at the end grows in as FLEXX settles beside it. */
+const CUBE_GROW_SPAN = [0.5, 1] as const;
 
 const ease = (p: number, [from, to]: readonly [number, number]): number => {
   const q = Math.min(1, Math.max(0, (p - from) / (to - from)));
@@ -190,7 +162,7 @@ const ease = (p: number, [from, to]: readonly [number, number]): number => {
 
 /** Eased blend of two logo morphs at `p` in [0, 1]. A cube missing at one end grows or shrinks in place. */
 export function blendMorph(a: LogoMorph, b: LogoMorph, p: number): LogoMorph {
-  const ec = ease(p, CUBE_SPAN);
+  const ec = ease(p, a.cubeX === null ? CUBE_GROW_SPAN : CUBE_SPAN);
   const ew = ease(p, WORD_SPAN);
   const cubeMix = (x: number, y: number): number => x + (y - x) * ec;
   const wordMix = (x: number, y: number): number => x + (y - x) * ew;

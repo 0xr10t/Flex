@@ -1,9 +1,8 @@
 // Runs the CLI full-screen in the terminal: alternate screen, hidden cursor, ~30 fps redraw that rewrites only the
-// rows that changed, SGR mouse reporting so the pointer steers the header's cube, and a full restore on every exit
-// path. The opening plays the gateway scene under the cube and FLEXX header and snaps the globe, gateway and diamond
-// away into dust; then the cube and FLEXX shrink into a small logo on the left and the command box opens from the top
-// of the screen. Everything is laid out for the terminal's current size. Also renders a single still frame for pipes
-// and `--static`.
+// rows that changed, SGR mouse reporting so the pointer steers the small cube, and a full restore on every exit path.
+// The opening plays the gateway scene under FLEXX and snaps the globe, gateway and diamond away into dust; then FLEXX
+// shrinks into a bar along the top, a small cube growing in to its left, and the command box opens under them.
+// Everything is laid out for the terminal's current size. Also renders a single still frame for pipes and `--static`.
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
