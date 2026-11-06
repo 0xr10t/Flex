@@ -50,6 +50,16 @@ import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
 import { failedPaymentContext } from './failed-payment.js';
+import {
+  answerOnlyReply,
+  interpretReply,
+  needsConversation,
+  recipientOnlyReply,
+  replyGuidance,
+  simpleRecipient,
+  type ConversationTurn,
+} from './conversation.js';
+import { canCorrectPendingRecipient, correctPendingRecipient } from '../recipients/resolve.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -92,6 +102,8 @@ interface Active {
   lastHandoffCause?: string;
   /** SQ-S-01: consumed by the next message, cleared on cancellation; never persisted. */
   failedPayment?: FailedPaymentContext;
+  /** SQ-CV-01: bounded, guarded user replies for the current draft only; cleared with its in-memory state. */
+  conversation?: ConversationTurn[];
 }
 
 interface OpenSession {
@@ -223,9 +235,9 @@ export class SessionManager {
         return ok(this.noopReply(s, a.req.request_id, REPLY.CANCELLED()));
       }
       if (a !== null && isAwaitingAnswer(a.req)) {
-        // §17.3: cancel texts drop the request; any other text is a free-text answer to the pending question.
+        // SQ-CV-01 supersedes §17.3's unconditional field-answer routing for conversational replies.
         if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
-        return ok(await this.answer(s, a, { kind: 'text', text: input.text }));
+        return ok(await this.answer(s, a, { kind: 'text', text: input.text }, input));
       }
       if (a !== null && a.req.state === 'AWAITING_CONFIRMATION') {
         switch (classifyConfirmationText(input.text)) {
@@ -427,7 +439,7 @@ export class SessionManager {
   }
 
   /** Answer to the pending question → the asking step's AnswerHandler (§13.4, step.ts runner semantics). */
-  private async answer(s: OpenSession, a: Active, answer: Answer): Promise<AgentResponse> {
+  private async answer(s: OpenSession, a: Active, answer: Answer, input?: MessageInput): Promise<AgentResponse> {
     const paused = a.req.paused_at;
     if (paused === undefined) return this.unsupported(s, a, 'answer:not_paused');
     // Answers enter through both /answers and /messages. Screen them before DB8 or any step/model sees them.
@@ -435,14 +447,121 @@ export class SessionManager {
     if (detectSecret(text) !== null || extractUrls(text, []).links.some((link) => urlHasSecret(link.url))) {
       return this.finish(s, a, paused.step, { kind: 'error', code: 'SECRET_DETECTED' });
     }
+    // New content cannot be silently consumed as a field answer. Its full input goes through S1, before any
+    // conversational model call could see it; attachments and extracted document values never enter the router.
+    if (input && (input.attachments.length || input.pasted_blocks.length || input.urls.length)) {
+      if (this.deps.repos.handoffs.get(a.req.request_id) !== undefined)
+        return this.respond(s, a, 'awaiting_answer', [replyGuidance(this.context(s, a), paused.question)], {
+          question: paused.question,
+        });
+      this.markDiscarded(a.req);
+      return this.newRequest(s, input, [REPLY.PENDING_REPLACED()]);
+    }
+    if (
+      answer.kind === 'text' &&
+      this.deps.repos.handoffs.get(a.req.request_id) === undefined &&
+      needsConversation(this.context(s, a), paused.question, text)
+    )
+      return this.conversationalAnswer(s, a, text, input);
+    return this.applyFieldAnswer(s, a, answer, text);
+  }
+
+  private recordAnswer(s: OpenSession, a: Active, text: string, typed = true): void {
+    const question = a.req.paused_at?.question;
     // §7.2: the session manager writes answers to DB8.
     this.deps.repos.db8.insertPrompt({
       session_id: s.session_id,
       request_id: a.req.request_id,
       kind: 'answer',
-      text: answerText(answer),
+      text,
       created_at: this.nowIso(),
     });
+    if (typed && question) {
+      a.conversation ??= [];
+      a.conversation.push({ question: question.code, reply: text });
+      if (a.conversation.length > 6) a.conversation.shift();
+    }
+  }
+
+  private async conversationalAnswer(
+    s: OpenSession,
+    a: Active,
+    text: string,
+    input?: MessageInput,
+  ): Promise<AgentResponse> {
+    const paused = a.req.paused_at;
+    if (!paused) return this.unsupported(s, a, 'conversation:not_paused');
+    const ctx = this.context(s, a);
+    const clarify = (message = replyGuidance(ctx, paused.question)): AgentResponse =>
+      this.respond(s, a, 'awaiting_answer', [message], { question: paused.question });
+    let decision;
+    try {
+      decision = await interpretReply(ctx, paused.question, text, a.conversation ?? []);
+    } catch (error) {
+      if (!(error instanceof LlmFailed)) throw error;
+      this.assertOpen(s);
+      this.recordAnswer(s, a, text);
+      return clarify(
+        'I could not interpret that reply. Your request is still open; you can answer the displayed question or try again.',
+      );
+    }
+    this.assertOpen(s);
+    if (decision.intent === 'new_request') {
+      // The model classifies intent only. It never writes a replacement prompt or transfers old consent.
+      this.recordAnswer(s, a, text);
+      this.markDiscarded(a.req);
+      return this.newRequest(s, input ?? { text, pasted_blocks: [], attachments: [], urls: [] }, [
+        REPLY.PENDING_REPLACED(),
+      ]);
+    }
+    if (decision.intent === 'cancel') {
+      this.recordAnswer(s, a, text);
+      return /\b(?:cancel|stop|abort|drop|forget|never\s*mind)\b/i.test(text) &&
+        !/\b(?:not|don't|dont|why|how|what)\b/i.test(text)
+        ? this.discard(s, a, REPLY.CANCELLED())
+        : clarify();
+    }
+    if (decision.intent === 'recipient' && decision.value !== null && recipientOnlyReply(text, decision.value)) {
+      if (paused.question.code === 'Q_NO_PAYEE')
+        return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
+      this.recordAnswer(s, a, text);
+      if (!canCorrectPendingRecipient(ctx)) return clarify();
+      // Re-read current settings/balances. The normal S6 → S11 path resolves, validates and summarizes the change.
+      a.limits = this.deps.repos.db5.getAll();
+      const balances = await this.invoke(s, a, 's0', (current) => this.deps.registry.s0.step(current));
+      if (balances.kind !== 'continue') return this.finish(s, a, 's0', balances);
+      const result = await correctPendingRecipient(this.context(s, a), decision.value);
+      this.assertOpen(s);
+      if (result === null) return clarify();
+      a.req.paused_at = undefined;
+      if (result.kind !== 'continue') return this.finish(s, a, 's6', result);
+      return this.run(s, a, STEP_ORDER.indexOf('s6'));
+    }
+    if (decision.intent === 'answer' && decision.value !== null && answerOnlyReply(text, decision.value)) {
+      const q = paused.question;
+      // Model interpretation cannot select consent, price/amount choices, contacts, or limit overrides.
+      // Discrete choices continue to require the existing native whole-reply match or an explicit chip.
+      const freeValue =
+        q.input === 'number' ||
+        q.input === 'date' ||
+        ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_NAME_FOR_ADDRESS', 'Q_GROUP_PARENT'].includes(q.code);
+      if (freeValue && (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)))
+        return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
+    }
+    this.recordAnswer(s, a, text);
+    return clarify();
+  }
+
+  /** Validated routing ends here; the original field handler remains responsible for value validation. */
+  private async applyFieldAnswer(
+    s: OpenSession,
+    a: Active,
+    answer: Answer,
+    originalText: string,
+  ): Promise<AgentResponse> {
+    const paused = a.req.paused_at;
+    if (!paused) return this.unsupported(s, a, 'answer:not_paused');
+    this.recordAnswer(s, a, originalText, answer.kind === 'text');
     const entry = this.deps.registry[paused.step];
     const handler = entry.onAnswer;
     if (handler === undefined) return this.unsupported(s, a, `${paused.step}:no_answer_handler`);

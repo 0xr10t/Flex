@@ -2,7 +2,7 @@
 // Owned by the Orchestrator (frozen contract). Lane B implements OllamaLlmClient in src/llm/ollama.ts;
 // tests use FixtureLlmClient (test/fakes/llm.ts).
 
-export type LlmCallName = 'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine';
+export type LlmCallName = 'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine' | 'conversation';
 
 export interface LlmCallArgs {
   name: LlmCallName;

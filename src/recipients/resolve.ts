@@ -603,6 +603,59 @@ export async function resolveStep(ctx: StepContext): Promise<StepResult> {
   return { kind: 'continue' };
 }
 
+/**
+ * SQ-CV-01: replace only the unresolved recipient the current S6 question refers to.
+ * The original span still identifies the text S7 must mask; the new Origin identifies the user's correction.
+ * No model-authored address, generic text substitution, contact alias, or earlier recipient is changed here.
+ */
+export function canCorrectPendingRecipient(ctx: StepContext): boolean {
+  const st = s6State(ctx.req);
+  const flow = st.flow;
+  if (
+    ctx.req.paused_at?.step !== 's6' ||
+    !flow ||
+    !(flow.t === 'who_is' || (flow.t === 'addr' && flow.stage === 'reenter')) ||
+    ctx.repos.handoffs.get(ctx.req.request_id) !== undefined
+  )
+    return false;
+  const source = ctx.req.spans[st.index];
+  if (!source || source.kind === 'group' || source.followup_placeholder !== null) return false;
+  // A single correction at a question cannot distinguish several repeated occurrences of the same payee.
+  return ctx.req.spans.filter((s) => nameKey(s.text) === nameKey(source.text)).length === 1;
+}
+
+export async function correctPendingRecipient(ctx: StepContext, text: string): Promise<StepResult | null> {
+  if (!canCorrectPendingRecipient(ctx)) return null;
+  const st = s6State(ctx.req);
+  const source = ctx.req.spans[st.index] as RecipientSpan;
+  const replacement: RecipientSpan = {
+    ...source,
+    text,
+    kind: looksLikeAddress(text) ? 'address' : looksLikeEns(text) ? 'ens' : 'name',
+    source: 'user',
+    followup_placeholder: null,
+    untrusted_item_index: null,
+  };
+  // Retain the old text/range as masking provenance, but the target is explicitly user-supplied now.
+  ctx.req.spans[st.index] = { ...source, source: 'user', untrusted_item_index: null };
+  delete ctx.req.retry_context;
+  delete ctx.req.failed_payment_candidate;
+  ctx.req.resolved.length = st.index;
+  for (const index of Object.keys(st.groups)) if (Number(index) >= st.index) delete st.groups[Number(index)];
+  st.flow = null;
+  st.pending = null;
+  st.done = false;
+  for (const step of ['s7', 's8', 's9', 's9_answers', 's10', 's11', 's12'] as const) delete ctx.req.step_state[step];
+  ctx.req.recipients = [];
+  delete ctx.req.masked_text_s8;
+  delete ctx.req.payments;
+  delete ctx.req.plan;
+  delete ctx.req.summary;
+  delete ctx.req.envelope;
+  ctx.req.limit_override = false;
+  return settle(ctx, st, await startSpan(ctx, replacement)) ?? { kind: 'continue' };
+}
+
 /** Continues after a handled answer: either the next question of the same payee, or re-enter S6. */
 function proceed(ctx: StepContext, st: S6State, out: Outcome): StepResult {
   return settle(ctx, st, out) ?? { kind: 'continue' };
