@@ -3,7 +3,7 @@
 // the footer per token and the "Please confirm:" / "Confirm?" frame. UI only (§16.2).
 
 import { DateTime } from 'luxon';
-import { NOTES, SUMMARY_FRAME } from '../contracts/catalog.js';
+import { NOTES, SUMMARY_FRAME, joinList } from '../contracts/catalog.js';
 import { normalizeDecimal, shortAddress } from '../contracts/money.js';
 import type { StepContext } from '../contracts/step.js';
 import type {
@@ -20,7 +20,7 @@ import type {
   Weekday,
 } from '../contracts/types.js';
 import { chainName } from '../lexical/step-util.js';
-import { db1BaseUnits, decimalsOf, fmt, joinAnd, pushNote, recipientName, recipientNameOf } from '../plan/common.js';
+import { db1BaseUnits, decimalsOf, fmt, pushNote, recipientName, recipientNameOf } from '../plan/common.js';
 import { spentToday, thisRequest, tokensUsed } from '../plan/limits.js';
 import { CADENCE, END_TEXT, SUMMARY_LINE } from './templates.js';
 
@@ -46,7 +46,7 @@ export function cadenceText(s: Schedule): string {
   const n = String(s.interval);
   if (s.frequency === 'daily') return s.interval === 1 ? CADENCE.DAILY() : CADENCE.DAILY_N({ n });
   if (s.frequency === 'weekly') {
-    const days = joinAnd((s.days_of_week ?? []).map((d) => DAY_NAME[d]));
+    const days = joinList((s.days_of_week ?? []).map((d) => DAY_NAME[d]));
     return s.interval === 1 ? CADENCE.WEEKLY({ days }) : CADENCE.WEEKLY_N({ n, days });
   }
   const d = ordinal(s.day_of_month ?? 1);
@@ -96,7 +96,7 @@ function lineI(ctx: StepContext, it: PlanI): string {
   });
   if (it.depends_on.length === 0) return base;
   // Bridges come first and are never collapsed, so step s is line s + 1 (SQ-D-03 for several steps).
-  return base + SUMMARY_LINE.AFTER_STEP({ n: joinAnd(it.depends_on.map((s) => String(s + 1))) });
+  return base + SUMMARY_LINE.AFTER_STEP({ n: joinList(it.depends_on.map((s) => String(s + 1))) });
 }
 
 function lineGroup(ctx: StepContext, group: GroupPh, members: PlanI[]): string {

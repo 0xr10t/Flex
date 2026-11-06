@@ -32,16 +32,7 @@ import { newId } from '../util/ids.js';
 import { answerText, parseCount, parseDateAnswer } from '../plan/answers.js';
 import { neededWithPadding, planBridges, type PlannedBridge } from '../plan/bridges.js';
 import { chainName, qid } from '../lexical/step-util.js';
-import {
-  decimalsOf,
-  fmt,
-  internalError,
-  isGroupPh,
-  joinAnd,
-  pushNote,
-  recipientNameOf,
-  unsupported,
-} from '../plan/common.js';
+import { decimalsOf, fmt, internalError, isGroupPh, pushNote, recipientNameOf, unsupported } from '../plan/common.js';
 import {
   clampDayOfMonth,
   cronFor,
@@ -458,7 +449,7 @@ function pickChain(
     if (names.length === 0) return { kind: 'result', result: unsupported(ctx, 's9', 'S9_NO_CANDIDATE_CHAIN') };
     return {
       kind: 'result',
-      result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: joinAnd(names) } },
+      result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: joinList(names) } },
     };
   }
   return { kind: 'ok', chain, reused: reuseFrom(chain) };
