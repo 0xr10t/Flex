@@ -100,15 +100,7 @@ describe('SQ-O-01: §8.8 masks only tagged spans; an untagged repeat of a name r
 
   const TEXT = 'Send 50 usdc to Aradhya. Aradhya is my flatmate and Aradhya likes pizza';
 
-  it('OBS characterisation: the 2nd and 3rd "Aradhya" are still readable in the LLM #4 user message', async () => {
-    const { four, state } = await run(TEXT, payeeFixture(TEXT));
-    expect(state).toBe('awaiting_confirmation');
-    expect(four).toMatch(/MESSAGE|Message/i);
-    expect((four.match(/Aradhya/g) ?? []).length).toBe(2);
-  });
-
-  // Expected by §16.1 ("#4 sees amounts and recipients masked"); fails today -> SQ-O-01 (human ruling pending).
-  it.fails('SQ-O-01: no occurrence of a tagged payee name reaches the LLM #4 user message', async () => {
+  it('SQ-O-01 / SQB-23: no occurrence of a tagged payee name reaches the LLM #4 user message', async () => {
     const { four, state } = await run(TEXT, payeeFixture(TEXT));
     expect(state).toBe('awaiting_confirmation'); // guards against a pass caused by an earlier failure
     expect(four).toMatch(/address_[0-9a-f]{8}/);
@@ -144,14 +136,7 @@ describe('SQ-O-01: §8.8 masks only tagged spans; an untagged repeat of a name r
     ],
   });
 
-  it('OBS characterisation: the 2nd "Kabir" (mentioned, §8.8 -> [person]) is still readable in LLM #4', async () => {
-    const { four, state } = await run(MENTION, mentionFixture());
-    expect(state).toBe('awaiting_confirmation');
-    expect(four).toContain('[person]');
-    expect((four.match(/Kabir/g) ?? []).length).toBe(1);
-  });
-
-  it.fails('SQ-O-01: no occurrence of a mentioned name reaches the LLM #4 user message', async () => {
+  it('SQ-O-01 / SQB-23: no occurrence of a mentioned name reaches the LLM #4 user message', async () => {
     const { four, state } = await run(MENTION, mentionFixture());
     expect(state).toBe('awaiting_confirmation');
     expect(four).toContain('[person]');

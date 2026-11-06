@@ -258,3 +258,72 @@ describe('§8.8 S7 mask recipients', () => {
     expect(ctx.req.recipients[0]?.placeholder).toBe(ph);
   });
 });
+
+describe('§8.8 S7 sweep of repeated names (SQ-O-01, SQB-23)', () => {
+  it('SQ-O-01/SQB-23: repeats of a payee and of a mentioned name are masked; one DB3 row per span; recipients unchanged', async () => {
+    const text = 'send amount_aaaaaaaa to Mihir. Mihir is nice, Priya said; priya agrees';
+    const { ctx } = await resolveAndMask({ text, spans: [{ text: 'Mihir', kind: 'name' }] });
+    const start = text.indexOf('Priya');
+    ctx.req.mentioned_spans = [{ text: 'Priya', start, end: start + 5, clause_index: 1 }];
+    const rowsBefore = db3Rows(ctx).length;
+    expect(await s7.step(ctx)).toEqual({ kind: 'continue' });
+    const ph = ctx.req.recipients[0]?.placeholder;
+    expect(ctx.req.recipients).toHaveLength(1);
+    expect(ctx.req.masked_text_s8).toBe(`send amount_aaaaaaaa to ${ph}. ${ph} is nice, [person] said; [person] agrees`);
+    expect(ctx.req.masked_text_s8).not.toMatch(/mihir|priya/i);
+    expect(db3Rows(ctx)).toHaveLength(rowsBefore + 1);
+    expect(db3Rows(ctx).filter((r) => r.name === 'Mihir')).toHaveLength(1);
+  });
+
+  it('SQ-O-01/SQB-23: a real mismatch (mentioned span with wrong text over the payee) still fails closed with s7_span_mismatch', async () => {
+    const text = 'send amount_aaaaaaaa to Mihir, Mihir again';
+    const { ctx } = await resolveAndMask({ text, spans: [{ text: 'Mihir', kind: 'name' }] });
+    const start = text.indexOf('Mihir');
+    ctx.req.mentioned_spans = [{ text: 'Priya', start, end: start + 5, clause_index: 0 }];
+    expect(await s7.step(ctx)).toEqual({ kind: 'error', code: 'INTERNAL_ERROR' });
+    expect(ctx.log.lines.some((l) => (l as { rule_id?: string }).rule_id === 's7_span_mismatch')).toBe(true);
+    expect(ctx.req.masked_text_s8).toBeFalsy();
+  });
+
+  it('SQ-O-01/SQB-23: a follow-up span (span null) still reuses its placeholder and last chain; no sweep side effects', async () => {
+    const ctx = makeCtx({ text: 'Send amount_bbbbbbbb more to Aradhya' });
+    const earlier = ctx.repos.db3.mint({
+      session_id: ctx.req.session_id,
+      request_id: 'req_00000000000e',
+      kind: 'single',
+      name: 'Aradhya',
+      address: ARADHYA,
+      ens_name: null,
+      chain_id: null,
+      group_placeholder: null,
+      source: 'contact',
+    }) as AddressPh;
+    ctx.repos.db8.appendHistory({
+      session_id: ctx.req.session_id,
+      request_id: 'req_00000000000e',
+      payments_json: JSON.stringify([{ kind: 'i', amount: 'amount_aaaaaaaa', recipient: earlier, chain: BASE }]),
+      handed_off_at: '2026-11-05T17:00:00Z',
+    });
+    ctx.req.spans = [
+      {
+        text: 'Aradhya',
+        kind: 'name',
+        role: 'payee',
+        span: null,
+        source: 'user',
+        followup_placeholder: earlier,
+        untrusted_item_index: null,
+      },
+    ];
+    const d = new Driver(ctx);
+    await d.start();
+    expect(d.last).toEqual({ kind: 'continue' });
+    const before = db3Rows(ctx).length;
+    expect(await s7.step(ctx)).toEqual({ kind: 'continue' });
+    expect(db3Rows(ctx)).toHaveLength(before);
+    expect(ctx.req.recipients).toEqual([
+      { placeholder: earlier, span_index: 0, type: 'person', source: 'session', followup: true, last_chain_id: BASE },
+    ]);
+    expect(ctx.req.masked_text_s8).toBe('Send amount_bbbbbbbb more to Aradhya');
+  });
+});
