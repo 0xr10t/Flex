@@ -36,7 +36,6 @@ export type DecimalString = string;
 export type BaseUnitsString = string;
 
 export type ActionKind = 'i' | 'k' | 'l';
-export type IntentId = 'i' | 'j' | 'k' | 'l';
 export type Weekday = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 export type Frequency = 'daily' | 'weekly' | 'monthly';
 

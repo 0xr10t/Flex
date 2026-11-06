@@ -255,11 +255,6 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
   return { kind: 'done' };
 }
 
-/** Item resolved enough to mint? */
-export function itemReady(item: WorkItem): boolean {
-  return item.value_done && item.value !== null && item.token !== null;
-}
-
 function originOf(item: WorkItem): AmountItem['origin'] {
   return item.relative !== null ? 'relative' : item.kind === 'document' ? 'document' : 'phrase';
 }

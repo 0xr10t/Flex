@@ -50,9 +50,6 @@ export const GROUP_MEMBERS_MARKER_RE = new RegExp(
   'gi',
 );
 
-/** Mainnet words: §6.2 (whole words). */
-export { MAINNET_WORDS } from '../contracts/static-tables.js';
-
 /**
  * §8.3 rule 6 names `polygon` and `solana` as examples of "chain-like word after on/via that is not an alias".
  * The spec lists no other names ("…"); see spec-questions/B.md SQB-03.

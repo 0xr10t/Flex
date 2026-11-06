@@ -55,10 +55,3 @@ export function protectPrivateFile(path: string): void {
   if (process.platform === 'win32') windowsAcl(path, 'protect');
   else chmodSync(path, 0o600);
 }
-
-export function assertPrivateFile(path: string): void {
-  const stat = lstatSync(path);
-  if (!stat.isFile()) throw new Error('private file must be a regular file');
-  if (process.platform === 'win32') windowsAcl(path, 'check');
-  else if ((stat.mode & 0o777) !== 0o600) throw new Error('private file must have mode 0600');
-}
