@@ -104,16 +104,23 @@ function filterSpans(
   candidates: Array<{ text: string; kind: SpanKind }>,
 ): Tagged[] {
   const drop = droppedWords(ctx);
-  const used: Range[] = [];
+  // Occurrences already taken, per span text: a text returned twice takes its next occurrence. Overlaps between
+  // different texts are left to rule 5 (so the longest span wins whatever the model's output order).
+  const usedByText = new Map<string, Range[]>();
+  const claim = (text: string): Range | null => {
+    const used = usedByText.get(text) ?? [];
+    const range = findUnused(masked, text, used, true);
+    if (range !== null) usedByText.set(text, [...used, range]);
+    return range;
+  };
   const kept: Tagged[] = [];
   for (const s of out) {
-    const range = findUnused(masked, s.text, used, true);
-    if (range === null) continue; // rule 1
     const t = s.text.trim().toLowerCase();
     if (drop.has(t) || PLACEHOLDER_RE.test(s.text)) continue; // rule 2
     if (s.kind === 'address' && !ADDRESS_FULL_RE.test(s.text)) continue; // rule 3
     if ((s.kind === 'ens' || s.kind === 'group') && !normalizes(s.text)) continue;
-    used.push(range);
+    const range = claim(s.text);
+    if (range === null) continue; // rule 1
     kept.push({ text: s.text, kind: s.kind, role: s.role, range });
   }
   // rule 4: every S2 candidate missing from the output is added as a payee (the S2 kind wins, SQB-16)
@@ -123,9 +130,8 @@ function filterSpans(
       same.kind = c.kind;
       continue;
     }
-    const range = findUnused(masked, c.text, used, true);
+    const range = claim(c.text);
     if (range === null) continue;
-    used.push(range);
     kept.push({ text: c.text, kind: c.kind, role: 'payee', range });
   }
   // rule 5: overlapping spans → keep the longest (ties: the earlier one)
