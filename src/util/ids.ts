@@ -1,5 +1,5 @@
 // Implements: §7.3 steps 1–2, 4, 7 (formats; randomness from node:crypto randomBytes only).
-// Owner: Lane A. contracts-v1 skeleton; collision retry (§7.3 step 3) lives in the repositories' mint().
+// Owner: Lane A. Collision retry (§7.3 step 3) lives in the repositories' mint().
 
 import { randomBytes } from 'node:crypto';
 import type { IdKind, NewId, NewPlaceholder, PlaceholderKind } from '../contracts/step.js';
