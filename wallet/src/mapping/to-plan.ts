@@ -176,6 +176,15 @@ function mapIntent(env: HandoffEnvelope, x: EnvelopeIntent, k: number, options: 
   }
 }
 
+/**
+ * The real hash of an `l` needs a chain read, which the intake can't wait for. So the intake checks everything else with
+ * this stand-in, and the cancel step reads the real one before anything is signed.
+ */
+export function placeholderHashes(env: HandoffEnvelope): Record<number, Hex> {
+  const zero = `0x${'00'.repeat(32)}` as Hex;
+  return Object.fromEntries(env.intents.filter((x) => x.intent_id === 'l').map((x) => [x.step, zero]));
+}
+
 /** Returns the input for `PlanSchema`, which is what decides whether it is valid. Throws MappingError. */
 export function toPlan(env: HandoffEnvelope, options: ToPlanOptions = {}) {
   return {
