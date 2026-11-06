@@ -616,13 +616,16 @@ describe('§8.14 steps 3–4 accepted hand-off: DB6 / DB7 / DB8 (§11.4, SQ-C-08
 });
 
 describe('§8.14 steps 5–6 / §15 rejected and unavailable', () => {
-  it('C-154 C-391 4xx → EXECUTION_REJECTED carrying the execution layer message; nothing recorded', async () => {
+  it('C-154 C-391 4xx → EXECUTION_REJECTED; durable failed rows release reservations and no history is added', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
     ctx.exec.responses = [{ status: 'rejected', message: 'insufficient allowance' }];
     const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)]);
     const msg = expectError(res, 'EXECUTION_REJECTED', { message: 'insufficient allowance' });
     expect(msg).toBe("Your wallet couldn't accept this: insufficient allowance");
-    expect(ctx.repos.tables.db6).toEqual([]);
+    expect(ctx.repos.tables.db6).toHaveLength(1);
+    expect(ctx.repos.tables.db6[0]).toMatchObject({ status: 'failed', amount: '50', tx_hash: null });
+    expect(ctx.repos.db6.pendingRecent(BASE, 'USDC', NOW_ISO)).toEqual([]);
+    expect(ctx.repos.handoffs.get(ctx.req.request_id)).toMatchObject({ status: 'rejected', history: null });
     expect(ctx.repos.tables.db7.size).toBe(0);
     expect(ctx.repos.tables.db8_history).toEqual([]);
     expect(ctx.req.state).not.toBe('HANDED_OFF');
@@ -646,12 +649,15 @@ describe('§8.14 steps 5–6 / §15 rejected and unavailable', () => {
     expect(msg).toBe(`Your wallet couldn't accept this: a${'b'.repeat(199)}`);
   });
 
-  it('C-392 5xx / timeout → EXECUTION_UNAVAILABLE with the §15 message; nothing recorded', async () => {
+  it('C-392 5xx / timeout → EXECUTION_UNAVAILABLE; reservations persist without accepted history', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
     ctx.exec.responses = [{ status: 'unavailable', cause: 'server_error' }];
     const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)]);
     expect(expectError(res, 'EXECUTION_UNAVAILABLE')).toBe("I couldn't reach your wallet. Confirm again to retry.");
-    expect(ctx.repos.tables.db6).toEqual([]);
+    expect(ctx.repos.tables.db6).toHaveLength(1);
+    expect(ctx.repos.tables.db6[0]).toMatchObject({ status: 'pending', amount: '50', tx_hash: null });
+    expect(ctx.repos.db6.pendingRecent(BASE, 'USDC', NOW_ISO)).toHaveLength(1);
+    expect(ctx.repos.handoffs.get(ctx.req.request_id)?.status).toBe('submitted');
     expect(ctx.repos.tables.db8_history).toEqual([]);
     expect(ctx.log.lines.some((l) => l.event === 'handoff_unavailable' && l.level === 'warn')).toBe(true);
   });
@@ -860,9 +866,18 @@ describe('§14.2 execution client (no network: fetch stubbed)', () => {
     const plan = [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)];
     stub(new Response(JSON.stringify({ message: 'paused' }), { status: 403 }));
     expectError(await handoff(ctx, plan), 'EXECUTION_REJECTED', { message: 'paused' });
+    expect(ctx.repos.tables.db6[0]?.status).toBe('failed');
+    // A terminal 4xx is not retryable through the manager. Use a separate request for the 503 branch.
+    const unavailable = ctxD({ balances: usdc('0', '80', '0') });
+    unavailable.exec = createExecutionClient(unavailable.config, 'tok') as never;
     stub(new Response('', { status: 503 }));
-    expectError(await s12.step(ctx), 'EXECUTION_UNAVAILABLE');
-    expect(ctx.repos.tables.db6).toEqual([]);
+    expectError(
+      await handoff(unavailable, [planI(0, mintAmount(unavailable, '50'), addAradhya(unavailable), BASE)]),
+      'EXECUTION_UNAVAILABLE',
+    );
+    expect(unavailable.repos.tables.db6[0]?.status).toBe('pending');
+    expect(ctx.repos.tables.db8_history).toEqual([]);
+    expect(unavailable.repos.tables.db8_history).toEqual([]);
   });
 });
 

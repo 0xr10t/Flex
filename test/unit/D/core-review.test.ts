@@ -271,25 +271,32 @@ describe('R5-1 accepted hand-off recording and R6-3 refusal text', () => {
     expect(ctx.req.state).toBe('HANDED_OFF');
   });
 
-  it.each(['spend', 'history'] as const)(
-    'R5-1 accepted execution remains HANDED_OFF if the %s write fails',
-    async (failure) => {
-      const ctx = ctxD();
-      ctx.req.plan = [planI(0, addAmount(ctx, '10'), addMihir(ctx), BASE)];
-      if (failure === 'spend')
-        ctx.repos.db6.insertMany = () => {
-          throw new Error('injected storage failure');
-        };
-      else
-        ctx.repos.db8.appendHistory = () => {
-          throw new Error('injected storage failure');
-        };
-      expect(await s12.step(ctx)).toEqual({ kind: 'answer', messages: ['Sent to your wallet for signing.'] });
-      expect(ctx.req.state).toBe('HANDED_OFF');
-      expect(ctx.exec.submissions).toHaveLength(1);
-      expect(ctx.log.lines.filter((l) => l.rule_id === 'S12_RECORD_FAILED')).toHaveLength(1);
-    },
-  );
+  it('B19 a spend reservation failure prevents execution before submission', async () => {
+    const ctx = ctxD();
+    ctx.req.plan = [planI(0, addAmount(ctx, '10'), addMihir(ctx), BASE)];
+    ctx.repos.db6.insertMany = () => {
+      throw new Error('injected storage failure');
+    };
+    await expect(s12.step(ctx)).rejects.toThrow('injected storage failure');
+    expect(ctx.req.state).not.toBe('HANDED_OFF');
+    expect(ctx.exec.submissions).toHaveLength(0);
+    expect(ctx.repos.handoffs.get(ctx.req.request_id)).toBeUndefined();
+    expect(ctx.repos.tables.db8_history).toHaveLength(0);
+  });
+
+  it('R5-1 accepted execution remains HANDED_OFF if the session-history write fails', async () => {
+    const ctx = ctxD();
+    ctx.req.plan = [planI(0, addAmount(ctx, '10'), addMihir(ctx), BASE)];
+    ctx.repos.db8.appendHistory = () => {
+      throw new Error('injected storage failure');
+    };
+    expect(await s12.step(ctx)).toEqual({ kind: 'answer', messages: ['Sent to your wallet for signing.'] });
+    expect(ctx.req.state).toBe('HANDED_OFF');
+    expect(ctx.exec.submissions).toHaveLength(1);
+    expect(ctx.repos.tables.db6).toHaveLength(1);
+    expect(ctx.repos.tables.db8_history).toHaveLength(0);
+    expect(ctx.log.lines.filter((l) => l.rule_id === 'S12_RECORD_FAILED')).toHaveLength(1);
+  });
 
   it('R6-3 strips bidi, zero-width and line separators while preserving readable refusal text', () => {
     expect(rejectMessage('Denied\u202e\u202d\u200b\u200d\u2066\u2069\ufeff\u2028\u2029: retry')).toBe('Denied: retry');

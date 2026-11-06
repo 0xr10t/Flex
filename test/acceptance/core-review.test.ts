@@ -215,19 +215,24 @@ describe('SQ-R-05 late autopay confirmation', () => {
     expect(h.exec.submissions).toHaveLength(1);
   });
 
-  it('SQ-R-05 SQ-R-06 a timeout followed by late-start replanning retains the ambiguous-cancel warning', async () => {
+  it('B19 SQ-R-06 a late retry preserves its submitted envelope and the ambiguous-cancel warning', async () => {
     const h = make('late-timeout', 'A-08');
     const summary = await h.say(AUTOPAY);
     h.exec.responses.push({ status: 'unavailable', cause: 'timeout' });
     await h.confirm(summary, 'yes');
+    const original = structuredClone(h.envelope);
     h.advance(12 * 60);
+    h.exec.responses.push({ status: 'unavailable', cause: 'timeout' });
     const late = await h.confirm(summary, 'yes');
-    expect(late.body.question?.code).toBe('Q_AUTOPAY_START');
+    expect(late.body.error?.code).toBe('EXECUTION_UNAVAILABLE');
+    expect(late.body.question).toBeUndefined();
+    expect(h.envelope).toEqual(original);
+    expect(h.exec.submissions.map((s) => s.idempotencyKey)).toEqual([original.request_id, original.request_id]);
     const cancelled = await h.cancel(late);
     expect(cancelled.body.messages[0]?.text).toBe(
       'Cancelled here, but your wallet may already have received it. Check your wallet.',
     );
-    expect(h.exec.submissions).toHaveLength(1);
+    expect(h.exec.submissions).toHaveLength(2);
   });
 });
 

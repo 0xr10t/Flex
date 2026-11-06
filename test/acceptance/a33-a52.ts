@@ -314,7 +314,8 @@ export function registerA33toA52(): void {
       const r = await h.say('Send 50 USDc to ARADHYA');
       const fail = await h.confirm(r, 'yes');
       expectError(fail, 'EXECUTION_UNAVAILABLE', "I couldn't reach your wallet. Confirm again to retry.");
-      expect(spend(h)).toEqual([]); // DB6 rows only on a 2xx
+      expect(spend(h)).toEqual([pending('payment', BASE, '50', 0, 'i', { recipient: ARADHYA })]);
+      expect(h.repos.handoffs.get(r.body.request_id)?.status).toBe('submitted');
       expect(h.count('db8_history')).toBe(0);
       const ok = await h.confirm(r, 'yes');
       expectHandedOff(ok);
@@ -333,7 +334,11 @@ export function registerA33toA52(): void {
       const r = await h.say('Send 50 USDc to ARADHYA');
       const fail = await h.confirm(r, 'yes');
       expectError(fail, 'EXECUTION_REJECTED', "Your wallet couldn't accept this: recipient is blocked");
-      expect(spend(h)).toEqual([]);
+      expect(spend(h)).toEqual([
+        { ...pending('payment', BASE, '50', 0, 'i', { recipient: ARADHYA }), status: 'failed' },
+      ]);
+      expect(h.repos.db6.pendingRecent(BASE, 'USDC', h.nowIso)).toEqual([]);
+      expect(h.repos.handoffs.get(r.body.request_id)).toMatchObject({ status: 'rejected', history: null });
       expect(h.count('db7_autopays')).toBe(0);
       expect(h.count('db8_history')).toBe(0);
       // FAILED, not retryable.

@@ -34,13 +34,18 @@ describe('error messages come from the catalog', () => {
       .flatMap((f) =>
         f.text
           .split('\n')
-          .map((l, i) => ({ l, at: `${f.path}:${i + 1}` }))
+          .map((l) => ({ l, path: f.path }))
           .filter(({ l }) => /kind: 'error'.*params: \{/.test(l) && !/^\s*(\/\/|\*)/.test(l)),
       )
       .filter(({ l }) => /params: \{[^}]*(message|text|raw|typed|prompt)[^}]*\}/.test(l))
-      .map(({ at }) => at);
+      .map(({ l, path }) => ({ path, code: l.trim() }));
     // The only param whose value is external, free-form text is the execution layer's `message`.
-    expect(paramSites).toEqual(['pipeline/s12-handoff.ts:161']);
+    expect(paramSites).toEqual([
+      {
+        path: 'pipeline/s12-handoff.ts',
+        code: "return { kind: 'error', code: 'EXECUTION_REJECTED', params: { message: rejectMessage(result.message) } };",
+      },
+    ]);
   });
 
   it('every catalog entry renders from its own params without throwing for the documented slots', () => {
