@@ -754,6 +754,26 @@ describe('§8.14 step 6 / §17.3 HANDOFF_FAILED', () => {
     expect(h.calls.filter((c) => c.step === 's12')).toHaveLength(3);
   });
 
+  it('SQ-A-06 F-9: attempts 1-2 show the section 15 text; the 3rd failure shows the text for its cause', async () => {
+    const cases: Array<['timeout' | 'server_error', string]> = [
+      ['timeout', "I couldn't confirm your wallet received this after 3 tries. Check your wallet before trying again."],
+      ['server_error', "I couldn't reach your wallet after 3 tries. Nothing was sent. Please try again later."],
+    ];
+    for (const [cause, final] of cases) {
+      const h = makeHarness();
+      const fail: StepResult = { kind: 'error', code: 'EXECUTION_UNAVAILABLE', params: { cause } };
+      failingHandoff(h, [fail, fail, fail]);
+      const { sid, rid } = await toConfirmation(h);
+      const r1 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      const r2 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      const r3 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      expect(r1.error?.message).toBe("I couldn't reach your wallet. Confirm again to retry.");
+      expect(r2.error?.message).toBe("I couldn't reach your wallet. Confirm again to retry.");
+      expect(r3.error).toEqual({ code: 'EXECUTION_UNAVAILABLE', message: final });
+      expect(finals(h)).toEqual(['FAILED']);
+    }
+  });
+
   it('C-343: in HANDOFF_FAILED only "yes" is accepted by confirm (no → conflict)', async () => {
     const h = makeHarness();
     failingHandoff(h, [UNAVAILABLE]);
