@@ -152,6 +152,17 @@ function questionResult(st: S3State, question: Question, pending: S3State['pendi
   return { kind: 'question', question };
 }
 
+/** Advances the typed (or document) items in order; the first question or stop ends the step. */
+function advanceAll(ctx: StepContext, st: S3State, documents: boolean): StepResult | null {
+  for (const item of st.items) {
+    if ((item.kind === 'document') !== documents) continue;
+    const a = advanceItem(ctx, item);
+    if (a.kind === 'question') return questionResult(st, a.question, a.pending);
+    if (a.kind === 'stop') return a.result;
+  }
+  return null;
+}
+
 async function s3Step(ctx: StepContext): Promise<StepResult> {
   const { req } = ctx;
   let st = s3State(ctx);
@@ -170,12 +181,8 @@ async function s3Step(ctx: StepContext): Promise<StepResult> {
   }
 
   // ── rules 3 and 6: verify every pay item, one question at a time ──
-  for (const item of st.items) {
-    if (item.kind === 'document') continue;
-    const a = advanceItem(ctx, item);
-    if (a.kind === 'question') return questionResult(st, a.question, a.pending);
-    if (a.kind === 'stop') return a.result;
-  }
+  const typedStop = advanceAll(ctx, st, false);
+  if (typedStop !== null) return typedStop;
 
   // ── rule 4: uncovered numbers ──
   if (st.uncovered === null) {
@@ -221,12 +228,8 @@ async function s3Step(ctx: StepContext): Promise<StepResult> {
           );
         }
       }
-      for (const item of st.items) {
-        if (item.kind !== 'document') continue;
-        const a = advanceItem(ctx, item);
-        if (a.kind === 'question') return questionResult(st, a.question, a.pending);
-        if (a.kind === 'stop') return a.result;
-      }
+      const docStop = advanceAll(ctx, st, true);
+      if (docStop !== null) return docStop;
     } else if (!req.notes.includes(NOTES.CONTENT_AMOUNTS_UNUSED())) {
       req.notes.push(NOTES.CONTENT_AMOUNTS_UNUSED());
     }

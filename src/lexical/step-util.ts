@@ -24,6 +24,26 @@ export function qid(): QuestionId {
   return newId('question') as QuestionId;
 }
 
+/** §17.2 step 1: session history = the last 5 handed-off requests. */
+export const HISTORY_LIMIT = 5;
+
+/**
+ * §17.2 steps 3 and 6: the payments of the most recent history entry (parsed `payments_json`), objects only;
+ * empty when there is no history or the row cannot be parsed.
+ */
+export function lastHistoryPayments(ctx: StepContext): Array<Record<string, unknown>> {
+  const last = ctx.repos.db8.recentHistory(ctx.req.session_id, HISTORY_LIMIT)[0];
+  if (!last) return [];
+  let payments: unknown;
+  try {
+    payments = JSON.parse(last.payments_json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(payments)) return [];
+  return payments.filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object');
+}
+
 export function nowUtcIso(ctx: StepContext): string {
   return ctx.now().toUTC().toISO() ?? new Date().toISOString();
 }

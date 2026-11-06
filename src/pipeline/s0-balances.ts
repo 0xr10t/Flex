@@ -60,26 +60,21 @@ async function s0Step(ctx: StepContext): Promise<StepResult> {
   for (const r of results) {
     const name = chainName(config, r.chain_id);
     if (r.ok) {
-      repos.db4.upsertOk(
-        {
-          chain_id: r.chain_id,
-          chain: name,
-          token: 'ETH',
-          balance: fromBaseUnits(r.eth, TOKEN_DECIMALS.ETH),
-          base_units: r.eth.toString(),
-        },
-        nowIso,
-      );
-      repos.db4.upsertOk(
-        {
-          chain_id: r.chain_id,
-          chain: name,
-          token: 'USDC',
-          balance: fromBaseUnits(r.usdc, TOKEN_DECIMALS.USDC),
-          base_units: r.usdc.toString(),
-        },
-        nowIso,
-      );
+      for (const [token, units] of [
+        ['ETH', r.eth],
+        ['USDC', r.usdc],
+      ] as const) {
+        repos.db4.upsertOk(
+          {
+            chain_id: r.chain_id,
+            chain: name,
+            token,
+            balance: fromBaseUnits(units, TOKEN_DECIMALS[token]),
+            base_units: units.toString(),
+          },
+          nowIso,
+        );
+      }
     } else {
       repos.db4.markUnavailable(r.chain_id, name, nowIso);
       unavailable.push(r.chain_id);

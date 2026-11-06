@@ -51,7 +51,7 @@ function s4State(ctx: StepContext): S4State {
   return st;
 }
 
-async function classify(ctx: StepContext): Promise<RequestTypeOut | null> {
+async function classify(ctx: StepContext): Promise<RequestTypeOut> {
   const p = buildRequestTypePrompt(ctx.req.masked_text_s3 ?? '');
   return ctx.llm.call<RequestTypeOut>({ name: 'request_type', ...p });
 }
@@ -62,16 +62,15 @@ async function s4Step(ctx: StepContext): Promise<StepResult> {
   if (st.done) return { kind: 'continue' };
 
   if (!st.classified) {
-    let out: RequestTypeOut | null;
+    let out: RequestTypeOut;
     try {
       out = await classify(ctx);
       // rule 3: actions empty → retry the call once; still empty → MODEL_FAILED
-      if (out !== null && out.request_type === 'actions' && out.actions.length === 0) out = await classify(ctx);
+      if (out.request_type === 'actions' && out.actions.length === 0) out = await classify(ctx);
     } catch (e) {
       if (e instanceof LlmFailed) return { kind: 'error', code: 'MODEL_FAILED' };
       throw e;
     }
-    if (out === null) return { kind: 'error', code: 'MODEL_FAILED' };
     req.request_type = out.request_type;
     if (out.request_type === 'unsupported') {
       return { kind: 'error', code: 'UNSUPPORTED_REQUEST', final_state: 'ANSWERED' };
@@ -111,7 +110,7 @@ async function s4Step(ctx: StepContext): Promise<StepResult> {
   }
 
   // ── i or k present but no pay amounts → Q_AMOUNT_MISSING (§17.2 step 5) ──
-  if ((req.actions ?? []).some((a) => a === 'i' || a === 'k') && req.amounts.length === 0) {
+  if (actions.some((a) => a === 'i' || a === 'k') && req.amounts.length === 0) {
     st.missing ??= newWorkItem(1, { kind: 'answer' });
     const a = advanceItem(ctx, st.missing);
     if (a.kind === 'question') {

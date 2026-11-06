@@ -25,7 +25,7 @@ import {
   type Token,
   type TokenWordKind,
 } from '../contracts/types.js';
-import { chainName, joinNames, qid, spendable, unsupported } from '../lexical/step-util.js';
+import { chainName, joinNames, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
 import { parseAmountText } from './parse.js';
 
 /** One amount being verified. Lives in `req.step_state` (S3 / S4), so it must stay JSON-serialisable. */
@@ -128,7 +128,7 @@ function ask(
 }
 
 /** §9.7 / §13.4: the same question again, new id, attempt + 1, optional hint in front of the original text. */
-export function reaskPending(q: Question, pending: PendingQ, hint?: string): Question {
+export function reaskPending(q: Question, pending: Pick<PendingQ, 'base_text'>, hint?: string): Question {
   return {
     ...q,
     question_id: qid(),
@@ -146,18 +146,8 @@ function mapKind(k: TokenWordKind): Token | 'FIAT_OTHER' {
 /** §17.2 step 6: the token of the previous payment (most recent history entry), when it names exactly one. */
 export function previousToken(ctx: StepContext): Token | null {
   if (ctx.req.scan.back_reference.length === 0) return null;
-  const last = ctx.repos.db8.recentHistory(ctx.req.session_id, 5)[0];
-  if (!last) return null;
-  let payments: unknown;
-  try {
-    payments = JSON.parse(last.payments_json);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(payments)) return null;
   const tokens = new Set<Token>();
-  for (const p of payments as Array<Record<string, unknown> | null>) {
-    if (p === null || typeof p !== 'object') continue;
+  for (const p of lastHistoryPayments(ctx)) {
     if (p.token === 'USDC' || p.token === 'ETH') tokens.add(p.token);
     else if (typeof p.amount === 'string' && p.amount.startsWith('amount_')) {
       const row = ctx.repos.db1.get(p.amount as AmountPh);
@@ -253,17 +243,20 @@ export function itemReady(item: WorkItem): boolean {
   return item.value_done && item.value !== null && item.token !== null;
 }
 
+function originOf(item: WorkItem): AmountItem['origin'] {
+  return item.relative !== null ? 'relative' : item.kind === 'document' ? 'document' : 'phrase';
+}
+
 /** DB1 row for an item (§8.4 steps 5–7). */
 export function mintItem(ctx: StepContext, item: WorkItem): AmountPh {
   if (item.value === null || item.token === null) throw new Error('mintItem: unresolved amount');
-  const origin = item.relative !== null ? 'relative' : item.kind === 'document' ? 'document' : 'phrase';
   const ph = ctx.repos.db1.mint({
     session_id: ctx.req.session_id,
     request_id: ctx.req.request_id,
     amount: item.value,
     token: item.token,
     source: item.source,
-    origin,
+    origin: originOf(item),
     confirmed: item.confirmed,
   });
   item.placeholder = ph;
@@ -281,7 +274,7 @@ export function toAmountItem(item: WorkItem): AmountItem {
     amount: item.value,
     token: item.token,
     source: item.source,
-    origin: item.relative !== null ? 'relative' : item.kind === 'document' ? 'document' : 'phrase',
+    origin: originOf(item),
     confirmed: item.confirmed,
     relative: item.relative,
     fiat: item.fiat,

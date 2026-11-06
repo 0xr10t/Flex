@@ -24,7 +24,8 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, Answer, Chip, Question, RecipientSpan, Span, SpanKind } from '../contracts/types.js';
 import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
 import { ADDRESS_FULL_RE } from '../lexical/patterns.js';
-import { joinNames, qid } from '../lexical/step-util.js';
+import { joinNames, lastHistoryPayments, qid } from '../lexical/step-util.js';
+import { reaskPending } from '../amounts/verify.js';
 import { clauseIndexAt, findUnused, overlaps, type Range } from '../lexical/text.js';
 import { maskedToTyped, type S3State } from './s3-amounts.js';
 
@@ -45,8 +46,6 @@ export interface S5State {
   done: boolean;
 }
 
-/** §17.2 step 1. */
-export const HISTORY_LIMIT = 5;
 const PLACEHOLDER_RE = /(?:amount|address|group)_[0-9a-f]{8}|\[amount\]|\[person\]|\[link \d+\]/;
 
 function s5State(ctx: StepContext): S5State {
@@ -145,18 +144,9 @@ function filterSpans(
 
 /** §17.2 step 3: single (non-group) recipients of the most recent history entry, in order, deduplicated. */
 function previousPayees(ctx: StepContext): FollowupChoice[] {
-  const last = ctx.repos.db8.recentHistory(ctx.req.session_id, HISTORY_LIMIT)[0];
-  if (!last) return [];
-  let payments: unknown;
-  try {
-    payments = JSON.parse(last.payments_json);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(payments)) return [];
   const out: FollowupChoice[] = [];
-  for (const p of payments as Array<Record<string, unknown> | null>) {
-    const ph = p !== null && typeof p === 'object' ? p.recipient : undefined;
+  for (const p of lastHistoryPayments(ctx)) {
+    const ph = p.recipient;
     if (typeof ph !== 'string' || !ph.startsWith('address_')) continue;
     if (out.some((o) => o.placeholder === ph)) continue;
     const row = ctx.repos.db3.get(ph as AddressPh);
@@ -306,10 +296,7 @@ const s5Answer: AnswerHandler = async (ctx: StepContext, q: Question, answer: An
   const st = s5State(ctx);
   const pending = st.pending;
   if (!pending || pending.code !== q.code) return { kind: 'error', code: 'INTERNAL_ERROR' };
-  const again = (): StepResult => ({
-    kind: 'question',
-    question: { ...q, question_id: qid(), attempt: q.attempt + 1, text: pending.base_text },
-  });
+  const again = (): StepResult => ({ kind: 'question', question: reaskPending(q, pending) });
   if (pending.code === 'Q_FOLLOWUP_WHO') {
     const chip = matchChip(q, answer);
     const choice = chip === null ? undefined : pending.choices.find((c) => c.placeholder === chip.id);
