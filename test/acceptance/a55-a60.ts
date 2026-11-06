@@ -24,13 +24,13 @@ import {
   suiteLogDir,
   usdc,
 } from './harness.js';
-import { seedAutopay, seedSpend } from './seed.js';
+import { planIdFor, DELEGATE, seedAutopay, seedSpend } from './seed.js';
 
 export function registerA55toA59(): void {
   describe('A-55 … A-59', () => {
     it("A-55 SQ-D-16: an autopay_payment report reduces today's remaining allowance for the next request", async () => {
       const h = await harness('A-55');
-      const id = seedAutopay(h);
+      const id = seedAutopay(h, { amount: '5' });
       seedSpend(h, { amount: '290', kind: 'payment' });
       expect(
         await h.report({
@@ -39,13 +39,13 @@ export function registerA55toA59(): void {
           status: 'executed',
           tx_hash: '0x' + 'ef'.repeat(32),
           executed_at: '2026-11-05T17:00:00Z',
-          autopay: { autopay_id: id, amount: '5', chain_id: BASE, token: 'USDC' },
+          autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '5', fee: '0.05', chain_id: BASE, token: 'USDC' },
         }),
       ).toBe(204);
       const r = await h.say('send 10 usdc to mihir');
       expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
       expect(r.body.question?.text).toBe(
-        "This is 10 USDC, over today's limit of 300 (only 5 is left). Go ahead this once?",
+        "This is 10 USDC, over today's limit of 300 (only 4.95 is left). Go ahead this once?",
       );
       await h.finish();
     });
@@ -93,15 +93,14 @@ export function registerA55toA59(): void {
       expectEnvelope(h, r.body.request_id, [
         usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: MIHIR }),
         {
-          intent_id: 'i',
-          step: 1,
-          depends_on: [],
-          token: 'ETH',
-          token_address: null,
-          chain_id: BASE,
-          amount: eth('0.01'),
-          recipient: MIHIR,
-        },
+intent_id: 'i',
+step: 1,
+depends_on: [],
+token: 'ETH',
+token_address: null,
+chain_id: BASE,
+recipients: [{ amount: eth('0.01'), recipient: MIHIR }]
+},
       ]);
       expect(lastHistory(h)).toHaveLength(2);
       expect(spend(h)).toEqual([
@@ -111,30 +110,23 @@ export function registerA55toA59(): void {
       await h.finish();
     });
 
-    it('A-58: "every month on the 31st for 3 months" -> day 28 + note', async () => {
+    it('A-58: monthly schedules require an explicit fixed-interval choice', async () => {
       const h = await harness('A-58');
-      const r = await h.say('pay mihir 10 usdc every month on the 31st for 3 months');
-      expect(h.asked).toEqual([]);
-      expect(r.body.summary?.notes).toEqual(['Paid on the 28th, since months differ in length.']);
-      expect(lines(r)[0]).toMatch(
-        /^Pay Mihir \(0x91Ab…77d0\) 10 USDC on the 28th of every month at 10:00 \(Asia\/Kolkata\) on Base Sepolia, first on 28 Nov 2026, until /,
-      );
+      const question = await h.say('pay mihir 10 usdc every month on the 31st for 3 months');
+      expect(question.body.question?.code).toBe('Q_AUTOPAY_MONTHLY');
+      expect(h.exec.submissions).toHaveLength(0);
+      const r = await h.answer(question, { chip: 'thirty_days' });
+      expect(r.body.state).toBe('awaiting_confirmation');
+      expect(r.body.summary?.notes.join(' ')).not.toContain('28th');
+      expect(lines(r)[0]).toContain('every 30 days');
       expectHandedOff(await h.confirm(r, 'yes'));
-      const k = h.envelope.intents[0] as {
-        schedule: {
-          frequency: string;
-          day_of_month: number;
-          days_of_week: unknown;
-          end: { type: string; date?: string };
-        };
-        limits: { per_period_cap: unknown; total_cap: unknown };
-        cre_job: { cron: string };
-      };
-      expect(k.schedule).toMatchObject({ frequency: 'monthly', day_of_month: 28, days_of_week: null });
-      expect(k.schedule.end).toEqual({ type: 'on_date', date: '2027-02-27' }); // first date + 3 months - 1 day
-      expect(k.cre_job.cron).toBe('0 10 28 * *');
-      expect(k.limits.per_period_cap).toEqual(usdc('10'));
-      expect(k.limits.total_cap).toEqual(usdc('30')); // Nov 28, Dec 28, Jan 28
+      const k = h.envelope.intents[0];
+      if (k?.intent_id !== 'k') throw new Error('missing autopay');
+      expect(k.schedule.interval_seconds).toBe(30 * 86400);
+      expect(k.schedule.max_runs).toBe(4);
+      expect(k.limits.max_per_run).toEqual(usdc('10.05'));
+      expect(k.limits.max_total).toEqual(usdc('40.2'));
+      expect(k).not.toHaveProperty('cre_job');
       await h.finish();
     });
 
@@ -150,8 +142,7 @@ export function registerA55toA59(): void {
       const r3 = await h.answer(r2, { chipLabel: 'Aradhya' });
       expect(r3.body.state).toBe('awaiting_confirmation');
       expect(lines(r3)).toEqual([
-        'Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.',
-        'Send 20 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.',
+        'Send 10 USDC to Mihir (0x91Ab…77d0) and 20 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia in one atomic payment.',
       ]);
       await h.finish();
     });

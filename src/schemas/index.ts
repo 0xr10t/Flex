@@ -3,6 +3,7 @@
 // by scripts/gen-internal-plan-schema.mjs from src/contracts/types.ts).
 
 import { readFileSync } from 'node:fs';
+import { envelopeSchema } from '@flex/protocol';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import addFormatsModule from 'ajv-formats';
 
@@ -18,7 +19,7 @@ export const SCHEMA = {
   requestType: load('llm-request-type.schema.json'),
   recipientSpans: load('llm-recipient-spans.schema.json'),
   quarantine: load('llm-quarantine.schema.json'),
-  handoffEnvelope: load('handoff-envelope.schema.json'),
+  handoffEnvelope: envelopeSchema,
   internalPlan: load('internal-plan.schema.json'),
 } as const;
 

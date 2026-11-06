@@ -224,7 +224,8 @@ describe('§6.2 static tables / §6.3 defaults', () => {
       max_bridges_per_request: 3,
       allowed_chain_ids: [11155111, 84532, 421614],
       eth_gas_reserve: { '11155111': '0.01', '84532': '0.002', '421614': '0.002' },
-      bridge_buffer_pct: '2',
+      bridge_buffer_pct: '0',
+      max_group_size: 100,
     });
     expect([...DB5_KEYS].sort()).toEqual(Object.keys(DB5_DEFAULTS).sort());
   });

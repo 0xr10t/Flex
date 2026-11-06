@@ -9,6 +9,7 @@ import BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
 import type { Database } from 'better-sqlite3';
 import type { HandoffEnvelope, Hex } from '../schemas/envelope.js';
 import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
+import type { ChainId, Token, ExecutionReport, IntentResultReport } from '@flex/protocol';
 
 export type StepStatus = 'pending' | 'approved' | 'signed' | 'waiting' | 'executed' | 'failed';
 export type ReportStatus = 'pending' | 'delivered' | 'abandoned';
@@ -33,9 +34,9 @@ export interface AutopayRow {
   request_id: string;
   step: number;
   autopay_id: string;
-  chain_id: number;
+  chain_id: ChainId;
   executor: Hex;
-  token: string;
+  token: Token;
   amount: string;
   fee: string;
   delegation_json: string;
@@ -61,7 +62,7 @@ export interface StepResult {
   executed_at?: string;
   error_code?: string;
   /** Extra §14.3 fields: `autopay`, `bridge_fee_eth`. */
-  report?: Record<string, unknown>;
+  report?: Pick<IntentResultReport, 'autopay' | 'bridge_fee_eth'>;
 }
 
 const SCHEMA = `
@@ -432,7 +433,7 @@ export class Store {
   }
 
   /** Queues a report unless one with this key exists. So a rescan of the chain can't report a run twice. */
-  queueReport(requestId: string, step: number | null, dedupeKey: string, body: unknown, nowMs: number): boolean {
+  queueReport(requestId: string, step: number | null, dedupeKey: string, body: ExecutionReport, nowMs: number): boolean {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO reports (request_id, step, dedupe_key, body_json, status, next_attempt_at)
@@ -444,7 +445,7 @@ export class Store {
 
   /** Stores a step's outcome and its report together, and closes the request when this was its last open step. */
   finishStep(requestId: string, step: number, outcome: StepResult, now: string, nowMs: number): void {
-    const report = {
+    const report: IntentResultReport = {
       kind: 'intent_result',
       request_id: requestId,
       step,

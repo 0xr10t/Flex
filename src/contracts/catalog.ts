@@ -60,6 +60,7 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   // SQ-O-01, F-12: a name labelled both payee and mentioned (NAME_ROLE.text() / NAME_ROLE.chips()).
   Q_NAME_ROLE: (p) => `Should I pay ${req(p, 'name')}?`,
   Q_AUTOPAY_FREQUENCY: () => 'How often should this repeat?',
+  Q_AUTOPAY_MONTHLY: () => 'Repeating payments use a fixed interval. Should this run every 4 weeks or every 30 days?',
   Q_AUTOPAY_START: () => 'When should this start?',
   Q_AUTOPAY_END: () => 'When should these payments stop?',
   Q_AUTOPAY_COUNT: () => 'How many payments?',
@@ -92,6 +93,7 @@ export const QUESTION_INPUT: Record<QuestionCode, QuestionInput> = {
   Q_PAIR_AMOUNT: 'chips',
   Q_NAME_ROLE: 'chips',
   Q_AUTOPAY_FREQUENCY: 'chips',
+  Q_AUTOPAY_MONTHLY: 'chips',
   Q_AUTOPAY_START: 'date',
   Q_AUTOPAY_END: 'chips',
   Q_AUTOPAY_COUNT: 'number',
@@ -366,6 +368,11 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   GROUP_EMPTY: (p) => `${req(p, 'parent')} has no members I can pay on ${req(p, 'chain')}.`,
   NO_ACTIVE_AUTOPAY: (p) => `There's no active repeating payment to ${req(p, 'name')}.`,
   AUTOPAY_NOT_READY: () => 'That repeating payment is still being set up. Try again shortly.',
+  AUTOPAY_NOT_CONFIGURED: () => 'Repeating payments need an operator fee and fee recipient configured first.',
+  ETH_NOT_BRIDGEABLE: () => 'ETH cannot be bridged. Add ETH on the payment network or choose another network.',
+  LIMIT_GROUP_SIZE: () => 'That group has more recipients than a single payment can accept.',
+  LIMIT_INTENTS: () => 'This request needs more than 16 steps. Split it into smaller requests.',
+  EXECUTION_PLAN_INVALID: () => 'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
   AUTOPAY_NO_OCCURRENCES: () => 'That schedule has no payment dates. Check the start and end.',
   // SQ-08, F-10: `chains` per chain, "Base Sepolia (80) and Arbitrum Sepolia (60)" (insufficientFundsParams);
   // empty or absent → "…, and can use 0." with no "across" part.

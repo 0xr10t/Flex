@@ -159,8 +159,9 @@ export function currentPaymentDraft(ctx: StepContext): PaymentDraft | null {
     recipient.address === null ||
     recipient.source === 'untrusted' ||
     recipient.session_id !== req.session_id ||
-    planned.amount !== payment.amount ||
-    planned.recipient !== payment.recipient ||
+    planned.recipients.length !== 1 ||
+    planned.recipients[0]?.amount !== payment.amount ||
+    planned.recipients[0]?.recipient !== payment.recipient ||
     !parseAmountText(amount.amount, amount.token).ok
   )
     return null;

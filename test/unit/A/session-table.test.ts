@@ -194,7 +194,7 @@ describe('§8.14 step 6 HANDOFF_FAILED attempts', () => {
   it('C-155 / C-426: attempts 1 and 2 → HANDOFF_FAILED, attempt 3 → FAILED; S12 called exactly 3 times on the same request and envelope', async () => {
     const h = makeHarness();
     const envelope: HandoffEnvelope = {
-      version: '1',
+      version: '2',
       request_id: 'req_x',
       wallet_address: A1,
       created_at: '2026-11-05T17:30:00.000Z',
@@ -426,21 +426,21 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
     r.db4.upsertOk({ chain_id: 84532, chain: 'Base Sepolia', token: 'USDC', balance: '1', base_units: '1000000' }, 't');
     r.db6.insertMany([
       {
-        request_id: rid,
-        step: 0,
-        kind: 'payment',
-        counts_toward_limit: true,
-        chain_id: 84532,
-        token: 'USDC',
-        amount: '5',
-        recipient_address: A1,
-        intent_id: 'i',
-        autopay_id: null,
-        status: 'pending',
-        tx_hash: null,
-        created_at: 't',
-        executed_at: null,
-      },
+request_id: rid,
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: 84532,
+token: 'USDC',
+recipient_address: A1,
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: 't',
+executed_at: null,
+amount: '5'
+},
     ]);
     r.db7.insertPending(
       {

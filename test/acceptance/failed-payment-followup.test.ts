@@ -182,8 +182,8 @@ describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', (
         dest_token_address: USDC_ADDR[ARB],
         source_chain_id: BASE,
         dest_chain_id: ARB,
-        amount: usdc('10.2'),
-        receiver: 'self',
+        amount: usdc('10'),
+        receiver: 'self', fee_max_eth: '0.002',
         funds_steps: [1],
       },
       usdcIntent({
@@ -254,12 +254,11 @@ describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', (
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-      intent_id: 'i',
-      token,
-      chain_id: BASE,
-      recipient: ARADHYA,
-      amount: token === 'ETH' ? eth(number) : usdc(number),
-    });
+intent_id: 'i',
+token,
+chain_id: BASE,
+recipients: [{ recipient: ARADHYA, amount: token === 'ETH' ? eth(number) : usdc(number) }]
+});
   });
 
   it('refreshes balances and recomputes bridge requirements for the new request', async () => {
@@ -312,7 +311,10 @@ describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', (
     expect(h.exec.submissions).toHaveLength(1);
     expect(h.rows('SELECT request_id FROM db8_history')).toEqual([{ request_id: old.body.request_id }]);
     await h.confirm(corrected, 'yes');
-    expect(h.envelope.intents.at(-1)).toMatchObject({ recipient: ARADHYA, chain_id: ARB, amount: usdc('70') });
+    expect(h.envelope.intents.at(-1)).toMatchObject({
+chain_id: ARB,
+recipients: [{ recipient: ARADHYA, amount: usdc('70') }]
+});
     expect(h.rows('SELECT request_id FROM db8_history').map((row) => row.request_id)).not.toContain(
       failed.body.request_id,
     );
@@ -333,7 +335,10 @@ describe('SQ-S-01 safety boundaries', () => {
     expect(summary.body.state).toBe('awaiting_confirmation');
     noCommitment(h);
     await h.confirm(summary, 'yes');
-    expect(h.envelope.intents.at(-1)).toMatchObject({ recipient: MIHIR, chain_id: ARB, amount: usdc('70') });
+    expect(h.envelope.intents.at(-1)).toMatchObject({
+chain_id: ARB,
+recipients: [{ recipient: MIHIR, amount: usdc('70') }]
+});
   });
 
   it('does not reuse a payee when a new name is present but omitted by the spans model', async () => {
@@ -596,11 +601,10 @@ describe('SQ-S-01: explanatory follow-ups use ordinary back-reference semantics'
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-      intent_id: 'i',
-      token: 'USDC',
-      recipient: RIYA,
-      amount: usdc('50'),
-    });
+intent_id: 'i',
+token: 'USDC',
+recipients: [{ recipient: RIYA, amount: usdc('50') }]
+});
   });
 
   it('uses an explicit new recipient and ordinary chain choice despite a pronoun in the explanation', async () => {
@@ -675,7 +679,9 @@ describe('SQ-S-01: explanatory follow-ups use ordinary back-reference semantics'
     ).toEqual([{ amount: '50', token: 'USDC' }]);
     noCommitment(h);
     await h.confirm(summary, 'yes');
-    expect(h.envelope.intents.at(-1)).toMatchObject({ recipient: RIYA, amount: usdc('50') });
+    expect(h.envelope.intents.at(-1)).toMatchObject({
+recipients: [{ recipient: RIYA, amount: usdc('50') }]
+});
   });
 
   it('does not let a back-reference bypass the conflicting-token safeguard', async () => {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AcceptanceLlm, ARADHYA, BASE, MIHIR, REPORT_TOKEN, UI_TOKEN, harness, scanLogs } from './harness.js';
-import { DELEGATE, seedAutopay, seedSpend } from './seed.js';
+import { planIdFor, DELEGATE, seedAutopay, seedSpend } from './seed.js';
 
 const PERSISTENT = ['db2_address_book', 'db4_balances', 'db5_limits', 'db6_spend_log', 'db7_autopays'];
 const SESSION = ['db1_amount_placeholders', 'db3_address_placeholders', 'db8_prompts', 'db8_history', 'db8_sessions'];
@@ -224,13 +224,13 @@ export function registerPlatform(): void {
         status: 'executed',
         tx_hash: txHash,
         executed_at: '2026-11-06T04:31:00Z',
-        autopay: { autopay_id: id, delegate_address: DELEGATE, cre_job_id: 'cre-77', status: 'active' },
+        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, chain_id: BASE, token: 'USDC' },
       });
       expect(status).toBe(204);
       const row = h.repos.db7.get(id)!;
       expect(row.status).toBe('active');
-      expect(row.delegate_address).toBe(DELEGATE);
-      expect(row.cre_job_id).toBe('cre-77');
+      expect(row.executor_address).toBe(DELEGATE);
+      expect(row.plan_id).toBe(planIdFor(id));
       const spend = h.rows<{ status: string; tx_hash: string; executed_at: string }>(
         "SELECT * FROM db6_spend_log WHERE kind='autopay_prefund'",
       );
@@ -261,7 +261,7 @@ export function registerPlatform(): void {
         status: 'executed',
         tx_hash: '0x' + 'ef'.repeat(32),
         executed_at: '2026-11-05T17:00:00Z',
-        autopay: { autopay_id: id, amount: '10', chain_id: BASE, token: 'USDC' },
+        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', chain_id: BASE, token: 'USDC' },
       });
       expect(status).toBe(204);
       const rows = h.rows<Record<string, unknown>>("SELECT * FROM db6_spend_log WHERE kind='autopay_payment'");
@@ -276,7 +276,7 @@ export function registerPlatform(): void {
         step: null,
       });
       const today = h.repos.db6.spentToday('USDC', 'Asia/Kolkata', h.nowIso);
-      expect(today.map((r) => r.amount)).toEqual(['10']);
+      expect(today.map((r) => r.amount)).toEqual(['10', '0.05']);
       // The same row is not "today" on another day.
       expect(h.repos.db6.spentToday('USDC', 'Asia/Kolkata', '2026-11-07T10:00:00Z')).toEqual([]);
       await h.finish();
@@ -285,10 +285,10 @@ export function registerPlatform(): void {
     it('A-55: autopay_status ends the DB7 row', async () => {
       const h = await harness('none');
       const id = seedAutopay(h);
-      expect(await h.report({ kind: 'autopay_status', autopay: { autopay_id: id, status: 'ended' } })).toBe(204);
+      expect(await h.report({ kind: 'autopay_status', request_id: 'req_00000000aaaa', autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, chain_id: BASE, token: 'USDC', status: 'ended' } })).toBe(204);
       expect(h.repos.db7.get(id)!.status).toBe('ended');
       expect(
-        await h.report({ kind: 'autopay_status', autopay: { autopay_id: 'ap_ffffffffffff', status: 'ended' } }),
+        await h.report({ kind: 'autopay_status', request_id: 'req_00000000aaaa', autopay: { autopay_id: 'ap_ffffffffffff', plan_id: planIdFor(id), executor_address: DELEGATE, chain_id: BASE, token: 'USDC', status: 'ended' } }),
       ).toBe(404);
       await h.finish();
     });

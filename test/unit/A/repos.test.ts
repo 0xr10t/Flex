@@ -315,22 +315,22 @@ describe('§7.1 DB5 limits', () => {
 
 function db6(over: Partial<Db6Insert>): Db6Insert {
   return {
-    request_id: 'req_aaaaaaaaaaaa',
-    step: 0,
-    kind: 'payment',
-    counts_toward_limit: true,
-    chain_id: 84532,
-    token: 'USDC',
-    amount: '10',
-    recipient_address: A1,
-    intent_id: 'i',
-    autopay_id: null,
-    status: 'pending',
-    tx_hash: null,
-    created_at: '2026-11-05T10:00:00.000Z',
-    executed_at: null,
-    ...over,
-  };
+request_id: 'req_aaaaaaaaaaaa',
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: 84532,
+token: 'USDC',
+recipient_address: A1,
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: '2026-11-05T10:00:00.000Z',
+executed_at: null,
+amount: '10',
+...over
+};
 }
 
 describe('§7.1 DB6 spend log', () => {
@@ -457,6 +457,7 @@ describe('§7.1 DB7 autopays', () => {
       ...row,
       delegate_address: null,
       cre_job_id: null,
+      plan_id: null, executor_address: null, fee: null, recipients_json: null, display_json: null,
       status: 'pending',
       created_at: 't0',
       updated_at: 't0',

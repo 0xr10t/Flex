@@ -11,12 +11,10 @@ import type {
   AddressPh,
   AmountPh,
   ChainId,
-  CreJob,
   EnvelopeAmount,
   EnvelopeIntent,
   HandoffEnvelope,
   InternalIntent,
-  Schedule,
   Token,
 } from '../contracts/types.js';
 import { TOKEN_DECIMALS } from '../contracts/types.js';
@@ -42,24 +40,6 @@ function tokenAddress(ctx: StepContext, token: Token, chain_id: ChainId): Addres
   return getAddress(chain.usdc_address);
 }
 
-function scheduleOf(s: Schedule): Schedule {
-  return {
-    frequency: s.frequency,
-    interval: s.interval,
-    days_of_week: s.days_of_week,
-    day_of_month: s.day_of_month,
-    time_of_day: s.time_of_day,
-    timezone: s.timezone,
-    start_date: s.start_date,
-    first_occurrence: s.first_occurrence,
-    end: s.end,
-  };
-}
-
-function creJobOf(j: CreJob): CreJob {
-  return { trigger: j.trigger, cron: j.cron, timezone: j.timezone, interval: j.interval };
-}
-
 function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
   switch (it.intent_id) {
     case 'i':
@@ -70,20 +50,20 @@ function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
         token: it.token,
         token_address: tokenAddress(ctx, it.token, it.chain_id),
         chain_id: it.chain_id,
-        amount: amountOf(ctx, it.amount),
-        recipient: addressOf(ctx, it.recipient),
+        recipients: it.recipients.map((p) => ({ recipient: addressOf(ctx, p.recipient), amount: amountOf(ctx, p.amount) })),
       };
     case 'j':
       return {
         intent_id: 'j',
         step: it.step,
         token: it.token,
-        source_token_address: tokenAddress(ctx, it.token, it.source_chain_id),
-        dest_token_address: tokenAddress(ctx, it.token, it.dest_chain_id),
+        source_token_address: tokenAddress(ctx, it.token, it.source_chain_id) as Address,
+        dest_token_address: tokenAddress(ctx, it.token, it.dest_chain_id) as Address,
         source_chain_id: it.source_chain_id,
         dest_chain_id: it.dest_chain_id,
         amount: amountOf(ctx, it.amount),
         receiver: 'self',
+        fee_max_eth: it.fee_max_eth,
         funds_steps: it.funds_steps,
       };
     case 'k':
@@ -95,16 +75,20 @@ function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
         token: it.token,
         token_address: tokenAddress(ctx, it.token, it.chain_id),
         chain_id: it.chain_id,
-        recipient: addressOf(ctx, it.recipient),
-        amount_per_payment: amountOf(ctx, it.amount_per_payment),
-        prefund: amountOf(ctx, it.limits.total_cap),
-        schedule: scheduleOf(it.schedule),
-        limits: {
-          per_period_cap: amountOf(ctx, it.limits.per_period_cap),
-          total_cap: amountOf(ctx, it.limits.total_cap),
-          expires_at: it.limits.expires_at,
+        recipients: it.recipients.map((p) => ({ recipient: addressOf(ctx, p.recipient), amount: amountOf(ctx, p.amount) })),
+        fee: { to: getAddress(it.fee.to), amount: amountOf(ctx, it.fee.amount) },
+        schedule: {
+          start_at: it.schedule.start_at,
+          interval_seconds: it.schedule.interval_seconds,
+          max_runs: it.schedule.max_runs,
+          late_window_seconds: it.schedule.late_window_seconds,
+          end_at: it.schedule.end_at,
         },
-        cre_job: creJobOf(it.cre_job),
+        limits: {
+          max_per_run: amountOf(ctx, it.limits.max_per_run),
+          max_total: amountOf(ctx, it.limits.max_total),
+        },
+        executor: 'chainlink-cre',
       };
     case 'l':
       return {
@@ -112,16 +96,14 @@ function intentOf(ctx: StepContext, it: InternalIntent): EnvelopeIntent {
         step: it.step,
         autopay_id: it.autopay_id,
         chain_id: it.chain_id,
-        delegate_address: getAddress(it.delegate_address),
-        recipient: addressOf(ctx, it.recipient),
-        refund_remaining: true,
+        plan_id: it.plan_id,
       };
   }
 }
 
 export function swapBack(ctx: StepContext, plan: InternalIntent[]): HandoffEnvelope {
   return {
-    version: '1',
+    version: '2',
     request_id: ctx.req.request_id,
     wallet_address: getAddress(ctx.config.wallet.address),
     created_at: ctx.now().toUTC().toISO({ suppressMilliseconds: true }) as string,

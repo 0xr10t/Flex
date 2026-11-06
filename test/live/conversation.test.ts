@@ -111,7 +111,7 @@ describe('real-model conversational replies', () => {
         limits: { total_cap: { value: '60' } },
       });
       if (intent.intent_id !== 'k') throw new Error('Expected an autopay');
-      expect(Date.parse(intent.schedule.first_occurrence)).toBe(Date.parse('2026-11-09T04:30:00Z'));
+      expect(intent.schedule.start_at * 1000).toBe(Date.parse('2026-11-09T04:30:00Z'));
       expect(h.repos.db2.findByNameKey('yash')).toEqual([]);
     });
   });
@@ -145,7 +145,10 @@ describe('real-model conversational replies', () => {
       expect(summary.body.state).toBe('awaiting_confirmation');
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents).toMatchObject([{ intent_id: 'i', recipient: RIYA, amount: { value: '10' } }]);
+      expect(h.envelope.intents).toMatchObject([{
+intent_id: 'i',
+recipients: [{ recipient: RIYA, amount: { value: '10' } }]
+}]);
     });
   });
 
@@ -172,7 +175,11 @@ describe('real-model conversational replies', () => {
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents).toMatchObject([
-        { intent_id: 'i', recipient: MIHIR, chain_id: BASE, amount: { value: '5' } },
+        {
+intent_id: 'i',
+chain_id: BASE,
+recipients: [{ recipient: MIHIR, amount: { value: '5' } }]
+},
       ]);
     });
   });

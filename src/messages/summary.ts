@@ -9,13 +9,12 @@ import type { StepContext } from '../contracts/step.js';
 import type {
   AddressPh,
   AmountPh,
-  GroupPh,
   InternalIntent,
   PlanI,
   PlanJ,
   PlanK,
   PlanL,
-  Schedule,
+  CalendarSchedule,
   Summary,
   Weekday,
 } from '../contracts/types.js';
@@ -50,7 +49,7 @@ function ordinal(d: number): string {
 }
 
 /** §13.1 {cadence}. */
-export function cadenceText(s: Schedule): string {
+export function cadenceText(s: CalendarSchedule): string {
   const n = String(s.interval);
   if (s.frequency === 'daily') return s.interval === 1 ? CADENCE.DAILY() : CADENCE.DAILY_N({ n });
   if (s.frequency === 'weekly') {
@@ -66,7 +65,7 @@ function displayDate(dt: DateTime): string {
 }
 
 /** §13.1 {end text}. */
-function endText(ctx: StepContext, s: Schedule): string {
+function endText(ctx: StepContext, s: CalendarSchedule): string {
   const end = s.end;
   if (end.type === 'after_count') return END_TEXT.COUNT({ n: String(end.count) });
   if (end.type === 'on_date') return END_TEXT.DATE({ date: displayDate(DateTime.fromISO(end.date)) });
@@ -91,49 +90,52 @@ function lineJ(ctx: StepContext, it: PlanJ): string {
     source: chainName(ctx, it.source_chain_id),
     dest: chainName(ctx, it.dest_chain_id),
     b: ctx.limits.bridge_buffer_pct,
+    fee: it.fee_max_eth,
   });
 }
 
 function lineI(ctx: StepContext, it: PlanI): string {
-  const base = SUMMARY_LINE.I({
-    amount: displayAmount(ctx, it.amount),
+  const first = it.recipients[0]!;
+  const group = ctx.repos.db3.get(first.recipient)?.group_placeholder;
+  const sameGroup = group && it.recipients.every((p) => ctx.repos.db3.get(p.recipient)?.group_placeholder === group && p.amount === first.amount);
+  const base = it.recipients.length === 1 ? SUMMARY_LINE.I({
+    amount: displayAmount(ctx, first.amount),
     token: it.token,
-    name: recipientNameOf(ctx, it.recipient),
-    addr: address(ctx, it.recipient),
+    name: recipientNameOf(ctx, first.recipient),
+    addr: address(ctx, first.recipient),
     chain: chainName(ctx, it.chain_id),
-  });
+  }) : sameGroup ? SUMMARY_LINE.I_GROUP({
+    amount: displayAmount(ctx, first.amount), token: it.token, count: String(it.recipients.length),
+    parent: ctx.repos.db3.get(group)?.name ?? '', chain: chainName(ctx, it.chain_id),
+    names: it.recipients.map((p) => recipientNameOf(ctx, p.recipient)).join(', '),
+  }) : `Send ${joinAnd(it.recipients.map((p) => `${displayAmount(ctx, p.amount)} ${it.token} to ${recipientNameOf(ctx, p.recipient)} (${address(ctx, p.recipient)})`))} on ${chainName(ctx, it.chain_id)} in one atomic payment.`;
   if (it.depends_on.length === 0) return base;
   // Bridges come first and are never collapsed, so step s is line s + 1 (SQ-D-03 for several steps).
   return base + SUMMARY_LINE.AFTER_STEP({ n: joinAnd(it.depends_on.map((s) => String(s + 1))) });
 }
 
-function lineGroup(ctx: StepContext, group: GroupPh, members: PlanI[]): string {
-  const first = members[0] as PlanI;
-  return SUMMARY_LINE.I_GROUP({
-    amount: displayAmount(ctx, first.amount),
-    token: first.token,
-    count: String(members.length),
-    parent: ctx.repos.db3.get(group)?.name ?? '',
-    chain: chainName(ctx, first.chain_id),
-    names: members.map((m) => ctx.repos.db3.get(m.recipient)?.name ?? '').join(', '),
-  });
-}
-
 function lineK(ctx: StepContext, it: PlanK): string {
-  const s = it.schedule;
-  const first = DateTime.fromISO(s.first_occurrence, { setZone: true }).setZone(s.timezone);
+  const first = DateTime.fromSeconds(it.schedule.start_at, { zone: it.display.schedule.timezone });
+  const s: CalendarSchedule = { ...it.display.schedule, days_of_week: it.display.schedule.frequency === 'weekly' ? [(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const)[first.weekday - 1]!] : null,
+    end: { type: 'after_count', count: it.schedule.max_runs } };
+  const payee = it.recipients[0]!;
   return SUMMARY_LINE.K({
-    name: recipientNameOf(ctx, it.recipient),
-    addr: address(ctx, it.recipient),
-    amount: displayAmount(ctx, it.amount_per_payment),
+    name: recipientNameOf(ctx, payee.recipient),
+    addr: address(ctx, payee.recipient),
+    amount: displayAmount(ctx, payee.amount),
+    payments: joinAnd(it.recipients.map((p) => `${displayAmount(ctx, p.amount)} ${it.token} to ${recipientNameOf(ctx, p.recipient)} (${address(ctx, p.recipient)})`)),
     token: it.token,
     cadence: cadenceText(s),
-    time: s.time_of_day,
+    time: first.toFormat('HH:mm'),
     timezone: s.timezone,
     chain: chainName(ctx, it.chain_id),
     first: displayDate(first),
     end: endText(ctx, s),
-    total_cap: displayAmount(ctx, it.limits.total_cap),
+    total_cap: displayAmount(ctx, it.limits.max_total),
+    fee: displayAmount(ctx, it.fee.amount),
+    collector: it.fee.to,
+    max_per_run: displayAmount(ctx, it.limits.max_per_run),
+    late: String(it.schedule.late_window_seconds),
   });
 }
 
@@ -144,17 +146,12 @@ function lineL(ctx: StepContext, it: PlanL): string {
     name: recipientName(ctx, ctx.repos.db3.get(it.recipient)) || row.recipient_name,
     amount: normalizeDecimal(row.amount_per_payment, decimalsOf(row.token)),
     token: row.token,
-    cadence: cadenceText(JSON.parse(row.schedule_json) as Schedule),
+    cadence: cadenceText(JSON.parse(row.display_json ?? row.schedule_json) as CalendarSchedule),
     chain: chainName(ctx, it.chain_id),
   });
 }
 
-function groupOf(ctx: StepContext, it: PlanI): GroupPh | null {
-  const row = ctx.repos.db3.get(it.recipient);
-  return row?.kind === 'member' ? row.group_placeholder : null;
-}
-
-/** One numbered line per intent in step order; a group's expanded `i` intents collapse into one line. */
+/** One numbered line per shared intent, so bridge dependency numbers match the handoff exactly. */
 function buildLines(ctx: StepContext, plan: InternalIntent[]): string[] {
   const texts: string[] = [];
   for (let n = 0; n < plan.length; n++) {
@@ -162,23 +159,7 @@ function buildLines(ctx: StepContext, plan: InternalIntent[]): string[] {
     if (it.intent_id === 'j') texts.push(lineJ(ctx, it));
     else if (it.intent_id === 'k') texts.push(lineK(ctx, it));
     else if (it.intent_id === 'l') texts.push(lineL(ctx, it));
-    else {
-      const group = groupOf(ctx, it);
-      if (group === null) {
-        texts.push(lineI(ctx, it));
-        continue;
-      }
-      // One line per group payment: P3 makes (amount, group) unique, so the amount placeholder separates two payments
-      // to the same group.
-      const members = [it];
-      const samePayment = (x: InternalIntent | undefined): x is PlanI =>
-        x?.intent_id === 'i' && x.amount === it.amount && groupOf(ctx, x) === group;
-      for (let next = plan[n + 1]; samePayment(next); next = plan[n + 1]) {
-        members.push(next);
-        n++;
-      }
-      texts.push(lineGroup(ctx, group, members));
-    }
+    else texts.push(lineI(ctx, it));
   }
   return texts.map((t, i) => `${i + 1}. ${t}`);
 }
@@ -187,13 +168,14 @@ function buildLines(ctx: StepContext, plan: InternalIntent[]): string[] {
 function addPlanNotes(ctx: StepContext, plan: InternalIntent[]): void {
   const { req, repos } = ctx;
   const paid = plan.flatMap((it) =>
-    it.intent_id === 'i'
-      ? [{ amount: it.amount, recipient: it.recipient }]
-      : it.intent_id === 'k'
-        ? [{ amount: it.amount_per_payment, recipient: it.recipient }]
-        : [],
+    it.intent_id === 'i' || it.intent_id === 'k' ? it.recipients : [],
   );
   const used = new Set(paid.map((p) => p.amount));
+  for (const it of plan) if (it.intent_id === 'k') {
+    const first = DateTime.fromSeconds(it.schedule.start_at, { zone: it.display.schedule.timezone });
+    if (first.set({ month: 1 }).offset !== first.set({ month: 7 }).offset)
+      pushNote(ctx, 'Times are fixed in UTC, so the local time shifts by an hour when daylight saving changes.');
+  }
   for (const a of req.amounts) {
     if (!used.has(a.placeholder)) continue;
     const unverified = !a.code_verified || a.relative !== null || a.fiat === 'USD';

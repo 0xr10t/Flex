@@ -304,7 +304,8 @@ describe('§6.3 DB5 defaults on first run (real SQLCipher DB)', () => {
     ['C-019', 'max_bridges_per_request', 3],
     ['C-020', 'allowed_chain_ids', [11155111, 84532, 421614]],
     ['C-021', 'eth_gas_reserve', { '11155111': '0.01', '84532': '0.002', '421614': '0.002' }],
-    ['C-022', 'bridge_buffer_pct', '2'],
+    ['C-022', 'bridge_buffer_pct', '0'],
+    ['v2', 'max_group_size', 100],
   ];
   for (const [id, key, value] of literal) {
     it(`${id} §6.3: first run inserts ${key} = ${JSON.stringify(value)}`, () => {

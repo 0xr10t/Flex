@@ -121,7 +121,9 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
       ]);
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents[0]).toMatchObject({ recipient: MIHIR, amount: { value: '10' } });
+      expect(h.envelope.intents[0]).toMatchObject({
+recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
+});
     },
   );
 
@@ -154,7 +156,9 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     expect((await h.say('yes')).body.state).toBe('done');
     expect(h.llm.recorded).toHaveLength(calls);
     expect(h.exec.submissions).toHaveLength(1);
-    expect(h.envelope.intents[0]).toMatchObject({ recipient: MIHIR, amount: { value: '10' } });
+    expect(h.envelope.intents[0]).toMatchObject({
+recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
+});
   });
 
   it.each(['chat_route', 'chat'] as const)(
@@ -480,10 +484,9 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     expect(h.exec.submissions).toHaveLength(0);
     await h.confirm(corrected, 'yes');
     expect(h.envelope.intents[0]).toMatchObject({
-      recipient: MIHIR,
-      chain_id: 84532,
-      token: 'USDC',
-      amount: { value: '20' },
-    });
+chain_id: 84532,
+token: 'USDC',
+recipients: [{ recipient: MIHIR, amount: { value: '20' } }]
+});
   });
 });

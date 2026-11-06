@@ -432,7 +432,7 @@ export class Harness {
     });
     return this.track({ http: res.status, body: res.json as unknown as AgentResponse });
   }
-  async report(body: ExecutionReport, token: string | null = REPORT_TOKEN): Promise<number> {
+  async report(body: unknown, token: string | null = REPORT_TOKEN): Promise<number> {
     return (await this.http('POST', '/v1/execution/reports', { token, body })).status;
   }
 
@@ -530,5 +530,5 @@ export const REQUEST_ID = /^req_[0-9a-f]{12}$/;
 
 /** Expected envelope head, to be spread with `intents`. */
 export function head(h: Harness, request_id: string): Record<string, unknown> {
-  return { version: '1', request_id, wallet_address: WALLET, created_at: h.nowIso };
+  return { version: '2', request_id, wallet_address: WALLET, created_at: h.nowIso };
 }

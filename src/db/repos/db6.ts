@@ -10,7 +10,7 @@ import type { Database } from '../database.js';
 import { toBool, toInt } from './common.js';
 
 /** §7.1: kinds whose rows count toward the daily limit. */
-export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>(['payment', 'bridge_buffer', 'autopay_payment']);
+export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>(['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee']);
 /** §10.1 / I-10 window. */
 export const PENDING_WINDOW_MINUTES = 10;
 
@@ -26,6 +26,7 @@ interface Raw {
   recipient_address: string | null;
   intent_id: string | null;
   autopay_id: string | null;
+  autopay_slot: number | null;
   status: string;
   tx_hash: string | null;
   created_at: string;
@@ -44,6 +45,7 @@ const fromRaw = (r: Raw): Db6Row => ({
   recipient_address: r.recipient_address as Address | null,
   intent_id: r.intent_id as Db6Row['intent_id'],
   autopay_id: r.autopay_id as AutopayId | null,
+  autopay_slot: r.autopay_slot,
   status: r.status as Db6Row['status'],
   tx_hash: r.tx_hash,
   created_at: r.created_at,
@@ -56,8 +58,8 @@ export function createDb6(db: Database): Db6SpendLog {
   const insert = db.prepare(
     `INSERT INTO db6_spend_log
        (request_id, step, kind, counts_toward_limit, chain_id, token, amount, recipient_address, intent_id,
-        autopay_id, status, tx_hash, created_at, executed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        autopay_id, status, tx_hash, created_at, executed_at, autopay_slot)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const hasReq = db.prepare('SELECT 1 FROM db6_spend_log WHERE request_id = ? LIMIT 1');
   const byRequest = db.prepare('SELECT * FROM db6_spend_log WHERE request_id = ? ORDER BY id');
@@ -67,7 +69,7 @@ export function createDb6(db: Database): Db6SpendLog {
   );
   const pendingCandidates = db.prepare(
     `SELECT * FROM db6_spend_log
-     WHERE status = 'pending' AND chain_id = ? AND token = ? AND kind IN ('payment','bridge_out','autopay_prefund')
+     WHERE status = 'pending' AND chain_id = ? AND token = ? AND kind IN ('payment','bridge_out','bridge_fee','autopay_prefund')
      ORDER BY id`,
   );
   const spentCandidates = db.prepare(
@@ -98,6 +100,7 @@ export function createDb6(db: Database): Db6SpendLog {
         r.tx_hash,
         r.created_at,
         r.executed_at,
+        r.autopay_slot ?? null,
       );
     }
   });
@@ -107,7 +110,8 @@ export function createDb6(db: Database): Db6SpendLog {
     hasRequest: (request_id) => hasReq.get(request_id) !== undefined,
     listByRequest: (request_id) => (byRequest.all(request_id) as Raw[]).map(fromRaw),
     hasTxHash: (tx_hash) => hasTx.get(tx_hash) !== undefined,
-    applyIntentResult({ request_id, step, status, tx_hash, executed_at }) {
+    applyIntentResult({ request_id, step, status, tx_hash, executed_at, bridge_fee_eth }) {
+      if (bridge_fee_eth !== undefined) db.prepare("UPDATE db6_spend_log SET amount = ? WHERE request_id = ? AND step = ? AND kind = 'bridge_fee' AND status != 'executed'").run(bridge_fee_eth, request_id, step);
       return apply.run(status, tx_hash, executed_at, request_id, step).changes;
     },
     pendingRecent(chain_id, token, now_utc) {

@@ -5,7 +5,7 @@ import type { SubmitResult } from '../../src/contracts/io.js';
 import type { ExecutionReport } from '../../src/contracts/types.js';
 import type { FixtureFile } from '../fakes/llm.js';
 import { Harness, loadFixture, BASE, MIHIR, ARADHYA } from './harness.js';
-import { seedAutopay, seedSpend } from './seed.js';
+import { planIdFor, DELEGATE, seedAutopay, seedSpend } from './seed.js';
 
 const created: Harness[] = [];
 const PAYMENT = 'Send 50 USDc to ARADHYA';
@@ -120,7 +120,7 @@ describe('R1-F1 / R5-2 session lifecycle during real pipeline calls', () => {
       expect(response.http).toBe(200);
       expect(response.body.messages).toContainEqual({ type: 'text', text: 'Sent to your wallet for signing.' });
       expect(h.exec.submissions).toHaveLength(1);
-      expect(h.count('db6_spend_log')).toBe(1);
+      expect(h.count('db6_spend_log')).toBe(fixture === 'A-08' ? 3 : 1);
       expect(stores.map((t) => h.count(t))).toEqual([0, 0, 0, 0]);
       expect(
         (
@@ -207,11 +207,11 @@ describe('SQ-R-05 late autopay confirmation', () => {
     expect((await h.confirm(revised, 'yes')).body.state).toBe('done');
     const k = h.envelope.intents.find((i) => i.intent_id === 'k');
     expect(k).toMatchObject({
-      schedule: { start_date: '2026-11-13', end: { type: 'after_count', count: 4 } },
-      limits: { total_cap: { value: '40' } },
+      schedule: { start_at: Date.parse('2026-11-13T04:30:00Z') / 1000, max_runs: 4 },
+      limits: { max_total: { value: '40.2' } },
     });
     if (k?.intent_id !== 'k') throw new Error('missing autopay');
-    expect(Date.parse(k.schedule.first_occurrence)).toBeGreaterThan(h.clock.toMillis());
+    expect(k.schedule.start_at * 1000).toBeGreaterThan(h.clock.toMillis());
     expect(h.exec.submissions).toHaveLength(1);
   });
 
@@ -241,23 +241,24 @@ describe('SQ-R-04 duplicate autopay reports', () => {
     const h = make('duplicate-report', 'A-55');
     const id = seedAutopay(h);
     const limits = h.repos.db5.getAll();
-    limits.daily_max.USDC = '20';
+    limits.daily_max.USDC = '20.05';
     h.repos.db5.putAll(limits, h.nowIso);
     const report: ExecutionReport = {
       kind: 'autopay_payment',
+      request_id: 'req_00000000aaaa', status: 'executed',
       tx_hash: `0x${'aa'.repeat(32)}`,
       executed_at: h.nowIso,
-      autopay: { autopay_id: id, amount: '10', token: 'USDC', chain_id: BASE },
+      autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', token: 'USDC', chain_id: BASE },
     };
     expect(await h.report(report)).toBe(204);
     const first = h.rows('SELECT * FROM db6_spend_log');
-    expect(first).toHaveLength(1);
+    expect(first).toHaveLength(2);
     expect(await h.report(report)).toBe(204);
     expect(h.rows('SELECT * FROM db6_spend_log')).toEqual(first);
     expect((await h.say('send 10 usdc to mihir')).body.state).toBe('awaiting_confirmation');
   });
 
-  it('SQ-R-04 a hash already used by an ordinary payment is also ignored', async () => {
+  it('SQ-R-04 a run in the same transaction as an ordinary payment still counts separately', async () => {
     const h = make('duplicate-other-kind', { calls: [] });
     const id = seedAutopay(h);
     const tx_hash = `0x${'bb'.repeat(32)}`;
@@ -266,12 +267,13 @@ describe('SQ-R-04 duplicate autopay reports', () => {
     expect(
       await h.report({
         kind: 'autopay_payment',
+      request_id: 'req_00000000aaaa', status: 'executed',
         tx_hash,
         executed_at: h.nowIso,
-        autopay: { autopay_id: id, amount: '10', token: 'USDC', chain_id: BASE },
+        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', token: 'USDC', chain_id: BASE },
       }),
     ).toBe(204);
-    expect(h.rows('SELECT * FROM db6_spend_log')).toEqual(before);
+    expect(h.rows('SELECT * FROM db6_spend_log')).toHaveLength(before.length + 2);
   });
 });
 
@@ -292,14 +294,16 @@ describe('R1-F2 and R4-F2 consent through the request runner', () => {
     expect(response.body.state).toBe('awaiting_confirmation');
     expect((await h.confirm(response, 'yes')).body.state).toBe('done');
     expect(h.envelope.intents).toMatchObject([
-      { intent_id: 'i', recipient: ARADHYA, amount: { value: '10' } },
-      { intent_id: 'i', recipient: MIHIR, amount: { value: '20' } },
+      {
+intent_id: 'i',
+recipients: [{ recipient: ARADHYA, amount: { value: '10' } }, { recipient: MIHIR, amount: { value: '20' } }]
+},
     ]);
   });
 
   it('R4-F2 a report received while a limit question is open triggers consent to the newly broken limit', async () => {
     const h = make('override-report');
-    const id = seedAutopay(h);
+    const id = seedAutopay(h, { amount: '20' });
     const limits = h.repos.db5.getAll();
     limits.per_tx_max.USDC = '40';
     limits.daily_max.USDC = '60';
@@ -311,14 +315,15 @@ describe('R1-F2 and R4-F2 consent through the request runner', () => {
     expect(
       await h.report({
         kind: 'autopay_payment',
+      request_id: 'req_00000000aaaa', status: 'executed',
         tx_hash: `0x${'cc'.repeat(32)}`,
         executed_at: h.nowIso,
-        autopay: { autopay_id: id, chain_id: BASE, token: 'USDC', amount: '20' },
+        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', chain_id: BASE, token: 'USDC', amount: '20', fee: '0.05' },
       }),
     ).toBe(204);
     const second = await h.answer(first, { chipLabel: 'Yes' });
     expect(second.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
-    expect(second.body.question?.text).toContain("today's limit of 60 (only 40 is left)");
+    expect(second.body.question?.text).toContain("today's limit of 60 (only 39.95 is left)");
     expect(h.exec.submissions).toHaveLength(0);
     const summary = await h.answer(second, { chipLabel: 'Yes' });
     expect(summary.body.state).toBe('awaiting_confirmation');

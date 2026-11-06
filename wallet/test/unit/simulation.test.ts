@@ -1,5 +1,4 @@
-import { createServer, type Server } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, type Hex } from 'viem';
 import { agreeSimulation, checkAnchor, parseSimulation, validateQuorum } from '@flex/protocol/simulation';
 import { createSimulator, validateSimulationConfig } from '../../src/chain/simulation.js';
@@ -10,6 +9,11 @@ import {
   type SimulationRequest,
 } from '../../cre/autopay/lib/simulation.js';
 import { EVENTS, simulationPaid } from '../../cre/autopay/lib/due.js';
+
+// Route viem through the in-memory RPC fixture; tor.test.ts exercises the real privacy transport.
+vi.mock('../../src/chain/tor-fetch.js', () => ({
+  torFetch: () => (input: string | URL | Request, init?: RequestInit) => fetch(input, init),
+}));
 
 const address = '0x000000000000000000000000000000000000a11c' as Hex;
 const hash = `0x${'ab'.repeat(32)}`;
@@ -78,29 +82,27 @@ describe('strict simulation agreement shared by wallet and CRE', () => {
   });
 });
 
-const servers: Server[] = [];
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
-});
+afterEach(() => vi.unstubAllGlobals());
 
+/** JSON-RPC transport fixture; assertions below still inspect the real viem request payloads. */
 async function rpcServer(answer: (method: string, params: unknown[], path: string) => unknown) {
-  const server = createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(Buffer.from(chunk));
-    const body = JSON.parse(Buffer.concat(chunks).toString()) as { id: number; method: string; params: unknown[] };
-    let result;
-    try {
-      result = { result: answer(body.method, body.params, req.url!) };
-    } catch {
-      result = { error: { code: -32000, message: 'unavailable' } };
-    }
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, ...result }));
-  });
-  servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as { port: number }).port;
-  return `http://127.0.0.1:${port}`;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      if (url.origin !== 'https://rpc.example') throw new Error('Unexpected RPC endpoint');
+      const body = (await request.json()) as { id: number; method: string; params: unknown[] };
+      let result;
+      try {
+        result = { result: answer(body.method, body.params, url.pathname) };
+      } catch {
+        result = { error: { code: -32000, message: 'unavailable' } };
+      }
+      return Response.json({ jsonrpc: '2.0', id: body.id, ...result });
+    }),
+  );
+  return 'https://rpc.example';
 }
 
 describe('wallet transport', () => {

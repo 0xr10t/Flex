@@ -5,6 +5,8 @@ import { DateTime } from 'luxon';
 import { getAddress } from 'viem';
 import { expect } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
+import { fromBaseUnits, toBaseUnits } from '../../../src/contracts/money.js';
+import { fixedSchedule } from '../../../src/plan/schedule.js';
 import type { Db6Insert } from '../../../src/contracts/repos.js';
 import type { StepResult } from '../../../src/contracts/step.js';
 import type {
@@ -25,7 +27,7 @@ import type {
   PlanL,
   RecipientPh,
   RecipientSource,
-  Schedule,
+  CalendarSchedule,
   Token,
   Weekday,
 } from '../../../src/contracts/types.js';
@@ -44,6 +46,7 @@ export const CAROL_CS = getAddress('0xca201000000000000000000000000000000000c3')
 export const DOC_ADDR_CS = getAddress('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111') as Address;
 export const STRANGER_CS = getAddress('0x1234567890abcdef1234567890abcdef12345678') as Address;
 export const DELEGATE_CS = getAddress('0xde1e9a7e00000000000000000000000000000d01') as Address;
+export const planIdFor = (id: string): Address => `0x${id.slice(3).padStart(64, '0')}`;
 
 export const SEPOLIA: ChainId = 11155111;
 export const BASE: ChainId = 84532;
@@ -478,9 +481,9 @@ export function paymentsCall(match: string, items: Array<Record<string, unknown>
 export function weekly(
   days: Weekday[],
   first: string,
-  end: Schedule['end'],
+  end: CalendarSchedule['end'],
   o: { time?: string; interval?: number; start?: string; tz?: string } = {},
-): Schedule {
+): CalendarSchedule {
   return {
     frequency: 'weekly',
     interval: o.interval ?? 1,
@@ -497,9 +500,9 @@ export function weekly(
 export function sched(
   frequency: Frequency,
   first: string,
-  end: Schedule['end'],
+  end: CalendarSchedule['end'],
   o: { days?: Weekday[] | null; dom?: number | null; time?: string; interval?: number; tz?: string } = {},
-): Schedule {
+): CalendarSchedule {
   return {
     frequency,
     interval: o.interval ?? 1,
@@ -513,7 +516,7 @@ export function sched(
   };
 }
 
-export const E6_SCHEDULE: Schedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', {
+export const E6_SCHEDULE: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', {
   type: 'on_date',
   date: '2026-12-31',
 });
@@ -527,7 +530,7 @@ export function addAutopay(
     chain_id?: ChainId;
     amount?: string;
     token?: Token;
-    schedule?: Schedule;
+    schedule?: CalendarSchedule;
     status?: 'active' | 'pending' | 'cancelled';
     delegate?: Address | null;
   },
@@ -535,13 +538,15 @@ export function addAutopay(
   ctx.repos.db7.insertPending(
     {
       autopay_id: o.autopay_id,
-      request_id: 'req_0000000000b0',
+      request_id: `req_${o.autopay_id.slice(3)}`,
       recipient_name: o.name ?? 'Mihir',
       recipient_address: o.address ?? MIHIR_CS,
       chain_id: o.chain_id ?? BASE,
       token: o.token ?? 'USDC',
       amount_per_payment: o.amount ?? '10',
-      schedule_json: JSON.stringify(o.schedule ?? E6_SCHEDULE),
+      schedule_json: JSON.stringify(fixedSchedule(o.schedule ?? E6_SCHEDULE, 52, 3600).legs[0]),
+      display_json: JSON.stringify(o.schedule ?? E6_SCHEDULE),
+      fee: (o.token ?? 'USDC') === 'USDC' ? '0.05' : '0.00002',
     },
     '2026-11-01T00:00:00Z',
   );
@@ -550,7 +555,7 @@ export function addAutopay(
     const delegate = o.delegate === undefined ? DELEGATE_CS : o.delegate;
     ctx.repos.db7.update(
       o.autopay_id,
-      { status, ...(delegate !== null ? { delegate_address: delegate } : {}) },
+      { status, ...(delegate !== null ? { plan_id: planIdFor(o.autopay_id), executor_address: delegate } : {}) },
       '2026-11-01T00:05:00Z',
     );
   }
@@ -589,9 +594,7 @@ export function planI(
     depends_on: o.depends_on ?? [],
     token: o.token ?? 'USDC',
     chain_id,
-    amount,
-    recipient,
-    reused_from_chain_id: o.reused ?? null,
+    recipients: [{ amount, recipient, reused_from_chain_id: o.reused ?? null }],
   };
 }
 
@@ -603,7 +606,7 @@ export function planJ(
   padded: string,
   deliverable: string,
   funds_steps: number[],
-  token: Token = 'USDC',
+  token: 'USDC' = 'USDC',
 ): PlanJ {
   const decimals = token === 'USDC' ? 6 : 18;
   const amount = mintAmount(ctx, padded, token, { source: 'derived', origin: 'bridge_padded' });
@@ -621,6 +624,7 @@ export function planJ(
     amount,
     deliverable_base_units: base,
     receiver: 'self',
+    fee_max_eth: '0.002',
     funds_steps,
   };
 }
@@ -635,7 +639,7 @@ export function planK(
     per_period?: string;
     total?: string;
     token?: Token;
-    schedule?: Schedule;
+    schedule?: CalendarSchedule;
     expires_at?: string;
     cron?: string;
     depends_on?: number[];
@@ -645,6 +649,11 @@ export function planK(
 ): PlanK {
   const token = o.token ?? 'USDC';
   const schedule = o.schedule ?? E6_SCHEDULE;
+  const executionSchedule = fixedSchedule(schedule, schedule.end.type === 'until_cancelled' ? ctx.limits.autopay_max_weeks : 3000, 3600).legs[0]!;
+  const amount = o.amountPh ?? mintAmount(ctx, o.amount ?? '10', token);
+  const decimals = token === 'USDC' ? 6 : 18;
+  const fee = ctx.config.autopay!.fee[token];
+  const maxPerRun = toBaseUnits(ctx.repos.db1.get(amount)!.amount, decimals) + toBaseUnits(fee, decimals);
   return {
     intent_id: 'k',
     step,
@@ -652,22 +661,20 @@ export function planK(
     autopay_id: o.autopay_id ?? 'ap_00000000000e',
     token,
     chain_id,
-    recipient,
-    amount_per_payment: o.amountPh ?? mintAmount(ctx, o.amount ?? '10', token),
-    schedule,
+    recipients: [{ recipient, amount, reused_from_chain_id: null }],
+    fee: { to: ctx.config.autopay!.fee_collector, amount: mintAmount(ctx, fee, token, { source: 'derived', origin: 'autopay_fee' }) },
+    schedule: executionSchedule,
     limits: {
+      max_per_run: mintAmount(ctx, fromBaseUnits(maxPerRun, decimals), token, { source: 'derived', origin: 'autopay_max_per_run' }),
+      max_total: mintAmount(ctx, o.total ?? fromBaseUnits(maxPerRun * BigInt(executionSchedule.max_runs), decimals), token, { source: 'derived', origin: 'autopay_max_total' }),
+    },
+    executor: 'chainlink-cre',
+    display: {
+      schedule, payment_index: 0,
       per_period_cap: mintAmount(ctx, o.per_period ?? '10', token, {
         source: 'derived',
         origin: 'autopay_per_period_cap',
       }),
-      total_cap: mintAmount(ctx, o.total ?? '80', token, { source: 'derived', origin: 'autopay_total_cap' }),
-      expires_at: o.expires_at ?? '2026-12-31T18:29:59Z',
-    },
-    cre_job: {
-      trigger: 'cron',
-      cron: o.cron ?? '0 10 * * 5',
-      timezone: schedule.timezone,
-      interval: schedule.interval,
     },
   };
 }
@@ -683,9 +690,8 @@ export function planL(
     step,
     autopay_id,
     chain_id,
-    delegate_address: DELEGATE_CS,
+    plan_id: planIdFor(autopay_id),
     recipient,
-    refund_remaining: true,
   };
 }
 

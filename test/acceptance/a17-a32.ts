@@ -331,7 +331,7 @@ export function registerA17toA32(): void {
       expect(r3.body.summary?.notes).toContain('A limit was lifted once for this request.');
       expect(lines(r3)).toEqual([`Send 100 USDC each to 3 members of iitr.eth on Base Sepolia: ${names.join(', ')}.`]);
       expectHandedOff(await h.confirm(r3, 'yes'));
-      expect(h.envelope.intents.map((i) => i.intent_id)).toEqual(['i', 'i', 'i']);
+      expect(h.envelope.intents.map((i) => i.intent_id)).toEqual(['i']);
       expect(spend(h).filter((s) => s.status === 'pending')).toHaveLength(3);
       // DB5 is unchanged by the override.
       expect(h.repos.db5.getAll().daily_max.USDC).toBe('300');
@@ -373,7 +373,7 @@ export function registerA17toA32(): void {
       // SQ-08 F-10: only the chains with a positive amount, in config order.
       const m = r.body.error!.message;
       expect(m).toBe(
-        "You don't have enough USDC: you need 101.4, and can use 50 across Base Sepolia (30) and Arbitrum Sepolia (20).",
+        "You don't have enough USDC: you need 100, and can use 50 across Base Sepolia (30) and Arbitrum Sepolia (20).",
       );
       noSubmission(h);
       await h.finish();
@@ -387,7 +387,7 @@ export function registerA17toA32(): void {
       await h.finish();
     });
 
-    it('A-32 SQ-D-16 F-4: four bridges needed -> Q_LIMIT_OVERRIDE', async () => {
+    it('A-32 SQ-D-16 F-4: ETH bridge request is rejected before confirmation', async () => {
       // USDC: Base 0, Sepolia 80, Arbitrum 80 -> 100 USDC on Base needs two bridges (80 then the rest).
       // ETH: Base 0.003 (0.001 spendable), Sepolia 0.03 (0.02), Arbitrum 0.05 (0.048) -> 0.05 ETH on Base needs two more.
       const h = await harness('A-32', {
@@ -398,9 +398,7 @@ export function registerA17toA32(): void {
         },
       });
       const r = await h.say('send 100 usdc to aradhya on base and 0.05 eth to mihir on base');
-      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
-      expect(r.body.question?.text).toBe('This needs 4 transfers between chains; your limit is 3. Go ahead this once?');
-      expect(r.body.question?.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
+      expectError(r, 'ETH_NOT_BRIDGEABLE');
       noSubmission(h);
       await h.finish();
     });

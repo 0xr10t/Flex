@@ -8,6 +8,7 @@
 // Skipped runs have no report kind in §14.3, so they aren't reported (OQ-14(b)). A plan ends once its `end_at` has passed.
 
 import { getAbiItem, type Hex } from 'viem';
+import type { AutopayPaymentReport, AutopayStatusReport } from '@flex/protocol';
 import type { ChainGateway } from '../chain/gateway.js';
 import type { Logger } from '../log.js';
 import type { AutopayRow, Store } from '../store/store.js';
@@ -104,7 +105,7 @@ export class RunWatcher {
           const plan = byPlan.get(log.args.intentId as Hex);
           if (!plan) continue;
           const slot = Number(log.args.slot);
-          const body = {
+          const body: AutopayPaymentReport = {
             kind: 'autopay_payment',
             request_id: plan.request_id,
             status: 'executed',
@@ -126,7 +127,7 @@ export class RunWatcher {
       for (const plan of plans) {
         if (plan.status !== 'active' || latest.timestamp <= plan.end_at) continue;
         store.setAutopayStatus(plan.plan_id, 'ended');
-        const body = {
+        const body: AutopayStatusReport = {
           kind: 'autopay_status',
           request_id: plan.request_id,
           autopay: { ...autopayFields(plan), status: 'ended' },

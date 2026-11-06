@@ -100,12 +100,11 @@ describe('SQ-CV-02 current payment draft over HTTP', () => {
     expect(h.exec.submissions).toHaveLength(1);
     expect(h.envelope.intents).toHaveLength(1);
     expect(h.envelope.intents[0]).toMatchObject({
-      intent_id: 'i',
-      recipient: RIYA,
-      token: 'USDC',
-      chain_id: BASE,
-      amount: { value: '40' },
-    });
+intent_id: 'i',
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ recipient: RIYA, amount: { value: '40' } }]
+});
     expect(h.llm.remaining()).toEqual([]);
   });
 

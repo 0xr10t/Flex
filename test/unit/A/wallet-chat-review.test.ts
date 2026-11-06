@@ -28,22 +28,22 @@ function seedExact(ctx: TestContext): void {
 function pending(ctx: TestContext, amount: string, override: Partial<Db6Insert> = {}): void {
   ctx.repos.db6.insertMany([
     {
-      request_id: 'req_000000000099',
-      step: null,
-      kind: 'payment',
-      counts_toward_limit: true,
-      chain_id: BASE,
-      token: 'USDC',
-      amount,
-      recipient_address: null,
-      intent_id: 'i',
-      autopay_id: null,
-      status: 'pending',
-      tx_hash: null,
-      created_at: ctx.now().toUTC().toISO()!,
-      executed_at: null,
-      ...override,
-    },
+request_id: 'req_000000000099',
+step: null,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: BASE,
+token: 'USDC',
+recipient_address: null,
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: ctx.now().toUTC().toISO()!,
+executed_at: null,
+amount,
+...override
+},
   ]);
 }
 

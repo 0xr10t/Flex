@@ -2,7 +2,7 @@
 // local midnight, §13.4 Q_GROUP_OVER_LIMIT, §15 LIMIT_PER_TX / LIMIT_DAILY messages.
 import { describe, expect, it, vi } from 'vitest';
 import { CHIPS, ERROR_MESSAGE, NOTES, REPLY } from '../../../src/contracts/catalog.js';
-import type { Address, AddressPh, AmountPh, InternalIntent, Schedule } from '../../../src/contracts/types.js';
+import type { Address, AddressPh, AmountPh, InternalIntent, CalendarSchedule } from '../../../src/contracts/types.js';
 import { s10 } from '../../../src/pipeline/s10-validate.js';
 import { buildSummary } from '../../../src/messages/summary.js';
 import type { TestContext } from '../../fakes/context.js';
@@ -463,13 +463,13 @@ describe('§11.3 per-intent limits', () => {
 
   it('SQ-D-16 F-5 C-259 §11 V-14 k amount_per_payment over per_tx_max → LIMIT_PER_TX', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const k = planK(ctx, 0, r, BASE, { amount: '101', per_period: '10', total: '800' });
+    const k = planK(ctx, 0, r, BASE, { amount: '101', per_period: '10' });
     expectError(await validateContent(ctx, [k]), 'LIMIT_PER_TX', { amount: '101', token: 'USDC', max: '100' });
   });
 
   it('SQ-D-16 F-5 C-259 §11 V-14 k per_period_cap over autopay_max_per_period → LIMIT_AUTOPAY_PERIOD', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101', total: '800' });
+    const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101' });
     const msg = expectError(await validateContent(ctx, [k]), 'LIMIT_AUTOPAY_PERIOD', {
       cap: '101',
       token: 'USDC',
@@ -480,8 +480,8 @@ describe('§11.3 per-intent limits', () => {
 
   it('SQ-D-16 F-5 C-259 §11 V-14 k lasting longer than autopay_max_weeks → LIMIT_AUTOPAY_DURATION', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const long: Schedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
-    const k = planK(ctx, 0, r, BASE, { schedule: long, total: '100' });
+    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
+    const k = planK(ctx, 0, r, BASE, { schedule: long });
     const msg = expectError(await validateContent(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     expect(msg).toBe('Repeating payments can run for at most 52 weeks.');
   });
@@ -493,8 +493,8 @@ describe('§11.3 per-intent limits', () => {
 
   it('C-259 §11 V-14 k funding uses total_cap as the need (V-10)', async () => {
     const { ctx, r } = base({ balances: usdc('0', '70', '0') });
-    expectError(await validate(ctx, [planK(ctx, 0, r, BASE, { total: '80' })]), 'INSUFFICIENT_FUNDS', {
-      need: '80',
+    expectError(await validate(ctx, [planK(ctx, 0, r, BASE, {})]), 'INSUFFICIENT_FUNDS', {
+      need: '80.4',
     });
   });
 });
@@ -653,7 +653,7 @@ describe('§11.3 V-15 daily limit', () => {
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '299', status: 'pending', created_at: T('2026-11-05T10:00:00.000Z') }),
     ]);
-    expect(await validate(ctx, [planK(ctx, 0, r, BASE, { total: '80' })])).toEqual({ kind: 'continue' });
+    expect(await validate(ctx, [planK(ctx, 0, r, BASE, {})])).toEqual({ kind: 'continue' });
   });
 
   it('C-260 §11 V-15 limits are per token (USDC spent does not block an ETH payment)', async () => {
@@ -814,16 +814,16 @@ describe('SQ-D-16 F-1…F-6 S10 asks Q_LIMIT_OVERRIDE for typed amounts', () => 
     );
   });
 
-  it('SQ-D-16 F-4 V-12 too many bridges asks "This needs 4 transfers between chains; your limit is 3."', async () => {
+  it('v2 hard bridge cap cannot be lifted by a typed request', async () => {
     const { ctx, plan } = manyBridgesPlan(4);
-    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
-    expect(q.text).toBe('This needs 4 transfers between chains; your limit is 3. Go ahead this once?');
-    expect(q.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
+    expectError(await validate(ctx, plan), 'LIMIT_BRIDGES', { n: '4', max: '3' });
+    ctx.req.limit_override = true;
+    expectError(await validate(ctx, plan), 'LIMIT_BRIDGES');
   });
 
   it('SQ-D-16 F-3 V-14 autopay per-period over the limit asks "Set it up anyway?" with Yes, set it up / No', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101', total: '800' });
+    const k = planK(ctx, 0, r, BASE, { amount: '10', per_period: '101' });
     const q = expectQuestion(await validate(ctx, [k]), 'Q_LIMIT_OVERRIDE');
     expect(q.text).toBe('This repeating payment is over your weekly autopay limit of 100. Set it up anyway?');
     expect(q.chips.map((c) => [c.id, c.label])).toEqual([
@@ -832,12 +832,13 @@ describe('SQ-D-16 F-1…F-6 S10 asks Q_LIMIT_OVERRIDE for typed amounts', () => 
     ]);
   });
 
-  it('SQ-D-16 F-3 V-14 autopay duration over the limit asks about the 52-week limit', async () => {
+  it('v2 hard duration cap cannot be lifted by a typed request', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    const long: Schedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
-    const k = planK(ctx, 0, r, BASE, { schedule: long, total: '100' });
-    const q = expectQuestion(await validate(ctx, [k]), 'Q_LIMIT_OVERRIDE');
-    expect(q.text).toBe('This repeating payment is over the 52-week limit for repeating payments. Set it up anyway?');
+    const long: CalendarSchedule = weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2028-01-01' });
+    const k = planK(ctx, 0, r, BASE, { schedule: long });
+    expectError(await validate(ctx, [k]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
+    ctx.req.limit_override = true;
+    expectError(await validate(ctx, [k]), 'LIMIT_AUTOPAY_DURATION');
   });
 
   it('SQ-D-16 F-5 content amounts keep the old errors for bridges, per-payment and autopay limits', async () => {
@@ -846,7 +847,7 @@ describe('SQ-D-16 F-1…F-6 S10 asks Q_LIMIT_OVERRIDE for typed amounts', () => 
     const { ctx, r } = base();
     expectError(await validateContent(ctx, [iOf(ctx, '120', r)]), 'LIMIT_PER_TX');
     const c2 = base({ balances: usdc('0', '5000', '0') });
-    const k = planK(c2.ctx, 0, c2.r, BASE, { amount: '10', per_period: '101', total: '800' });
+    const k = planK(c2.ctx, 0, c2.r, BASE, { amount: '10', per_period: '101' });
     expectError(await validateContent(c2.ctx, [k]), 'LIMIT_AUTOPAY_PERIOD');
   });
 

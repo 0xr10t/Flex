@@ -86,7 +86,7 @@ export const pending = (
   o: { recipient?: string | null; counts?: boolean; token?: string } = {},
 ): SpendRow => ({
   kind,
-  counts: o.counts ?? (kind === 'payment' || kind === 'bridge_buffer' || kind === 'autopay_payment'),
+  counts: o.counts ?? (['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee'].includes(kind)),
   chain,
   token: o.token ?? 'USDC',
   amount,
@@ -127,6 +127,5 @@ export const usdcIntent = (o: {
   token: 'USDC',
   token_address: o.token_address,
   chain_id: o.chain,
-  amount: o.amount,
-  recipient: o.recipient,
+  recipients: [{ amount: o.amount, recipient: o.recipient }],
 });

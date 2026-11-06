@@ -26,6 +26,7 @@ import {
   db6Row,
   expectError,
   pay,
+  planIdFor,
   setLimits,
 } from './helpers.js';
 import {
@@ -112,18 +113,14 @@ describe('C-448 §20.1 plan: §10.1 spendable balance', () => {
     });
     const r = addAradhya(ctx);
     // spendable ETH: Sepolia 0 (0.01 − 0.01), Base 0 (0.001 − 0.002 floored), Arbitrum 0.001
-    expectError(await run(ctx, [iPay(ctx, '0.01', r, 'unstated', { token: 'ETH' })]), 'INSUFFICIENT_FUNDS', {
-      token: 'ETH',
-      need: '0.01018',
-      have: '0.001',
-    });
+    expectError(await run(ctx, [iPay(ctx, '0.01', r, 'unstated', { token: 'ETH' })]), 'ETH_NOT_BRIDGEABLE');
   });
 
   it('C-202 C-203 §10.1 unavailable chain is excluded as candidate and as bridge source', async () => {
     const ctx = ctxD({ balances: usdc('0', '30', '500') });
     ctx.repos.db4.markUnavailable(ARB, 'Arbitrum Sepolia', now());
     const r = addAradhya(ctx);
-    expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { need: '50.4', have: '30' });
+    expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { need: '50', have: '30' });
   });
 
   it('C-202 §10.1 unavailable chain is skipped when another candidate qualifies', async () => {
@@ -184,7 +181,7 @@ describe('§10.3 chain for each payment', () => {
       ens_chain_ids: [BASE, ARB],
     });
     const plan = await runOk(ctx, [iPay(ctx, '5', r)]);
-    expect(asI(plan[0])).toMatchObject({ chain_id: ARB, reused_from_chain_id: null });
+    expect(asI(plan[0])).toMatchObject({ chain_id: ARB, recipients: [{ reused_from_chain_id: null }] });
   });
 
   it('C-208 §10.3 rule 2: stated chain wins over a larger balance', async () => {
@@ -231,7 +228,7 @@ describe('§10.3 chain for each payment', () => {
     const ctx = ctxD({ balances: usdc('500', '40', '60') });
     const r = addAradhya(ctx);
     const plan = await runOk(ctx, [iPay(ctx, '5', r)]);
-    expect(asI(plan[0])).toMatchObject({ chain_id: ARB, reused_from_chain_id: null });
+    expect(asI(plan[0])).toMatchObject({ chain_id: ARB, recipients: [{ reused_from_chain_id: null }] });
   });
 
   it('C-209 §10.3 rule 3: ENS-sourced → only chains whose record returned the address', async () => {
@@ -279,8 +276,8 @@ describe('§10.3 chain for each payment', () => {
     const plan = await runOk(ctx, [iPay(ctx, '50', a)]);
     const i = asI(plan[0]);
     expect(i.chain_id).toBe(SEPOLIA);
-    expect([BASE, ARB]).toContain(i.reused_from_chain_id);
-    expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBe(i.reused_from_chain_id);
+    expect([BASE, ARB]).toContain(i.recipients[0]!.reused_from_chain_id);
+    expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBe(i.recipients[0]!.reused_from_chain_id);
     expect(ctx.repos.db2.findByAddress(ARADHYA_CS).map((r) => r.chain_id)).toEqual(before);
     // SQ-O-10: every other chain with a DB2 row for the address is named (Aradhya is saved on Base and Arbitrum)
     expect(ctx.req.notes).toContain('Same address as on Base Sepolia and Arbitrum Sepolia.');
@@ -293,8 +290,8 @@ describe('§10.3 chain for each payment', () => {
     const plan = await runOk(ctx, [iPay(ctx, '5', a, SEPOLIA)]);
     const i = asI(plan[0]);
     expect(i.chain_id).toBe(SEPOLIA);
-    expect([BASE, ARB]).toContain(i.reused_from_chain_id);
-    expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBe(i.reused_from_chain_id);
+    expect([BASE, ARB]).toContain(i.recipients[0]!.reused_from_chain_id);
+    expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBe(i.recipients[0]!.reused_from_chain_id);
     expect(ctx.repos.db2.findByAddress(ARADHYA_CS)).toHaveLength(2);
     expect(ctx.req.notes.some((n) => n.startsWith('Same address as on '))).toBe(true);
   });
@@ -303,7 +300,7 @@ describe('§10.3 chain for each payment', () => {
     const ctx = ctxD({ balances: usdc('0', '100', '0') });
     const a = addAradhya(ctx);
     const plan = await runOk(ctx, [iPay(ctx, '5', a, BASE)]);
-    expect(asI(plan[0]).reused_from_chain_id).toBeNull();
+    expect(asI(plan[0]).recipients[0]!.reused_from_chain_id).toBeNull();
     expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBeNull();
     expect(ctx.req.notes).toEqual([]);
   });
@@ -320,7 +317,7 @@ describe('§10.3 chain for each payment', () => {
       ens_chain_ids: [SEPOLIA],
     });
     const plan = await runOk(ctx, [iPay(ctx, '5', r)]);
-    expect(asI(plan[0])).toMatchObject({ chain_id: SEPOLIA, reused_from_chain_id: null });
+    expect(asI(plan[0])).toMatchObject({ chain_id: SEPOLIA, recipients: [{ reused_from_chain_id: null }] });
     expect(ctx.repos.db3.get(r)?.reused_from_chain_id).toBeNull();
     expect(ctx.req.notes.some((n) => n.startsWith('Same address as on '))).toBe(false);
   });
@@ -330,7 +327,7 @@ describe('§10.3 chain for each payment', () => {
     const r = addRecipient(ctx, { name: null, address: STRANGER_CS, source: 'user' });
     const plan = await runOk(ctx, [iPay(ctx, '50', r)]);
     expect(asJ(plan[0])).toMatchObject({ source_chain_id: SEPOLIA, dest_chain_id: BASE });
-    expect(amountOf(ctx, asJ(plan[0]).amount)).toBe('10.2');
+    expect(amountOf(ctx, asJ(plan[0]).amount)).toBe('10');
     expect(asI(plan[1])).toMatchObject({ chain_id: BASE, depends_on: [0] });
   });
 
@@ -344,7 +341,7 @@ describe('§10.3 chain for each payment', () => {
 });
 
 describe('§10.2 / §10.5 group expansion and ordering', () => {
-  it('C-204 C-220 E4 §10.2 group → one i per selected member, alphabetical by subname, same amount placeholder, group chain', async () => {
+  it('C-204 C-220 E4 §10.2 group → one atomic i with all selected members, alphabetical by subname, same amount placeholder, group chain', async () => {
     const ctx = ctxD({ balances: usdc('0', '100', '0') });
     const { group, members } = addGroup(ctx, {
       parent: 'iitr.eth',
@@ -356,28 +353,13 @@ describe('§10.2 / §10.5 group expansion and ordering', () => {
     });
     const a = addAmount(ctx, '10');
     const plan = await runOk(ctx, [pay(ctx, 'i', a, group, BASE)]);
-    expect(plan).toEqual([
-      {
-        intent_id: 'i',
-        step: 0,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: BASE,
-        amount: a,
-        recipient: members['alice.iitr.eth'],
-        reused_from_chain_id: null,
-      },
-      {
-        intent_id: 'i',
-        step: 1,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: BASE,
-        amount: a,
-        recipient: members['bob.iitr.eth'],
-        reused_from_chain_id: null,
-      },
-    ]);
+    expect(plan).toEqual([{
+      intent_id: 'i', step: 0, depends_on: [], token: 'USDC', chain_id: BASE,
+      recipients: [
+        { amount: a, recipient: members['alice.iitr.eth'], reused_from_chain_id: null },
+        { amount: a, recipient: members['bob.iitr.eth'], reused_from_chain_id: null },
+      ],
+    }]);
   });
 
   it('C-204 C-220 §10.2 §10.5 group stays at the group payment position among other payments', async () => {
@@ -394,7 +376,7 @@ describe('§10.2 / §10.5 group expansion and ordering', () => {
     const a = addAradhya(ctx);
     const ga = addAmount(ctx, '10');
     const plan = await runOk(ctx, [iPay(ctx, '5', mi, BASE), pay(ctx, 'i', ga, group, BASE), iPay(ctx, '7', a, BASE)]);
-    expect(plan.map((p) => asI(p).recipient)).toEqual([mi, members['alice.iitr.eth'], members['carol.iitr.eth'], a]);
+    expect(plan.flatMap((p) => asI(p).recipients.map((payee) => payee.recipient))).toEqual([mi, members['alice.iitr.eth'], members['carol.iitr.eth'], a]);
   });
 
   it(
@@ -412,10 +394,11 @@ describe('§10.2 / §10.5 group expansion and ordering', () => {
       });
       const a = addAmount(ctx, '40');
       const plan = await runOk(ctx, [pay(ctx, 'i', a, group, BASE)]);
-      expect(plan.map((p) => p.intent_id)).toEqual(['j', 'i', 'i', 'i']);
-      expect(amountOf(ctx, asJ(plan[0]).amount)).toBe('20.4');
+      expect(plan.map((p) => p.intent_id)).toEqual(['j', 'i']);
+      expect(amountOf(ctx, asJ(plan[0]).amount)).toBe('20');
       expect(asI(plan[1]).depends_on).toEqual([0]);
-      expect(asJ(plan[0]).funds_steps).toEqual([1, 2, 3]);
+      expect(asJ(plan[0]).funds_steps).toEqual([1]);
+      expect(asI(plan[1]).recipients).toHaveLength(3);
     },
   );
 
@@ -437,7 +420,7 @@ describe('§17.2 follow-ups', () => {
     const ctx = ctxD({ balances: usdc('0', '50', '500') });
     const prev = addFollowup(ctx, { name: 'Aradhya', address: ARADHYA_CS, last_chain_id: BASE });
     const plan = await runOk(ctx, [iPay(ctx, '5', prev)]);
-    expect(asI(plan[0])).toMatchObject({ chain_id: BASE, recipient: prev, reused_from_chain_id: null });
+    expect(asI(plan[0])).toMatchObject({ chain_id: BASE, recipients: [{ recipient: prev, reused_from_chain_id: null }] });
   });
 
   it('C-418 §17.2 step 4: previous chain without a DB2 row for a contact is a silent reuse (same as a stated chain)', async () => {
@@ -446,7 +429,7 @@ describe('§17.2 follow-ups', () => {
     const plan = await runOk(ctx, [iPay(ctx, '5', prev)]);
     const i = asI(plan[0]);
     expect(i.chain_id).toBe(SEPOLIA);
-    expect([BASE, ARB]).toContain(i.reused_from_chain_id);
+    expect([BASE, ARB]).toContain(i.recipients[0]!.reused_from_chain_id);
   });
 
   it('C-418 §17.2 step 4: null last chain falls through to the §10.3 rules (user address → every allowed chain)', async () => {
@@ -498,15 +481,13 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     const plan = await runOk(ctx, [p]);
     expect(plan).toEqual([
       {
-        intent_id: 'i',
-        step: 0,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: 84532,
-        amount: p.amount,
-        recipient: r,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+chain_id: 84532,
+recipients: [{ amount: p.amount, recipient: r, reused_from_chain_id: null }]
+},
     ]);
     expect(ctx.req.state).toBe('PLANNED');
   });
@@ -517,7 +498,7 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     const p = iPay(ctx, '50', r, BASE);
     const plan = await runOk(ctx, [p]);
     const j = asJ(plan[0]);
-    expect(amountOf(ctx, j.amount)).toBe('20.4');
+    expect(amountOf(ctx, j.amount)).toBe('20');
     expect(plan).toEqual([
       {
         intent_id: 'j',
@@ -527,19 +508,17 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
         dest_chain_id: BASE,
         amount: j.amount,
         deliverable_base_units: '20000000',
-        receiver: 'self',
+        receiver: 'self', fee_max_eth: '0.002',
         funds_steps: [1],
       },
       {
-        intent_id: 'i',
-        step: 1,
-        depends_on: [0],
-        token: 'USDC',
-        chain_id: BASE,
-        amount: p.amount,
-        recipient: r,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 1,
+depends_on: [0],
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ amount: p.amount, recipient: r, reused_from_chain_id: null }]
+},
     ]);
   });
 
@@ -551,7 +530,7 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     const p2 = iPay(ctx, '20', mi, ARB);
     const plan = await runOk(ctx, [p1, p2]);
     const j = asJ(plan[0]);
-    expect(amountOf(ctx, j.amount)).toBe('10.2');
+    expect(amountOf(ctx, j.amount)).toBe('10');
     expect(ctx.repos.db1.get(j.amount)).toMatchObject({ source: 'derived', origin: 'bridge_padded' });
     expect(plan).toEqual([
       {
@@ -562,33 +541,29 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
         dest_chain_id: 84532,
         amount: j.amount,
         deliverable_base_units: '10000000',
-        receiver: 'self',
+        receiver: 'self', fee_max_eth: '0.002',
         funds_steps: [1],
       },
       {
-        intent_id: 'i',
-        step: 1,
-        depends_on: [0],
-        token: 'USDC',
-        chain_id: 84532,
-        amount: p1.amount,
-        recipient: a,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 1,
+depends_on: [0],
+token: 'USDC',
+chain_id: 84532,
+recipients: [{ amount: p1.amount, recipient: a, reused_from_chain_id: null }]
+},
       {
-        intent_id: 'i',
-        step: 2,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: 421614,
-        amount: p2.amount,
-        recipient: mi,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 2,
+depends_on: [],
+token: 'USDC',
+chain_id: 421614,
+recipients: [{ amount: p2.amount, recipient: mi, reused_from_chain_id: null }]
+},
     ]);
   });
 
-  it('C-435 E4: 10 USDC to the iitr.eth group on Base → two i intents (alice, bob), same amount placeholder', async () => {
+  it('C-435 E4: 10 USDC to the iitr.eth group on Base → one i with two recipients (alice, bob), same amount placeholder', async () => {
     const ctx = ctxD({ balances: usdc('0', '100', '0') });
     const { group, members } = addGroup(ctx, {
       parent: 'iitr.eth',
@@ -600,9 +575,9 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     });
     const a = addAmount(ctx, '10');
     const plan = await runOk(ctx, [pay(ctx, 'i', a, group, 84532)]);
-    expect(plan.map((x) => [asI(x).step, asI(x).recipient, asI(x).chain_id, asI(x).amount])).toEqual([
+    expect(plan.flatMap((x) => asI(x).recipients.map((p) => [x.step, p.recipient, asI(x).chain_id, p.amount]))).toEqual([
       [0, members['alice.iitr.eth'], 84532, a],
-      [1, members['bob.iitr.eth'], 84532, a],
+      [0, members['bob.iitr.eth'], 84532, a],
     ]);
   });
 
@@ -613,15 +588,13 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     const plan = await runOk(ctx, [p]);
     expect(plan).toEqual([
       {
-        intent_id: 'i',
-        step: 0,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: 84532,
-        amount: p.amount,
-        recipient: prev,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+chain_id: 84532,
+recipients: [{ amount: p.amount, recipient: prev, reused_from_chain_id: null }]
+},
     ]);
     expect(ctx.req.notes).toEqual(['Recipient and chain from your last payment.']);
   });
@@ -635,45 +608,19 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
     expect(plan).toHaveLength(1);
     const k = asK(plan[0]);
     expect(k).toMatchObject({
-      intent_id: 'k',
-      step: 0,
-      depends_on: [],
-      token: 'USDC',
-      chain_id: 84532,
-      recipient,
-      amount_per_payment: payment.amount,
-      schedule: {
-        frequency: 'weekly',
-        interval: 1,
-        days_of_week: ['FRI'],
-        day_of_month: null,
-        time_of_day: '10:00',
-        timezone: 'Asia/Kolkata',
-        start_date: '2026-11-05',
-        end: { type: 'on_date', date: '2026-12-31' },
-      },
-      limits: { expires_at: '2026-12-25T18:29:59Z' },
-      cre_job: { trigger: 'cron', cron: '0 10 * * 5', timezone: 'Asia/Kolkata', interval: 1 },
+      intent_id: 'k', step: 0, depends_on: [], token: 'USDC', chain_id: BASE,
+      recipients: [{ recipient, amount: payment.amount }],
+      schedule: { start_at: Date.parse('2026-11-06T04:30:00Z') / 1000, interval_seconds: 604800, max_runs: 8, late_window_seconds: 3600 },
+      executor: 'chainlink-cre',
     });
     expect(k.autopay_id).toMatch(/^ap_[0-9a-f]{12}$/);
-    expect(new Date(k.schedule.first_occurrence).getTime()).toBe(new Date('2026-11-06T04:30:00Z').getTime());
-    expect(amountOf(ctx, k.limits.per_period_cap)).toBe('10');
-    expect(amountOf(ctx, k.limits.total_cap)).toBe('80');
-    expect(Object.keys(k).sort()).toEqual(
-      [
-        'amount_per_payment',
-        'autopay_id',
-        'chain_id',
-        'cre_job',
-        'depends_on',
-        'intent_id',
-        'limits',
-        'recipient',
-        'schedule',
-        'step',
-        'token',
-      ].sort(),
-    );
+    expect(k.schedule.end_at).toBe(Date.parse('2026-12-25T05:30:00Z') / 1000);
+    expect(amountOf(ctx, k.display.per_period_cap)).toBe('10');
+    expect(amountOf(ctx, k.limits.max_per_run)).toBe('10.05');
+    expect(amountOf(ctx, k.limits.max_total)).toBe('80.4');
+    expect(Object.keys(k).sort()).toEqual([
+      'autopay_id', 'chain_id', 'depends_on', 'display', 'executor', 'fee', 'intent_id', 'limits', 'recipients', 'schedule', 'step', 'token',
+    ].sort());
   });
 
   it('C-438 E7: "stop paying mihir" with one active autopay → l with autopay_id, chain and delegate from DB7', async () => {
@@ -687,9 +634,8 @@ describe('§19 worked examples (plan objects asserted exactly, each valid agains
         step: 0,
         autopay_id: 'ap_0000000000f7',
         chain_id: BASE,
-        delegate_address: DELEGATE_CS,
+        plan_id: planIdFor('ap_0000000000f7'),
         recipient: mi,
-        refund_remaining: true,
       },
     ]);
   });

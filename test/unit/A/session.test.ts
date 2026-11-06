@@ -116,21 +116,21 @@ describe('§17.1 session lifecycle', () => {
       step: async (ctx) => {
         ctx.repos.db6.insertMany([
           {
-            request_id: ctx.req.request_id,
-            step: 0,
-            kind: 'payment',
-            counts_toward_limit: true,
-            chain_id: 84532,
-            token: 'USDC',
-            amount: '50',
-            recipient_address: '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E',
-            intent_id: 'i',
-            autopay_id: null,
-            status: 'pending',
-            tx_hash: null,
-            created_at: '2026-11-05T17:30:00.000Z',
-            executed_at: null,
-          },
+request_id: ctx.req.request_id,
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: 84532,
+token: 'USDC',
+recipient_address: '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E',
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: '2026-11-05T17:30:00.000Z',
+executed_at: null,
+amount: '50'
+},
         ]);
         ctx.repos.db8.appendHistory({
           session_id: ctx.req.session_id,
@@ -165,7 +165,7 @@ describe('§17.1 session lifecycle', () => {
     // Handed-off request unaffected: DB6 row, DB2, DB5 stay.
     expect(n('db6_spend_log')).toBe(1);
     expect(n('db2_address_book')).toBe(1);
-    expect(n('db5_limits')).toBe(8);
+    expect(n('db5_limits')).toBe(9);
   });
 
   it('C-411: a request in progress is abandoned as DISCARDED when the session closes', async () => {
