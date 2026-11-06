@@ -284,7 +284,7 @@ describe('§10.3 chain for each payment', () => {
     expect(ctx.repos.db2.findByAddress(ARADHYA_CS).map((r) => r.chain_id)).toEqual(before);
     const from = i.reused_from_chain_id === BASE ? 'Base Sepolia' : 'Arbitrum Sepolia';
     expect(ctx.req.notes).toContain(`Same address as on ${from}.`);
-    expect(ctx.req.notes).toContain(NOTES.SILENT_REUSE({ chain: from }));
+    expect(ctx.req.notes).toContain(NOTES.SILENT_REUSE({ chains: from }));
   });
 
   it('C-188 A-26 §9.5 stated chain without a DB2 row is also a silent reuse', async () => {

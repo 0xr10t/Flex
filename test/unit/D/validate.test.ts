@@ -682,22 +682,22 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
 
   it('C-326 E4 §11 V-15: a group request over the daily limit asks Q_GROUP_OVER_LIMIT with Yes, this once / No', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     expect(q.text).toBe("This sends 20 USDC, but only 10 is left of today's 300 limit. Go ahead this once?");
     expect(q.chips.map((c) => [c.id, c.label])).toEqual([
       ['override', 'Yes, this once'],
       ['no', 'No'],
     ]);
-    expect(ctx.req.daily_limit_override).toBe(false);
+    expect(ctx.req.limit_override).toBe(false);
   });
 
   it('C-326 C-298 §13.4 "Yes, this once" (chip) sets the override, re-entering S10 continues; summary note appears once', async () => {
     const { ctx, plan } = groupSetup();
     const res = await validate(ctx, plan);
-    const q = expectQuestion(res, 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(res, 'Q_LIMIT_OVERRIDE');
     const answered = await s10.onAnswer?.(ctx, q, chip('override'));
     expect(answered).toEqual({ kind: 'continue' });
-    expect(ctx.req.daily_limit_override).toBe(true);
+    expect(ctx.req.limit_override).toBe(true);
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' }); // re-entrant: note not duplicated
     expect(ctx.req.notes.filter((n) => n === NOTES.LIMIT_LIFTED())).toHaveLength(1);
@@ -710,39 +710,39 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
 
   it('C-326 §13.4 a plain "yes" typed answer is accepted as Yes', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     expect(await s10.onAnswer?.(ctx, q, text(' Yes '))).toEqual({ kind: 'continue' });
-    expect(ctx.req.daily_limit_override).toBe(true);
+    expect(ctx.req.limit_override).toBe(true);
   });
 
   it('C-326 §13.4 the label text "Yes, this once" is accepted', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     expect(await s10.onAnswer?.(ctx, q, text('yes, this once'))).toEqual({ kind: 'continue' });
-    expect(ctx.req.daily_limit_override).toBe(true);
+    expect(ctx.req.limit_override).toBe(true);
   });
 
   it('C-326 SQ-15 §13.4 "No" → DISCARDED with the "Cancelled. Nothing was sent." reply, override stays off', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     for (const a of [chip('no'), text('no')]) {
       const r = await s10.onAnswer?.(ctx, q, a);
       expect(r).toEqual({ kind: 'discard', messages: [REPLY.CANCELLED()] });
     }
-    expect(ctx.req.daily_limit_override).toBe(false);
+    expect(ctx.req.limit_override).toBe(false);
     expect(REPLY.CANCELLED()).toBe('Cancelled. Nothing was sent.');
   });
 
   it('C-326 §9.7 an invalid answer re-asks the same question with attempt + 1', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     const r = await s10.onAnswer?.(ctx, q, text('maybe'));
     expect(r?.kind).toBe('question');
     if (r?.kind === 'question') {
-      expect(r.question.code).toBe('Q_GROUP_OVER_LIMIT');
+      expect(r.question.code).toBe('Q_LIMIT_OVERRIDE');
       expect(r.question.attempt).toBe(q.attempt + 1);
     }
-    expect(ctx.req.daily_limit_override).toBe(false);
+    expect(ctx.req.limit_override).toBe(false);
   });
 
   it('C-326 §11 V-15 without a group payment the same overage is LIMIT_DAILY, not a question', async () => {
@@ -757,7 +757,7 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
 
   it('C-326 §11 V-15 the override applies to the whole request but only to the daily limit (per-tx still enforced)', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    ctx.req.daily_limit_override = true;
+    ctx.req.limit_override = true;
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '290', status: 'pending', created_at: '2026-11-05T10:00:00.000Z' }),
     ]);
@@ -766,7 +766,7 @@ describe('§13.4 Q_GROUP_OVER_LIMIT (C-326)', () => {
 
   it('C-326 an unknown question code answered to S10 → INTERNAL_ERROR', async () => {
     const { ctx, plan } = groupSetup();
-    const q = expectQuestion(await validate(ctx, plan), 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(await validate(ctx, plan), 'Q_LIMIT_OVERRIDE');
     const res = await s10.onAnswer?.(ctx, { ...q, code: 'Q_GROUP_CHAIN' }, chip(CHIPS.YES.id));
     expect(res).toEqual({ kind: 'error', code: 'INTERNAL_ERROR' });
   });

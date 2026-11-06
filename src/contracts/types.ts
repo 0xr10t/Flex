@@ -449,7 +449,9 @@ export type QuestionCode =
   | 'Q_GROUP_PARENT'
   | 'Q_GROUP_CHAIN'
   | 'Q_GROUP_MEMBERS'
-  | 'Q_GROUP_OVER_LIMIT'
+  | 'Q_LIMIT_OVERRIDE'
+  | 'Q_PAIR_AMOUNT'
+  | 'Q_NAME_ROLE'
   | 'Q_AUTOPAY_FREQUENCY'
   | 'Q_AUTOPAY_START'
   | 'Q_AUTOPAY_END'
@@ -477,7 +479,9 @@ export const QUESTION_CODES: readonly QuestionCode[] = [
   'Q_GROUP_PARENT',
   'Q_GROUP_CHAIN',
   'Q_GROUP_MEMBERS',
-  'Q_GROUP_OVER_LIMIT',
+  'Q_LIMIT_OVERRIDE',
+  'Q_PAIR_AMOUNT',
+  'Q_NAME_ROLE',
   'Q_AUTOPAY_FREQUENCY',
   'Q_AUTOPAY_START',
   'Q_AUTOPAY_END',
@@ -641,8 +645,11 @@ export interface AgentRequest {
   plan?: InternalIntent[];
   /** Summary notes collected along the way (texts from catalog NOTES). */
   notes: string[];
-  /** Set only by Q_GROUP_OVER_LIMIT "yes". */
-  daily_limit_override: boolean;
+  /**
+   * Set only by a "Yes" to Q_LIMIT_OVERRIDE (SQ-D-16, F-1…F-6): every broken DB5 limit is lifted for this request
+   * only; DB5 is never written.
+   */
+  limit_override: boolean;
   /** Max 3. */
   handoff_attempts: number;
 

@@ -101,7 +101,7 @@ export function newRequest(over: Partial<AgentRequest> = {}): AgentRequest {
     spans: [],
     recipients: [],
     notes: [],
-    daily_limit_override: false,
+    limit_override: false,
     handoff_attempts: 0,
     resolved: [],
     mentioned_spans: [],

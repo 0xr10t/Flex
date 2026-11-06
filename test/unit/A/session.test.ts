@@ -384,7 +384,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
 
   it("'discard' → DISCARDED with the step's messages, or CANCELLED by default (SQ-15)", async () => {
     const h = makeHarness();
-    const { sid, q } = await toQuestion(h, question('Q_GROUP_OVER_LIMIT'));
+    const { sid, q } = await toQuestion(h, question('Q_LIMIT_OVERRIDE'));
     h.set('s3', { onAnswer: async () => ({ kind: 'discard' }) });
     const r = body(await h.manager.handleAnswer(sid, { question_id: q.question_id, chip_id: 'no' }));
     expect(r).toMatchObject({ state: 'done', messages: [{ type: 'text', text: REPLY.CANCELLED() }] });

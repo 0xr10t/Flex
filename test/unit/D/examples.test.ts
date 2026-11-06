@@ -290,7 +290,7 @@ describe('§19 worked examples end to end', () => {
     const first = await toSummary(ctx);
     expect(first.s10?.kind).toBe('question');
     expect(first.s11).toBeUndefined();
-    const q = expectQuestion(first.s10 as StepResult, 'Q_GROUP_OVER_LIMIT');
+    const q = expectQuestion(first.s10 as StepResult, 'Q_LIMIT_OVERRIDE');
     expect(q.text).toBe("This sends 20 USDC, but only 10 is left of today's 300 limit. Go ahead this once?");
     expect(await s10.onAnswer?.(ctx, q, chip('override'))).toEqual({ kind: 'continue' });
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' });

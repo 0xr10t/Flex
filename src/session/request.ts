@@ -94,7 +94,7 @@ export function newAgentRequest(request_id: RequestId, session_id: SessionId, in
     spans: [],
     recipients: [],
     notes: [],
-    daily_limit_override: false,
+    limit_override: false,
     handoff_attempts: 0,
     input,
     resolved: [],

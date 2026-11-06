@@ -591,7 +591,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
     for (const j of jSteps) if (depends_on.includes(j.step)) j.funds_steps.push(stepNo);
     if (it.reused !== null) {
       ctx.repos.db3.setReusedFromChain(it.recipient, it.reused);
-      pushNote(ctx, NOTES.SILENT_REUSE({ chain: chainName(ctx, it.reused) }));
+      pushNote(ctx, NOTES.SILENT_REUSE({ chains: chainName(ctx, it.reused) }));
     }
     if (it.kind === 'i') {
       plan.push({
