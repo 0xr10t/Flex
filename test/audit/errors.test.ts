@@ -57,6 +57,7 @@ describe('EXECUTION_REJECTED echoes the execution layer text (by design, §8.14 
     const r = await h.say('Send 50 USDc to ARADHYA');
     const done = await h.confirm(r, 'yes');
     expect(done.body.error?.code).toBe('EXECUTION_REJECTED');
+    // eslint-disable-next-line no-control-regex
     const cleaned = nasty.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
     expect(done.body.error?.message).toBe(`Your wallet couldn't accept this: ${[...cleaned].slice(0, 200).join('')}`);
     expect(done.body.error?.message.length).toBeLessThan(260);
