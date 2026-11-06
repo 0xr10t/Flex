@@ -10,6 +10,7 @@ import { ensureTokenFile } from '../dist/src/config/tokens.js';
 import { validateConfig } from '../dist/src/config/load.js';
 import { validateSimulationConfig } from '../wallet/dist/src/chain/simulation.js';
 import { parseConfig as validateWalletConfig } from '../wallet/dist/src/config.js';
+import { SIMULATION_FORWARDERS } from '../wallet/dist/src/autopay/local-cre.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const local = resolve(root, '.local');
@@ -69,6 +70,14 @@ if (missing.length) {
     }
   }
   const cfg = JSON.parse(readFileSync(resolve(root, 'config.example.json'), 'utf8'));
+  // Keep an existing explicit transport choice. A fresh setup retains the template's Tor default.
+  const previousPath = resolve(local, 'agent.config.json');
+  if (existsSync(previousPath)) {
+    const previous = JSON.parse(readFileSync(previousPath, 'utf8'));
+    if (previous.network) cfg.network = previous.network;
+  }
+  if (env.FLEX_SOCKS_PROXY)
+    cfg.network = { socks_proxy: env.FLEX_SOCKS_PROXY === 'direct' ? null : env.FLEX_SOCKS_PROXY };
   cfg.wallet.address = env.FLEX_WALLET_ADDRESS;
   cfg.chains.forEach((chain) => {
     chain.rpc_url = rpc[chain.chain_id];
@@ -81,34 +90,51 @@ if (missing.length) {
   cfg.llm.model = env.OLLAMA_MODEL || cfg.llm.model;
   cfg.ens.indexer_url = env.ENS_INDEXER_URL || cfg.ens.indexer_url;
   cfg.autopay = {
-    late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || 3600),
-    fee: { USDC: env.AUTOPAY_FEE_USDC || '0.05', ETH: env.AUTOPAY_FEE_ETH || '0.00002' },
+    late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || cfg.autopay.late_window_seconds),
+    fee: { USDC: env.AUTOPAY_FEE_USDC || cfg.autopay.fee.USDC, ETH: env.AUTOPAY_FEE_ETH || cfg.autopay.fee.ETH },
     fee_collector: env.AUTOPAY_FEE_COLLECTOR || env.FLEX_WALLET_ADDRESS,
   };
-  cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || '0.003' };
+  cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || cfg.bridge.ccip_fee_max_eth };
   validateConfig(cfg);
   const deploymentsPath = resolve(local, 'deployments.json');
-  const deployments = existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {};
+  const deployments = {
+    ...JSON.parse(readFileSync(resolve(root, 'wallet/cre/deployments.testnet.json'), 'utf8')),
+    ...(existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {}),
+  };
   const wallet = {
-    server: { host: '127.0.0.1', port: 8788 },
-    agent: { url: 'http://127.0.0.1:8787' },
+    // The wallet listens where the agent sends (execution.url) and reports to where the agent listens (server).
+    server: { host: '127.0.0.1', port: Number(new URL(cfg.execution.url).port || 80) },
+    agent: { url: `http://${cfg.server.host}:${cfg.server.port}` },
     auth: {
       inbound_token_file: cfg.execution.outbound_token_file,
       report_token_file: cfg.auth.execution_report_token_file,
     },
     db: { path: resolve(local, 'wallet.db') },
     approval: { mode: 'metamask', wallet_address: env.FLEX_WALLET_ADDRESS },
+    network: { ...cfg.network },
     bridge: { ccip_fee_max_eth: cfg.bridge.ccip_fee_max_eth },
     chains: cfg.chains.map((chain) => ({
       chain_id: chain.chain_id,
       rpc_url: chain.rpc_url,
       simulation: simulations[chain.chain_id],
-      ...(deployments[chain.chain_id] ? { executor: deployments[chain.chain_id] } : {}),
+      ...(deployments[chain.chain_id]
+        ? {
+            executor: {
+              address: deployments[chain.chain_id].address,
+              deployment_block: deployments[chain.chain_id].deployment_block,
+            },
+          }
+        : {}),
     })),
   };
   validateWalletConfig(wallet);
   const cre = JSON.parse(readFileSync(resolve(root, 'wallet/cre/autopay/config.staging.json'), 'utf8'));
+  cre.mode = 'testnet-dry-run';
+  cre.maxSimulationsPerRun = 1;
+  cre.walletAddress = env.FLEX_WALLET_ADDRESS;
+  delete cre.workflow;
   for (const chain of cre.chains) {
+    chain.forwarder = SIMULATION_FORWARDERS[chain.chainId];
     chain.simulation.quorum = simulations[chain.chainId].quorum;
     const deployment = deployments[chain.chainId];
     if (deployment) {
@@ -116,9 +142,6 @@ if (missing.length) {
       chain.deploymentBlock = String(deployment.deployment_block);
     }
   }
-  if (env.CRE_WORKFLOW_ID) cre.workflow.id = env.CRE_WORKFLOW_ID;
-  if (env.CRE_WORKFLOW_NAME_HEX) cre.workflow.name = env.CRE_WORKFLOW_NAME_HEX;
-  if (env.CRE_WORKFLOW_OWNER) cre.workflow.owner = env.CRE_WORKFLOW_OWNER;
   privateWrite(resolve(local, 'cre.config.json'), JSON.stringify(cre, null, 2) + '\n');
   privateWrite(resolve(local, 'agent.config.json'), JSON.stringify(cfg, null, 2) + '\n');
   privateWrite(resolve(local, 'wallet.config.json'), JSON.stringify(wallet, null, 2) + '\n');

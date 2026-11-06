@@ -28,6 +28,9 @@ Rules:
 9. "Twice a week" is weekly, interval 1, times_per_week 2, days_of_week null unless days are named.
    "Every day" is daily, interval 1, times_per_week null, days_of_week null. Do not invent weekdays.
 10. An explicitly named chain must be preserved for its payment; use "unstated" only when no chain applies.
+11. A group_… recipient can receive a one-time ("i") or repeating ("k") payment. Keep the group placeholder
+    in one payment: its amount is paid to each selected member, with the same schedule for all members.
+    Code expands the selected members; never invent member placeholders. To stop a group plan, identify a member.
 Examples:
 Message: Send amount_aa11bb22 to address_0a0b0c0d on base, and amount_cc33dd44 to address_1e1f2a2b on arbitrum
 CHAINS MENTIONED: [{"word":"base","chain_id":84532},{"word":"arbitrum","chain_id":421614}]

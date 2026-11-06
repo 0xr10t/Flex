@@ -105,7 +105,7 @@ describe('privacy fix 9: the run watcher', () => {
       logIndex,
     });
     const gateway = {
-      latestBlock: async () => ({ number: 20, timestamp: 1_800_000_000 }),
+      finalizedBlock: async () => ({ number: 20, timestamp: 1_800_000_000 }),
       blockTime: async () => 1_800_000_000,
       getLogs: async (q: LogQuery) => {
         queries.push(q);

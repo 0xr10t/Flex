@@ -12,8 +12,8 @@ import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
 import { browserAccount } from '../../src/browser/account.js';
 import type { WalletConfig } from '../../src/config.js';
 import { silentLogger } from '../../src/log.js';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
-import type { HandoffEnvelope } from '../../src/schemas/envelope.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
+import type { HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import { createService, type Service } from '../../src/service.js';
 import { ARBITRUM, BASE, DB_KEY, WALLET } from '../support/envelopes.js';
 import { artifact, startChain, userAccount, type LocalChain } from './harness.js';
@@ -46,8 +46,8 @@ export interface Wallet {
 
 export const units = (v: string) => parseUnits(v, 6);
 
-export async function startWorld(): Promise<World> {
-  const [base, arbitrum] = await Promise.all([startChain(BASE), startChain(ARBITRUM)]);
+export async function startWorld(timestamp?: number): Promise<World> {
+  const [base, arbitrum] = await Promise.all([startChain(BASE, timestamp), startChain(ARBITRUM, timestamp)]);
   const deployments = new Map<LocalChain, { executor: Hex; forwarder: Hex; block: number; router: Hex }>();
   for (const chain of [base, arbitrum]) {
     const forwarder = await chain.deploy('TestHelpers.sol', 'MockForwarder');
@@ -175,6 +175,8 @@ export async function startWorld(): Promise<World> {
           gas: 9_000_000n,
         });
         const receipt = await chain.pub.waitForTransactionReceipt({ hash });
+        // Payment-history watchers consume finalized events. Anvil finalizes 64 blocks behind its head.
+        await chain.rpc('anvil_mine', ['0x41', '0x0']);
         return { paid: parseEventLogs({ abi: EXECUTOR_ABI, logs: receipt.logs, eventName: 'Executed' }).length === 1 };
       } catch {
         return { paid: false };

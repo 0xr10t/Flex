@@ -426,21 +426,21 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
     r.db4.upsertOk({ chain_id: 84532, chain: 'Base Sepolia', token: 'USDC', balance: '1', base_units: '1000000' }, 't');
     r.db6.insertMany([
       {
-request_id: rid,
-step: 0,
-kind: 'payment',
-counts_toward_limit: true,
-chain_id: 84532,
-token: 'USDC',
-recipient_address: A1,
-intent_id: 'i',
-autopay_id: null,
-status: 'pending',
-tx_hash: null,
-created_at: 't',
-executed_at: null,
-amount: '5'
-},
+        request_id: rid,
+        step: 0,
+        kind: 'payment',
+        counts_toward_limit: true,
+        chain_id: 84532,
+        token: 'USDC',
+        recipient_address: A1,
+        intent_id: 'i',
+        autopay_id: null,
+        status: 'pending',
+        tx_hash: null,
+        created_at: 't',
+        executed_at: null,
+        amount: '5',
+      },
     ]);
     r.db7.insertPending(
       {

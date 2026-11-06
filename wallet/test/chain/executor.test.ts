@@ -12,10 +12,10 @@ import {
 } from 'viem';
 import { EXECUTOR_ABI } from '../../src/autopay/abi.js';
 import { delegationFromRedeem, planIdOf, redeemFor, signAutopayDelegation } from '../../src/autopay/delegation.js';
-import { toPlan } from '../../src/mapping/to-plan.js';
-import type { AutopayK, HandoffEnvelope, Payee } from '../../src/schemas/envelope.js';
+import { toPlan } from '@flex/protocol/mapping/to-plan';
+import type { AutopayK, HandoffEnvelope, Payee } from '@flex/protocol/schemas/envelope';
 import { BASE, envelope, eth, usdc, WALLET } from '../support/envelopes.js';
-import type { Intent } from '../../src/schemas/intent.v2.js';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
 import { artifact, startChain, userAccount, type LocalChain } from './harness.js';
 import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { decodeAbiParameters, decodeFunctionData, erc20Abi, parseAbi, type Hex } from 'viem';
 import { executionsOf } from '../../src/chain/redeem.v2.js';
-import { checkEnvelope } from '../../src/mapping/check.js';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
 import { callsOf, encodeExecuteBatch, paymentTookEffect } from '../../src/payments/payment-i.js';
-import type { Intent } from '../../src/schemas/intent.v2.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 import { ALEX, BASE, BOB, WALLET, envelope, payEth, payUsdc } from '../support/envelopes.js';
 import { transferLog } from '../support/fake-chain.js';
 

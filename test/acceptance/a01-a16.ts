@@ -28,7 +28,7 @@ import {
   usdc,
   coinType,
 } from './harness.js';
-import { planIdFor, DELEGATE, seedAutopay, weeklySchedule } from './seed.js';
+import { planIdFor, seedAutopay, weeklySchedule } from './seed.js';
 
 const EXPECT_CALLS = ['amounts', 'request_type', 'spans', 'payments'];
 
@@ -75,7 +75,10 @@ export function registerA01toA16(): void {
         'Move 20 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         'Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
       ]);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 50 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
+      expect(r.body.summary?.footer).toEqual([
+        'Spent today after this: 50 of 300 USDC.',
+        'Spent today after this: 0.002 of 0.15 ETH.',
+      ]);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
         {
@@ -87,7 +90,8 @@ export function registerA01toA16(): void {
           source_chain_id: ARB,
           dest_chain_id: BASE,
           amount: usdc('20'),
-          receiver: 'self', fee_max_eth: '0.002',
+          receiver: 'self',
+          fee_max_eth: '0.002',
           funds_steps: [1],
         },
         usdcIntent({
@@ -122,7 +126,10 @@ export function registerA01toA16(): void {
         'Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
         'Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
       ]);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 60 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
+      expect(r.body.summary?.footer).toEqual([
+        'Spent today after this: 60 of 300 USDC.',
+        'Spent today after this: 0.002 of 0.15 ETH.',
+      ]);
       expect(r.body.summary?.text).toBe(
         [
           'Please confirm:',
@@ -145,7 +152,8 @@ export function registerA01toA16(): void {
           source_chain_id: ARB,
           dest_chain_id: BASE,
           amount: usdc('10'),
-          receiver: 'self', fee_max_eth: '0.002',
+          receiver: 'self',
+          fee_max_eth: '0.002',
           funds_steps: [1],
         },
         usdcIntent({
@@ -198,7 +206,7 @@ export function registerA01toA16(): void {
       return h;
     };
 
-    it('A-04: E4 with the parent in ENS -> Q_GROUP_CHAIN, Q_GROUP_MEMBERS, then n i intents (members not saved to DB2)', async () => {
+    it('A-04: E4 with the parent in ENS -> Q_GROUP_CHAIN, Q_GROUP_MEMBERS, then one atomic i (members not saved to DB2)', async () => {
       const members = { 'alice.iitr.ac.in': true, 'bob.iitr.ac.in': true, 'carol.iitr.ac.in': false };
       const h = await groupSetup('A-04', 'iitr.ac.in', members);
       const alice = addr(0xa1);
@@ -238,7 +246,13 @@ export function registerA01toA16(): void {
       expect(h.count('db2_address_book')).toBe(5);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
-        { ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: alice }), recipients: [{ recipient: alice, amount: usdc('10') }, { recipient: bob, amount: usdc('10') }] },
+        {
+          ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: alice }),
+          recipients: [
+            { recipient: alice, amount: usdc('10') },
+            { recipient: bob, amount: usdc('10') },
+          ],
+        },
       ]);
       expect(spend(h).map((s) => [s.kind, s.amount, s.recipient])).toEqual([
         ['payment', '10', alice],
@@ -324,25 +338,50 @@ export function registerA01toA16(): void {
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 0 of 300 USDC.']);
       expectHandedOff(await h.confirm(r, 'yes'));
       const start = Date.parse('2026-11-06T04:30:00Z') / 1000;
-      expectEnvelope(h, r.body.request_id, [{
-        intent_id: 'k', step: 0, depends_on: [], autopay_id: AP, token: 'USDC', token_address: USDC_ADDR[BASE], chain_id: BASE,
-        recipients: [{ recipient: MIHIR, amount: usdc('10') }],
-        fee: { to: getAddress(h.config.autopay!.fee_collector), amount: usdc('0.05') },
-        schedule: { start_at: start, interval_seconds: 604800, max_runs: 8, late_window_seconds: 3600, end_at: start + 7 * 604800 + 3600 },
-        limits: { max_per_run: usdc('10.05'), max_total: usdc('80.4') }, executor: 'chainlink-cre',
-      }]);
+      expectEnvelope(h, r.body.request_id, [
+        {
+          intent_id: 'k',
+          step: 0,
+          depends_on: [],
+          autopay_id: AP,
+          token: 'USDC',
+          token_address: USDC_ADDR[BASE],
+          chain_id: BASE,
+          recipients: [{ recipient: MIHIR, amount: usdc('10') }],
+          fee: { to: getAddress(h.config.autopay!.fee_collector), amount: usdc('0.05') },
+          schedule: {
+            start_at: start,
+            interval_seconds: 604800,
+            max_runs: 8,
+            late_window_seconds: 3600,
+            end_at: start + 7 * 604800 + 3600,
+          },
+          limits: { max_per_run: usdc('10.05'), max_total: usdc('80.4') },
+          executor: 'chainlink-cre',
+        },
+      ]);
       const k = h.envelope.intents[0];
       if (k?.intent_id !== 'k') throw new Error('missing autopay');
       expect(spend(h)).toEqual([]);
       const dbRows = autopays(h);
       expect(dbRows).toHaveLength(1);
       expect(dbRows[0]).toMatchObject({
-        autopay_id: k.autopay_id, recipient_name: 'Mihir', recipient_address: MIHIR, chain_id: BASE,
-        token: 'USDC', amount_per_payment: '10', fee: '0.05', status: 'pending', plan_id: null, executor_address: null,
+        autopay_id: k.autopay_id,
+        recipient_name: 'Mihir',
+        recipient_address: MIHIR,
+        chain_id: BASE,
+        token: 'USDC',
+        amount_per_payment: '10',
+        fee: '0.05',
+        status: 'pending',
+        plan_id: null,
+        executor_address: null,
       });
       expect(JSON.parse(dbRows[0]!.schedule_json)).toEqual(k.schedule);
       expect(JSON.parse(dbRows[0]!.recipients_json!)).toEqual(k.recipients);
-      expect(h.rows("SELECT origin, amount FROM db1_amount_placeholders WHERE origin LIKE 'autopay_%' ORDER BY origin")).toEqual([
+      expect(
+        h.rows("SELECT origin, amount FROM db1_amount_placeholders WHERE origin LIKE 'autopay_%' ORDER BY origin"),
+      ).toEqual([
         { origin: 'autopay_fee', amount: '0.05' },
         { origin: 'autopay_max_per_run', amount: '10.05' },
         { origin: 'autopay_max_total', amount: '80.4' },
@@ -399,7 +438,7 @@ export function registerA01toA16(): void {
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual([
-        "Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
+        'Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.',
       ]);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [

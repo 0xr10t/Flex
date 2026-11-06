@@ -1,4 +1,4 @@
-// Run the audit suite: npx vitest run --config test/audit/vitest.audit.config.ts
+// Run the audit suite: npm run test:audit
 // (test/audit is deliberately outside the root vitest.config.ts `include`.)
 import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';

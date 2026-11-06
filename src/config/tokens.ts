@@ -3,10 +3,11 @@
 // Owner: Lane A.
 
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Config } from '../contracts/types.js';
 import { expandHome } from './load.js';
+import { assertPrivateFile, protectPrivateFile } from '../util/private-file.js';
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
 
@@ -25,11 +26,16 @@ export function ensureTokenFile(path: string): string {
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const token = randomBytes(32).toString('hex');
-    writeFileSync(path, token, { mode: 0o600, flag: 'wx' });
-    chmodSync(path, 0o600);
+    writeFileSync(path, '', { mode: 0o600, flag: 'wx' });
+    protectPrivateFile(path);
+    writeFileSync(path, token);
     return token;
   }
-  if ((statSync(path).mode & 0o777) !== 0o600) throw new TokenFileError('token file must have mode 0600');
+  try {
+    assertPrivateFile(path);
+  } catch {
+    throw new TokenFileError('token file must have mode 0600 or a private Windows ACL');
+  }
   const token = readFileSync(path, 'utf8').trim();
   if (!TOKEN_RE.test(token)) throw new TokenFileError('token file does not contain a 32-byte hex token');
   return token;

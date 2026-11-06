@@ -12,6 +12,11 @@ export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** §9.1 step 1: trim, lowercase, collapse internal whitespace. */
+export function nameKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 const WORD_CHAR = 'A-Za-z0-9_';
 
 /** Whole-word, case-insensitive regex for a phrase; internal spaces match any whitespace run. */
@@ -71,7 +76,7 @@ function glued(a: string, b: string): boolean {
 }
 
 /** True when `r` cuts no word or number of `haystack` at either edge (see `findUnused`). */
-export function isWholeWordAt(haystack: string, r: Range): boolean {
+function isWholeWordAt(haystack: string, r: Range): boolean {
   return (
     !glued(haystack[r.start - 1] ?? '', haystack[r.start] ?? '') &&
     !glued(haystack[r.end - 1] ?? '', haystack[r.end] ?? '')
@@ -105,7 +110,7 @@ export function isIdentifierAt(source: string, r: Range): boolean {
  * Finds `needle` in `haystack` at the first occurrence that does not overlap `used` (§8.4 rule 1 "first unused
  * occurrence"). With `wholeWord`, the occurrence must not cut a word or a number: no letter next to a letter and no
  * digit next to a digit at either edge ("5" is not found inside "50", "riya" not inside "riyaz", but "50" is found in
- * "50usdc"). spec-questions/B.md SQB-26.
+ * "50usdc"). SQB-26.
  */
 export function findUnused(
   haystack: string,

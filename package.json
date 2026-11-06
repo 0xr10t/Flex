@@ -10,6 +10,16 @@
     "node": "^22.12.0 || >=24.0.0"
   },
   "scripts": {
+    "testnet:build": "npm run build && npm --prefix wallet run build",
+    "testnet:setup": "node scripts/setup-testnet.mjs",
+    "testnet:onboard": "node scripts/cre-onboard.mjs",
+    "testnet:start": "node scripts/start-testnet.mjs",
+    "cre:build": "node scripts/cre-local.mjs build",
+    "cre:simulate": "node scripts/cre-local.mjs qualify",
+    "cre:run": "node scripts/cre-local.mjs run",
+    "cre:watch": "node scripts/cre-local.mjs run --watch",
+    "cre:broadcast": "node scripts/cre-local.mjs broadcast",
+    "cre:autopay": "node scripts/cre-local.mjs broadcast --watch",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . && prettier --check .",
@@ -18,13 +28,20 @@
     "test:unit": "vitest run test/unit",
     "test:acceptance": "vitest run test/acceptance",
     "test:live": "vitest run --config vitest.live.config.ts",
+    "test:audit": "vitest run --config test/audit/vitest.audit.config.ts",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
+    "pretest:scripts": "npm run build",
     "ens:check": "wallet/node_modules/.bin/vite-node scripts/ens-check.ts",
     "ens:pay": "wallet/node_modules/.bin/vite-node scripts/ens-pay.ts",
     "start": "node dist/src/index.js",
     "cli": "node dist/src/cli/main.js",
     "prebuild": "npm --prefix packages/protocol run build",
     "pretypecheck": "npm --prefix packages/protocol run build",
-    "pretest": "npm --prefix packages/protocol run build"
+    "pretest": "npm --prefix packages/protocol run build",
+    "pretest:unit": "npm --prefix packages/protocol run build",
+    "pretest:acceptance": "npm --prefix packages/protocol run build",
+    "pretest:audit": "npm --prefix packages/protocol run build",
+    "pretest:live": "npm --prefix packages/protocol run build"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",

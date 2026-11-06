@@ -274,6 +274,34 @@ describe('startBalanceRefresher (privacy fix 8)', () => {
     await r.tick();
     expect(ctx.rpc.calls).toHaveLength(6);
   });
+
+  it('shares an in-flight refresh and discards its result when the connected account is retired', async () => {
+    const ctx = makeTestContext();
+    const lifetime = new AbortController();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const read = vi.spyOn(ctx.rpc, 'getEthBalance').mockImplementation(async () => {
+      await pending;
+      return 1n;
+    });
+    const before = structuredClone(ctx.repos.tables.db4);
+    const refresher = startBalanceRefresher({ ...ctx, signal: lifetime.signal });
+    const first = refresher.tick();
+    const second = refresher.tick();
+    expect(first).toBe(second);
+    expect(refresher.isRefreshing()).toBe(true);
+    expect(read).toHaveBeenCalledTimes(3);
+    lifetime.abort();
+    refresher.stop();
+    release();
+    await first;
+    expect(refresher.isRefreshing()).toBe(false);
+    expect(ctx.repos.tables.db4).toEqual(before);
+    await refresher.tick();
+    expect(read).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('S0 RPC clients (§14.5, C-357)', () => {

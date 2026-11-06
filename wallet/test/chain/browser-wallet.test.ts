@@ -1,9 +1,10 @@
 // Exercises the browser handoff with a test-only wallet on local Anvil chains. This does not claim real MetaMask or CCIP delivery.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeFunctionData, parseAbi, parseEther, type Hex } from 'viem';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
 import type { WalletBatchPayload } from '../../src/browser/types.js';
-import { ALEX, WALLET, envelope, payEth } from '../support/envelopes.js';
+import { ALEX, WALLET, envelope, payEth, autopay, cancelOf } from '../support/envelopes.js';
+import { pendingDelegations } from '../../src/browser/delegation.js';
 import { userAccount } from './harness.js';
 import { startWorld, units, type World, type Wallet } from './world.js';
 
@@ -46,6 +47,54 @@ async function session(wallet: Wallet) {
 }
 
 describe('browser approved CCIP transfer', () => {
+  it('registers and cancels an agent autopay through external wallet approvals without server signing', async () => {
+    await world.upgrade(world.base, userAccount);
+    let wallet = await world.startWallet({ approval: 'metamask', dbName: 'recurring-browser.db' });
+    let post = await session(wallet);
+    const k = autopay(0, (await world.base.now()) + 3600, [[ALEX, '10']]);
+    const e = envelope([k]);
+    const before = await world.base.usdcOf(ALEX);
+    expect((await wallet.post(e)).status).toBe(202);
+    await vi.waitFor(() => expect(pendingDelegations(wallet.service.store)).toHaveLength(1), { timeout: 15000 });
+    const request = pendingDelegations(wallet.service.store)[0]!;
+    expect(wallet.service.store.autopayByStep(e.request_id, 0)).toBeNull();
+    // Reopening preserves the exact bounded permission; a signature for changed terms is refused.
+    await wallet.stop();
+    wallet = await world.startWallet({ approval: 'metamask', dbName: 'recurring-browser.db' });
+    post = await session(wallet);
+    expect(pendingDelegations(wallet.service.store)[0]?.id).toBe(request.id);
+    const wrong = await userAccount.signTypedData({
+      ...request.typedData,
+      domain: { ...request.typedData.domain, chainId: 421614 },
+    } as never);
+    expect((await post('delegation', { id: request.id, signature: wrong })).statusCode).toBe(409);
+    const signature = await userAccount.signTypedData(request.typedData as never);
+    expect((await post('delegation', { id: request.id, signature })).statusCode).toBe(200);
+    expect((await post('delegation', { id: request.id, signature })).statusCode).toBe(409);
+    const approveBatch = async (requestId: string) => {
+      await vi.waitFor(() => expect(wallet.service.store.walletBatch(requestId, 0)).not.toBeNull(), { timeout: 15000 });
+      const batch = wallet.service.store.walletBatch(requestId, 0)!;
+      const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
+      expect((await post('claim', { id: batch.batch_id })).statusCode).toBe(200);
+      const hash = await world.base.walletFor(userAccount).sendTransaction({ ...payload.expectedTx, value: 0n });
+      await world.base.pub.waitForTransactionReceipt({ hash });
+      expect((await post('recover', { id: batch.batch_id, hash })).statusCode).toBe(200);
+      await world.base.rpc('anvil_mine', ['0x80']);
+      await vi.waitFor(() => expect(wallet.service.store.step(requestId, 0).status).toBe('executed'), {
+        timeout: 15000,
+      });
+    };
+    await approveBatch(e.request_id);
+    const plan = wallet.service.store.autopayByStep(e.request_id, 0)!;
+    expect(plan.status).toBe('active');
+    expect(await world.base.usdcOf(ALEX)).toBe(before);
+    const cancel = envelope([cancelOf(0, k.autopay_id, plan.plan_id)]);
+    expect((await wallet.post(cancel)).status).toBe(202);
+    await approveBatch(cancel.request_id);
+    expect(wallet.service.store.autopayByPlan(plan.plan_id)?.status).toBe('cancelled');
+    await world.base.setTime(k.schedule.start_at);
+    expect((await world.deliver(world.base, plan.redeem)).paid).toBe(false);
+  });
   it('keeps a single-recipient payment inside its checked batch when the browser sends one call directly', async () => {
     await world.upgrade(world.base, userAccount);
     const wallet = await world.startWallet({ approval: 'metamask' });

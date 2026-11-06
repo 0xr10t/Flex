@@ -33,7 +33,7 @@ const DECIMALS: Record<Token, 6 | 18> = { USDC: 6, ETH: 18 };
 /**
  * `IntentSchema` needs a UUID and the envelope has none. Its hash becomes the delegation salt, so a repeat of the same
  * step must give the same id; a random id would let a re-sign after a crash create a second live plan.
- * Provisional: OQ-09 in docs/wallet/OPEN_QUESTIONS.md.
+ * Provisional (open question OQ-09).
  */
 export function intentIdFor(requestId: string, step: number): string {
   const h = keccak256(toBytes(`flex-wallet/intent/${requestId}/${step}`)).slice(2);

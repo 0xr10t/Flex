@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
-// Runs against local anvil chains. Needs Foundry (`anvil`, `forge`) on the PATH. Nothing reaches a real network.
+// Runs transactions only against local Anvil chains. Needs Foundry (`anvil`, `forge`) on PATH.
+// Opt-in FLEX_NATIVE_CRE tests additionally authenticate the CLI and read public mock-forwarder bytecode.
 export default defineConfig({
   test: {
     include: ['test/chain/**/*.test.ts'],

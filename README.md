@@ -1,11 +1,208 @@
 # Agent Layer — Implementation Handoff Specification
 
-> **Start at [`docs/README.md`](docs/README.md).** This file is spec v1, which the agent code was built from. The current design is
-> [`docs/spec/AGENT_SPEC_v1.1.md`](docs/spec/AGENT_SPEC_v1.1.md), plus [`docs/wallet/ARCHITECTURE_CHANGES.md`](docs/wallet/ARCHITECTURE_CHANGES.md).
+> This file is spec v1, which the agent code was built from. Unit tests read the §8.10 prompts and §12.1 schemas from
+> it, so change those only together with `src/llm/prompts/` and `src/schemas/`.
 
 > **Audience:** the coding agent (and engineers) implementing the agent layer of the Wallet Access Layer.
 > **Status:** final, v1. Every behaviour below is decided. Build exactly this.
 > **Owner of this layer:** this team. Other layers (UI, execution/signing, bridging, autopay contracts, CRE jobs) are built by other teams and appear here only as interface contracts.
+
+## Running it
+
+| Path | Package |
+| --- | --- |
+| `/` | The agent: a local HTTP service that turns a plain-language request into a plan the user confirms |
+| `wallet/` | The execution layer: checks, signs and sends what the user approved. See [`wallet/README.md`](wallet/README.md) |
+| `packages/protocol/` | `@flex/protocol`: the hand-off envelope schema and the checks both sides share |
+
+Use Node 22.12+ on the 22.x line, or Node 24+. `better-sqlite3-multiple-ciphers` and `@napi-rs/keyring` use native
+bindings, so install on the machine that runs them.
+
+```sh
+npm ci
+(cd wallet && npm ci)
+(cd wallet/cre/autopay && npm ci)   # the wallet's unit tests include the CRE workflow
+```
+
+### Release installer (packaging scaffold)
+
+The root `install.sh` installs a prepared release archive; it does not build this repository. Release archives and
+an automated release build are not provided yet. The current `master` branch also does not include the `flexx`
+CLI entry point. Until a complete CLI runtime is packaged and published, use the source setup below.
+
+Once releases exist, download and inspect `install.sh` from a trusted, pinned revision, then run:
+
+```sh
+bash install.sh --version v0.1.0 --sha256 '<trusted SHA-256 for your platform archive>'
+# Or install a previously downloaded release without contacting GitHub:
+bash install.sh --version v0.1.0 --sha256 '<trusted SHA-256>' --archive ./flex-release.tar.gz
+export PATH="$HOME/.flex/bin:$PATH"
+flexx --help
+```
+
+The version and digest above are placeholders, not a published release. Obtain the digest through a trusted
+release channel; a checksum downloaded alongside an archive alone does not establish publisher authenticity.
+There is no checksum bypass. Installation requires Bash and Python 3, plus curl for HTTPS downloads. Target names
+are `linux` or `darwin` and `x86_64` or `aarch64` (including Apple's `arm64`). Actual platform support depends on
+building and testing the corresponding release; the installer cannot make incompatible native bindings portable.
+
+The download URL is
+`https://github.com/0xr10t/Flex/releases/download/VERSION/flex-VERSION-OS-ARCH.tar.gz`.
+Each archive must have `bin/flexx` at its root, executable and supporting `--version` without starting services.
+Include its compatible runtime, native database/keychain dependencies, built agent/wallet/protocol code, prompts,
+schemas and browser assets. Launchers must locate bundled files relative to their installation directory, so they
+work both in staging and after installation. Archive entries may only be regular files and directories: flatten
+package-manager symlinks when preparing the archive. Never include user configuration, tokens, keys, databases or logs.
+
+The installer uses `~/.flex` by default (`--prefix /absolute/path` overrides it). Releases go into
+`versions/VERSION`, with `current` pointing at the active version and `bin/flexx` pointing through `current`.
+A failed digest or `--version` check leaves the previous release active. Rerun the installer with a new version and
+its digest to update; previous versions remain on disk and existing versions are never overwritten. Concurrent
+installs are refused using `.install-lock`; remove a stale lock only after confirming no installer is running.
+
+The installer does not use sudo, edit shell profiles, create wallet configuration, download models, start services,
+or collect telemetry. Only downloading a release contacts GitHub; `--archive` skips installer downloads (the
+release's own `--version` implementation must also avoid network activity). Add the printed `bin` directory to your
+shell's PATH yourself. Guided `flexx setup`, `flexx doctor` and a `flexup` updater are future work, not installed
+commands. Model, wallet and network-provider setup remains necessary before using Flex for payments.
+
+### Check and test
+
+```sh
+npm run typecheck
+npm run lint                       # ESLint and Prettier, for every package
+npm test                           # unit + acceptance: model fixtures, temporary databases, fake execution
+npm run test:audit                 # privacy, logging, network and storage audits
+npm run test:scripts               # builds the agent, then tests scripts/
+(cd wallet && npm test)            # wallet unit tests and the CRE workflow
+(cd wallet && npm run test:chain)  # real contracts on local anvil chains; needs Foundry
+```
+
+None of these needs Ollama or a network. `LIVE_SET=all LIVE_TAG=<tag> npm run test:live` runs the acceptance prompts and
+paraphrases against the real local model (with fake RPC, ENS and execution); `node test/live/summarize.mjs <tag>` prints
+the results.
+
+### Configure and start the agent
+
+1. Run Ollama and pull the configured model: `ollama pull qwen2.5:7b-instruct`.
+2. Run Tor. The example config sends everything that leaves this machine through `socks5h://127.0.0.1:9050`; set
+   `network.socks_proxy` to `null` only when every endpoint is on this machine.
+3. Copy `config.example.json` to `~/.agent-layer/config.json` (or point `AGENT_CONFIG` at another path) and fill in your
+   public wallet address and anon-rpc URLs (https, or `http://127.0.0.1`). Missing and unknown fields are rejected.
+4. `npm run build && npm start`.
+
+The agent listens on `127.0.0.1:8787` (`server.port`). On first start it creates the three bearer-token files named in
+the config (mode 0600) and a database key in the OS keychain (service `agent-layer`, account `db-key`). Logs go to
+`~/.agent-layer/logs/agent.log`.
+
+To set up the agent, the wallet and the CRE workflow for the testnets from one file, copy `.env.example` to `.env`, fill
+it in, build both packages, and run `node scripts/setup-testnet.mjs`. It writes the three configs and the tokens to
+`.local/`.
+
+### The `flexx` terminal
+
+```sh
+npm run build
+npm link        # once: puts `flexx` on your PATH
+flexx
+```
+
+`flexx` is a terminal client for the agent's UI API. It reads the agent's config (`AGENT_CONFIG`, default `~/.agent-layer/config.json`). If nothing answers on the agent's port, it starts `dist/src/index.js` with that config and stops it again on exit; an agent that was already running is left alone. If the config does not validate, the chat lists the failing fields instead of starting anything.
+
+Type a request in your own words. A question shows numbered choices: type a number, several numbers (`1,3` or `all`) for a member list, or answer in words. A summary asks `[y] Yes  [n] No`; after a yes, `flexx` opens the wallet's MetaMask approval page (the agent's `execution.url`) in your browser. Commands: `/balance`, `/limits` (and `/limits <name> <value>`, or `/limits daily_max USDC 250` for one token), `/cancel`, `/new`, `/wallet`, `/status`, `/clear`, `/help`, `/exit`. Leaving closes the session, which clears its data in the agent.
+
+`flexx splash` and `flexx scene` show the animations alone; `flexx --static` prints one still frame.
+
+### Wallet information and the shared contract
+
+Common address and balance questions bypass Ollama and RPC, even with chat disabled or the model offline. Each
+session captures its public wallet address when it opens. Balance replies read the background-updated DB4 cache
+and current local spending reservations. Asking while a payment is open preserves its question, attempt count and
+confirmation. Cold or unreadable balances are unavailable, never zero; incomplete totals are labelled subtotals.
+Cache timestamps stay in internal balance context, outside the answer text.
+
+Weekly received-payment questions and explicit identifier explanations also bypass Ollama. Incoming history uses
+an opt-in Blockscout source and a separate background cache; unknown identifiers are inspected locally without a
+lookup or storage. See [received payments and identifiers](docs/agent/README.md) for configuration and limitations.
+With chat enabled, other contextual wallet questions select verified facts from the same local cache. Mixed
+display/payment requests still use the payment pipeline. A wallet-information reply cannot approve a payment.
+
+The current agent–wallet interface is [the shared v2 protocol](packages/protocol/README.md), including recipient
+arrays, fixed UTC schedules, execution fees and cancellation by plan ID. It supports ENS group autopays with up to
+50 selected members; confirmation fixes the recipient list and amounts. Offline contract tests cover this flow;
+live results from before the migration do not validate it. The v1 specification below remains historical context.
+
+### CRE autopay workflow (local build and simulate)
+
+The local runner reads the root `.env` and needs an authenticated CRE CLI (`cre login`). Set `CRE_CLI_PATH` to the
+executable, or install it at `.local/bin/cre` (`.local/bin/cre.exe` on Windows).
+
+```sh
+npm run cre:build                 # build the workflow and record source/WASM hashes
+npm run cre:simulate              # build and qualify native providers on the three testnets
+npm run cre:simulate -- --no-build # reuse the existing artifact
+npm run cre:run                   # evaluate registered plans once
+npm run cre:watch                 # evaluate every 30 seconds
+npm run cre:broadcast             # dry run, then submit one due authorized payment per chain
+npm run cre:autopay               # keep submitting due payments locally
+```
+
+`cre:build`, `cre:simulate`, `cre:run` and `cre:watch` remain read-only. The explicit `cre:broadcast` and
+`cre:autopay` commands use native `cre workflow simulate autopay --target staging-settings --non-interactive --trigger-index 0 --broadcast`.
+They need `CRE_ETH_PRIVATE_KEY` in the protected root `.env`, with test ETH on Ethereum Sepolia, Base Sepolia
+and Arbitrum Sepolia. `CRE_TRANSMITTER_ADDRESS` is its public address (defaults to `FLEX_WALLET_ADDRESS`).
+The CLI consumes the key; the agent and browser wallet do not load it. No hosted workflow or deployment-access approval is needed.
+
+One-time setup:
+
+```sh
+npm run testnet:build
+npm run testnet:setup
+forge build --root wallet/contracts
+npm run testnet:onboard            # open http://127.0.0.1:8792 in your MetaMask browser
+```
+
+Setup reuses the verified public executors in `wallet/cre/deployments.testnet.json`; a partner does not need to
+redeploy them or receive anyone else's `.env`. Each operator supplies their own RPC credentials and CRE login;
+broadcasting additionally requires their own funded test transmitter key. Each payment wallet approves its own
+delegations. On the setup page, enable MetaMask smart-account transactions where needed, and deploy only if an
+executor is missing.
+Only verified deployment receipts update local executor configuration. Then restart the services with
+`npm run testnet:start -- --broadcast`, enter a recurring payment in the agent, and approve the delegation and
+registration at `http://127.0.0.1:8788`. Pasted/uploaded documents cannot grant recurring permissions; type the amounts.
+Use the agent's cancellation flow to stop a plan and revoke its delegation.
+
+Local testnet receivers pin the official **MockKeystoneForwarder** for their chain; optional DON identity checks
+remain unset because local simulation has no registered workflow identity. These mocks do not authenticate DON
+consensus. Payments remain bounded by the wallet's signed delegation and onchain registration, schedule, run limit,
+replay protection and cancellation. This configuration is for testnets only.
+
+The runner discovers finalized registrations, verifies a due payment with the configured simulation quorum, and
+runs the native broadcast invocation for that exact plan and slot. A durable journal prevents resubmission after
+a crash or ambiguous CLI exit. `SUBMISSION_UNKNOWN` requires operator reconciliation; do not delete the journal
+to force a retry. Pending transactions from the transmitter (including MetaMask submissions using that same account)
+pause broadcasts. The wallet records payment history only after finalized `Executed` events; a CLI hash or
+successful forwarder receipt alone is not a payment. `/v1/cre/status` exposes observations separately.
+
+Keep the local runner and wallet service running for recurring payments. A missed slot is skipped after its signed
+late window; there is no automatic back-payment. Initial Sepolia registration discovery may wait for chain finality,
+so allow a sufficiently long late window when creating a test plan.
+
+The runner refuses a wallet config with a non-null `network.socks_proxy` (`CRE_LOCAL_PROXY_UNSUPPORTED`),
+because native local CRE cannot use that Node SOCKS transport. Choose `FLEX_SOCKS_PROXY=direct` during setup
+for direct access to the configured providers. Runner state lives in
+`.local/cre-runner/`; keep it private because it can hold signed delegation calldata. A loopback listener on port
+8791 prevents concurrent runners.
+
+The optional native integration test needs the CRE CLI and login:
+
+```sh
+FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native.test.ts
+FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native-broadcast.test.ts
+```
+
+They are skipped unless `FLEX_NATIVE_CRE=1` is set. The broadcast test uses public Anvil fixture keys and local
+transactions on all three chain IDs; its only public testnet access reads the official mock forwarder runtime code.
 
 ---
 

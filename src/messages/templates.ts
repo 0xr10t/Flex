@@ -1,5 +1,5 @@
 // Implements: §13.1 summary line templates, {cadence} and {end text} forms; §13.2 balance answer lines;
-// §10.7 step 3 Q_AUTOPAY_PICK chip label. Verbatim from the spec.
+// §10.7 step 3 Q_AUTOPAY_PICK chip label. Payment summaries follow shared v2 execution semantics.
 // Home of these texts per §21 (`src/messages/`: summary, balance answer, question and error texts); CCR D-1 rejected.
 // SQ-CHAT-02: exact, self-labelled wallet facts selected by the conversational model.
 

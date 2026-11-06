@@ -21,7 +21,7 @@ export interface ConversationDecision {
 }
 
 const TEMPLATE = loadPromptTemplate('conversation.txt');
-export const CONVERSATION_SCHEMA = {
+const CONVERSATION_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['intent', 'value'],

@@ -141,6 +141,51 @@ afterEach(async () => {
 });
 
 describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', () => {
+  it('preserves failed-payment context across a local balance query and requires confirmation of the correction', async () => {
+    const h = make('balance-preserves-context', [...initialCalls(), ...correctionCalls()]);
+    const failed = await failInitial(h);
+    const tables = [
+      'db1_amount_placeholders',
+      'db3_address_placeholders',
+      'db6_spend_log',
+      'db7_autopays',
+      'db8_prompts',
+      'db8_history',
+      'handoff_journal',
+    ];
+    const before = h.snapshot(tables);
+    const calls = h.llm.names();
+    h.llm.available = false;
+    const balance = await h.say("what's my balance");
+    expect(balance.body.state).toBe('done');
+    expect(balance.body.reply_source).toBe('local');
+    expect(balance.body.messages[0]!.text).toContain('Arbitrum Sepolia: 60 USDC balance.');
+    expect(h.snapshot(tables)).toBe(before);
+    expect(h.llm.names()).toEqual(calls);
+    expect(h.rpc.calls).toEqual([]);
+    expect((await h.confirm(balance, 'yes')).http).toBe(409);
+    expect((await h.confirm(failed, 'yes')).http).toBe(409);
+    noCommitment(h);
+
+    h.llm.available = true;
+    const corrected = await h.say(CORRECTION);
+    expect(corrected.body.state).toBe('awaiting_confirmation');
+    expect(corrected.body.request_id).not.toBe(failed.body.request_id);
+    expect(corrected.body.summary?.notes).toContain('Continuing your previous request with a new amount.');
+    expect(h.asked).toEqual([]);
+    expect(h.llm.remaining()).toEqual([]);
+    noCommitment(h);
+    expect((await h.confirm(corrected, 'yes')).body.state).toBe('done');
+    expect(h.exec.submissions).toHaveLength(1);
+    expect(h.envelope.request_id).toBe(corrected.body.request_id);
+    expect(h.envelope.intents.at(-1)).toMatchObject({
+      intent_id: 'i',
+      chain_id: ARB,
+      recipients: [{ recipient: ARADHYA, amount: usdc('70') }],
+    });
+    expect(h.rows('SELECT request_id FROM db8_history')).toEqual([{ request_id: corrected.body.request_id }]);
+  });
+
   it('retains the resolved payee/token/Arbitrum chain, rebuilds exact bridge ordering, and waits for a new yes', async () => {
     const h = make('bridge', [...initialCalls(), ...correctionCalls()]);
     const failed = await failInitial(h);
@@ -183,7 +228,8 @@ describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', (
         source_chain_id: BASE,
         dest_chain_id: ARB,
         amount: usdc('10'),
-        receiver: 'self', fee_max_eth: '0.002',
+        receiver: 'self',
+        fee_max_eth: '0.002',
         funds_steps: [1],
       },
       usdcIntent({
@@ -254,11 +300,11 @@ describe('SQ-S-01: fresh amount corrections of an unsubmitted failed payment', (
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-intent_id: 'i',
-token,
-chain_id: BASE,
-recipients: [{ recipient: ARADHYA, amount: token === 'ETH' ? eth(number) : usdc(number) }]
-});
+      intent_id: 'i',
+      token,
+      chain_id: BASE,
+      recipients: [{ recipient: ARADHYA, amount: token === 'ETH' ? eth(number) : usdc(number) }],
+    });
   });
 
   it('refreshes balances and recomputes bridge requirements for the new request', async () => {
@@ -312,9 +358,9 @@ recipients: [{ recipient: ARADHYA, amount: token === 'ETH' ? eth(number) : usdc(
     expect(h.rows('SELECT request_id FROM db8_history')).toEqual([{ request_id: old.body.request_id }]);
     await h.confirm(corrected, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-chain_id: ARB,
-recipients: [{ recipient: ARADHYA, amount: usdc('70') }]
-});
+      chain_id: ARB,
+      recipients: [{ recipient: ARADHYA, amount: usdc('70') }],
+    });
     expect(h.rows('SELECT request_id FROM db8_history').map((row) => row.request_id)).not.toContain(
       failed.body.request_id,
     );
@@ -336,9 +382,9 @@ describe('SQ-S-01 safety boundaries', () => {
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-chain_id: ARB,
-recipients: [{ recipient: MIHIR, amount: usdc('70') }]
-});
+      chain_id: ARB,
+      recipients: [{ recipient: MIHIR, amount: usdc('70') }],
+    });
   });
 
   it('does not reuse a payee when a new name is present but omitted by the spans model', async () => {
@@ -350,27 +396,32 @@ recipients: [{ recipient: MIHIR, amount: usdc('70') }]
     noCommitment(h);
   });
 
-  it.each(['cancel-endpoint', 'cancel-text', 'balance', 'secret', 'model-unavailable', 'new-session'] as const)(
-    'clears the failed-payment context after %s',
-    async (operation) => {
-      const next = 'send 70';
-      const middle = operation === 'balance' ? loadFixture('A-17').calls : [];
-      const h = make(`clear-${operation}`, [...initialCalls(), ...middle, amountCall(next, '70', '70', null)]);
-      const failed = await failInitial(h);
-      if (operation === 'cancel-endpoint') await h.cancel(failed);
-      else if (operation === 'cancel-text') await h.say('cancel');
-      else if (operation === 'balance') expect((await h.say("what's my balance")).body.state).toBe('done');
-      else if (operation === 'secret')
-        expect((await h.say(`0x${'ab'.repeat(32)}`)).body.error?.code).toBe('SECRET_DETECTED');
-      else if (operation === 'model-unavailable') {
-        h.llm.available = false;
-        expect((await h.say(CORRECTION)).body.error?.code).toBe('MODEL_FAILED');
-        h.llm.available = true;
-      } else await h.open('UTC');
-      expect((await h.say(next)).body.question?.code).toBe('Q_TOKEN');
-      noCommitment(h);
-    },
-  );
+  it.each([
+    'cancel-endpoint',
+    'cancel-text',
+    'unrelated-request',
+    'secret',
+    'model-unavailable',
+    'new-session',
+  ] as const)('clears the failed-payment context after %s', async (operation) => {
+    const next = 'send 70';
+    const middle = operation === 'unrelated-request' ? loadFixture('A-18').calls : [];
+    const h = make(`clear-${operation}`, [...initialCalls(), ...middle, amountCall(next, '70', '70', null)]);
+    const failed = await failInitial(h);
+    if (operation === 'cancel-endpoint') await h.cancel(failed);
+    else if (operation === 'cancel-text') await h.say('cancel');
+    else if (operation === 'unrelated-request')
+      expect((await h.say('swap my eth for usdc')).body.error?.code).toBe('UNSUPPORTED_REQUEST');
+    else if (operation === 'secret')
+      expect((await h.say(`0x${'ab'.repeat(32)}`)).body.error?.code).toBe('SECRET_DETECTED');
+    else if (operation === 'model-unavailable') {
+      h.llm.available = false;
+      expect((await h.say(CORRECTION)).body.error?.code).toBe('MODEL_FAILED');
+      h.llm.available = true;
+    } else await h.open('UTC');
+    expect((await h.say(next)).body.question?.code).toBe('Q_TOKEN');
+    noCommitment(h);
+  });
 
   it('does not turn a failed autopay into an implicit one-time payment', async () => {
     const next = 'send 70';
@@ -601,10 +652,10 @@ describe('SQ-S-01: explanatory follow-ups use ordinary back-reference semantics'
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-intent_id: 'i',
-token: 'USDC',
-recipients: [{ recipient: RIYA, amount: usdc('50') }]
-});
+      intent_id: 'i',
+      token: 'USDC',
+      recipients: [{ recipient: RIYA, amount: usdc('50') }],
+    });
   });
 
   it('uses an explicit new recipient and ordinary chain choice despite a pronoun in the explanation', async () => {
@@ -680,8 +731,8 @@ recipients: [{ recipient: RIYA, amount: usdc('50') }]
     noCommitment(h);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents.at(-1)).toMatchObject({
-recipients: [{ recipient: RIYA, amount: usdc('50') }]
-});
+      recipients: [{ recipient: RIYA, amount: usdc('50') }],
+    });
   });
 
   it('does not let a back-reference bypass the conflicting-token safeguard', async () => {

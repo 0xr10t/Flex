@@ -133,9 +133,9 @@ it('SQ-CHAT-02 live: wallet questions and normal explanations preserve a draft t
     expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
     expect(h.exec.submissions).toHaveLength(1);
     expect(h.envelope.intents[0]).toMatchObject({
-chain_id: BASE,
-recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
-});
+      chain_id: BASE,
+      recipients: [{ recipient: MIHIR, amount: { value: '10' } }],
+    });
   });
 });
 
@@ -147,8 +147,8 @@ it('SQ-CHAT-02 live: a mixed balance question and payment retains the full walle
     expect(h.exec.submissions).toHaveLength(0);
     await h.confirm(summary, 'yes');
     expect(h.envelope.intents[0]).toMatchObject({
-chain_id: BASE,
-recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
-});
+      chain_id: BASE,
+      recipients: [{ recipient: MIHIR, amount: { value: '10' } }],
+    });
   });
 });

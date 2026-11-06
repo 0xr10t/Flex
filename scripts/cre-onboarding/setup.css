@@ -1,0 +1,66 @@
+body {
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+  background: #101725;
+  color: #ecf1fa;
+  margin: 0;
+}
+main {
+  max-width: 850px;
+  margin: 45px auto;
+  padding: 0 22px;
+}
+h1 {
+  font-size: 32px;
+}
+p {
+  color: #c3cddd;
+}
+article {
+  padding: 20px;
+  margin: 18px 0;
+  border: 1px solid #34405a;
+  border-radius: 12px;
+  background: #182237;
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 21px;
+}
+button {
+  padding: 10px 16px;
+  margin: 6px 10px 6px 0;
+  cursor: pointer;
+  background: #91b7ff;
+  color: #09152b;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+a {
+  color: #a4c4ff;
+}
+input {
+  padding: 9px;
+  margin-right: 8px;
+  width: 65%;
+  background: #101725;
+  color: #fff;
+  border: 1px solid #65718b;
+  border-radius: 5px;
+}
+#message {
+  white-space: pre-wrap;
+}
+.good {
+  color: #a7e7ba;
+}

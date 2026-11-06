@@ -13,8 +13,8 @@ import { accountProblem } from '../wallet/dist/src/chain/account.js';
 import { bridgeHandler } from '../wallet/dist/src/bridge/bridge-j.js';
 import { runCheck } from '../wallet/dist/src/guard/check.js';
 import { openDatabase, Store } from '../wallet/dist/src/store/store.js';
-import { USDC } from '../wallet/dist/src/schemas/intent.v2.js';
-import { checkEnvelope } from '../wallet/dist/src/mapping/check.js';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
 
 let stage = 'config';
 async function main() {

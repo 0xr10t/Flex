@@ -16,7 +16,7 @@ import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { MessageInput, QItem } from '../contracts/types.js';
 import { detectSecret } from '../guard/secrets.js';
 import { extractUrls, isHttpsUrl, isSecretRefusal, urlHasSecret } from '../guard/urls.js';
-import { nowUtcIso, unsupported } from '../lexical/step-util.js';
+import { nowUtcIso, unsupported } from './step-util.js';
 import { decodeUtf8, pdfToText } from '../quarantine/extract.js';
 import { ITEM_LABEL } from '../quarantine/labels.js';
 import { extractUntrusted } from '../quarantine/qllm.js';
@@ -25,7 +25,7 @@ import { extractUntrusted } from '../quarantine/qllm.js';
 const TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 const PDF_MIME = 'application/pdf';
 /** §8.2 step 4 / I-16. */
-export const MAX_ITEM_CHARS = 20_000;
+const MAX_ITEM_CHARS = 20_000;
 
 interface ContentItem {
   label: string;
@@ -69,7 +69,7 @@ async function s1Step(ctx: StepContext): Promise<StepResult> {
       try {
         text = await pdfToText(bytes);
       } catch {
-        // An allowed PDF that cannot be read is not covered by the spec (spec-questions/B.md SQB-08).
+        // An allowed PDF that cannot be read is not covered by the spec (SQB-08).
         dropBuffers(ctx);
         return unsupported(ctx, 's1', 'S1_PDF_UNREADABLE');
       }

@@ -1,14 +1,14 @@
 // Ported from lab src/flex.handoff.test.ts (TEST_MAP §4.4, 29 cases), run against the real translator, plus new cases
 // for what the test translator did not cover. Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { formatUnits, parseUnits } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { executionsOf } from '../../src/chain/redeem.v2.js';
-import { checkEnvelope } from '../../src/mapping/check.js';
-import { intentIdFor, toPlan } from '../../src/mapping/to-plan.js';
-import { MAX_STEPS_PER_PLAN, PlanSchema } from '../../src/schemas/bridge.v2.js';
-import { MAX_RECIPIENTS, MAX_RECIPIENTS_AUTOMATED, USDC, type Intent } from '../../src/schemas/intent.v2.js';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
+import { intentIdFor, toPlan } from '@flex/protocol/mapping/to-plan';
+import { MAX_STEPS_PER_PLAN, PlanSchema } from '@flex/protocol/schemas/bridge.v2';
+import { MAX_RECIPIENTS, MAX_RECIPIENTS_AUTOMATED, USDC, type Intent } from '@flex/protocol/schemas/intent.v2';
 
 const WALLET = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const ARADHYA = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC';
@@ -330,7 +330,7 @@ describe('intentIdFor (provisional, OQ-09)', () => {
   });
 });
 
-describe('envelope changes (docs/wallet/ARCHITECTURE_CHANGES.md)', () => {
+describe('envelope v2 changes', () => {
   const stageOf = (envelope: unknown) => {
     const r = checkEnvelope(envelope, options);
     return r.ok ? 'ok' : r.stage;
@@ -469,9 +469,7 @@ describe('envelope changes (docs/wallet/ARCHITECTURE_CHANGES.md)', () => {
   });
 
   describe('the JSON schema and the verified schemas agree on limits', () => {
-    const schema = JSON.parse(
-      readFileSync(new URL('../../../packages/protocol/src/schemas/handoff-envelope.schema.json', import.meta.url), 'utf8'),
-    );
+    const schema = createRequire(import.meta.url)('@flex/protocol/schema');
     it('steps', () => expect(schema.properties.intents.maxItems).toBe(MAX_STEPS_PER_PLAN));
     it('one-time recipients', () => expect(schema.$defs.payment_i.properties.recipients.maxItems).toBe(MAX_RECIPIENTS));
     it('automated recipients', () =>

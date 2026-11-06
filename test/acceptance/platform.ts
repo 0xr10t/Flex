@@ -201,7 +201,7 @@ export function registerPlatform(): void {
       await h.finish();
     });
 
-    it('A-54: intent_result for a k step moves the DB7 row to active with the delegate and updates DB6', async () => {
+    it('A-54: a legacy k result records plan/executor identity and settles its historical prefund row', async () => {
       const h = await harness('none');
       const id = seedAutopay(h, { id: 'ap_aaaaaaaaaaaa', status: 'pending' });
       seedSpend(h, {
@@ -261,7 +261,17 @@ export function registerPlatform(): void {
         status: 'executed',
         tx_hash: '0x' + 'ef'.repeat(32),
         executed_at: '2026-11-05T17:00:00Z',
-        autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '10', fee: '0.05', chain_id: BASE, token: 'USDC' },
+        autopay: {
+          autopay_id: id,
+          plan_id: planIdFor(id),
+          executor_address: DELEGATE,
+          slot: 0,
+          status: 'active',
+          amount: '10',
+          fee: '0.05',
+          chain_id: BASE,
+          token: 'USDC',
+        },
       });
       expect(status).toBe(204);
       const rows = h.rows<Record<string, unknown>>("SELECT * FROM db6_spend_log WHERE kind='autopay_payment'");
@@ -285,10 +295,34 @@ export function registerPlatform(): void {
     it('A-55: autopay_status ends the DB7 row', async () => {
       const h = await harness('none');
       const id = seedAutopay(h);
-      expect(await h.report({ kind: 'autopay_status', request_id: 'req_00000000aaaa', autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, chain_id: BASE, token: 'USDC', status: 'ended' } })).toBe(204);
+      expect(
+        await h.report({
+          kind: 'autopay_status',
+          request_id: 'req_00000000aaaa',
+          autopay: {
+            autopay_id: id,
+            plan_id: planIdFor(id),
+            executor_address: DELEGATE,
+            chain_id: BASE,
+            token: 'USDC',
+            status: 'ended',
+          },
+        }),
+      ).toBe(204);
       expect(h.repos.db7.get(id)!.status).toBe('ended');
       expect(
-        await h.report({ kind: 'autopay_status', request_id: 'req_00000000aaaa', autopay: { autopay_id: 'ap_ffffffffffff', plan_id: planIdFor(id), executor_address: DELEGATE, chain_id: BASE, token: 'USDC', status: 'ended' } }),
+        await h.report({
+          kind: 'autopay_status',
+          request_id: 'req_00000000aaaa',
+          autopay: {
+            autopay_id: 'ap_ffffffffffff',
+            plan_id: planIdFor(id),
+            executor_address: DELEGATE,
+            chain_id: BASE,
+            token: 'USDC',
+            status: 'ended',
+          },
+        }),
       ).toBe(404);
       await h.finish();
     });

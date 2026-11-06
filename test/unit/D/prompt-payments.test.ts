@@ -1,5 +1,5 @@
 // Lane D tester: §8.10 LLM #4 prompt builder, §8.9 / §12.2 per-request schema slots.
-// SQ-L-01 permits reviewed system text changes; full live acceptance is recorded in PROMPT_CHANGES.md.
+// SQ-L-01 permits reviewed system text changes.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AddressPh, AmountPh, GroupPh } from '../../../src/contracts/types.js';
@@ -53,6 +53,19 @@ function input(over: Partial<PaymentsPromptInput> = {}): PaymentsPromptInput {
 }
 
 describe('LLM #4 prompt builder (§8.10)', () => {
+  it('keeps a recurring group as one placeholder and describes equal amounts for the selected members', () => {
+    const p = buildPaymentsPrompt(
+      input({
+        masked_text_s8: `pay ${A1} each to ${G1} every friday`,
+        recipients: [{ placeholder: G1, type: 'group' }],
+      }),
+    );
+    expect(p.user).toContain(`"placeholder":"${G1}","type":"group"`);
+    expect(p.system).toContain('one-time ("i") or repeating ("k")');
+    expect(p.system).toContain('its amount is paid to each selected member');
+    expect(p.system).toContain('never invent member placeholders');
+  });
+
   it('C-148 / SQ-L-01 system text equals the independently reviewed recurrence and chain instructions', () => {
     const p = buildPaymentsPrompt(input());
     expect(p.system).toBe(reviewedBlock().system);

@@ -1,7 +1,7 @@
 // Local anvil chains that look like the real testnets: MetaMask's real contracts, placed at their real addresses, and a
 // test USDC at the registered USDC address. So the wallet runs with its production constants and no test-only paths.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import type { SmartAccountsEnvironment } from '@metamask/smart-accounts-kit';
@@ -19,7 +19,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 
 // Public Anvil test keys. They hold nothing outside a local chain.
 const DEPLOYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -35,6 +35,10 @@ export const artifact = (file: string, name: string) =>
   };
 
 const MOCK_USDC = artifact('TestHelpers.sol', 'MockUSDC').deployedBytecode.object;
+// Older stable Anvil releases don't expose --network and don't infer OP rules from the Base chain ID.
+const explicitNetwork = execFileSync('anvil', ['--help'], { encoding: 'utf8', windowsHide: true }).includes(
+  '--network ',
+);
 
 export const freePort = () =>
   new Promise<number>((resolve, reject) => {
@@ -68,13 +72,24 @@ export interface LocalChain {
   stop: () => void;
 }
 
-export async function startChain(chainId: LocalChain['chainId']): Promise<LocalChain> {
+export async function startChain(chainId: LocalChain['chainId'], timestamp?: number): Promise<LocalChain> {
   const port = await freePort();
   const rpcUrl = `http://127.0.0.1:${port}`;
   const proc: ChildProcess = spawn(
     'anvil',
-    ['--port', String(port), '--chain-id', String(chainId), '--hardfork', 'prague', '--silent'],
-    { stdio: 'ignore' },
+    // Anvil infers Base's OP-stack rules from chain id 84532 and then refuses `prague`; keep every chain plain Ethereum.
+    [
+      '--port',
+      String(port),
+      '--chain-id',
+      String(chainId),
+      ...(explicitNetwork ? ['--network', 'ethereum'] : []),
+      '--hardfork',
+      'prague',
+      '--silent',
+      ...(timestamp === undefined ? [] : ['--timestamp', String(timestamp)]),
+    ],
+    { stdio: 'ignore', windowsHide: true },
   );
 
   const rpc = async (method: string, params: unknown[] = []) => {

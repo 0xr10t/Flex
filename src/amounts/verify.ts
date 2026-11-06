@@ -35,7 +35,7 @@ import {
   type Token,
   type TokenWordKind,
 } from '../contracts/types.js';
-import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
+import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../pipeline/step-util.js';
 import { amountCurrencyKinds, parseAmountText } from './parse.js';
 
 /** One amount being verified. Lives in `req.step_state` (S3 / S4), so it must stay JSON-serialisable. */
@@ -109,7 +109,7 @@ export function newWorkItem(id: number, over: Partial<WorkItem> & Pick<WorkItem,
 }
 
 /** Canonical form of a plain decimal ("050.50" → "50.5"), at its own precision. */
-export function canonicalDecimal(s: string): string {
+function canonicalDecimal(s: string): string {
   const d = fractionDigits(s);
   return fromBaseUnits(toBaseUnits(s, d), d);
 }
@@ -154,7 +154,7 @@ function mapKind(k: TokenWordKind): Token | 'FIAT_OTHER' {
 }
 
 /** §17.2 step 6: the token of the previous payment (most recent history entry), when it names exactly one. */
-export function previousToken(ctx: StepContext): Token | null {
+function previousToken(ctx: StepContext): Token | null {
   if (ctx.req.retry_context !== undefined) return ctx.req.retry_context.token;
   if (ctx.req.scan.back_reference.length === 0) return null;
   const tokens = new Set<Token>();
@@ -169,7 +169,7 @@ export function previousToken(ctx: StepContext): Token | null {
 }
 
 /** §8.4 step 3 token order (a)–(d) and §17.2 step 6. Null → Q_TOKEN. 'FIAT_OTHER' → Q_FIAT_OTHER. */
-export function inferToken(ctx: StepContext, item: WorkItem): Token | 'FIAT_OTHER' | null {
+function inferToken(ctx: StepContext, item: WorkItem): Token | 'FIAT_OTHER' | null {
   if (item.llm_token !== null) return item.llm_token; // (a)
   if (item.fiat === 'USD') return 'USDC'; // (b)
   const tokens = ctx.req.scan.tokens;
@@ -201,7 +201,7 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
   let amount: bigint;
   if (chain !== null) {
     if (!ctx.limits.allowed_chain_ids.includes(chain)) {
-      // spec-questions/B.md SQB-20
+      // SQB-20
       return {
         kind: 'stop',
         result: { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx.config, chain) } },
@@ -253,11 +253,6 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
   item.pinned_chain_id = chain;
   item.code_verified = false;
   return { kind: 'done' };
-}
-
-/** Item resolved enough to mint? */
-export function itemReady(item: WorkItem): boolean {
-  return item.value_done && item.value !== null && item.token !== null;
 }
 
 function originOf(item: WorkItem): AmountItem['origin'] {
@@ -322,7 +317,7 @@ export function advanceItem(ctx: StepContext, item: WorkItem): Advance {
     } else if (item.number === null) {
       return ask(item, 'Q_AMOUNT_MISSING');
     } else if (!isDecimalString(item.number)) {
-      // "number MUST match ^\d+(\.\d+)?$" — a non-null number that does not: spec-questions/B.md SQB-06.
+      // "number MUST match ^\d+(\.\d+)?$" — a non-null number that does not: SQB-06.
       return { kind: 'stop', result: unsupported(ctx, 's3', 'S3_NUMBER_PATTERN') };
     } else {
       const llm = canonicalDecimal(item.number);

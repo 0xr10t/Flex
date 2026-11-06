@@ -4,7 +4,7 @@
 // SQ-UI-01: recipient questions explicitly request a wallet address and explain the accepted alternatives.
 // SQ-UI-02: new-recipient confirmation wording, retaining the full address and ENS chain context.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
-// Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
+// Items marked SQ-nn are interim answers to open spec questions.
 
 import type { Answer, Chip, ErrorCode, QuestionCode, QuestionId, QuestionInput, Question, Token } from './types.js';
 
@@ -60,7 +60,7 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   // SQ-O-01, F-12: a name labelled both payee and mentioned (NAME_ROLE.text() / NAME_ROLE.chips()).
   Q_NAME_ROLE: (p) => `Should I pay ${req(p, 'name')}?`,
   Q_AUTOPAY_FREQUENCY: () => 'How often should this repeat?',
-  Q_AUTOPAY_MONTHLY: () => 'Repeating payments use a fixed interval. Should this run every 4 weeks or every 30 days?',
+  Q_AUTOPAY_MONTHLY: () => 'Calendar months vary in length. Choose a fixed interval for this repeating payment.',
   Q_AUTOPAY_START: () => 'When should this start?',
   Q_AUTOPAY_END: () => 'When should these payments stop?',
   Q_AUTOPAY_COUNT: () => 'How many payments?',
@@ -355,7 +355,6 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
     "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
   SPLIT_UNSUPPORTED: () => 'Tell me how much each person should get, e.g. "15 to A and 15 to B".',
   RELATIVE_AMOUNT_NOT_ALLOWED: () => "I can use 'all' or 'half' only for a one-time payment to one person.",
-  GROUP_AUTOPAY_UNSUPPORTED: () => "Repeating payments to a whole group aren't supported yet.",
   UNTRUSTED_IN_AUTOPAY: () => 'Repeating payments can only use amounts and addresses you typed or saved yourself.',
   CHAIN_CONFLICT: (p) =>
     `${req(p, 'name')} can only be paid on ${req(p, 'chain')}, but you asked for ${req(p, 'other')}.`,
@@ -368,11 +367,14 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   GROUP_EMPTY: (p) => `${req(p, 'parent')} has no members I can pay on ${req(p, 'chain')}.`,
   NO_ACTIVE_AUTOPAY: (p) => `There's no active repeating payment to ${req(p, 'name')}.`,
   AUTOPAY_NOT_READY: () => 'That repeating payment is still being set up. Try again shortly.',
+  LEGACY_AUTOPAY_UNSUPPORTED: () =>
+    'This older repeating payment has no on-chain plan ID. Cancel it using the wallet that created it.',
   AUTOPAY_NOT_CONFIGURED: () => 'Repeating payments need an operator fee and fee recipient configured first.',
   ETH_NOT_BRIDGEABLE: () => 'ETH cannot be bridged. Add ETH on the payment network or choose another network.',
   LIMIT_GROUP_SIZE: () => 'That group has more recipients than a single payment can accept.',
   LIMIT_INTENTS: () => 'This request needs more than 16 steps. Split it into smaller requests.',
-  EXECUTION_PLAN_INVALID: () => 'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
+  EXECUTION_PLAN_INVALID: () =>
+    'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
   AUTOPAY_NO_OCCURRENCES: () => 'That schedule has no payment dates. Check the start and end.',
   // SQ-08, F-10: `chains` per chain, "Base Sepolia (80) and Arbitrum Sepolia (60)" (insufficientFundsParams);
   // empty or absent → "…, and can use 0." with no "across" part.

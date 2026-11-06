@@ -4,24 +4,12 @@
 
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { Db3Row } from '../contracts/repos.js';
-import type { AmountPh, ChainId, RecipientPh, Token } from '../contracts/types.js';
+import type { AmountPh, RecipientPh, Token } from '../contracts/types.js';
 import { TOKEN_DECIMALS } from '../contracts/types.js';
 import { fromBaseUnits, toBaseUnits } from '../contracts/money.js';
-import { joinList } from '../contracts/catalog.js';
 
 export function decimalsOf(token: Token): 6 | 18 {
   return TOKEN_DECIMALS[token];
-}
-
-export function chainName(ctx: StepContext, chain_id: ChainId): string {
-  return ctx.config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
-}
-
-/** "A", "A and B", "A, B and C" (SQ-06): the catalog's joinList. */
-export const joinAnd = joinList;
-
-export function nowUtcIso(ctx: StepContext): string {
-  return ctx.now().toUTC().toISO() ?? new Date(0).toISOString();
 }
 
 /** DB1 amount of a placeholder in base units (throws when missing: callers validate first). */
@@ -83,4 +71,15 @@ export function unsupported(ctx: StepContext, step: string, rule_id: string): St
 
 export function isGroupPh(ph: string): boolean {
   return ph.startsWith('group_');
+}
+
+/** ENS resolution must not erase the provenance of a group supplied by untrusted content. */
+export function isUntrustedRecipient(ctx: StepContext, ph: RecipientPh): boolean {
+  const row = ctx.repos.db3.get(ph);
+  if (row?.source === 'untrusted') return true;
+  const group = row?.group_placeholder ?? (isGroupPh(ph) ? ph : null);
+  if (group === null) return false;
+  if (ctx.repos.db3.get(group)?.source === 'untrusted') return true;
+  const ref = ctx.req.recipients.find((r) => r.placeholder === group);
+  return ref !== undefined && ctx.req.spans[ref.span_index]?.source === 'untrusted';
 }

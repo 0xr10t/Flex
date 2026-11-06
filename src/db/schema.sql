@@ -1,3 +1,4 @@
+-- Baseline v1 schema. migrate.ts applies later versions, including shared-v2 intent metadata and fees.
 -- Implements: §7.1 DDL (verbatim). Owned by the Orchestrator; lanes must not edit.
 -- DB1: amount placeholders (session-scoped)
 CREATE TABLE db1_amount_placeholders (

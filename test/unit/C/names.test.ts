@@ -1,7 +1,8 @@
 // Lane C — §9.1 names, §9.2 step 6 name rules, §16.3 name injection, A-20, A-21.
 import { describe, expect, it } from 'vitest';
 import { REASK_HINT } from '../../../src/contracts/catalog.js';
-import { checkContactName, closeContacts, nameKey } from '../../../src/recipients/names.js';
+import { nameKey } from '../../../src/lexical/text.js';
+import { checkContactName, closeContacts } from '../../../src/recipients/names.js';
 import { ARADHYA } from '../../fakes/context.js';
 import {
   ARB,

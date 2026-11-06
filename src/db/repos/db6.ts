@@ -1,4 +1,4 @@
-// Implements: §7.1 DB6 spend log (counts_toward_limit = 1 exactly for payment, bridge_buffer, autopay_payment),
+// Implements: §7.1 DB6 spend log (counts_toward_limit = 1 for payments, bridge buffers and execution fees),
 // §10.1 / I-10 pending rows of the last 10 minutes, §11.3 V-15 / I-38 spent today (pending by created_at,
 // executed by executed_at, local calendar date in the session timezone), §14.3 intent_result updates.
 // Owner: Lane A.
@@ -10,9 +10,15 @@ import type { Database } from '../database.js';
 import { toBool, toInt } from './common.js';
 
 /** §7.1: kinds whose rows count toward the daily limit. */
-export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>(['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee']);
+const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>([
+  'payment',
+  'bridge_buffer',
+  'bridge_fee',
+  'autopay_payment',
+  'autopay_fee',
+]);
 /** §10.1 / I-10 window. */
-export const PENDING_WINDOW_MINUTES = 10;
+const PENDING_WINDOW_MINUTES = 10;
 
 interface Raw {
   id: number;
@@ -81,7 +87,7 @@ export function createDb6(db: Database): Db6SpendLog {
   const insertManyTx = db.transaction((rows: Db6Insert[]) => {
     for (const r of rows) {
       if (typeof r.amount !== 'string') throw new Error('db6: amount must be a decimal string');
-      // §7.1: counts_toward_limit = 1 for kind IN ('payment','bridge_buffer','autopay_payment'), else 0.
+      // Spending and execution fees count toward policy limits; self-transfers and historical prefunds do not.
       if (r.counts_toward_limit !== COUNTING_KINDS.has(r.kind)) {
         throw new Error('db6: counts_toward_limit does not match kind');
       }
@@ -111,7 +117,10 @@ export function createDb6(db: Database): Db6SpendLog {
     listByRequest: (request_id) => (byRequest.all(request_id) as Raw[]).map(fromRaw),
     hasTxHash: (tx_hash) => hasTx.get(tx_hash) !== undefined,
     applyIntentResult({ request_id, step, status, tx_hash, executed_at, bridge_fee_eth }) {
-      if (bridge_fee_eth !== undefined) db.prepare("UPDATE db6_spend_log SET amount = ? WHERE request_id = ? AND step = ? AND kind = 'bridge_fee' AND status != 'executed'").run(bridge_fee_eth, request_id, step);
+      if (bridge_fee_eth !== undefined)
+        db.prepare(
+          "UPDATE db6_spend_log SET amount = ? WHERE request_id = ? AND step = ? AND kind = 'bridge_fee' AND status != 'executed'",
+        ).run(bridge_fee_eth, request_id, step);
       return apply.run(status, tx_hash, executed_at, request_id, step).changes;
     },
     pendingRecent(chain_id, token, now_utc) {

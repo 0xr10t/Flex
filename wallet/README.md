@@ -2,9 +2,11 @@
 
 The execution layer: it receives the agent's hand-off envelope, checks it, and will sign and send what the user approves.
 
-**Current state:** every intent works on local chains: payments (`i`), bridges (`j`, with a stand-in router), autopays (`k`) and cancels
-(`l`), plus reports back to the agent. It runs with a test key and a mock USDC. The CRE workflow has only run in the simulator as a dry
-run. Nothing has run on a real testnet. See [the implementation plan](../docs/wallet/IMPLEMENTATION_PLAN.md).
+**Current state:** payments (`i`), bridges (`j`), recurring registration (`k`) and cancellation (`l`) use the shared v2
+agent handoff and MetaMask approval flow. Payment executors are deployed on Ethereum Sepolia, Base Sepolia and Arbitrum
+Sepolia; their public addresses are in `cre/deployments.testnet.json`. Native CRE build-and-simulate broadcasting has
+executed payments on local chains for all three chain IDs. A live recurring payment still requires a user-approved plan.
+See the [root README](../README.md#cre-autopay-workflow-local-build-and-simulate) for setup and operator commands.
 
 ## Commands
 
@@ -26,15 +28,16 @@ ESLint and Prettier run from the repo root: `npm run lint`.
 | Needed | Where |
 | --- | --- |
 | Config | Copy `config.example.json`. It holds paths and URLs, never keys or tokens |
-| Signing key | OS keychain, service `flex-wallet`, account `signing-key`. There's no create or import command yet, so the wallet refuses to start without one |
+| MetaMask | `approval.mode: "metamask"` uses only the public `wallet_address`; payment permissions and registrations are approved in the browser. No wallet signing key is loaded by the service |
+| CRE transmitter | The native CLI consumes `CRE_ETH_PRIVATE_KEY` from the operator's protected `.env` for explicit `cre:broadcast` / `cre:autopay` commands. It needs test ETH for gas; read-only simulation needs no transmitter key |
 | Executor | `chains[].executor`, once `IntentExecutorV3` is deployed. Autopay and cancel are refused on a chain without one |
-| Approval | `approval.mode` is `reject_all` by default: nothing is signed. `auto_approve_testnets` signs without asking, and is for testing only |
+| Approval | The testnet setup generates MetaMask mode. The generic default remains `reject_all`; `auto_approve_testnets` is reserved for local contract tests |
 
 ## Layout
 
 | Path | Holds |
 | --- | --- |
-| `src/main.ts` | Starts the wallet for real: config plus keys from the OS keychain |
+| `src/main.ts` | Starts the wallet: config, public MetaMask address and database encryption key from the OS keychain |
 | `src/service.ts` | Wires everything together |
 | `src/server/app.ts` | `POST /v1/intents`: credentials, checks, saving, and the reply |
 | `src/store/store.ts` | The encrypted database: requests, each step's state, and waiting reports |
@@ -51,10 +54,7 @@ ESLint and Prettier run from the repo root: `npm run lint`.
 | `src/autopay/watcher.ts` | Watches the chain, and reports each paid run to the agent |
 | `contracts/` | `IntentExecutorV3` and test stand-ins |
 | `cre/autopay/` | The shared cron workflow. `lib/due.ts` holds its decisions |
-| `src/schemas/handoff-envelope.schema.json` | The envelope: the contract between agent and wallet |
-| `src/schemas/envelope.ts` | Envelope types, and the first check (JSON schema) |
-| `src/schemas/intent.v2.ts`, `bridge.v2.ts` | The verified schemas, from the lab tests: the rules between fields |
-| `src/mapping/` | `checkEnvelope`: turns an envelope into the verified plan, and runs all the checks |
+| `../packages/protocol/` | `@flex/protocol`, shared with the agent: the envelope schema (the contract between agent and wallet), the verified `intent.v2` and `bridge.v2` schemas, and `checkEnvelope`, which turns an envelope into the verified plan and runs all the checks |
 | `src/chain/redeem.v2.ts` | Encodes a delegation redeem, for autopays |
 | `test/unit/` | No chain needed. Includes simulated crashes, and the agent's real client against this service |
 | `test/chain/` | Local anvil chains with MetaMask's real contracts. Includes `kill -9` of the real process with a payment in flight |

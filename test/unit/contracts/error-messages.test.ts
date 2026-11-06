@@ -40,7 +40,6 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ],
   ['SPLIT_UNSUPPORTED', {}, 'Tell me how much each person should get, e.g. "15 to A and 15 to B".'],
   ['RELATIVE_AMOUNT_NOT_ALLOWED', {}, "I can use 'all' or 'half' only for a one-time payment to one person."],
-  ['GROUP_AUTOPAY_UNSUPPORTED', {}, "Repeating payments to a whole group aren't supported yet."],
   ['UNTRUSTED_IN_AUTOPAY', {}, 'Repeating payments can only use amounts and addresses you typed or saved yourself.'],
   [
     'CHAIN_CONFLICT',
@@ -58,6 +57,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ['GROUP_EMPTY', { parent: 'acme.eth', chain: 'Base Sepolia' }, 'acme.eth has no members I can pay on Base Sepolia.'],
   ['NO_ACTIVE_AUTOPAY', { name: 'Mihir' }, "There's no active repeating payment to Mihir."],
   ['AUTOPAY_NOT_READY', {}, 'That repeating payment is still being set up. Try again shortly.'],
+  [
+    'LEGACY_AUTOPAY_UNSUPPORTED',
+    {},
+    'This older repeating payment has no on-chain plan ID. Cancel it using the wallet that created it.',
+  ],
   ['AUTOPAY_NO_OCCURRENCES', {}, 'That schedule has no payment dates. Check the start and end.'],
   [
     'INSUFFICIENT_FUNDS',

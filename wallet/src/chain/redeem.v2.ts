@@ -2,8 +2,16 @@
 // per-run fee is part of the same signed batch [B8]. Still viem-only, so it runs inside CRE WASM.
 // Keep always-batch encoding even for one recipient: the MetaMask kit encodes a single execution
 // differently and the batch delegation rejects it [B10], while this encoder works [B10b].
-import { encodeAbiParameters, encodeFunctionData, erc20Abi, parseUnits, type Hex } from 'viem';
-import type { Intent } from '../schemas/intent.v2.js';
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  erc20Abi,
+  parseUnits,
+  type Hex,
+} from 'viem';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
 
 export type SignedDelegation = {
   delegate: Hex;
@@ -56,6 +64,18 @@ const REDEEM_ABI = [
   },
 ] as const;
 const BATCH_DEFAULT = '0x0100000000000000000000000000000000000000000000000000000000000000' as const;
+
+/** Read the same single-delegation shape accepted by IntentExecutorV3, without loading a signer. */
+export function redeemIdentity(redeem: Hex): { delegator: Hex; delegate: Hex } {
+  const {
+    args: [contexts, modes, executions],
+  } = decodeFunctionData({ abi: REDEEM_ABI, data: redeem });
+  if (contexts.length !== 1 || modes.length !== 1 || executions.length !== 1 || modes[0] !== BATCH_DEFAULT)
+    throw new Error('INVALID_REDEEM');
+  const [delegations] = decodeAbiParameters([DELEGATION], contexts[0]!);
+  if (delegations.length !== 1) throw new Error('INVALID_REDEEM');
+  return { delegator: delegations[0]!.delegator, delegate: delegations[0]!.delegate };
+}
 
 const pay = (i: Intent, to: Hex, amount: string): Execution => {
   const units = parseUnits(amount, i.asset.decimals);

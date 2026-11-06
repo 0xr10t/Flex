@@ -20,7 +20,11 @@ const ALLOWED: ChainId[] = [SEPOLIA, BASE, ARB];
 const m = (e: Array<[ChainId, bigint]>): Map<ChainId, bigint> => new Map(e);
 
 // Padding remains configurable; these cases deliberately exercise a nonzero buffer.
-const ctxD: typeof defaultCtxD = (...args) => { const ctx = defaultCtxD(...args); setLimits(ctx, { bridge_buffer_pct: '2' }); return ctx; };
+const ctxD: typeof defaultCtxD = (...args) => {
+  const ctx = defaultCtxD(...args);
+  setLimits(ctx, { bridge_buffer_pct: '2' });
+  return ctx;
+};
 
 describe('planBridges (§10.4 math, base units)', () => {
   it('C-213 §10.4 E2: short 20 on Base, surplus 60 on Arbitrum → x = 20, padded = ceil(20 × 1.02) = 20.4', () => {
