@@ -26,11 +26,13 @@ Rule (NEXT_ORCHESTRATOR_PROMPT §0): code writers = Opus 5.5 (`model: "opus"`); 
 | Lane A agent #2 | Lane A — Platform (code) | opus | `lane/a-platform` | 2026-11-06 | done @ `6029674`; Orchestrator re-ran typecheck ✅ lint ✅ test 439/439 ✅ |
 | Lane A Tester | Lane A tests | sonnet (per report) | `lane/a-platform` | 2026-11-06 | done; 269 tests |
 | Lane A Reviewer | Lane A review | sonnet (per report) | `lane/a-platform` | 2026-11-06 | done; 6 defects + N1 fixed; `ecdb941` read by the Orchestrator |
-| Lane B agent | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | running |
+| Lane B agent #1 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | stopped by the human @ `538613c` (contracts-v3 merged only) |
+| Lane B agent #2 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | running |
 | Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | done @ `06d7efa`; Orchestrator re-ran typecheck ✅ lint ✅ test 220/220 ✅ |
 | Lane C Tester | Lane C tests | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; 47 tests, no production bugs |
 | Lane C Reviewer | Lane C review | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; R-1…R-4 fixed |
-| Lane D agent | Lane D — Planning & output (code) | opus | `lane/d-planning` | 2026-11-06 | running |
+| Lane D agent #1 | Lane D — Planning & output (code) | opus | `lane/d-planning` | 2026-11-06 | stopped by the human @ `a22c6d0` (S10–S12 committed; tester's S9 tests uncommitted, 1 failing: C-188) |
+| Lane D agent #2 | Lane D — Planning & output (code) | opus | `lane/d-planning` | 2026-11-06 | running |
 
 ## Skills available in this session
 
@@ -53,6 +55,7 @@ After the account switch all of these are installed: `engineering:testing-strate
 | B-1 | B | APPROVED (interim wording, SQ-22): user-facing text belongs in the catalog (ORCHESTRATOR_PROMPT §5.7) | contracts-v3 |
 | B-2 | B | APPROVED: §8.6 rule 6 / §8.8 need the mentioned spans carried from S5 to S7; in memory only (§16.2) | contracts-v3 |
 | C-1 | C | APPROVED: identical to B-2 | contracts-v3 |
+| D-1 | D | REJECTED (no change needed): §21 assigns `src/messages/` the summary and balance texts, so `src/messages/templates.ts` is their home | — |
 
 Lane follow-ups after rebasing onto `contracts-v3`: A — `newAgentRequest()` (`src/session/request.ts`) must set
 `mentioned_spans: []` (the field is required); B — drop the local `WithMentioned` type in S5 and make
