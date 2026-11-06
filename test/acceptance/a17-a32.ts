@@ -340,11 +340,13 @@ export function registerA17toA32(): void {
       });
       const r = await h.say('send 100 usdc to mihir');
       expectError(r, 'INSUFFICIENT_FUNDS');
-      // SQ-08 (OPEN): per-chain wording. Interim: §15 template with the chains listed as "Name (usable)".
+      // SQ-08 (OPEN, spec conflict §10.4 "per chain" vs §15 template): the interim behaviour is the §15 template with
+      // {have} the total and {chains} the chain names. Per-chain numbers (A-30 "per-chain numbers") are not asserted
+      // until the human answers.
       const m = r.body.error!.message;
-      expect(m).toContain("You don't have enough USDC: you need 100, and can use 50 across");
-      expect(m).toContain('Base Sepolia (30)');
-      expect(m).toContain('Arbitrum Sepolia (20)');
+      expect(m).toBe(
+        "You don't have enough USDC: you need 100, and can use 50 across Sepolia, Base Sepolia and Arbitrum Sepolia.",
+      );
       noSubmission(h);
       await h.finish();
     });

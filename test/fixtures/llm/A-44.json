@@ -2,7 +2,7 @@
   "calls": [
     {
       "name": "amounts",
-      "match": "send 10 usdc to 0x00000000000000000000000000000000000000Aa",
+      "match": "send 10 usdc to 0x00000000000000000000000000000000000000AA",
       "output": {
         "amounts": [
           {
@@ -31,28 +31,9 @@
       "output": {
         "spans": [
           {
-            "text": "0x00000000000000000000000000000000000000Aa",
+            "text": "0x00000000000000000000000000000000000000AA",
             "kind": "address",
             "role": "payee"
-          }
-        ]
-      }
-    },
-    {
-      "name": "payments",
-      "match": "ACTION KINDS:",
-      "output": {
-        "payments": [
-          {
-            "kind": "i",
-            "amount": "$amount:0",
-            "recipient": "$recipient:0",
-            "chain": "unstated",
-            "frequency": null,
-            "interval": null,
-            "times_per_week": null,
-            "days_of_week": null,
-            "day_of_month": null
           }
         ]
       }

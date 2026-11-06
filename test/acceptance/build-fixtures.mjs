@@ -65,7 +65,7 @@ const ADDR = {
   new1: '0x' + '5'.repeat(40),
   aaaa: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111',
   bbbb: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222',
-  wallet: '0x00000000000000000000000000000000000000Aa',
+  wallet: '0x00000000000000000000000000000000000000AA',
 };
 
 const F = {};
@@ -109,7 +109,7 @@ F['A-04'] = [
   P(K, pay('i', a0, r0)),
 ];
 F['A-05'] = F['A-04'];
-F['A-06'] = [...e2(), A('Send 5 more', ['5', '5']), T('more', ['i']), S('more'), P(K, pay('i', a0, r0))];
+F['A-06'] = [...e2(), A('Send 5 more', ['5', '5']), T('more', ['i']), S('more'), P(K, pay('i', a0, '$session:0'))];
 F['A-07'] = [A('send 5 more', ['5', '5']), T('more', ['i']), S('more')];
 const mihirK = (text, ex) => [
   A(text, ['10 usdc', '10', USDC]),
@@ -163,7 +163,7 @@ F['A-19'] = [
 const ten = (text, spans) => single(text, ['10 usdc', '10', USDC], spans, pay('i', a0, r0));
 F['A-20'] = ten('send 10 usdc to riya', [['riya', 'name']]);
 F['A-21'] = ten(`send 10 usdc to ${ADDR.new1}`, [[ADDR.new1, 'address']]);
-F['A-22'] = F['A-21'];
+F['A-22'] = F['A-21'].slice(0, 3); // the request ends before pairing (TOO_MANY_RETRIES)
 F['A-23'] = ten('send 10 usdc to riya.eth', [['riya.eth', 'ens']]);
 F['A-24'] = F['A-23'];
 F['A-25'] = F['A-20'];
@@ -236,7 +236,7 @@ F['A-43'] = single(
   [['mihir', 'name']],
   pay('i', a0, r0),
 );
-F['A-44'] = ten(`send 10 usdc to ${ADDR.wallet}`, [[ADDR.wallet, 'address']]);
+F['A-44'] = ten(`send 10 usdc to ${ADDR.wallet}`, [[ADDR.wallet, 'address']]).slice(0, 3); // ends at S6
 F['A-44-me'] = [A('send 10 usdc to me', ['10 usdc', '10', USDC]), T('to me', ['i']), S('to me', ['me', 'name'])];
 for (const id of ['A-47', 'A-49', 'A-51', 'A-52']) F[id] = F['A-01'];
 F['A-50'] = [...F['A-01'], A("what's my balance"), T('balance', [], { type: 'balance' })];
@@ -248,6 +248,7 @@ F['A-57'] = [
   T('to mihir', ['i']),
   S('to mihir', ['mihir', 'name']),
   P(K, pay('i', a0, r0), pay('i', a1, r0)),
+  P('CORRECTION:', pay('i', a0, r0), pay('i', a1, r0)), // P4 rejects the first output (SQ-O-03)
 ];
 F['A-58'] = mihirK('pay mihir 10 usdc every month on the 31st for 3 months', {
   frequency: 'monthly',
