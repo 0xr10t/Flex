@@ -5,7 +5,7 @@ local-simulation:
   workflow-artifacts:
     workflow-path: './main.ts'
     config-path: './config.local-simulation.json'
-    secrets-path: '../secrets.yaml'
+    secrets-path: '../secrets.local-simulation.yaml'
 staging-settings:
   user-workflow:
     workflow-name: 'flex-autopay'
@@ -13,4 +13,4 @@ staging-settings:
   workflow-artifacts:
     workflow-path: './main.ts'
     config-path: '../../../.local/cre.config.json'
-    secrets-path: '../secrets.yaml'
+    secrets-path: '../secrets.local-simulation.yaml'

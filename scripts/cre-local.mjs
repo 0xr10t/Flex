@@ -301,6 +301,10 @@ async function tick(options, signal) {
   }
   if (!caughtUp) return { status: 'catching_up', progress };
   const result = await simulate(config, 'staging-settings', signal);
+  result.results = result.results.map((entry) => ({
+    ...entry,
+    executor: config.chains.find((chain) => chain.chainId === entry.chainId)?.executor,
+  }));
   return { status: result.results.some((entry) => entry.skipped) ? 'simulation_blocked' : 'simulated', result };
 }
 
@@ -315,6 +319,7 @@ export async function main(args = process.argv.slice(2)) {
   process.once('SIGTERM', stop);
   let failed = false;
   try {
+    privateJson(join(local, 'status.json'), { status: 'starting', time: new Date().toISOString() });
     const manifest = options.rebuild ? await build(controller.signal) : verifyArtifact();
     console.log(JSON.stringify({ status: 'built', wasmHash: manifest.wasmHash, broadcast: false }));
     if (options.command === 'build') return;
@@ -343,7 +348,13 @@ export async function main(args = process.argv.slice(2)) {
         }).catch(() => {});
     }
     if (failed) process.exitCode = 1;
+  } catch (error) {
+    const code = /^[A-Z_]+$/.test(error.message) ? error.message : 'LOCAL_RUN_FAILED';
+    privateJson(join(local, 'status.json'), { status: 'failed', code, time: new Date().toISOString() });
+    throw new Error(code);
   } finally {
+    if (controller.signal.aborted)
+      privateJson(join(local, 'status.json'), { status: 'stopped', time: new Date().toISOString() });
     await release();
     process.removeListener('SIGINT', stop);
     process.removeListener('SIGTERM', stop);

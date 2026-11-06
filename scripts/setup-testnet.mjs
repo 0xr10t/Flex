@@ -69,6 +69,14 @@ if (missing.length) {
     }
   }
   const cfg = JSON.parse(readFileSync(resolve(root, 'config.example.json'), 'utf8'));
+  // Keep an existing explicit transport choice. A fresh setup retains the template's Tor default.
+  const previousPath = resolve(local, 'agent.config.json');
+  if (existsSync(previousPath)) {
+    const previous = JSON.parse(readFileSync(previousPath, 'utf8'));
+    if (previous.network) cfg.network = previous.network;
+  }
+  if (env.FLEX_SOCKS_PROXY)
+    cfg.network = { socks_proxy: env.FLEX_SOCKS_PROXY === 'direct' ? null : env.FLEX_SOCKS_PROXY };
   cfg.wallet.address = env.FLEX_WALLET_ADDRESS;
   cfg.chains.forEach((chain) => {
     chain.rpc_url = rpc[chain.chain_id];
@@ -98,6 +106,7 @@ if (missing.length) {
     },
     db: { path: resolve(local, 'wallet.db') },
     approval: { mode: 'metamask', wallet_address: env.FLEX_WALLET_ADDRESS },
+    network: { ...cfg.network },
     bridge: { ccip_fee_max_eth: cfg.bridge.ccip_fee_max_eth },
     chains: cfg.chains.map((chain) => ({
       chain_id: chain.chain_id,

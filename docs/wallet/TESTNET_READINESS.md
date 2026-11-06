@@ -26,7 +26,7 @@ The live verification wallet is `0x5eBA55e1b43c8714E4432250Dada7A518780C871`. Th
 - Add an agent-to-wallet integration test with the actual shared validation and report callback.
 - Finish typed payroll list handling and aggregate limits.
 - Complete report replay and the remaining agent/wallet callback integration.
-- Extend browser approval to recurring permissions and cancellation. These requests are refused in browser mode today.
+- Browser recurring permissions and cancellation are integrated. A focused local-chain test verifies external typed-data approval, restart recovery, rejection of altered terms, registration without payment, and cancellation/revocation. Public-testnet use still needs deployed executors and an already upgraded MetaMask account; it has not been exercised live.
 - Complete executor deployment/configuration and CRE runtime configuration. Local setup and CCIP preflight tools are implemented.
 - Hosted DON deployment remains unavailable; it is not required for the implemented local build/simulate path.
 - Validate production DON quotas if hosted execution becomes available. The local path uses bounded indexing and caps payment simulations at two per invocation.

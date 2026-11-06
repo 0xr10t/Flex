@@ -33,7 +33,28 @@ Set-Location wallet/cre
 
 The workflow path is relative to the CRE project directory. Do not repeat `wallet/cre` in that path after selecting it as the project.
 
-## Execution modes
+## Agent and MetaMask integration
+
+The agent's v2 recurring intent now reaches the MetaMask wallet runner. With an executor configured on that chain and an already upgraded account, the wallet shows the exact bounded recurring permission. The user signs it with `eth_signTypedData_v4`; the service verifies the signer and exact typed data. The pending request survives restart. Registration then requires a separate wallet transaction. Cancellation uses the existing atomic cancel-and-revoke batch. The server never gains a browser-wallet signing key.
+
+Registering a plan does not pay recipients. Local CRE discovers finalized registrations through the executor events and simulates due runs. `GET /v1/cre/status` on the agent exposes sanitized local-runner status. `GET /v1/autopays/:id` joins a plan to its simulation observation using chain, executor and plan ID. Both routes require the agent UI bearer token. Observations expire after two minutes, contain no signed delegation, and never update payment history or activate a plan. Real execution reports retain their separate authentication and onchain event path.
+
+From the repository root:
+
+```powershell
+npm.cmd run testnet:build
+npm.cmd run testnet:setup
+# Starts all three foreground processes; refuses ports already in use.
+npm.cmd run testnet:start
+# Before executors/plans exist, explicitly select provider qualification instead:
+npm.cmd run testnet:start -- --qualify
+```
+
+Keep the protected `.env` values local. Setup preserves an existing agent network setting and copies it to the wallet. `FLEX_SOCKS_PROXY=direct` explicitly selects direct transport; a SOCKS URL selects Tor. Fresh setup otherwise retains the template's Tor default. Native CRE currently refuses Tor rather than bypassing it. The launcher checks matching wallet addresses, service URLs and token-file paths. It starts only MetaMask mode, stops its own children together, and never replaces a running service.
+
+For registered-plan evaluation, supply actual executor deployments in `.local/deployments.json` and the matching receiver identity/forwarder settings in `.local/cre.config.json`. No deployment or recurring-payment execution is implied by starting the stack. Existing service processes must be restarted by their operator to load new compiled code.
+
+## Workflow modes
 
 `local-simulation` needs no executor, workflow identity or wallet signature. It obtains a recent block through real HTTP capabilities and exercises the normal `eth_simulateV1` comparison across configured providers. The block is checked before and after simulation. One chain runs per invocation to stay within CRE's HTTP budget; the wrapper runs all three. The empty zero-value probe qualifies infrastructure, not a payment, and returns `paymentExecuted: false`.
 

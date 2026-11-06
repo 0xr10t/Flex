@@ -7,6 +7,9 @@
     "node": "^22.12.0 || >=24.0.0"
   },
   "scripts": {
+    "testnet:build": "npm run build && npm --prefix wallet run build",
+    "testnet:setup": "node scripts/setup-testnet.mjs",
+    "testnet:start": "node scripts/start-testnet.mjs",
     "cre:build": "node scripts/cre-local.mjs build",
     "cre:simulate": "node scripts/cre-local.mjs qualify",
     "cre:run": "node scripts/cre-local.mjs run",
