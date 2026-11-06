@@ -48,7 +48,7 @@ export function neededWithPadding(
     let remaining = -(surplus.get(dest) ?? 0n);
     while (remaining > 0n) {
       const donors = chains
-        .filter((c) => c !== dest && mulDivFloor(surplus.get(c) ?? 0n, den, num) > 0n)
+        .filter((c) => c !== dest && (surplus.get(c) ?? 0n) > 0n && mulDivFloor(surplus.get(c) ?? 0n, den, num) > 0n)
         .sort((a, b) => {
           const x = surplus.get(a) ?? 0n;
           const y = surplus.get(b) ?? 0n;
