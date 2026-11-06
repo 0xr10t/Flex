@@ -124,6 +124,8 @@ interface OpenSession {
   active: Active | null;
   /** Opt-in generic exchanges only, bounded by rememberChat; never persisted or used as wallet answers. */
   chatHistory: ChatTurn[];
+  /** Sticky until close so a follow-up knows that older generic exchanges have been dropped. */
+  chatHistoryOmitted: boolean;
   /** §14.1: one call per session at a time. */
   busy: boolean;
   /** The call in progress (R1-F1: closing the session waits for it). */
@@ -188,6 +190,7 @@ export class SessionManager {
           timezone,
           active: null,
           chatHistory: [],
+          chatHistoryOmitted: false,
           busy: false,
           inflight: null,
           closing: false,
@@ -244,6 +247,7 @@ export class SessionManager {
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
     s.chatHistory = [];
+    s.chatHistoryOmitted = false;
     this.deps.repos.clearSessionStores();
     this.deps.log.info({ event: 'session_closed', session_id: s.session_id });
   }
@@ -410,7 +414,9 @@ export class SessionManager {
       if (intent === 'wallet') return null;
       const reply = await generateChatReply(this.deps.llm, text, context, s.chatHistory, settings.think);
       this.assertOpen(s);
-      s.chatHistory = rememberChat(s.chatHistory, text, reply);
+      const history = rememberChat(s.chatHistory, text, reply);
+      s.chatHistoryOmitted ||= history.length < s.chatHistory.length + 1;
+      s.chatHistory = history;
       return this.chatReply(s, a, reply);
     } catch (error) {
       this.assertOpen(s);
@@ -427,8 +433,11 @@ export class SessionManager {
 
   /** No raw question text, choices, documents, contacts, submitted envelope or DB records enter chat context. */
   private chatContext(s: OpenSession, a: Active | null): ChatContext {
-    if (a === null) return { state: 'IDLE' };
-    const context: ChatContext = { state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state };
+    if (a === null) return { state: 'IDLE', older_chat_omitted: s.chatHistoryOmitted };
+    const context: ChatContext = {
+      state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state,
+      older_chat_omitted: s.chatHistoryOmitted,
+    };
     const text = a.req.typed_text;
     // S1 alone sets typed_text. Recheck here so future call sites cannot pass unguarded context to chat.
     if (text && detectSecret(text) === null && extractUrls(text, []).links.length === 0)
@@ -436,6 +445,9 @@ export class SessionManager {
     if (isAwaitingAnswer(a.req) && a.req.paused_at !== undefined) {
       context.question_code = a.req.paused_at.question.code;
       context.guidance = replyGuidance(this.context(s, a), a.req.paused_at.question);
+    }
+    if (a.req.state === 'AWAITING_CONFIRMATION' && a.req.summary !== undefined) {
+      context.pending_summary = { text: a.req.summary.text, notes: [...a.req.summary.notes] };
     }
     if (a.lastError !== undefined) context.last_error = a.lastError.code;
     return context;
