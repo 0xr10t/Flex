@@ -25,7 +25,7 @@ ollama pull qwen3:8b
 curl --fail --silent http://127.0.0.1:11434/api/tags
 ```
 
-The user-selected model profile is `config.qwen3.example.json`: `qwen3:8b`, `think: false`, temperature `0`, seed `42`,
+The user-selected model profile is `config.qwen3.example.json`: `qwen3:8b`, `llm.think: false`, temperature `0`, seed `42`,
 context `8192`, and timeout `60000` milliseconds. The explicit Ollama `think` setting selects non-thinking mode for
 the wallet's structured extraction calls. An omitted `think` retains the model's default; only boolean values are
 accepted. The original `config.example.json` remains the Qwen2.5 specification/baseline profile. Ollama must use an
@@ -43,8 +43,18 @@ fi
 
 Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the RPC and ENS-indexer URL placeholders with working endpoints. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires the baseline fields and rejects unknown fields; `llm.think` is optional. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
 
-For an existing configured installation, change only `llm.model` to `qwen3:8b` and add `llm.think: false`; retain its
-wallet, endpoints, tokens and database paths. This model switch does not add a general chat route or new wallet actions.
+For an existing configured installation, set `llm.model` to `qwen3:8b`, add `llm.think: false`, and add
+`chat: { "enabled": true, "think": true }`; retain its wallet, endpoints, tokens and database paths. The profile
+enables general chat and explanations with thinking. Intent routing uses thinking off; wallet extraction keeps
+its separate non-thinking setting. Omitting `chat` or setting `enabled: false` preserves wallet-only behavior.
+
+General chat uses the existing messages and text-answer endpoints. It preserves pending questions and confirmations,
+and has no execution, browsing or live-data tools. It can explain a current summary without approving it. It keeps
+up to six complete conversational exchanges within a 4,000 UTF-8-byte memory budget, only for the current session;
+omitted history is identified in the model context. Individual routed messages are limited to 4,000 UTF-8 bytes
+and oversized messages receive a request to shorten them. Initial wallet wording, question guidance and the current
+summary have separate bounds; chat cannot derive a current plan from stale original wording. These bounds retain
+space for Qwen's thinking within the configured context. Reasoning traces are neither returned nor logged.
 
 The default configuration path is `~/.agent-layer/config.json`; `AGENT_CONFIG=/absolute/path/config.json` selects another file. Leading `~/` in configured filesystem paths is expanded. Keep local credentials, token files and database keys out of the repository. The wallet setting is a public address; the agent does not need a wallet private key or seed phrase.
 
@@ -110,12 +120,15 @@ Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, question
 Live tests default to the original Qwen2.5 fixture profile for reproducibility. Select the new model explicitly:
 
 ```sh
-LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_SET=all LIVE_TAG=qwen3-validation npm run test:live -- test/live/live.test.ts
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_CHAT=true LIVE_SET=all LIVE_TAG=qwen3-validation npm run test:live -- test/live/live.test.ts
 LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_TAG=qwen3-conversation npm run test:live -- test/live/conversation.test.ts
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_CHAT=true LIVE_TAG=qwen3-chat npm run test:live -- test/live/general-chat.test.ts
 ```
 
-Both suites record the model settings with their results. `LIVE_THINK` must be `true` or `false`; unset values
-preserve the baseline configuration. The deterministic fixtures and live comparison oracle are unchanged.
+The suites record model settings and effective thinking per call. `LIVE_THINK` and `LIVE_CHAT` must be `true` or
+`false`; unset flags preserve baseline settings in the historical suites. `LIVE_CHAT=true` enables general chat
+with thinking on while `LIVE_THINK` selects wallet extraction's setting. The dedicated general-chat suite enables
+chat by default. The deterministic fixtures and historical live comparison oracle are unchanged.
 
 The separate conversational suite exercises seven multi-turn scenarios, including corrections while a question is
 pending, natural amount/address/token answers, refund clarification and new requests. Run it separately when
@@ -126,4 +139,6 @@ LIVE_TAG=conversation-validation npm run test:live -- test/live/conversation.tes
 ```
 
 Its transcripts and model outputs are written to `test/live/results/conversation/<tag>.json`, outside the
-154-case summarizer's input directory. Running `npm run test:live` without a file filter runs both suites serially.
+154-case summarizer's input directory. General-chat traces are separately written under
+`test/live/results/general-chat/<tag>.json`. Running `npm run test:live` without a file filter runs every live suite
+serially; use the explicit file filters above to keep benchmark results distinct.

@@ -401,4 +401,19 @@ the Qwen3 profile sets it to `false` for structured extraction. Omission preserv
 The existing context, seed, schema validation, retry, local-only endpoint and explicit confirmation rules remain.
 `config.qwen3.example.json` records this profile; the original config example, README and deterministic fixtures
 remain the specification/baseline. Live comparisons identify model settings explicitly and retain their original
-outcome assertions. This instruction selects a model; it does not add a general-purpose chat route.
+outcome assertions. This instruction selects a model; the subsequent general-chat approval is recorded below.
+
+**SQ-CHAT-01 — requested and confirmed by the human in chat.** After requesting thinking for generic prompts, the
+human selected “Add general chat/explanations with thinking on; keep wallet extraction off (Recommended)”. Add an
+optional `chat: { enabled: boolean, think: boolean }` configuration, enabled with thinking in the Qwen3 profile.
+Generic text is classified with `think: false`; a conversational reply uses the explicit `chat.think` override.
+Wallet extraction retains the profile's `llm.think: false` and existing schemas, validators and confirmation path.
+Omitting or disabling chat retains the previous wallet-only routing.
+
+Chat is read-only and has no execution or external-data tools. It may explain general topics and the current
+displayed wallet summary while preserving a pending question, attempt count, confirmation or uncertain submission.
+The router forwards wallet inputs unchanged. Native confirmation words, literal answers and chips keep their
+existing handlers. Content and URLs retain S1's guarded handling; secrets never enter the conversational model.
+Only bounded, guarded exchanges are remembered in session memory; closing the session clears them. Older history
+and oversized summaries are explicitly marked as omitted. Routing or reply failures retain the active draft.
+The model's reasoning field is not returned or logged. This approval does not expand the wallet's supported actions.

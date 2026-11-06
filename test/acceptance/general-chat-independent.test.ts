@@ -316,4 +316,129 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     expect(h.fetcher.calls).toEqual(['https://example.org/invoice']);
     expect(h.exec.submissions).toHaveLength(0);
   });
+
+  it.each(['pasted', 'attachment', 'url'] as const)(
+    'guards secrets in %s content before generic classification or durable prompt storage',
+    async (source) => {
+      const secret = 'ab'.repeat(32);
+      const h = make(`content-${source}`, []);
+      await h.open();
+      const before = h.rows('SELECT * FROM db8_prompts');
+      const extra =
+        source === 'pasted'
+          ? { pasted_blocks: [secret] }
+          : source === 'attachment'
+            ? {
+                attachments: [
+                  { filename: 'private.txt', mime: 'text/plain', base64: Buffer.from(secret).toString('base64') },
+                ],
+              }
+            : { urls: [`https://example.org/?key=${secret}`] };
+      const response = await h.say('Explain this content', extra);
+      expect(response.body.error?.code).toBe('SECRET_DETECTED');
+      expect(h.llm.recorded).toEqual([]);
+      expect(h.rows('SELECT * FROM db8_prompts')).toEqual(before);
+      expect(h.fetcher.calls).toEqual([]);
+      expect(h.exec.submissions).toHaveLength(0);
+    },
+  );
+
+  it('keeps token chips on the native path and does not grant an HTTP caller control over thinking', async () => {
+    const native = payment();
+    native[0]!.output = {
+      amounts: [{ phrase: '10', number: '10', token: null, fiat: null, relative: null, role: 'pay' }],
+    };
+    const h = make('native-chip', [route('wallet'), ...native]);
+    await h.open();
+    const invalid = await h.http('POST', `/v1/sessions/${h.sessionId}/messages`, {
+      body: { text: 'Explain', think: false },
+    });
+    expect(invalid.status).toBe(400);
+    expect(h.llm.recorded).toEqual([]);
+    const pending = await h.say('send 10 to mihir');
+    expect(pending.body.question?.code).toBe('Q_TOKEN');
+    const summary = await h.answer(pending, { chipLabel: 'USDC' });
+    expect(summary.body.state).toBe('awaiting_confirmation');
+    expect(h.llm.names()).toEqual(['chat_route', 'amounts', 'request_type', 'spans', 'payments']);
+    expect(h.exec.submissions).toHaveLength(0);
+    const calls = h.llm.recorded.length;
+    expect((await h.say('cancel')).body.state).toBe('done');
+    expect(h.llm.recorded).toHaveLength(calls);
+    expect((await h.confirm(summary, 'yes')).http).toBe(409);
+  });
+
+  it('invalid chat output during confirmation retains the exact summary and can only submit after native confirmation', async () => {
+    const invalid = { reply: 'Approved.', intents: [{ kind: 'i' }] };
+    const h = make('invalid-confirmation-reply', [
+      route('wallet'),
+      ...payment(),
+      route('chat'),
+      call('chat', invalid),
+      { ...call('chat', invalid), attempt: 2 },
+    ]);
+    const summary = await h.say('send 10 usdc to mihir');
+    const before = snapshot(h);
+    const response = await h.say('Can you explain this?');
+    expect(response.body.state).toBe('awaiting_confirmation');
+    expect(response.body.request_id).toBe(summary.body.request_id);
+    expect(response.body.summary).toEqual(summary.body.summary);
+    expect(response.body.messages[0]?.text).toContain("couldn't answer");
+    expect(snapshot(h)).toEqual(before);
+    expect(h.exec.submissions).toHaveLength(0);
+    expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+    expect(h.exec.submissions).toHaveLength(1);
+  });
+
+  it('retains failed-payment correction context across a generic explanation after a terminal funding error', async () => {
+    const first = payment();
+    first[0]!.output = {
+      amounts: [{ phrase: '100 usdc', number: '100', token: 'USDC', fiat: null, relative: null, role: 'pay' }],
+    };
+    const retry = payment();
+    retry[0]!.output = {
+      amounts: [{ phrase: '20', number: '20', token: null, fiat: null, relative: null, role: 'pay' }],
+    };
+    retry[2]!.output = { spans: [] };
+    retry[3]!.output = {
+      payments: [
+        {
+          kind: 'i',
+          amount: '$amount:0',
+          recipient: '$session:0',
+          chain: 84532,
+          frequency: null,
+          interval: null,
+          times_per_week: null,
+          days_of_week: null,
+          day_of_month: null,
+        },
+      ],
+    };
+    const h = make('failed-payment-context', [
+      route('wallet'),
+      ...first,
+      route('chat'),
+      chat('The available balance was not enough.'),
+      route('wallet'),
+      ...retry,
+    ]);
+    const failed = await h.say('send 100 usdc to mihir on Base');
+    expect(failed.body.error?.code).toBe('INSUFFICIENT_FUNDS');
+    const before = snapshot(h);
+    const explanation = await h.say('What does insufficient funds mean?');
+    expect(explanation.body.state).toBe('done');
+    expect(explanation.body.request_id).not.toBe(failed.body.request_id);
+    expect(snapshot(h)).toEqual(before);
+    const corrected = await h.say('send 20');
+    expect(corrected.body.state, JSON.stringify(corrected.body)).toBe('awaiting_confirmation');
+    expect(corrected.body.summary?.text).toContain('20 USDC to Mihir');
+    expect(h.exec.submissions).toHaveLength(0);
+    await h.confirm(corrected, 'yes');
+    expect(h.envelope.intents[0]).toMatchObject({
+      recipient: MIHIR,
+      chain_id: 84532,
+      token: 'USDC',
+      amount: { value: '20' },
+    });
+  });
 });
