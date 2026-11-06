@@ -91,6 +91,22 @@ describe('schedule dates through HTTP', () => {
       first: '2026-02-01T10:00:00-05:00',
       cron: '0 10 * * *',
     },
+    {
+      clock: '2026-03-07T15:00:00Z',
+      start: 'in 2 days at 10am',
+      date: '2026-03-09',
+      time: '10:00',
+      first: '2026-03-09T10:00:00-04:00',
+      cron: '0 10 * * *',
+    },
+    {
+      clock: '2026-10-31T14:00:00Z',
+      start: 'in 2 days at 00:30',
+      date: '2026-11-02',
+      time: '00:30',
+      first: '2026-11-02T00:30:00-05:00',
+      cron: '30 0 * * *',
+    },
   ])(
     'B16: confirms and hands off the requested local start $start',
     async ({ clock, start, date, time, first, cron }) => {
@@ -125,4 +141,37 @@ describe('schedule dates through HTTP', () => {
       },
     );
   });
+
+  it.each(['starting November 20 2026 until November 10 2026', 'from 2026-11-20 to 2026-11-10'])(
+    'B17: rejects the reversed explicit range %s before confirmation or handoff',
+    async (range) => {
+      await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {
+        expect(response.body.error?.code).toBe('AUTOPAY_NO_OCCURRENCES');
+        expect(response.body.state).not.toBe('awaiting_confirmation');
+        expect(response.body.summary).toBeUndefined();
+        expect(h.exec.submissions).toHaveLength(0);
+        const attempted = await h.confirm(response, 'yes');
+        expect(attempted.body.state).not.toBe('done');
+        expect(h.exec.submissions).toHaveLength(0);
+      });
+    },
+  );
+
+  it.each(['starting November 10 2026 until November 20 2026', 'from 10 to 20 November 2026'])(
+    'B17: still hands off the valid inclusive range %s',
+    async (range) => {
+      await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {
+        const intent = await confirmSchedule(h, response);
+        expect(intent.schedule).toMatchObject({
+          start_date: '2026-11-10',
+          first_occurrence: '2026-11-10T10:00:00+05:30',
+          end: { type: 'on_date', date: '2026-11-20' },
+        });
+        expect(intent.prefund.value).toBe('11');
+        const occurrences = enumerateOccurrences(intent.schedule, 52).occurrences;
+        expect(occurrences).toHaveLength(11);
+        expect(occurrences.at(-1)?.toISODate()).toBe('2026-11-20');
+      });
+    },
+  );
 });
