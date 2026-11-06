@@ -1,7 +1,6 @@
 // Implements: §13.1 summary line templates, {cadence} and {end text} forms; §13.2 balance answer lines;
 // §10.7 step 3 Q_AUTOPAY_PICK chip label. Verbatim from the spec.
-// LOCAL STUB pending CCR D-1: these user-facing texts are not in src/contracts/catalog.ts (frozen). Once the
-// Orchestrator publishes them there, this file re-exports the catalog entries instead.
+// Home of these texts per §21 (`src/messages/`: summary, balance answer, question and error texts); CCR D-1 rejected.
 
 type P = Record<string, string>;
 
