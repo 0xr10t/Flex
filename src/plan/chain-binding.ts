@@ -13,6 +13,21 @@ export function chainBindingProblems(ctx: StepContext, payments: Payment[]): str
   const occupied = new Set(
     payments.flatMap((p) => [amountClause(p), recipientClause(p)]).filter((n) => n !== undefined),
   );
+  const entitySpans = [
+    ...req.amounts.flatMap((a) => (a.span ? [a.span] : [])),
+    ...req.recipients.flatMap((r) => (req.spans[r.span_index]?.span ? [req.spans[r.span_index]!.span!] : [])),
+  ];
+  const distinct = [...new Set(req.scan.chains.map((c) => c.chain_id))];
+  // A single chain before every payment or at the end of the whole request applies to every payment.
+  const global =
+    distinct.length === 1 &&
+    entitySpans.length > 0 &&
+    req.scan.chains.some(
+      (c) =>
+        c.end <= Math.min(...entitySpans.map((s) => s.start)) || c.start >= Math.max(...entitySpans.map((s) => s.end)),
+    )
+      ? distinct
+      : [];
   const problems: string[] = [];
   payments.forEach((p, i) => {
     const own = new Set([amountClause(p), recipientClause(p)].filter((n) => n !== undefined));
@@ -21,7 +36,8 @@ export function chainBindingProblems(ctx: StepContext, payments: Payment[]): str
     for (const ci of own) {
       for (let next = ci + 1; next < req.scan.clauses.length && !occupied.has(next); next++) scope.add(next);
     }
-    const chains = [...new Set(req.scan.chains.filter((c) => scope.has(c.clause_index)).map((c) => c.chain_id))];
+    const local = [...new Set(req.scan.chains.filter((c) => scope.has(c.clause_index)).map((c) => c.chain_id))];
+    const chains = local.length > 0 ? local : global;
     if (chains.length === 1 && p.chain !== chains[0]) {
       problems.push(
         `Payment ${i + 1}: its clause explicitly names chain ${chains[0]}; use that chain, not "unstated" or a different payment's chain.`,
