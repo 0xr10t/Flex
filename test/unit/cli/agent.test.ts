@@ -173,7 +173,9 @@ describe('the conversation', () => {
     await chat.send('y');
     expect(opened).toEqual([]);
     const sent = text(await chat.send('yes'));
-    expect(sent.at(-1)).toBe('Opened your wallet to approve it in MetaMask: http://127.0.0.1:8788/');
+    expect(sent.at(-1)).toBe(
+      'Opened your wallet to approve it in MetaMask: http://127.0.0.1:8788/#approve=req_000000000001',
+    );
     await chat.send('send 1 usdc to a');
     await chat.send('n');
     expect(api.calls.filter((c) => c !== 'open')).toEqual([
@@ -424,6 +426,9 @@ describe('opening the wallet page', () => {
     expect(openLocalPage('https://evil.example/', fake)).toBe(false);
     expect(openLocalPage('http://127.0.0.1.evil.example/', fake)).toBe(false);
     expect(openLocalPage('http://127.0.0.1:8788/', fake)).toBe(true);
-    expect(calls).toHaveLength(1);
+    expect(openLocalPage('http://127.0.0.1:8788/#approve=req_0123456789ab', fake)).toBe(true);
+    expect(openLocalPage('http://127.0.0.1:8788/#approve=javascript:x', fake)).toBe(false);
+    expect(openLocalPage('http://127.0.0.1:8788/evil', fake)).toBe(false);
+    expect(calls).toHaveLength(2);
   });
 });

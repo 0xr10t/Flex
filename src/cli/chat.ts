@@ -129,7 +129,8 @@ export class Chat {
     this.pending = waiting ? r : undefined;
     const lines = render(r);
     if (confirmed && r.state === 'done' && !r.error && this.endpoint) {
-      const url = this.endpoint.walletUrl;
+      // the wallet's approval view for this request: its details filled in, MetaMask opening by itself
+      const url = `${this.endpoint.walletUrl}#approve=${r.request_id}`;
       lines.push(
         this.deps.openPage(url)
           ? line(t('Opened your wallet to approve it in MetaMask: ', 1), t(url, 2))

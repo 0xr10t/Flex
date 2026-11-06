@@ -55,8 +55,10 @@ describe('CLI conversation with the agent', () => {
 
     const done = text(await chat.send('y'));
     expect(done[0]).toBe('Sent to your wallet for signing.');
-    expect(done.at(-1)).toBe(`Opened your wallet to approve it in MetaMask: ${WALLET_URL}`);
-    expect(opened).toEqual([WALLET_URL]);
+    // the wallet opens on its approval view for exactly this request
+    const approveUrl = `${WALLET_URL}#approve=${h!.exec.submissions[0]!.envelope.request_id}`;
+    expect(done.at(-1)).toBe(`Opened your wallet to approve it in MetaMask: ${approveUrl}`);
+    expect(opened).toEqual([approveUrl]);
     expect(h!.exec.submissions).toHaveLength(1);
     await chat.close();
   });

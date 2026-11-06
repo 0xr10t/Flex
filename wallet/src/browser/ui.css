@@ -225,3 +225,30 @@ a:focus-visible {
     flex-direction: column;
   }
 }
+
+/* Approval view (#approve=<request id>, opened by flexx): only the request, with its details, no transfer form. */
+.approve-head {
+  display: none;
+}
+body.focus .approve-head {
+  display: block;
+}
+body.focus .hero,
+body.focus .prepare,
+body.focus .activity > h2 {
+  display: none;
+}
+body.focus .layout {
+  grid-template-columns: minmax(0, 640px);
+}
+.approve-head h1 {
+  margin-bottom: 12px;
+}
+.approve-head button {
+  margin-top: 4px;
+  width: auto;
+}
+.card p.detail {
+  color: #e9edf5;
+  overflow-wrap: anywhere;
+}

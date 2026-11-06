@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process';
 
-const LOCAL_URL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//;
+const LOCAL_URL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/(#approve=req_[0-9a-f]{12})?$/;
 
 /** The command that opens a URL on this platform. */
 export function openCommand(platform: NodeJS.Platform, url: string): [string, string[]] {
