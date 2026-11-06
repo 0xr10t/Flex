@@ -31,6 +31,7 @@ import {
   DISTRIBUTIVE_RE,
   ENS_SCAN_RE,
   GROUP_AT_MARKER_RE,
+  GROUP_MEMBERS_MARKER_RE,
   GROUP_WORD_MARKER_RE,
   LINK_MARKER_RE,
   NUMBER_WORD_RE,
@@ -185,7 +186,7 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
 
   // ── rule 4: group markers ──
   const groups: GroupCandidate[] = [];
-  for (const re of [GROUP_WORD_MARKER_RE, GROUP_AT_MARKER_RE]) {
+  for (const re of [GROUP_WORD_MARKER_RE, GROUP_AT_MARKER_RE, GROUP_MEMBERS_MARKER_RE]) {
     for (const m of matches(re, text)) {
       const parent = m.m[1] ?? '';
       const start = m.start + m.text.lastIndexOf(parent);

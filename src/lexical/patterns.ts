@@ -42,6 +42,11 @@ export const GROUP_WORD_MARKER_RE = new RegExp(
   'gi',
 );
 export const GROUP_AT_MARKER_RE = new RegExp(`(?<![A-Za-z0-9._%+-])@(${DOTTED})`, 'gi');
+/** Handoff LIVE-P084/P085: the same parent group expressed as "all X members". */
+export const GROUP_MEMBERS_MARKER_RE = new RegExp(
+  `(?<![A-Za-z0-9_])all\\s+(${DOTTED})\\s+members(?![A-Za-z0-9_])`,
+  'gi',
+);
 
 /** Mainnet words: §6.2 (whole words). */
 export { MAINNET_WORDS } from '../contracts/static-tables.js';
@@ -89,6 +94,7 @@ export const RECURRENCE_RES: readonly RegExp[] = [
   /(?<![A-Za-z0-9_])every(?!\s+one(?![A-Za-z0-9_]))(?![A-Za-z0-9_])/gi,
   new RegExp(`(?<![A-Za-z0-9_])each\\s+(?:day|week|month|${WEEKDAYS})s?(?![A-Za-z0-9_])`, 'gi'),
   /(?<![A-Za-z0-9_])(?:daily|weekly|monthly|fortnightly)(?![A-Za-z0-9_])/gi,
+  /(?<![A-Za-z0-9_])(?:once|twice)\s+(?:a|per)\s+(?:week|day|month)(?![A-Za-z0-9_])/gi,
   /(?<![A-Za-z0-9_])per\s+(?:day|week|month)(?![A-Za-z0-9_])/gi,
   new RegExp(
     `(?<![A-Za-z0-9_])(?:\\d+|${SMALL_NUMBER_WORDS})\\s+times\\s+a\\s+(?:week|day|month)(?![A-Za-z0-9_])`,
