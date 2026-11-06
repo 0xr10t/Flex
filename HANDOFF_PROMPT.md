@@ -42,7 +42,7 @@ curl -s http://127.0.0.1:11434/api/tags         # local Ollama with qwen2.5:7b-i
 - **Ollama.** It runs locally (0.40.14) and the model is pulled. If it is down, start it detached:
   `nohup ollama serve > /tmp/ollama.log 2>&1 & disown`. Never point the agent at a non-local model; config only
   accepts `http://127.0.0.1`.
-- **Expected on `agentic_layer` @ `cae2664`:** typecheck, lint and build pass; **1,678** unit+acceptance tests pass;
+- **Expected on `agentic_layer` @ `cae2664` or later:** typecheck, lint and build pass (leaving out the untracked `test/codex-review/`, see §6); **1,678** unit+acceptance tests pass;
   **168** audit tests pass.
 - **Known flaky test.** `test/unit/A/settings.test.ts` "C-346 SQ-A-02e: a missing key → 400" can time out at 5 s under
   load. It passes alone. Its timeout is widened on `phase6/fixes-core`.
@@ -241,6 +241,13 @@ Problems found (each one reproduced with direct Ollama calls):
 
 ## 6. Gotchas
 
+- **`test/codex-review/` is untracked and was not written by the build agents.** It appeared between 11:48 and 12:12 on
+  2026-11-06 and holds 7 test files (`sessions`, `understanding`, `recipients`, `planning`, `reports`, `live-model`,
+  `answer-secrets`). While it exists, `npm run typecheck` fails (`live-model.test.ts:106`, a chain-id type) and
+  `npm run lint` fails (`planning.test.ts`, `answer-secrets.test.ts`). The vitest `include` (`test/unit`,
+  `test/acceptance`) does not pick it up. Everything committed on `agentic_layer` is clean when this folder is left out.
+  **Ask the human what it is before using, fixing, committing or deleting it.** If it is a second review's tests, they
+  may be worth running against the fixes.
 - **Worktrees.** Every `.claude/worktrees/agent-*` folder is an old agent's git worktree, and some are "locked". Do not
   edit them; work in the main checkout or a new branch. Deleting them needs the human's OK.
 - **The audit suite** is not in the root vitest `include`. Run it with
