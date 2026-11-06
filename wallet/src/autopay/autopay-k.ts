@@ -53,7 +53,7 @@ export function verifiedIntent(envelope: HandoffEnvelope, step: number): Intent 
   return found?.intent as unknown as Intent;
 }
 
-export const runTotal = (intent: AutopayK): string =>
+const runTotal = (intent: AutopayK): string =>
   formatUnits(
     intent.recipients.reduce((sum, r) => sum + BigInt(r.amount.base_units), 0n),
     DECIMALS[intent.token],

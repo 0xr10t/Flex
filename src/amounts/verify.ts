@@ -109,7 +109,7 @@ export function newWorkItem(id: number, over: Partial<WorkItem> & Pick<WorkItem,
 }
 
 /** Canonical form of a plain decimal ("050.50" → "50.5"), at its own precision. */
-export function canonicalDecimal(s: string): string {
+function canonicalDecimal(s: string): string {
   const d = fractionDigits(s);
   return fromBaseUnits(toBaseUnits(s, d), d);
 }
@@ -154,7 +154,7 @@ function mapKind(k: TokenWordKind): Token | 'FIAT_OTHER' {
 }
 
 /** §17.2 step 6: the token of the previous payment (most recent history entry), when it names exactly one. */
-export function previousToken(ctx: StepContext): Token | null {
+function previousToken(ctx: StepContext): Token | null {
   if (ctx.req.retry_context !== undefined) return ctx.req.retry_context.token;
   if (ctx.req.scan.back_reference.length === 0) return null;
   const tokens = new Set<Token>();
@@ -169,7 +169,7 @@ export function previousToken(ctx: StepContext): Token | null {
 }
 
 /** §8.4 step 3 token order (a)–(d) and §17.2 step 6. Null → Q_TOKEN. 'FIAT_OTHER' → Q_FIAT_OTHER. */
-export function inferToken(ctx: StepContext, item: WorkItem): Token | 'FIAT_OTHER' | null {
+function inferToken(ctx: StepContext, item: WorkItem): Token | 'FIAT_OTHER' | null {
   if (item.llm_token !== null) return item.llm_token; // (a)
   if (item.fiat === 'USD') return 'USDC'; // (b)
   const tokens = ctx.req.scan.tokens;

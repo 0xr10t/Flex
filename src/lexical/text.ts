@@ -76,7 +76,7 @@ function glued(a: string, b: string): boolean {
 }
 
 /** True when `r` cuts no word or number of `haystack` at either edge (see `findUnused`). */
-export function isWholeWordAt(haystack: string, r: Range): boolean {
+function isWholeWordAt(haystack: string, r: Range): boolean {
   return (
     !glued(haystack[r.start - 1] ?? '', haystack[r.start] ?? '') &&
     !glued(haystack[r.end - 1] ?? '', haystack[r.end] ?? '')

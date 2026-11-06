@@ -34,7 +34,7 @@ interface GraphQlResponse<T> {
  * source to be swappable. Pages by cursor. A subname with no canonical name, or with an unknown label (written `[hash]`), can't be
  * resolved or shown to the user, so it's left out.
  */
-export const OMNIGRAPH_SUBDOMAINS_QUERY = `query Subdomains($name: InterpretedName!, $after: String) {
+const OMNIGRAPH_SUBDOMAINS_QUERY = `query Subdomains($name: InterpretedName!, $after: String) {
   domain(by: { name: $name }) {
     id
     subdomains(first: 1000, after: $after) {

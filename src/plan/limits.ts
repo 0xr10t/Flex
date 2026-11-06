@@ -100,7 +100,7 @@ export function dailyBreach(ctx: StepContext, plan: InternalIntent[], token: Tok
  * user confirmed it). Relative amounts are typed; derived amounts (bridge padding, autopay caps) follow the payment
  * amounts they come from, so only the request's own amounts are looked at.
  */
-export function hasContentAmount(ctx: StepContext): boolean {
+function hasContentAmount(ctx: StepContext): boolean {
   const { req, repos } = ctx;
   const own = [...req.amounts.map((a) => a.placeholder), ...(req.payments ?? []).map((p) => p.amount)];
   return own.some((ph) => ph !== null && repos.db1.get(ph)?.source === 'untrusted');

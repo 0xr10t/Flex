@@ -107,7 +107,7 @@ export async function refreshBalances(d: RefreshDeps, chains: ChainId[], nowIso:
 }
 
 /** Fix 8: mean time between background balance reads. ponytail: a constant; make it a setting if anyone needs another. */
-export const BALANCE_REFRESH_MS = 5 * 60_000;
+const BALANCE_REFRESH_MS = 5 * 60_000;
 
 export interface BalanceRefresher {
   /** One read of every allowed chain, as the timer does. */

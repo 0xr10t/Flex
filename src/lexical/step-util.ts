@@ -20,7 +20,7 @@ export function qid(): QuestionId {
 }
 
 /** §17.2 step 1: session history = the last 5 handed-off requests. */
-export const HISTORY_LIMIT = 5;
+const HISTORY_LIMIT = 5;
 
 /**
  * §17.2 steps 3 and 6: the payments of the most recent history entry (parsed `payments_json`), objects only;

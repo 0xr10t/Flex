@@ -65,7 +65,7 @@ export interface S3State {
   done: boolean;
 }
 
-export const AMOUNT_MASK = '[amount]';
+const AMOUNT_MASK = '[amount]';
 
 const RELATIVE_AMOUNT_RE = new RegExp(
   `^(?:all|half|max)(?:\\s+of)?(?:\\s+my)?\\s+(?:${Object.values(TOKENS)

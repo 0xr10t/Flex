@@ -22,7 +22,7 @@ export interface ChainBalance {
   reserve: bigint;
 }
 
-export function gasReserve(ctx: StepContext, chain_id: ChainId): bigint {
+function gasReserve(ctx: StepContext, chain_id: ChainId): bigint {
   const v = ctx.limits.eth_gas_reserve[String(chain_id)];
   return v === undefined ? 0n : toBaseUnits(v, 18);
 }
@@ -57,7 +57,7 @@ export function balanceOf(balances: ChainBalance[], chain_id: ChainId): ChainBal
 }
 
 /** §10.4 gas check: raw ETH − pending ETH ≥ eth_gas_reserve[c]. */
-export function hasGas(b: ChainBalance): boolean {
+function hasGas(b: ChainBalance): boolean {
   return b.ok && b.raw.ETH - b.pending.ETH >= b.reserve;
 }
 

@@ -25,7 +25,7 @@ import { extractUntrusted } from '../quarantine/qllm.js';
 const TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 const PDF_MIME = 'application/pdf';
 /** §8.2 step 4 / I-16. */
-export const MAX_ITEM_CHARS = 20_000;
+const MAX_ITEM_CHARS = 20_000;
 
 interface ContentItem {
   label: string;
