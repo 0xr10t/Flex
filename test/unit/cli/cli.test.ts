@@ -10,42 +10,50 @@ import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
 const ESC = '\u001b';
 
 describe('splash renderer', () => {
-  it('settles into the wordmark, tagline, status rows and prompt', () => {
+  it('settles into the FLEXX wordmark, tagline, rule and prompt beside the logo', () => {
     const anim = new SplashAnimation();
     anim.frame(0);
     const lines = frameLines(anim.frame(6000));
     expect(lines).toHaveLength(SPLASH_ROWS);
     expect(lines.every((l) => l.length === SPLASH_COLS)).toBe(true);
-    const all = lines.join('\n');
-    expect(all).toContain('██████████');
-    expect(lines[11]).toContain('the access layer between AI and ethereum');
-    expect(lines[15]).toContain('> ai model   connected');
-    expect(lines[17]).toContain('> ethereum   block #21,004,203');
-    expect(lines[19]).toContain('> layer      idle');
-    expect(lines[21]).toContain('flex $ █');
+    // F, L, E, X, X: the top row of each letter
+    expect(lines[5]!.slice(38)).toMatch(/^██████████ ██ {9}██████████ ██ {6}██ ██ {6}██ *$/);
+    expect(lines[13]).toContain('the access layer between AI and ethereum');
+    expect(lines[15]!.slice(38, 92)).toBe('─'.repeat(54));
+    expect(lines[17]).toContain('flex $ █');
+    // the logo sits left of the text
+    expect(lines[11]!.slice(0, 36)).toMatch(/[#+=:-]/);
   });
 
-  it('shows nothing of the text before the reveal starts', () => {
-    const lines = frameLines(new SplashAnimation().frame(0));
-    expect(lines.slice(0, 13).join('').slice(36)).not.toMatch(/[a-z]{3}/);
-    expect(lines[21]).not.toContain('flex $');
+  it('no longer shows the status rows', () => {
+    const anim = new SplashAnimation();
+    anim.frame(0);
+    const all = frameLines(anim.frame(9000)).join('\n');
+    expect(all).not.toMatch(/ai model|> ethereum|> layer|connected|block #/);
   });
 
-  it('reports steering once the pointer has been over it', () => {
-    const anim = new SplashAnimation({ shape: 'diamond' });
-    const on = { x: 0.5, y: 0.2, on: true };
-    let lines: string[] = [];
-    for (let now = 0; now <= 6000; now += 33) lines = frameLines(anim.frame(now, on));
-    expect(anim.steering).toBe(true);
-    expect(lines[19]).toContain('> layer      steering');
-  });
-
-  it('uses caller-supplied status values', () => {
-    const anim = new SplashAnimation({ status: () => ({ aiModel: 'qwen3:8b', ethereum: 'block #7' }) });
+  it('centres the logo and text as one group', () => {
+    const anim = new SplashAnimation();
     anim.frame(0);
     const lines = frameLines(anim.frame(6000));
-    expect(lines[15]).toContain('qwen3:8b');
-    expect(lines[17]).toContain('block #7');
+    const used = lines.filter((l) => l.trim() !== '');
+    const left = Math.min(...used.map((l) => l.search(/\S/)));
+    const right = Math.max(...used.map((l) => l.trimEnd().length));
+    expect(Math.abs(left - (SPLASH_COLS - right))).toBeLessThanOrEqual(4);
+    const rows = lines.map((l, i) => (l.trim() ? i : -1)).filter((i) => i >= 0);
+    expect(Math.abs(rows[0]! - (SPLASH_ROWS - 1 - rows.at(-1)!))).toBeLessThanOrEqual(2);
+  });
+
+  it('shows none of the text before the reveal starts', () => {
+    const lines = frameLines(new SplashAnimation().frame(0));
+    expect(lines.join('')).not.toContain('█');
+    expect(lines[17]).not.toContain('flex $');
+  });
+
+  it('eases into steering while the pointer is over it', () => {
+    const anim = new SplashAnimation({ shape: 'diamond' });
+    for (let now = 0; now <= 3000; now += 33) anim.frame(now, { x: 0.5, y: 0.2, on: true });
+    expect(anim.steering).toBe(true);
   });
 });
 
@@ -83,14 +91,15 @@ describe('painting and layout', () => {
     const out = renderStatic({ view: 'splash', colorMode: 'none' });
     expect(out).not.toContain(ESC);
     expect(out).toContain('flex — splash');
-    expect(out).toContain('80 × 24');
+    expect(out).toContain('96 × 24');
+    expect(out).not.toMatch(/terminal splash|steer the layer/);
   });
 
   it('frames the splash with chrome when it fits and bare when it only just fits', () => {
-    expect(place('splash', 120, 40)).toMatchObject({ chrome: true, hint: true, width: 84, height: 28 });
-    expect(place('splash', 80, 24)).toMatchObject({ chrome: false, hint: false, left: 1, top: 1 });
-    expect(place('splash', 79, 24)).toBeNull();
-    expect(place('scene', 124, 42)).toMatchObject({ chrome: true, hint: false });
+    expect(place('splash', 120, 40)).toMatchObject({ chrome: true, width: 100, height: 28, left: 11, top: 7 });
+    expect(place('splash', 96, 24)).toMatchObject({ chrome: false, left: 1, top: 1 });
+    expect(place('splash', 95, 24)).toBeNull();
+    expect(place('scene', 124, 42)).toMatchObject({ chrome: true });
     expect(place('scene', 100, 50)).toBeNull();
   });
 });

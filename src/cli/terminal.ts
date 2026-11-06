@@ -4,7 +4,7 @@
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
-import { HINT, minimumSize, panel, place, type Placement, type View } from './render/layout.js';
+import { minimumSize, panel, place, type Placement, type View } from './render/layout.js';
 import { paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette, type Row } from './render/paint.js';
 import { renderScene, type SceneOptions } from './render/scene.js';
 import { SplashAnimation, type Pointer, type SplashOptions } from './render/splash.js';
@@ -105,15 +105,6 @@ function paintPanel(rows: Row[], width: number, p: Placement, palette: Palette, 
   return s;
 }
 
-function paintHint(view: View, p: Placement, cols: number, palette: Palette, mode: ColorMode): string {
-  const row = HINT[view];
-  const width = row.reduce((n, r) => n + [...r.text].length, 0);
-  if (width > cols) return '';
-  const left = Math.floor((cols - width) / 2) + 1;
-  // the caption sits on the terminal's own background, not the panel's
-  return `${CSI}${p.top + p.height + 1};${left}H${paintRow(row, 0, palette, mode, false)}`;
-}
-
 /** One still frame (the animation settled at `t` seconds), for pipes, `--static` and tests. */
 export function renderStatic(opts: ViewOptions, t = 6): string {
   const palette = viewPalette(opts);
@@ -163,7 +154,6 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
         : renderScene(((now - t0) / 1000) * sceneSpeed, opts.scene);
       const pnl = panel(opts.view, frame, placement.chrome);
       s += paintPanel(pnl.rows, pnl.width, placement, palette, opts.colorMode);
-      if (dirty && placement.hint) s += paintHint(opts.view, placement, cols, palette, opts.colorMode);
       dirty = false;
     }
     output.write(s + SYNC_END);

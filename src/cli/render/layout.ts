@@ -1,6 +1,6 @@
 // Frames the rendered art the way the designs present it: the splash inside a terminal window with a title bar
-// ("flex — splash" · "80 × 24"), the scene on its own dark field, both centred, with the designs' caption below when
-// the screen has room. Falls back to the bare frame when the window chrome does not fit.
+// ("flex — splash" · its size), the scene on its own dark field, both centred. Falls back to the bare frame when the
+// window chrome does not fit.
 
 import type { Frame } from './frame.js';
 import { frameRows, type Row } from './paint.js';
@@ -21,8 +21,6 @@ export interface Placement {
   width: number;
   height: number;
   chrome: boolean;
-  /** Room for the caption line under the panel. */
-  hint: boolean;
 }
 
 const PAD_X = 2;
@@ -32,19 +30,6 @@ const SIZE: Record<View, { cols: number; rows: number; chromeCols: number; chrom
   splash: { cols: SPLASH_COLS, rows: SPLASH_ROWS, chromeCols: SPLASH_COLS + 2 * PAD_X, chromeRows: SPLASH_ROWS + 4 },
   // padding row above and below
   scene: { cols: SCENE_COLS, rows: SCENE_ROWS, chromeCols: SCENE_COLS + 2 * PAD_X, chromeRows: SCENE_ROWS + 2 },
-};
-
-export const HINT: Record<View, Row> = {
-  splash: [
-    { text: 'Flex ', ink: 'fg' },
-    { text: 'terminal splash', ink: 'accent' },
-    { text: '   ·   move the cursor over the terminal to steer the layer   ·   enter or q to exit', ink: 'dim' },
-  ],
-  scene: [
-    { text: 'Flex ', ink: 'fg' },
-    { text: 'access layer', ink: 'accent' },
-    { text: '   ·   enter or q to exit', ink: 'dim' },
-  ],
 };
 
 /** Smallest terminal that shows the view at all. */
@@ -59,15 +44,12 @@ export function place(view: View, cols: number, rows: number): Placement | null 
   const width = chrome ? s.chromeCols : s.cols;
   const height = chrome ? s.chromeRows : s.rows;
   if (cols < width || rows < height) return null;
-  const hint = rows >= height + 2;
-  const total = hint ? height + 2 : height;
   return {
     left: Math.floor((cols - width) / 2) + 1,
-    top: Math.floor((rows - total) / 2) + 1,
+    top: Math.floor((rows - height) / 2) + 1,
     width,
     height,
     chrome,
-    hint,
   };
 }
 

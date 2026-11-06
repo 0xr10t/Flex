@@ -14,7 +14,7 @@ import { detectColorMode, renderStatic, runInteractive, type ViewOptions } from 
 export const USAGE = `Usage: flexx [splash|scene] [options]
 
 Views:
-  splash            80 × 24 terminal splash; move the mouse over it to steer (default)
+  splash            96 × 24 splash: the logo beside FLEXX; move the mouse over it to steer (default)
   scene             120 × 40 gateway scene: AI model ↔ FLEX GATEWAY ↔ Ethereum
 
 Options:
@@ -121,6 +121,11 @@ function isEntry(): boolean {
 }
 
 if (isEntry()) {
+  // a reader that stops early (`flexx --static | head`) is not an error
+  process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err;
+    process.exit(0);
+  });
   runCli(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

@@ -1,10 +1,22 @@
-// The 80×24 terminal splash: a lit cube (or Ethereum diamond) the pointer can steer, the FLEX wordmark, a typed
-// tagline and the status rows ending in the `flex $` prompt. Port of "Flex Terminal.dc.html" from the Claude Design
-// handoff "Flex animated ASCII art".
+// The terminal splash: a lit cube (or Ethereum diamond) the pointer can steer on the left and, beside it, the FLEXX
+// wordmark, a typed tagline, a rule and the `flex $` prompt, the pair centred in the frame. Adapted from
+// "Flex Terminal.dc.html" in the Claude Design handoff "Flex animated ASCII art" (FLEXX instead of FLEX, status rows
+// removed, frame widened so the five-letter wordmark fits beside the logo).
 
-import { createFrame, dot, drawWordmark, norm, put, text, type Frame, type Vec3 } from './frame.js';
+import {
+  createFrame,
+  dot,
+  drawWordmark,
+  norm,
+  put,
+  text,
+  wordmarkWidth,
+  type Frame,
+  type Vec3,
+  type WordmarkLetter,
+} from './frame.js';
 
-export const SPLASH_COLS = 80;
+export const SPLASH_COLS = 96;
 export const SPLASH_ROWS = 24;
 
 export type SplashShape = 'cube' | 'diamond';
@@ -16,21 +28,10 @@ export interface Pointer {
   on: boolean;
 }
 
-/** Values for the `ai model` and `ethereum` status rows. */
-export interface SplashStatus {
-  aiModel: string;
-  ethereum: string;
-}
-
 export interface SplashOptions {
   shape?: SplashShape;
   /** Animation speed multiplier (the design's range is 0.25–3). */
   speed?: number;
-  /**
-   * Status row values at time `t` (seconds, speed-scaled). Defaults to the design's simulated values; the CLI
-   * passes real ones once it is connected to the model and the chain.
-   */
-  status?: (t: number) => SplashStatus;
 }
 
 const RAMP = ' .,:-=+*#%@';
@@ -40,16 +41,25 @@ const LIGHT = norm([-0.45, 0.6, 0.7]);
 const CUBE_FACES: { ax: 0 | 1 | 2; s: -1 | 1 }[] = [];
 for (const ax of [0, 1, 2] as const) for (const s of [-1, 1] as const) CUBE_FACES.push({ ax, s });
 
-/** The design's simulated status: a connected model and a block number that ticks every two seconds. */
-export function simulatedStatus(t: number): SplashStatus {
-  return { aiModel: 'connected', ethereum: 'block #' + (21004200 + Math.floor(t / 2)).toLocaleString('en-US') };
-}
+const WORD: readonly WordmarkLetter[] = ['F', 'L', 'E', 'X', 'X'];
+const PITCH = 11;
+const WORD_WIDTH = wordmarkWidth(WORD.length, PITCH);
+/** Half the widest the spinning object gets, and the gap the design leaves between it and the text. */
+const OBJECT_REACH = 16;
+const TEXT_GAP = 3;
+/** Text block: wordmark (7 rows), tagline, rule and prompt two rows apart. */
+const TEXT_ROWS = 13;
+const GROUP_WIDTH = 2 * OBJECT_REACH + TEXT_GAP + WORD_WIDTH;
+const OBJECT_X = Math.floor((SPLASH_COLS - GROUP_WIDTH) / 2) + OBJECT_REACH;
+const TEXT_X = OBJECT_X + OBJECT_REACH + TEXT_GAP;
+const TEXT_Y = Math.floor((SPLASH_ROWS - TEXT_ROWS) / 2);
+// a row above the text's middle: the pitched-forward cube shows more face below its centre than above
+const OBJECT_Y = TEXT_Y + (TEXT_ROWS - 1) / 2 - 1;
 
 /** Stateful splash animation: easing of the steering angles carries from frame to frame. */
 export class SplashAnimation {
   private readonly shape: SplashShape;
   private readonly speed: number;
-  private readonly status: (t: number) => SplashStatus;
   private t0: number | undefined;
   private prev = 0;
   private yaw = 0;
@@ -60,7 +70,6 @@ export class SplashAnimation {
   constructor(opts: SplashOptions = {}) {
     this.shape = opts.shape ?? 'cube';
     this.speed = opts.speed ?? 1;
-    this.status = opts.status ?? simulatedStatus;
   }
 
   /** True once the pointer has eased the layer into steering. */
@@ -94,8 +103,8 @@ export class SplashAnimation {
 
   private drawObject(f: Frame): void {
     const cube = this.shape === 'cube';
-    const cx = 17;
-    const cy = 11.5;
+    const cx = OBJECT_X;
+    const cy = OBJECT_Y;
     const sx = cube ? 8.6 : 11;
     const sy = cube ? 4.5 : 5.6;
     const cyw = Math.cos(this.yaw);
@@ -165,42 +174,33 @@ export class SplashAnimation {
   }
 
   private drawText(f: Frame, t: number): void {
-    const wx = 36;
+    const wx = TEXT_X;
+    const wy = TEXT_Y;
     drawWordmark(f, t, {
+      word: WORD,
       x: wx,
-      y: 3,
-      pitch: 11,
-      revealSpan: 43,
+      y: wy,
+      pitch: PITCH,
+      revealSpan: WORD_WIDTH,
       revealScale: 1.1,
       revealJitter: 0.5,
       bandPeriod: 6,
-      bandTravel: 70,
+      bandTravel: WORD_WIDTH + 27,
       bandOffset: 14,
       bandWidth: 1.4,
       glyphs: GLYPHS,
     });
 
+    const tagY = wy + 8;
     const typed = Math.max(0, Math.floor((t - 1.8) * 28));
-    text(f, wx, 11, TAG.slice(0, typed), 0);
-    if (typed < TAG.length && t > 1.8 && Math.floor(t * 3) % 2 === 0) put(f, wx + typed, 11, '_', 2);
-    if (t > 3.2) for (let x = wx; x < wx + 43; x++) if (x - wx < (t - 3.2) * 80) put(f, x, 13, '─', 1);
+    text(f, wx, tagY, TAG.slice(0, typed), 0);
+    if (typed < TAG.length && t > 1.8 && Math.floor(t * 3) % 2 === 0) put(f, wx + typed, tagY, '_', 2);
+    if (t > 3.2) for (let x = wx; x < wx + WORD_WIDTH; x++) if (x - wx < (t - 3.2) * 80) put(f, x, wy + 10, '─', 1);
 
-    const status = this.status(t);
-    const rows: [string, string][] = [
-      ['ai model', status.aiModel],
-      ['ethereum', status.ethereum],
-      ['layer', this.steering ? 'steering' : 'idle'],
-    ];
-    rows.forEach(([k, v], i) => {
-      if (t < 3.6 + i * 0.35) return;
-      put(f, wx, 15 + i * 2, '>', 2);
-      text(f, wx + 2, 15 + i * 2, k, 1);
-      text(f, wx + 13, 15 + i * 2, v, i === 2 && this.steering ? 2 : 0);
-    });
-    if (t > 4.8) {
-      text(f, wx, 21, 'flex', 2);
-      text(f, wx + 4, 21, ' $ ', 1);
-      if (Math.floor(t * 2) % 2 === 0) put(f, wx + 7, 21, '█', 0);
+    if (t > 4) {
+      text(f, wx, wy + 12, 'flex', 2);
+      text(f, wx + 4, wy + 12, ' $ ', 1);
+      if (Math.floor(t * 2) % 2 === 0) put(f, wx + 7, wy + 12, '█', 0);
     }
   }
 }

@@ -41,6 +41,7 @@ export function renderScene(t: number, opts: SceneOptions = {}): Frame {
       }
 
   drawWordmark(f, t, {
+    word: ['F', 'L', 'E', 'X'],
     x: 37,
     y: 2,
     pitch: 12,

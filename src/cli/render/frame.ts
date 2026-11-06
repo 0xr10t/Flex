@@ -56,15 +56,24 @@ export function frameLines(f: Frame): string[] {
   return out;
 }
 
-/** 5×7 block font for the FLEX wordmark. */
-export const FONT: Readonly<Record<'F' | 'L' | 'E' | 'X', readonly string[]>> = {
+export type WordmarkLetter = 'F' | 'L' | 'E' | 'X';
+
+/** 5×7 block font for the wordmark. */
+export const FONT: Readonly<Record<WordmarkLetter, readonly string[]>> = {
   F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
   L: ['#....', '#....', '#....', '#....', '#....', '#....', '#####'],
   E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
   X: ['#...#', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '#...#'],
 };
 
+/** Width in columns of a wordmark drawn with `pitch` between letters. */
+export function wordmarkWidth(letters: number, pitch: number): number {
+  return (letters - 1) * pitch + 10;
+}
+
 export interface WordmarkSpec {
+  /** Letters to draw, each from FONT (10 columns wide at two cells per pixel). */
+  word: readonly WordmarkLetter[];
   x: number;
   y: number;
   /** Columns between letter origins. */
@@ -81,12 +90,11 @@ export interface WordmarkSpec {
   glyphs: string;
 }
 
-/** Draws the FLEX wordmark: glyphs scramble in left to right, then a diagonal shimmer band sweeps across. */
+/** Draws the wordmark: glyphs scramble in left to right, then a diagonal shimmer band sweeps across. */
 export function drawWordmark(f: Frame, t: number, s: WordmarkSpec): void {
   const band = ((t % s.bandPeriod) / s.bandPeriod) * s.bandTravel - s.bandOffset;
-  const word = 'FLEX' as const;
-  for (let li = 0; li < 4; li++) {
-    const g = FONT[word[li] as keyof typeof FONT];
+  for (let li = 0; li < s.word.length; li++) {
+    const g = FONT[s.word[li]!];
     for (let r = 0; r < 7; r++)
       for (let c = 0; c < 5; c++) {
         if (g[r]![c] !== '#') continue;
