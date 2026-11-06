@@ -41,9 +41,10 @@ import type {
 import { checkAddress, isSelf, looksLikeAddress, sameAddress, type AddressCheck } from './address.js';
 import { okChains, statedChain } from './chains.js';
 import { chainName, qid } from '../lexical/step-util.js';
+import { nameKey } from '../lexical/text.js';
 import { firstLabel, normalizeEns, resolveOnChain, resolveOnChains, type ChainAddress } from './ens.js';
 import { resolveMembers, triageMembers } from './group.js';
-import { checkContactName, closeContacts, nameKey } from './names.js';
+import { checkContactName, closeContacts } from './names.js';
 import { s6State, type EnsInfo, type Flow, type Origin, type S6State } from './state.js';
 
 const MAX_ATTEMPTS = 4;

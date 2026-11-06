@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Db6Insert } from '../../../src/contracts/repos.js';
 import type { Address, AmountPh, GroupPh } from '../../../src/contracts/types.js';
-import { MAX_PLACEHOLDER_DRAWS, PlaceholderCollisionError, nameKey } from '../../../src/db/repos/index.js';
+import { MAX_PLACEHOLDER_DRAWS, PlaceholderCollisionError } from '../../../src/db/repos/index.js';
+import { nameKey } from '../../../src/lexical/text.js';
 import { DB5_DEFAULTS } from '../../../src/config/defaults.js';
 import { openTempDb } from './helpers.js';
 

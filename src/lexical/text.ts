@@ -12,6 +12,11 @@ export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** §9.1 step 1: trim, lowercase, collapse internal whitespace. */
+export function nameKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 const WORD_CHAR = 'A-Za-z0-9_';
 
 /** Whole-word, case-insensitive regex for a phrase; internal spaces match any whitespace run. */

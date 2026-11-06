@@ -17,7 +17,6 @@ import { createDb7 } from './db7.js';
 import { createDb8 } from './db8.js';
 import { createHandoffs } from './handoffs.js';
 
-export { nameKey } from './db2.js';
 export { PlaceholderCollisionError, MAX_PLACEHOLDER_DRAWS, type RepoOptions } from './common.js';
 
 /** §6.1 example chain display names; main() passes the configured names instead. */
