@@ -177,13 +177,13 @@ describe('§13.1 group lines keyed on group and amount (S9 → S11)', () => {
     const a10 = addAmount(ctx, '10');
     const a20 = addAmount(ctx, '20');
     const mk = (step: number, amount: typeof a10, who: string): InternalIntent => ({
-intent_id: 'i',
-step,
-depends_on: [],
-token: 'USDC',
-chain_id: BASE,
-recipients: [{ amount, recipient: members[who] as AddressPh, reused_from_chain_id: null }]
-});
+      intent_id: 'i',
+      step,
+      depends_on: [],
+      token: 'USDC',
+      chain_id: BASE,
+      recipients: [{ amount, recipient: members[who] as AddressPh, reused_from_chain_id: null }],
+    });
     const s = buildSummary(ctx, [
       mk(0, a10, 'alice.iitr.eth'),
       mk(1, a10, 'bob.iitr.eth'),

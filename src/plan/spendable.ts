@@ -6,7 +6,8 @@ import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { insufficientFundsParams } from '../contracts/catalog.js';
-import { chainName, decimalsOf, fmt, nowUtcIso } from './common.js';
+import { chainName, nowUtcIso } from '../pipeline/step-util.js';
+import { decimalsOf, fmt } from './common.js';
 
 export const TOKENS_ORDER: readonly Token[] = ['USDC', 'ETH'];
 
@@ -21,7 +22,7 @@ export interface ChainBalance {
   reserve: bigint;
 }
 
-export function gasReserve(ctx: StepContext, chain_id: ChainId): bigint {
+function gasReserve(ctx: StepContext, chain_id: ChainId): bigint {
   const v = ctx.limits.eth_gas_reserve[String(chain_id)];
   return v === undefined ? 0n : toBaseUnits(v, 18);
 }
@@ -56,23 +57,28 @@ export function balanceOf(balances: ChainBalance[], chain_id: ChainId): ChainBal
 }
 
 /** §10.4 gas check: raw ETH − pending ETH ≥ eth_gas_reserve[c]. */
-export function hasGas(b: ChainBalance): boolean {
+function hasGas(b: ChainBalance): boolean {
   return b.ok && b.raw.ETH - b.pending.ETH >= b.reserve;
 }
 
 /** §10.3 rule 2 / V-05: the chain is in `allowed_chain_ids` and its balances are readable. */
 export function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainId): StepResult | null {
   if (!ctx.limits.allowed_chain_ids.includes(c)) {
-    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx, c) } };
+    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx.config, c) } };
   }
   if (!balanceOf(balances, c)?.ok) {
-    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx, c) } };
+    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx.config, c) } };
   }
   return null;
 }
 
 /** §10.4 gas check / V-11 for every touched chain, in `allowed_chain_ids` order. */
-export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: ReadonlySet<ChainId>, fees: ReadonlyMap<ChainId, bigint> = new Map()): StepResult | null {
+export function checkGas(
+  ctx: StepContext,
+  balances: ChainBalance[],
+  touched: ReadonlySet<ChainId>,
+  fees: ReadonlyMap<ChainId, bigint> = new Map(),
+): StepResult | null {
   const { limits } = ctx;
   for (const c of limits.allowed_chain_ids) {
     if (!touched.has(c)) continue;
@@ -82,7 +88,7 @@ export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: Re
     return {
       kind: 'error',
       code: 'NO_GAS',
-      params: { reserve: fmt(required, 'ETH'), chain: chainName(ctx, c) },
+      params: { reserve: fmt(required, 'ETH'), chain: chainName(ctx.config, c) },
     };
   }
   return null;
@@ -107,6 +113,9 @@ export function insufficientParams(
     token,
     need: fmt(needTotal, token),
     have: fmt(have, token),
-    chains: positive.map((b) => ({ name: chainName(ctx, b.chain_id), spendable: fmt(b.spendable[token], token) })),
+    chains: positive.map((b) => ({
+      name: chainName(ctx.config, b.chain_id),
+      spendable: fmt(b.spendable[token], token),
+    })),
   });
 }

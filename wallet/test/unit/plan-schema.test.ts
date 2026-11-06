@@ -2,8 +2,8 @@
 // TEST_MAP §4.2, §4.3. Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
-import { PlanSchema } from '../../src/schemas/bridge.v2.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { PlanSchema } from '@flex/protocol/schemas/bridge.v2';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 
 const ME = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const ALICE = '0x000000000000000000000000000000000000a11c';

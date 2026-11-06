@@ -10,7 +10,7 @@ import type { Database } from '../database.js';
 import { toBool, toInt } from './common.js';
 
 /** §7.1: kinds whose rows count toward the daily limit. */
-export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>([
+const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>([
   'payment',
   'bridge_buffer',
   'bridge_fee',
@@ -18,7 +18,7 @@ export const COUNTING_KINDS: ReadonlySet<Db6Kind> = new Set<Db6Kind>([
   'autopay_fee',
 ]);
 /** §10.1 / I-10 window. */
-export const PENDING_WINDOW_MINUTES = 10;
+const PENDING_WINDOW_MINUTES = 10;
 
 interface Raw {
   id: number;

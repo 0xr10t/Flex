@@ -1,7 +1,7 @@
 // Implements: §14.1 PUT /v1/settings/limits validation — full limits object with the §6.3 keys; amounts positive
 // decimals; `allowed_chain_ids` ⊆ configured chains, non-empty; `autopay_max_weeks` 1–520;
 // `max_bridges_per_request` 0–10; `bridge_buffer_pct` 0–20; invalid → 400 with field errors.
-// Interim choices recorded in spec-questions/A.md (SQ-A-02): amounts must also fit the token's decimals,
+// Interim choices (SQ-A-02): amounts must also fit the token's decimals,
 // `eth_gas_reserve` keys must be configured chain ids and cover every allowed chain, chain ids must be unique.
 // Owner: Lane A.
 

@@ -14,6 +14,7 @@ import {
   ARADHYA,
   ARB,
   BASE,
+  Harness,
   MIHIR,
   SEPOLIA,
   USDC_ADDR,
@@ -22,6 +23,7 @@ import {
   eth,
   harness,
   lines,
+  loadFixture,
   registerSensitive,
   usdc,
 } from './harness.js';
@@ -101,7 +103,19 @@ export function registerA33toA52(): void {
       expect(hist[0]!.amount).toBe(hist[1]!.amount);
       expect(hist[0]!.recipient).not.toBe(hist[1]!.recipient);
       expectEnvelope(h, r.body.request_id, [
-        { ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: ARADHYA }), recipients: [{ recipient: ARADHYA, amount: usdc('10') }, { recipient: MIHIR, amount: usdc('10') }] },
+        {
+          ...usdcIntent({
+            step: 0,
+            chain: BASE,
+            token_address: USDC_ADDR[BASE],
+            amount: usdc('10'),
+            recipient: ARADHYA,
+          }),
+          recipients: [
+            { recipient: ARADHYA, amount: usdc('10') },
+            { recipient: MIHIR, amount: usdc('10') },
+          ],
+        },
       ]);
       await h.finish();
     });
@@ -131,14 +145,14 @@ export function registerA33toA52(): void {
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
         {
-intent_id: 'i',
-step: 0,
-depends_on: [],
-token: 'ETH',
-token_address: null,
-chain_id: BASE,
-recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
-},
+          intent_id: 'i',
+          step: 0,
+          depends_on: [],
+          token: 'ETH',
+          token_address: null,
+          chain_id: BASE,
+          recipients: [{ amount: eth('0.049'), recipient: MIHIR }],
+        },
       ]);
       await h.finish();
     });
@@ -180,7 +194,9 @@ recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
       const r2 = await h.answer(r1, { text: '0.123456' });
       expect(lines(r2)).toEqual(['Send 0.123456 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expectHandedOff(await h.confirm(r2, 'yes'));
-      expect((h.envelope.intents[0] as { recipients: { amount: unknown }[] }).recipients[0]!.amount).toEqual(usdc('0.123456'));
+      expect((h.envelope.intents[0] as { recipients: { amount: unknown }[] }).recipients[0]!.amount).toEqual(
+        usdc('0.123456'),
+      );
       await h.finish();
     });
 
@@ -319,6 +335,37 @@ recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
       expectEnvelope(h, r1.body.request_id, [
         usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('50'), recipient: ARADHYA }),
       ]);
+      await h.finish();
+    });
+
+    it('A-50: a balance query preserves the summary; a new unrelated request discards it', async () => {
+      const h = new Harness(
+        'A-50',
+        {
+          calls: [...loadFixture('A-50').calls.slice(0, 4), ...loadFixture('A-18').calls],
+        },
+        {},
+      );
+      const r1 = await h.say('Send 50 USDc to ARADHYA');
+      const balance = await h.say("what's my balance");
+      expect(balance.body.request_id).toBe(r1.body.request_id);
+      expect(balance.body.state).toBe('awaiting_confirmation');
+      expect(balance.body.summary).toEqual(r1.body.summary);
+      expect(balance.body.reply_source).toBe('local');
+      expect(h.llm.names()).toHaveLength(4);
+      const r2 = await h.say('swap my eth for usdc');
+      expect(r2.body.request_id).not.toBe(r1.body.request_id);
+      expectError(r2, 'UNSUPPORTED_REQUEST');
+      expect(r2.body.messages[0]!.text).toBe('I dropped the previous plan and started on your new request.');
+      expect(
+        (
+          await h.http('POST', `/v1/sessions/${h.sessionId}/confirm`, {
+            body: { request_id: r1.body.request_id, decision: 'yes' },
+          })
+        ).status,
+      ).toBe(409);
+      noSubmission(h);
+      expect(h.count('db8_history')).toBe(0);
       await h.finish();
     });
 

@@ -5,8 +5,7 @@ import prettier from 'eslint-config-prettier';
 export default tseslint.config(
   {
     ignores: [
-      'dist/**',
-      'wallet/dist/**',
+      '**/dist/**',
       'wallet/contracts/out/**',
       'wallet/cre/**/.cre_build_tmp.js',
       'node_modules/**',

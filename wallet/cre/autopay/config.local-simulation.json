@@ -1,0 +1,11 @@
+{
+  "mode": "local-simulation",
+  "schedule": "*/30 * * * * *",
+  "chains": [
+    {
+      "chainId": 11155111,
+      "selector": "16015286601757825753",
+      "simulation": { "urlsSecret": "SEPOLIA_SIMULATION_RPC_URLS", "quorum": 2 }
+    }
+  ]
+}

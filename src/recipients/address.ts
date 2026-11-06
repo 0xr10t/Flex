@@ -5,7 +5,7 @@ import { getAddress, isAddress } from 'viem';
 import type { Address } from '../contracts/types.js';
 
 /** §9.2 step 1 format. */
-export const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ZERO = '0x0000000000000000000000000000000000000000';
 
 export type AddressCheck =

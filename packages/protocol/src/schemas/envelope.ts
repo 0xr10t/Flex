@@ -1,4 +1,4 @@
-// Implements: AGENT_SPEC §12.5 (hand-off envelope v2), as changed by docs/wallet/ARCHITECTURE_CHANGES.md.
+// Implements: AGENT_SPEC §12.5 (hand-off envelope v2).
 // handoff-envelope.schema.json is the authority for the envelope's shape.
 
 import { readFileSync } from 'node:fs';

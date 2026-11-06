@@ -26,7 +26,6 @@ import type {
   PlanJ,
   PlanPayee,
   QuestionCode,
-  QuestionId,
   CalendarSchedule,
   ScheduleEnd,
   Token,
@@ -36,17 +35,8 @@ import { toBaseUnits } from '../contracts/money.js';
 import { newId } from '../util/ids.js';
 import { answerText, parseCount, parseDateAnswer } from '../plan/answers.js';
 import { neededWithPadding, planBridges, type PlannedBridge } from '../plan/bridges.js';
-import {
-  chainName,
-  decimalsOf,
-  fmt,
-  internalError,
-  isGroupPh,
-  joinAnd,
-  pushNote,
-  recipientNameOf,
-  unsupported,
-} from '../plan/common.js';
+import { chainName, qid } from './step-util.js';
+import { decimalsOf, fmt, internalError, isGroupPh, pushNote, recipientNameOf, unsupported } from '../plan/common.js';
 import {
   daysForTimesPerWeek,
   fixedSchedule,
@@ -110,10 +100,6 @@ function stateOf(ctx: StepContext): S9State {
     : { freq: {}, monthly: {}, start: {}, end: {}, pick: {} };
   ctx.req.step_state.s9 = st;
   return st;
-}
-
-function qid(): QuestionId {
-  return newId('question') as QuestionId;
 }
 
 function ask(
@@ -367,7 +353,7 @@ function resolveL(
         amount: a.amount_per_payment,
         token: a.token,
         schedule: label,
-        chain: chainName(ctx, a.chain_id),
+        chain: chainName(ctx.config, a.chain_id),
         since,
       }),
       disabled: false,
@@ -467,8 +453,8 @@ function pickChain(
           code: 'CHAIN_CONFLICT',
           params: {
             name: recipientNameOf(ctx, recipient),
-            chain: chainName(ctx, pin),
-            other: chainName(ctx, stated),
+            chain: chainName(ctx.config, pin),
+            other: chainName(ctx.config, stated),
           },
         },
       };
@@ -524,11 +510,11 @@ function pickChain(
   }
   if (chain === null) chain = best(pool, false); // rule 5: shortfall bridged
   if (chain === null) {
-    const names = base.map((c) => chainName(ctx, c));
+    const names = base.map((c) => chainName(ctx.config, c));
     if (names.length === 0) return { kind: 'result', result: unsupported(ctx, 's9', 'S9_NO_CANDIDATE_CHAIN') };
     return {
       kind: 'result',
-      result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: joinAnd(names) } },
+      result: { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: joinList(names) } },
     };
   }
   return { kind: 'ok', chain, reused: reuseFrom(chain) };
@@ -544,7 +530,7 @@ function reusedOnChains(ctx: StepContext, recipient: AddressPh, own: ChainId): s
   const chains = ctx.config.chains
     .map((c) => c.chain_id)
     .filter((c) => c !== own && rows.some((r) => r.chain_id === c));
-  return joinList(chains.map((c) => chainName(ctx, c)));
+  return joinList(chains.map((c) => chainName(ctx.config, c)));
 }
 
 async function step(ctx: StepContext): Promise<StepResult> {

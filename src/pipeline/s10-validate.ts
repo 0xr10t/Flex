@@ -20,7 +20,15 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, AmountPh, ChainId, InternalIntent, QuestionId, Token } from '../contracts/types.js';
 import { validators } from '../schemas/index.js';
 import { newId } from '../util/ids.js';
-import { db1BaseUnits, decimalsOf, fmt, internalError, isUntrustedRecipient, pushNote, recipientNameOf } from '../plan/common.js';
+import {
+  db1BaseUnits,
+  decimalsOf,
+  fmt,
+  internalError,
+  isUntrustedRecipient,
+  pushNote,
+  recipientNameOf,
+} from '../plan/common.js';
 import {
   autopayDurationBreach,
   autopayPeriodBreach,
@@ -38,7 +46,14 @@ type Failure = StepResult | null;
 function amountsOf(it: InternalIntent): AmountPh[] {
   if (it.intent_id === 'j') return [it.amount];
   if (it.intent_id === 'i') return it.recipients.map((p) => p.amount);
-  if (it.intent_id === 'k') return [...it.recipients.map((p) => p.amount), it.fee.amount, it.display.per_period_cap, it.limits.max_per_run, it.limits.max_total];
+  if (it.intent_id === 'k')
+    return [
+      ...it.recipients.map((p) => p.amount),
+      it.fee.amount,
+      it.display.per_period_cap,
+      it.limits.max_per_run,
+      it.limits.max_total,
+    ];
   return [];
 }
 
@@ -96,10 +111,10 @@ function checkSelfPayment(ctx: StepContext, plan: InternalIntent[]): Failure {
   const wallet = getAddress(ctx.config.wallet.address);
   for (const it of plan) {
     for (const ph of recipientsOf(it)) {
-    const address = ctx.repos.db3.get(ph)?.address;
-    if (!address) return internalError(ctx, 's10', 'V-07');
-    const checksummed = getAddress(address);
-    if (checksummed === wallet || checksummed === zeroAddress) return { kind: 'error', code: 'SELF_PAYMENT' };
+      const address = ctx.repos.db3.get(ph)?.address;
+      if (!address) return internalError(ctx, 's10', 'V-07');
+      const checksummed = getAddress(address);
+      if (checksummed === wallet || checksummed === zeroAddress) return { kind: 'error', code: 'SELF_PAYMENT' };
     }
   }
   return null;
@@ -113,7 +128,9 @@ function checkUntrusted(ctx: StepContext, plan: InternalIntent[]): Failure {
       if (row?.source === 'untrusted' && !row.confirmed) return internalError(ctx, 's10', 'V-08');
     }
     if (it.intent_id !== 'k') continue;
-    if (it.recipients.some((p) => db1.get(p.amount)?.source === 'untrusted' || isUntrustedRecipient(ctx, p.recipient))) {
+    if (
+      it.recipients.some((p) => db1.get(p.amount)?.source === 'untrusted' || isUntrustedRecipient(ctx, p.recipient))
+    ) {
       return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
     }
   }
@@ -146,20 +163,33 @@ function structural(ctx: StepContext, plan: InternalIntent[], balances: ChainBal
   if (!amountsPositive(ctx, plan)) return internalError(ctx, 's10', 'V-06');
   const basic = checkSelfPayment(ctx, plan) ?? checkUntrusted(ctx, plan) ?? checkCancels(ctx, plan);
   if (basic) return basic;
-  for (const it of plan) if (it.intent_id === 'k') {
-    const s = it.schedule;
-    if (s.interval_seconds * s.max_runs > 52 * 604800) return { kind: 'error', code: 'LIMIT_AUTOPAY_DURATION', params: { weeks: '52' } };
-    const perRun = it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, db1BaseUnits(ctx, it.fee.amount).units);
-    if (perRun !== db1BaseUnits(ctx, it.limits.max_per_run).units ||
+  for (const it of plan)
+    if (it.intent_id === 'k') {
+      const s = it.schedule;
+      if (s.interval_seconds * s.max_runs > 52 * 604800)
+        return { kind: 'error', code: 'LIMIT_AUTOPAY_DURATION', params: { weeks: '52' } };
+      const perRun = it.recipients.reduce(
+        (sum, p) => sum + db1BaseUnits(ctx, p.amount).units,
+        db1BaseUnits(ctx, it.fee.amount).units,
+      );
+      if (
+        perRun !== db1BaseUnits(ctx, it.limits.max_per_run).units ||
         perRun * BigInt(s.max_runs) !== db1BaseUnits(ctx, it.limits.max_total).units ||
         s.end_at !== s.start_at + s.interval_seconds * (s.max_runs - 1) + s.late_window_seconds ||
-        s.start_at <= ctx.now().toSeconds()) return { kind: 'error', code: 'EXECUTION_PLAN_INVALID' };
-  }
+        s.start_at <= ctx.now().toSeconds()
+      )
+        return { kind: 'error', code: 'EXECUTION_PLAN_INVALID' };
+    }
   try {
     const envelope = swapBack(ctx, plan);
-    const checked = checkEnvelope(envelope, { nowMs: ctx.now().toMillis(), delegationHashes: placeholderHashes(envelope) });
+    const checked = checkEnvelope(envelope, {
+      nowMs: ctx.now().toMillis(),
+      delegationHashes: placeholderHashes(envelope),
+    });
     if (!checked.ok) return { kind: 'error', code: 'EXECUTION_PLAN_INVALID' };
-  } catch { return internalError(ctx, 's10', 'V-09c'); }
+  } catch {
+    return internalError(ctx, 's10', 'V-09c');
+  }
   return null;
 }
 
@@ -175,15 +205,17 @@ function needAndAvailable(
   let need = 0n;
   let available = b.spendable[token];
   for (const it of plan) {
-    if (it.intent_id === 'j' && token === 'ETH' && it.source_chain_id === b.chain_id) need += toBaseUnits(it.fee_max_eth, 18);
+    if (it.intent_id === 'j' && token === 'ETH' && it.source_chain_id === b.chain_id)
+      need += toBaseUnits(it.fee_max_eth, 18);
     if (it.intent_id === 'l' || it.token !== token) continue;
     if (it.intent_id === 'j') {
       if (it.dest_chain_id === b.chain_id) available += BigInt(it.deliverable_base_units);
       if (it.source_chain_id === b.chain_id) available -= db1BaseUnits(ctx, it.amount).units;
     } else if (it.chain_id === b.chain_id) {
-      need += it.intent_id === 'i'
-        ? it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n)
-        : db1BaseUnits(ctx, it.limits.max_total).units;
+      need +=
+        it.intent_id === 'i'
+          ? it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n)
+          : db1BaseUnits(ctx, it.limits.max_total).units;
     }
   }
   return { need, available };
@@ -192,7 +224,9 @@ function needAndAvailable(
 function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalance[]): Failure {
   const touched = new Set(plan.map((it) => (it.intent_id === 'j' ? it.source_chain_id : it.chain_id)));
   const fees = new Map<ChainId, bigint>();
-  for (const it of plan) if (it.intent_id === 'j') fees.set(it.source_chain_id, (fees.get(it.source_chain_id) ?? 0n) + toBaseUnits(it.fee_max_eth, 18));
+  for (const it of plan)
+    if (it.intent_id === 'j')
+      fees.set(it.source_chain_id, (fees.get(it.source_chain_id) ?? 0n) + toBaseUnits(it.fee_max_eth, 18));
   const gas = checkGas(ctx, balances, touched, fees);
   if (gas) return gas;
   for (const token of tokensUsed(plan)) {
@@ -250,7 +284,9 @@ function subjectAmount(ctx: StepContext, plan: InternalIntent[], found: LimitBre
   const token = tokens[0];
   if (tokens.length !== 1 || token === undefined) return undefined;
   let total = 0n;
-  for (const it of plan) if (it.intent_id === 'i' && it.token === token) total += it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n);
+  for (const it of plan)
+    if (it.intent_id === 'i' && it.token === token)
+      total += it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n);
   return total > 0n ? { value: fmt(total, token), token } : undefined;
 }
 

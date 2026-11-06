@@ -4,11 +4,6 @@
 import type { StepContext } from '../contracts/step.js';
 import type { ChainId, LexicalScan } from '../contracts/types.js';
 
-/** Display name of a chain from config (§13.1). */
-export function chainName(ctx: StepContext, chain_id: ChainId): string {
-  return ctx.config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
-}
-
 /** Allowed chains (DB5 order) whose DB4 rows have status 'ok' for this request (§8.1, §10.1). */
 export function okChains(ctx: StepContext): ChainId[] {
   return ctx.limits.allowed_chain_ids.filter((c) => {

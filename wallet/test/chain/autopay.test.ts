@@ -227,7 +227,8 @@ describe('crashes while creating an autopay', () => {
     const { db, store, real, runner } = await setUp();
     const e = envelope([autopay(0, (await world.base.now()) + 3600, [[ALEX, '10']])]);
     store.insertRequest(e, '2026-11-06T10:00:00.000Z');
-    void runner({ ...real, prepareAndSign: hang }).kick();
+    // Stall before the account upgrade too: its transaction from the same account would race the one sent below.
+    void runner({ ...real, sendUpgrade: hang, prepareAndSign: hang }).kick();
     await vi.waitFor(() => expect(store.autopayByStep(e.request_id, 0)).not.toBeNull(), { timeout: 10_000 });
     const row = store.autopayByStep(e.request_id, 0) as NonNullable<ReturnType<Store['autopayByStep']>>;
     const k = e.intents[0] as ReturnType<typeof autopay>;

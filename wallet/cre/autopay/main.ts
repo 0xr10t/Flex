@@ -1,26 +1,22 @@
-// The one shared workflow (A.1, D11): cron only. It holds no key that can spend. Each run, per chain: read the plan list from the
-// chain's events, work out what's due, simulate it, and write only what the simulation shows paying.
-// A failure here means a run is missed, never paid wrongly. Missed runs are skipped, not paid late (D9).
-
+// Shared cron. Local qualification and dry-run never create reports. Explicit broadcast mode alone reaches writeReport.
 import {
   CronCapability,
   EVMClient,
   HTTPClient,
   Runner,
   blockNumber,
-  bytesToBase64,
   bytesToHex,
   consensusIdenticalAggregation,
   handler,
   hexToBase64,
-  ok,
   protoBigIntToBigint,
   type EVMLog,
-  type HTTPSendRequester,
   type Runtime,
 } from '@chainlink/cre-sdk';
 import { decodeEventLog, toEventSelector, type Hex } from 'viem';
-import { simulateProvidersConcurrent, simulationUrls, type SimulationRequest } from './lib/simulation';
+import { configSchema, snapshotPlans, validateConfig, type Config, type PaymentConfig } from './lib/config';
+import { qualifyFetch, simulateFetch } from './lib/http-simulation';
+import { simulationUrls, type SimulationRequest } from './lib/simulation';
 import { successfulWriteHash } from './lib/write-result';
 import {
   EVENTS,
@@ -34,39 +30,14 @@ import {
   type PlanEvent,
   type Simulated,
 } from './lib/due';
-
-interface ChainConfig {
-  chainId: number;
-  selector: string;
-  executor: Hex;
-  forwarder: Hex;
-  deploymentBlock: string;
-  simulation: { urlsSecret: string; quorum: number };
-}
-
-export interface Config {
-  schedule: string;
-  maxSimulationsPerRun: number;
-  workflow: { id: Hex; name: Hex; owner: Hex };
-  chains: ChainConfig[];
-}
+export type { Config, PaymentConfig } from './lib/config';
 
 const TOPICS = EVENTS.map((event) => toEventSelector(event));
-
-function requestEvents(runtime: Runtime<Config>, chain: ChainConfig) {
-  const evm = new EVMClient(BigInt(chain.selector));
-  return evm.filterLogs(runtime, {
-    filterQuery: {
-      fromBlock: blockNumber(chain.deploymentBlock),
-      addresses: [hexToBase64(chain.executor)],
-      topics: [{ topic: TOPICS.map((t) => hexToBase64(t)) }],
-    },
-  });
-}
+// Longer history requires the durable indexer; never discard older active plans using a rolling lookback.
+const MAX_DISCOVERY_BLOCKS = 10;
 
 function eventsOf(logs: EVMLog[]): PlanEvent[] {
-  const events: PlanEvent[] = [];
-  for (const log of logs) {
+  return logs.map((log) => {
     const decoded = decodeEventLog({
       abi: EVENTS,
       data: bytesToHex(log.data),
@@ -74,63 +45,105 @@ function eventsOf(logs: EVMLog[]): PlanEvent[] {
     });
     if (decoded.eventName === 'Registered') {
       const { intentId, startAt, interval, lateWindow, maxRuns, redeem } = decoded.args;
-      events.push({ name: 'Registered', id: intentId, startAt, interval, lateWindow, maxRuns, redeem });
-    } else if (decoded.eventName === 'Executed') {
-      events.push({ name: 'Executed', id: decoded.args.intentId, slot: decoded.args.slot });
-    } else {
-      events.push({ name: 'Cancelled', id: decoded.args.intentId });
+      return { name: 'Registered', id: intentId, startAt, interval, lateWindow, maxRuns, redeem };
     }
-  }
-  return events;
+    return decoded.eventName === 'Executed'
+      ? { name: 'Executed', id: decoded.args.intentId, slot: decoded.args.slot }
+      : { name: 'Cancelled', id: decoded.args.intentId };
+  });
 }
 
-const simulateFetch = (sender: HTTPSendRequester, a: SimulationRequest): Simulated => {
-  try {
-    const result = simulateProvidersConcurrent(a, (url, body) => {
-      const pending = sender.sendRequest({
-        url,
-        method: 'POST',
-        body: bytesToBase64(new TextEncoder().encode(JSON.stringify(body))),
-        headers: { 'Content-Type': 'application/json' },
-      });
+function discover(runtime: Runtime<Config>, config: PaymentConfig) {
+  const heads = config.chains.map((chain) => ({
+    chain,
+    reply: new EVMClient(BigInt(chain.selector)).headerByNumber(runtime, { blockNumber: blockNumber(-3n) }),
+  }));
+  const anchored = heads.map(({ chain, reply }) => {
+    const header = reply.result().header;
+    if (!header?.blockNumber || header.hash.length !== 32) throw new Error('discovery anchor unavailable');
+    const height = protoBigIntToBigint(header.blockNumber);
+    if (chain.snapshot) {
+      if (BigInt(chain.snapshot.blockNumber) > height) throw new Error('snapshot not finalized');
       return {
-        result: () => {
-          const resp = pending.result();
-          if (!ok(resp)) throw new Error('simulation HTTP unavailable');
-          return JSON.parse(new TextDecoder().decode(resp.body));
-        },
+        chain,
+        verify: new EVMClient(BigInt(chain.selector)).headerByNumber(runtime, {
+          blockNumber: blockNumber(chain.snapshot.blockNumber),
+        }),
       };
-    });
-    return result[0][0];
-  } catch {
-    return { status: 'unavailable', gasUsed: 0, logs: [] };
-  }
-};
+    }
+    const from = BigInt(chain.deploymentBlock);
+    if (height < from || height - from + 1n > BigInt(MAX_DISCOVERY_BLOCKS))
+      throw new Error('plan discovery requires local indexer');
+    return {
+      chain,
+      logs: new EVMClient(BigInt(chain.selector)).filterLogs(runtime, {
+        filterQuery: {
+          fromBlock: blockNumber(from),
+          toBlock: blockNumber(height),
+          addresses: [hexToBase64(chain.executor)],
+          topics: [{ topic: TOPICS.map((t) => hexToBase64(t)) }],
+        },
+      }),
+    };
+  });
+  return anchored.map(({ chain, verify, logs }) => {
+    if (verify && chain.snapshot) {
+      const header = verify.result().header;
+      if (
+        !header?.blockNumber ||
+        protoBigIntToBigint(header.blockNumber) !== BigInt(chain.snapshot.blockNumber) ||
+        bytesToHex(header.hash).toLowerCase() !== chain.snapshot.blockHash.toLowerCase()
+      )
+        throw new Error('snapshot reorg detected');
+      return { chain, plans: snapshotPlans(chain.snapshot) };
+    }
+    return { chain, plans: plansFrom(eventsOf(logs!.result().logs)) };
+  });
+}
 
 export const onCron = (runtime: Runtime<Config>): string => {
-  const { config } = runtime;
-  const now = BigInt(Math.floor(runtime.now().getTime() / 1000));
-  const pendingEvents = config.chains.map((chain) => ({ chain, reply: requestEvents(runtime, chain) }));
-  const chains = pendingEvents.map(({ chain, reply }) => ({ chain, plans: plansFrom(eventsOf(reply.result().logs)) }));
+  const config = validateConfig(runtime.config);
+  const nowNumber = Math.floor(runtime.now().getTime() / 1000);
+  const now = BigInt(nowNumber);
+  if (config.mode === 'local-simulation') {
+    const chain = config.chains[0];
+    const secret = runtime.getSecrets([{ id: chain.simulation.urlsSecret }]).result();
+    const urls = simulationUrls(secret[chain.simulation.urlsSecret].value, chain.simulation.quorum);
+    const result = new HTTPClient()
+      .sendRequest(
+        runtime,
+        qualifyFetch,
+        consensusIdenticalAggregation<ReturnType<typeof qualifyFetch>>(),
+      )({
+        urls,
+        quorum: chain.simulation.quorum,
+        chainId: chain.chainId,
+        now: nowNumber,
+      })
+      .result();
+    return JSON.stringify({ mode: config.mode, broadcast: false, paymentExecuted: false, qualification: result });
+  }
+
+  const chains = discover(runtime, config);
   const due = pickDue(chains, now, config.maxSimulationsPerRun);
   runtime.log(`plans: ${chains.map((c) => c.plans.length).join('/')}; due now: ${due.length}`);
-  if (due.length === 0) return JSON.stringify({ due: 0 });
-
-  // One secret batch, with independent chain headers started before any result is awaited.
-  const sources = new Map<string, { urls: string[]; anchor: SimulationRequest['anchor'] }>();
+  if (due.length === 0) return JSON.stringify({ mode: config.mode, due: 0, results: [] });
   const dueChains = [...new Map(due.map(({ chain }) => [chain.selector, chain])).values()];
   const pendingSecrets = runtime.getSecrets(
     [...new Set(dueChains.map((chain) => chain.simulation.urlsSecret))].map((id) => ({ id })),
   );
+  // Latest state for execution; historical discovery is finalized. The quorum verifies the exact simulation anchor.
   const pendingHeaders = dueChains.map((chain) => ({
     chain,
-    reply: new EVMClient(BigInt(chain.selector)).headerByNumber(runtime, {}),
+    reply: new EVMClient(BigInt(chain.selector)).headerByNumber(runtime, { blockNumber: blockNumber(-2n) }),
   }));
   const secrets = pendingSecrets.result();
+  const sources = new Map<string, { urls: string[]; anchor: SimulationRequest['anchor'] }>();
   for (const { chain, reply } of pendingHeaders) {
     const urls = simulationUrls(secrets[chain.simulation.urlsSecret].value, chain.simulation.quorum);
     const header = reply.result().header;
     if (!header?.blockNumber || header.hash.length !== 32) throw new Error('simulation anchor unavailable');
+    if (header.timestamp > now + 60n || header.timestamp < now - 300n) throw new Error('simulation anchor stale');
     sources.set(chain.selector, {
       urls,
       anchor: {
@@ -141,28 +154,40 @@ export const onCron = (runtime: Runtime<Config>): string => {
     });
   }
   const metadata = metadataOf(config.workflow);
-  const results = due.map(({ plan, slot, chain }) => {
+  // Independent simulations start together; report writes remain sequential to avoid overlapping account nonces.
+  const pending = due.map(({ plan, slot, chain }) => {
     const report = reportOf(plan.redeem);
     const source = sources.get(chain.selector)!;
-    const sim = new HTTPClient()
-      .sendRequest(
-        runtime,
-        simulateFetch,
-        consensusIdenticalAggregation<Simulated>(),
-      )({
-        ...source,
-        chainId: chain.chainId,
-        quorum: chain.simulation.quorum,
-        time: Math.max(Number(now), Number(BigInt(source.anchor.timestamp)) + 1),
-        from: chain.forwarder,
-        to: chain.executor,
-        data: onReportCall(metadata, report),
-      })
-      .result();
-    runtime.log(`plan ${plan.id} slot ${slot}: simulated ${sim.status}, gas ${sim.gasUsed}`);
-    if (!simulationPaid(sim, chain.executor, { id: plan.id, slot }))
-      return { id: plan.id, slot: slot.toString(), skipped: sim.status };
-
+    const simulationTime = Math.max(nowNumber, Number(BigInt(source.anchor.timestamp)) + 1);
+    const slotTime = plan.startAt + slot * plan.interval;
+    if (
+      BigInt(simulationTime) > slotTime + plan.lateWindow ||
+      (BigInt(simulationTime) - plan.startAt) / plan.interval !== slot
+    ) {
+      return { plan, slot, chain, report, reply: null };
+    }
+    const reply = new HTTPClient().sendRequest(
+      runtime,
+      simulateFetch,
+      consensusIdenticalAggregation<Simulated>(),
+    )({
+      ...source,
+      chainId: chain.chainId,
+      quorum: chain.simulation.quorum,
+      time: simulationTime,
+      from: chain.forwarder,
+      to: chain.executor,
+      data: onReportCall(metadata, report),
+    });
+    return { plan, slot, chain, report, reply };
+  });
+  const checked = pending.map((entry) => ({ ...entry, sim: entry.reply?.result() }));
+  const results = checked.map(({ plan, slot, chain, report, sim }) => {
+    const identity = { chainId: chain.chainId, id: plan.id, slot: slot.toString() };
+    if (!sim) return { ...identity, skipped: 'window_closed' };
+    if (!simulationPaid(sim, chain.executor, { id: plan.id, slot })) return { ...identity, skipped: sim.status };
+    if (config.mode === 'dry-run')
+      return { ...identity, status: 'would_execute', gasLimit: String(gasFor(sim.gasUsed)) };
     const signed = runtime
       .report({
         encodedPayload: hexToBase64(report),
@@ -178,27 +203,16 @@ export const onCron = (runtime: Runtime<Config>): string => {
         gasConfig: { gasLimit: String(gasFor(sim.gasUsed)) },
       })
       .result();
-    // Only the `Executed` event proves the payment (A.5 rule 5). The wallet's watcher reports that, not this.
-    runtime.log(`plan ${plan.id} slot ${slot}: receiver status ${written.receiverContractExecutionStatus ?? -1}`);
-    return { id: plan.id, slot: slot.toString(), tx: successfulWriteHash(written) };
+    return { ...identity, status: 'submitted', tx: successfulWriteHash(written) };
   });
-  return JSON.stringify({ due: due.length, results });
+  return JSON.stringify({ mode: config.mode, due: due.length, results });
 };
 
 export const initWorkflow = (config: Config) => {
-  // Two HTTP calls per provider, up to three providers: two runs use at most 12 of CRE's 15 HTTP calls.
-  if (
-    !Number.isInteger(config.maxSimulationsPerRun) ||
-    config.maxSimulationsPerRun < 1 ||
-    config.maxSimulationsPerRun > 2 ||
-    config.chains.length < 1 ||
-    config.chains.length > 3
-  )
-    throw new Error('workflow exceeds simulation call budget');
+  validateConfig(config);
   return [handler(new CronCapability().trigger({ schedule: config.schedule }), onCron)];
 };
-
 export async function main() {
-  const runner = await Runner.newRunner<Config>();
+  const runner = await Runner.newRunner<Config>({ configSchema });
   await runner.run(initWorkflow);
 }

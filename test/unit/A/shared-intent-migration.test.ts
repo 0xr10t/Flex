@@ -1,9 +1,9 @@
 import BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Db6Insert } from '../../../src/contracts/repos.js';
-import { migrate, readSchemaSql, SCHEMA_VERSION } from '../../../src/db/migrate.js';
+import { migrate, SCHEMA_VERSION } from '../../../src/db/migrate.js';
 import { openDatabase } from '../../../src/db/open.js';
 import { createRepos } from '../../../src/db/repos/index.js';
 import { TEST_KEY, tempDir } from './helpers.js';
@@ -16,7 +16,7 @@ function legacyDatabase(path: string) {
   const db = new BetterSqlite3(path);
   db.pragma("cipher = 'sqlcipher'");
   db.pragma(`key = '${TEST_KEY}'`);
-  db.exec(readSchemaSql());
+  db.exec(readFileSync(new URL('../../../src/db/schema.sql', import.meta.url), 'utf8'));
   db.exec(`CREATE TABLE handoff_journal (
     request_id TEXT PRIMARY KEY, envelope_json TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('submitted','accepted','rejected')), history_json TEXT

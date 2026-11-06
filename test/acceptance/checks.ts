@@ -86,7 +86,7 @@ export const pending = (
   o: { recipient?: string | null; counts?: boolean; token?: string } = {},
 ): SpendRow => ({
   kind,
-  counts: o.counts ?? (['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee'].includes(kind)),
+  counts: o.counts ?? ['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee'].includes(kind),
   chain,
   token: o.token ?? 'USDC',
   amount,
@@ -109,9 +109,6 @@ export function lastHistory(h: Harness): Array<Record<string, unknown>> {
 export const noSubmission = (h: Harness): void => {
   expect(h.exec.submissions).toEqual([]);
 };
-
-/** Question codes asked, in order (cumulative for the harness). */
-export const codes = (h: Harness): string[] => [...h.asked];
 
 export const usdcIntent = (o: {
   step: number;

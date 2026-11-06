@@ -2,20 +2,21 @@ import { EVMClient, HTTPClient, TxStatus, type EVMLog, type Runtime } from '@cha
 import { EVM_PB } from '@chainlink/cre-sdk/pb';
 import { encodeAbiParameters, encodeEventTopics, hexToBytes, type Hex } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { onCron, type Config } from '../main.js';
+import { onCron, type Config, type PaymentConfig } from '../main.js';
 import { EVENTS, type Simulated } from '../lib/due.js';
 
 const id = `0x${'ab'.repeat(32)}` as Hex;
 const address = '0x000000000000000000000000000000000000a11c';
-const chain: Config['chains'][number] = {
+const chain: PaymentConfig['chains'][number] = {
   chainId: 84532,
   selector: '10344971235874465080',
   executor: address,
   forwarder: '0x000000000000000000000000000000000000f00d',
-  deploymentBlock: '1',
+  deploymentBlock: '95',
   simulation: { urlsSecret: 'SIM_URLS', quorum: 2 },
 };
-const config: Config = {
+const config: PaymentConfig = {
+  mode: 'broadcast',
   schedule: '0 * * * * *',
   maxSimulationsPerRun: 2,
   workflow: { id, name: '0x00000000000000000001', owner: address },
@@ -120,29 +121,38 @@ describe('actual CRE cron handler with capability boundaries mocked', () => {
       ...config,
       chains: [chain, { ...chain, selector: '16015286601757825753', chainId: 11155111 }],
     };
-    expect(JSON.parse(onCron(h.runtime))).toEqual({ due: 0 });
-    expect(h.order).toEqual(['start logs', 'start logs', 'resolve logs', 'resolve logs']);
+    expect(JSON.parse(onCron(h.runtime))).toEqual({ mode: 'broadcast', due: 0, results: [] });
+    expect(h.order.slice(0, 2)).toEqual(['start header', 'start header']);
+    expect(h.order.indexOf('resolve logs')).toBeGreaterThan(h.order.lastIndexOf('start logs'));
     expect(h.getSecrets).not.toHaveBeenCalled();
     expect(h.write).not.toHaveBeenCalled();
   });
   it('batches secrets, starts headers before resolving secrets, and submits a due payment only after simulation', () => {
     const h = harness([registered()]);
-    expect(JSON.parse(onCron(h.runtime))).toEqual({ due: 1, results: [{ id, slot: '0', tx: `0x${'cd'.repeat(32)}` }] });
+    expect(JSON.parse(onCron(h.runtime))).toEqual({
+      mode: 'broadcast',
+      due: 1,
+      results: [{ chainId: 84532, id, slot: '0', status: 'submitted', tx: `0x${'cd'.repeat(32)}` }],
+    });
     expect(h.getSecrets).toHaveBeenCalledExactlyOnceWith([{ id: 'SIM_URLS' }]);
-    expect(h.order.slice(2)).toEqual(['start secrets', 'start header', 'resolve secrets', 'resolve header']);
+    expect(h.order.slice(-4)).toEqual(['start secrets', 'start header', 'resolve secrets', 'resolve header']);
     expect(h.simulate).toHaveBeenCalledTimes(1);
     expect(h.report).toHaveBeenCalledTimes(1);
     expect(h.write).toHaveBeenCalledTimes(1);
   });
   it('submits no report when the simulation quorum is unavailable', () => {
     const h = harness([registered()], { status: 'unavailable', gasUsed: 0, logs: [] });
-    expect(JSON.parse(onCron(h.runtime))).toEqual({ due: 1, results: [{ id, slot: '0', skipped: 'unavailable' }] });
+    expect(JSON.parse(onCron(h.runtime))).toEqual({
+      mode: 'broadcast',
+      due: 1,
+      results: [{ chainId: 84532, id, slot: '0', skipped: 'unavailable' }],
+    });
     expect(h.report).not.toHaveBeenCalled();
     expect(h.write).not.toHaveBeenCalled();
   });
   it('does not repeat an already executed slot', () => {
     const h = harness([registered(), executed()]);
-    expect(JSON.parse(onCron(h.runtime))).toEqual({ due: 0 });
+    expect(JSON.parse(onCron(h.runtime))).toEqual({ mode: 'broadcast', due: 0, results: [] });
     expect(h.simulate).not.toHaveBeenCalled();
     expect(h.write).not.toHaveBeenCalled();
   });
@@ -156,7 +166,7 @@ describe('actual CRE cron handler with capability boundaries mocked', () => {
       data: new Uint8Array(),
     } as EVMLog;
     const h = harness([registered(), cancelled]);
-    expect(JSON.parse(onCron(h.runtime))).toEqual({ due: 0 });
+    expect(JSON.parse(onCron(h.runtime))).toEqual({ mode: 'broadcast', due: 0, results: [] });
     expect(h.simulate).not.toHaveBeenCalled();
     expect(h.write).not.toHaveBeenCalled();
   });
@@ -167,5 +177,38 @@ describe('actual CRE cron handler with capability boundaries mocked', () => {
     >);
     expect(() => onCron(h.runtime)).toThrow('CRE report delivery not confirmed');
     expect(h.write).toHaveBeenCalledTimes(1);
+  });
+  it('dry-run returns would_execute and cannot create a signed report or send even with a passing simulation', () => {
+    const h = harness([registered()]);
+    h.runtime.config = { ...config, mode: 'dry-run' };
+    expect(JSON.parse(onCron(h.runtime))).toEqual({
+      mode: 'dry-run',
+      due: 1,
+      results: [{ chainId: 84532, id, slot: '0', status: 'would_execute', gasLimit: '500000' }],
+    });
+    expect(h.report).not.toHaveBeenCalled();
+    expect(h.write).not.toHaveBeenCalled();
+  });
+  it('rejects long native log scans instead of dropping old registrations', () => {
+    const h = harness();
+    h.runtime.config = { ...config, chains: [{ ...chain, deploymentBlock: '1' }] };
+    expect(() => onCron(h.runtime)).toThrow('plan discovery requires local indexer');
+    expect(h.filter).not.toHaveBeenCalled();
+  });
+  it('receiver-free qualification never reads executor events or creates reports', () => {
+    const h = harness();
+    h.runtime.config = {
+      mode: 'local-simulation',
+      schedule: config.schedule,
+      chains: [{ chainId: chain.chainId, selector: chain.selector, simulation: chain.simulation }],
+    };
+    expect(JSON.parse(onCron(h.runtime))).toMatchObject({
+      mode: 'local-simulation',
+      broadcast: false,
+      paymentExecuted: false,
+    });
+    expect(h.filter).not.toHaveBeenCalled();
+    expect(h.report).not.toHaveBeenCalled();
+    expect(h.write).not.toHaveBeenCalled();
   });
 });

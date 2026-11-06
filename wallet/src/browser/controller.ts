@@ -2,12 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { formatUnits, parseUnits, type Hex } from 'viem';
 import { UPGRADED_CODE } from '../chain/addresses.js';
 import type { ChainGateway } from '../chain/gateway.js';
-import { checkEnvelope } from '../mapping/check.js';
-import { placeholderHashes } from '../mapping/to-plan.js';
-import { validateEnvelope, type ChainId, type HandoffEnvelope } from '../schemas/envelope.js';
-import { USDC } from '../schemas/intent.v2.js';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
+import { placeholderHashes } from '@flex/protocol/mapping/to-plan';
+import { validateEnvelope, type ChainId, type HandoffEnvelope } from '@flex/protocol/schemas/envelope';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 import type { Store } from '../store/store.js';
 import type { WalletBatchPayload } from './types.js';
+import { approveDelegation, pendingDelegations } from './delegation.js';
 
 export class BrowserWalletError extends Error {
   constructor(readonly code: string) {
@@ -36,6 +37,10 @@ export class BrowserWalletController {
       wallet: this.deps.walletAddress,
       chainIds: this.deps.chainIds,
       feeMaxEth: this.deps.feeMaxEth,
+      delegations: pendingDelegations(this.deps.store).map((request) => ({
+        ...request,
+        intent: this.deps.store.envelope(request.requestId)?.intents.find((i) => i.step === request.step),
+      })),
       batches: this.deps.store.walletBatches().map((batch) => {
         const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
         const step = this.deps.store.step(batch.request_id, batch.step);
@@ -115,6 +120,15 @@ export class BrowserWalletController {
     this.deps.store.insertRequest(envelope, envelope.created_at);
     this.deps.kick();
     return envelope.request_id;
+  }
+
+  async delegation(id: string, signature: unknown, reject = false) {
+    try {
+      await approveDelegation(this.deps.store, this.deps.walletAddress, id, signature, reject);
+    } catch {
+      throw new BrowserWalletError('DELEGATION_APPROVAL_INVALID');
+    }
+    this.deps.kick();
   }
 
   claim(id: string) {

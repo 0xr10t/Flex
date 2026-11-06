@@ -86,9 +86,9 @@ function matches(re: RegExp, text: string): Array<Range & { text: string; m: Reg
 
 /**
  * §8.3 rule 1. Separators inside an address, ENS name, number or link are not clause separators
- * ("0.5", "1,000", "riya.eth"); see spec-questions/B.md SQB-04.
+ * ("0.5", "1,000", "riya.eth"); see SQB-04.
  */
-export function splitClauses(text: string, protectedRanges: readonly Range[]): Clause[] {
+function splitClauses(text: string, protectedRanges: readonly Range[]): Clause[] {
   const seps: Range[] = [];
   for (const re of [CLAUSE_CHAR_RE, CLAUSE_WORD_RE]) {
     for (const s of matches(re, text)) if (!overlapsAny(s, protectedRanges)) seps.push(s);
@@ -133,7 +133,7 @@ function isNumberToken(tok: string | null): boolean {
  * separator (SQB-04, R2-2). Within a run of number words, the longest parseable prefix is taken, then the rest of
  * the run is scanned the same way ("five and two" is not one number, so its "and" still separates).
  */
-export function numberWordPhrases(text: string): Range[] {
+function numberWordPhrases(text: string): Range[] {
   const out: Range[] = [];
   for (const run of matches(NUMBER_WORD_RUN_RE, text)) {
     const words = matches(NUMBER_WORD_RE, run.text).map((w) => ({

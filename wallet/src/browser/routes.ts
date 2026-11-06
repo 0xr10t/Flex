@@ -42,42 +42,48 @@ export function registerBrowserWallet(app: FastifyInstance, controller: BrowserW
     if (!authenticated(req)) return reply.code(403).send({ error: 'LOCAL_SESSION_REQUIRED' });
     return reply.header('cache-control', 'no-store').send(controller.state());
   });
-  app.post<{ Params: { action: string }; Body: { id?: string; walletId?: unknown; result?: unknown; hash?: unknown } }>(
-    '/browser/:action',
-    async (req, reply) => {
-      if (!authenticated(req) || req.headers.origin !== `http://${req.headers.host}`)
-        return reply.code(403).send({ error: 'LOCAL_SESSION_REQUIRED' });
-      try {
-        if (req.params.action === 'bridge') return { requestId: controller.createBridge(req.body) };
-        const id = req.body?.id;
-        if (typeof id !== 'string' || !/^0x[0-9a-f]{64}$/.test(id))
-          return reply.code(400).send({ error: 'INVALID_BATCH' });
-        switch (req.params.action) {
-          case 'wallet-id':
-            controller.rememberWalletId(id, req.body.walletId);
-            break;
-          case 'claim':
-            return { calls: controller.claim(id) };
-          case 'refresh':
-            controller.refresh(id);
-            break;
-          case 'reject':
-            controller.reject(id);
-            break;
-          case 'receipt':
-            await controller.receive(id, req.body.result);
-            break;
-          case 'recover':
-            await controller.recover(id, req.body.hash);
-            break;
-          default:
-            return reply.code(404).send({ error: 'UNKNOWN_ACTION' });
-        }
-        return { ok: true };
-      } catch (e) {
-        if (e instanceof BrowserWalletError) return reply.code(409).send({ error: e.code });
-        return reply.code(503).send({ error: 'VERIFICATION_UNAVAILABLE' });
+  app.post<{
+    Params: { action: string };
+    Body: { id?: string; walletId?: unknown; result?: unknown; hash?: unknown; signature?: unknown };
+  }>('/browser/:action', async (req, reply) => {
+    if (!authenticated(req) || req.headers.origin !== `http://${req.headers.host}`)
+      return reply.code(403).send({ error: 'LOCAL_SESSION_REQUIRED' });
+    try {
+      if (req.params.action === 'bridge') return { requestId: controller.createBridge(req.body) };
+      const id = req.body?.id;
+      if (typeof id !== 'string' || !/^0x[0-9a-f]{64}$/.test(id))
+        return reply.code(400).send({ error: 'INVALID_BATCH' });
+      switch (req.params.action) {
+        case 'delegation':
+          await controller.delegation(id, req.body.signature);
+          break;
+        case 'reject-delegation':
+          await controller.delegation(id, undefined, true);
+          break;
+        case 'wallet-id':
+          controller.rememberWalletId(id, req.body.walletId);
+          break;
+        case 'claim':
+          return { calls: controller.claim(id) };
+        case 'refresh':
+          controller.refresh(id);
+          break;
+        case 'reject':
+          controller.reject(id);
+          break;
+        case 'receipt':
+          await controller.receive(id, req.body.result);
+          break;
+        case 'recover':
+          await controller.recover(id, req.body.hash);
+          break;
+        default:
+          return reply.code(404).send({ error: 'UNKNOWN_ACTION' });
       }
-    },
-  );
+      return { ok: true };
+    } catch (e) {
+      if (e instanceof BrowserWalletError) return reply.code(409).send({ error: e.code });
+      return reply.code(503).send({ error: 'VERIFICATION_UNAVAILABLE' });
+    }
+  });
 }

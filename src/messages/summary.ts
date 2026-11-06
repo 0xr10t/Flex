@@ -3,7 +3,7 @@
 // the footer per token and the "Please confirm:" / "Confirm?" frame. UI only (§16.2).
 
 import { DateTime } from 'luxon';
-import { NOTES, SUMMARY_FRAME } from '../contracts/catalog.js';
+import { NOTES, SUMMARY_FRAME, joinList } from '../contracts/catalog.js';
 import { normalizeDecimal, shortAddress } from '../contracts/money.js';
 import type { StepContext } from '../contracts/step.js';
 import type {
@@ -19,16 +19,8 @@ import type {
   Summary,
   Weekday,
 } from '../contracts/types.js';
-import {
-  chainName,
-  db1BaseUnits,
-  decimalsOf,
-  fmt,
-  joinAnd,
-  pushNote,
-  recipientName,
-  recipientNameOf,
-} from '../plan/common.js';
+import { chainName } from '../pipeline/step-util.js';
+import { db1BaseUnits, decimalsOf, fmt, pushNote, recipientName, recipientNameOf } from '../plan/common.js';
 import { spentToday, thisRequest, tokensUsed } from '../plan/limits.js';
 import { CADENCE, END_TEXT, SUMMARY_LINE } from './templates.js';
 
@@ -54,7 +46,7 @@ export function cadenceText(s: CalendarSchedule): string {
   const n = String(s.interval);
   if (s.frequency === 'daily') return s.interval === 1 ? CADENCE.DAILY() : CADENCE.DAILY_N({ n });
   if (s.frequency === 'weekly') {
-    const days = joinAnd((s.days_of_week ?? []).map((d) => DAY_NAME[d]));
+    const days = joinList((s.days_of_week ?? []).map((d) => DAY_NAME[d]));
     return s.interval === 1 ? CADENCE.WEEKLY({ days }) : CADENCE.WEEKLY_N({ n, days });
   }
   const d = ordinal(s.day_of_month ?? 1);
@@ -88,8 +80,8 @@ function lineJ(ctx: StepContext, it: PlanJ): string {
   return SUMMARY_LINE.J({
     padded: displayAmount(ctx, it.amount),
     token: it.token,
-    source: chainName(ctx, it.source_chain_id),
-    dest: chainName(ctx, it.dest_chain_id),
+    source: chainName(ctx.config, it.source_chain_id),
+    dest: chainName(ctx.config, it.dest_chain_id),
     b: ctx.limits.bridge_buffer_pct,
     fee: it.fee_max_eth,
   });
@@ -110,7 +102,7 @@ function lineI(ctx: StepContext, it: PlanI): string {
           token: it.token,
           name: recipientNameOf(ctx, first.recipient),
           addr: address(ctx, first.recipient),
-          chain: chainName(ctx, it.chain_id),
+          chain: chainName(ctx.config, it.chain_id),
         })
       : sameGroup
         ? SUMMARY_LINE.I_GROUP({
@@ -118,13 +110,13 @@ function lineI(ctx: StepContext, it: PlanI): string {
             token: it.token,
             count: String(it.recipients.length),
             parent: ctx.repos.db3.get(group)?.name ?? '',
-            chain: chainName(ctx, it.chain_id),
+            chain: chainName(ctx.config, it.chain_id),
             names: it.recipients.map((p) => recipientNameOf(ctx, p.recipient)).join(', '),
           })
-        : `Send ${joinAnd(it.recipients.map((p) => `${displayAmount(ctx, p.amount)} ${it.token} to ${recipientNameOf(ctx, p.recipient)} (${address(ctx, p.recipient)})`))} on ${chainName(ctx, it.chain_id)} in one atomic payment.`;
+        : `Send ${joinList(it.recipients.map((p) => `${displayAmount(ctx, p.amount)} ${it.token} to ${recipientNameOf(ctx, p.recipient)} (${address(ctx, p.recipient)})`))} on ${chainName(ctx.config, it.chain_id)} in one atomic payment.`;
   if (it.depends_on.length === 0) return base;
   // Bridges come first and are never collapsed, so step s is line s + 1 (SQ-D-03 for several steps).
-  return base + SUMMARY_LINE.AFTER_STEP({ n: joinAnd(it.depends_on.map((s) => String(s + 1))) });
+  return base + SUMMARY_LINE.AFTER_STEP({ n: joinList(it.depends_on.map((s) => String(s + 1))) });
 }
 
 function displayLeg(display: CalendarSchedule, schedule: PlanK['schedule']): CalendarSchedule {
@@ -147,7 +139,7 @@ function lineK(ctx: StepContext, it: PlanK): string {
     name: recipientNameOf(ctx, payee.recipient),
     addr: address(ctx, payee.recipient),
     amount: displayAmount(ctx, payee.amount),
-    payments: joinAnd(
+    payments: joinList(
       it.recipients.map(
         (p) =>
           `${displayAmount(ctx, p.amount)} ${it.token} to ${recipientNameOf(ctx, p.recipient)} (${address(ctx, p.recipient)})`,
@@ -157,7 +149,7 @@ function lineK(ctx: StepContext, it: PlanK): string {
     cadence: cadenceText(s),
     time: first.toFormat('HH:mm'),
     timezone: s.timezone,
-    chain: chainName(ctx, it.chain_id),
+    chain: chainName(ctx.config, it.chain_id),
     first: displayDate(first),
     end: endText(ctx, s),
     total_cap: displayAmount(ctx, it.limits.max_total),
@@ -176,15 +168,15 @@ function lineL(ctx: StepContext, it: PlanL): string {
   const cadence = cadenceText(row.display_json ? displayLeg(display, schedule) : display);
   const recipients = JSON.parse(row.recipients_json ?? '[]') as EnvelopeK['recipients'];
   if (recipients.length > 1) {
-    const payments = joinAnd(recipients.map((p) => `${p.amount.value} ${row.token} to ${shortAddress(p.recipient)}`));
-    return `Stop the repeating payment of ${payments} ${cadence} on ${chainName(ctx, it.chain_id)}. This cancels the whole plan for all its recipients. Money stays in your wallet; there is no refund transfer.`;
+    const payments = joinList(recipients.map((p) => `${p.amount.value} ${row.token} to ${shortAddress(p.recipient)}`));
+    return `Stop the repeating payment of ${payments} ${cadence} on ${chainName(ctx.config, it.chain_id)}. This cancels the whole plan for all its recipients. Money stays in your wallet; there is no refund transfer.`;
   }
   return SUMMARY_LINE.L({
     name: recipientName(ctx, ctx.repos.db3.get(it.recipient)) || row.recipient_name,
     amount: normalizeDecimal(row.amount_per_payment, decimalsOf(row.token)),
     token: row.token,
     cadence,
-    chain: chainName(ctx, it.chain_id),
+    chain: chainName(ctx.config, it.chain_id),
   });
 }
 
@@ -209,10 +201,12 @@ function addPlanNotes(ctx: StepContext, plan: InternalIntent[]): void {
   for (const it of plan)
     if (it.intent_id === 'k') {
       if (it.recipients.some((payee) => repos.db3.get(payee.recipient)?.group_placeholder)) {
-        pushNote(ctx,
+        pushNote(
+          ctx,
           'Each run pays all selected members together, with one operator fee. The listed addresses and amounts are fixed; later ENS group changes do not update this plan.',
         );
-        pushNote(ctx,
+        pushNote(
+          ctx,
           'Cancelling through any member cancels the whole group plan. Recipient addresses and amounts are visible on-chain.',
         );
       }

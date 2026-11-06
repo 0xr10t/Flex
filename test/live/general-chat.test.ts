@@ -186,11 +186,11 @@ function expectPayment(h: Harness, request: Resp, recipient: string, value: stri
   expect(h.envelope.request_id).toBe(request.body.request_id);
   expect(h.envelope.intents).toHaveLength(1);
   expect(h.envelope.intents[0]).toMatchObject({
-intent_id: 'i',
-chain_id: BASE,
-token: 'USDC',
-recipients: [{ recipient, amount: usdc(value) }]
-});
+    intent_id: 'i',
+    chain_id: BASE,
+    token: 'USDC',
+    recipients: [{ recipient, amount: usdc(value) }],
+  });
 }
 
 describe.skipIf(!CHAT_CONFIG?.enabled)('real-model general chat with thinking enabled', () => {

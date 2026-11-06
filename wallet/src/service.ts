@@ -114,7 +114,7 @@ export function createService(
     walletAddress: secrets.account.address,
     inboundToken: secrets.inboundToken,
     chainIds: config.chains.map((c) => c.chain_id),
-    executorChainIds: config.approval.mode === 'metamask' ? [] : [...deployments.keys()],
+    executorChainIds: [...deployments.keys()],
     onAccepted: () => void runner.kick(),
     log,
   });

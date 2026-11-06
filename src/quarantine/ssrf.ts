@@ -1,6 +1,6 @@
 // Implements: §8.2 step 3 "Refuse hosts that resolve to private, loopback or link-local ranges (127.0.0.0/8,
 // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, ::1, fc00::/7, fe80::/10)", §16.4 outbound limits.
-// 0.0.0.0/8 ("this host") and :: are also refused (spec-questions/B.md SQB-12). SQ-O-08 / F-13 (human, 2026-11-06)
+// 0.0.0.0/8 ("this host") and :: are also refused (SQB-12). SQ-O-08 / F-13 (human, 2026-11-06)
 // add 100.64.0.0/10, 192.0.0.0/24, 198.18.0.0/15, 224.0.0.0/4, 255.255.255.255, ff00::/8, fec0::/10, and refuse
 // 64:ff9b::/96 (NAT64) and 2002::/16 (6to4) entirely; 64:ff9b:1::/48 (local-use NAT64, RFC 8215) is refused entirely
 // too (R6-2). IPv4-mapped (::ffff:a.b.c.d), IPv4-compatible (::a.b.c.d) and IPv4-translated (::ffff:0:a.b.c.d, R6-2)

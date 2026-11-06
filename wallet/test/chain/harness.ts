@@ -19,7 +19,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 
 // Public Anvil test keys. They hold nothing outside a local chain.
 const DEPLOYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -68,12 +68,24 @@ export interface LocalChain {
   stop: () => void;
 }
 
-export async function startChain(chainId: LocalChain['chainId']): Promise<LocalChain> {
+export async function startChain(chainId: LocalChain['chainId'], timestamp?: number): Promise<LocalChain> {
   const port = await freePort();
   const rpcUrl = `http://127.0.0.1:${port}`;
   const proc: ChildProcess = spawn(
     'anvil',
-    ['--port', String(port), '--chain-id', String(chainId), '--hardfork', 'prague', '--silent'],
+    // Anvil infers Base's OP-stack rules from chain id 84532 and then refuses `prague`; keep every chain plain Ethereum.
+    [
+      '--port',
+      String(port),
+      '--chain-id',
+      String(chainId),
+      '--network',
+      'ethereum',
+      '--hardfork',
+      'prague',
+      '--silent',
+      ...(timestamp === undefined ? [] : ['--timestamp', String(timestamp)]),
+    ],
     { stdio: 'ignore' },
   );
 

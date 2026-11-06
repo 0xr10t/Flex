@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { encodeFunctionData, erc20Abi, parseAbi, parseEther, type Hex } from 'viem';
 import { WALLET, bridge, envelope, payUsdc } from '../support/envelopes.js';
 import { startWorld, units, type World } from './world.js';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
 
 const ALEX: Hex = '0x000000000000000000000000000000000000a11c';
 const ROUTER_ADMIN = parseAbi([

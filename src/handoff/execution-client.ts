@@ -10,7 +10,7 @@ import type { Config } from '../contracts/types.js';
  * SQ-O-09: the execution layer's message shown to the user, at most 200 characters, no control characters. R6-3: Unicode
  * format characters (\p{Cf}: bidi overrides, zero-width marks, …) and the U+2028 / U+2029 separators are removed too.
  */
-export const REJECT_MESSAGE_MAX = 200;
+const REJECT_MESSAGE_MAX = 200;
 
 export function rejectMessage(raw: string): string {
   // eslint-disable-next-line no-control-regex

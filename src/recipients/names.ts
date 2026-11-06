@@ -5,11 +5,7 @@ import { distance } from 'fastest-levenshtein';
 import type { Db2Row, Repos } from '../contracts/repos.js';
 import { BACK_REFERENCE_WORDS, TOKENS } from '../contracts/static-tables.js';
 import type { Config } from '../contracts/types.js';
-
-/** §9.1 step 1: trim, lowercase, collapse internal whitespace. */
-export function nameKey(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
+import { nameKey } from '../lexical/text.js';
 
 export interface CloseContact {
   name: string;
