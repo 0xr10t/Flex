@@ -26,6 +26,9 @@ describe('SQ-CV-01 independent interpretation boundaries', () => {
     ['Q_NO_PAYEE', 'pay Riya', true],
     ['Q_AMOUNT_MISSING', '10 usdc', false],
     ['Q_AMOUNT_MISSING', '10 usdc to Riya', true],
+    ['Q_AMOUNT_PRECISION', '0.123456', false],
+    ['Q_GROUP_PARENT', 'iitr.eth', false],
+    ['Q_AMOUNT_MISSING', 'riya.eth', true],
     ['Q_AUTOPAY_START', '2027-02-03', false],
     ['Q_AUTOPAY_START', 'next friday but change to Riya', true],
   ] as const)('routes %s reply %s without confusing ordinary words with ENS', (code, text, expected) => {

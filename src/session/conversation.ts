@@ -49,10 +49,12 @@ export function simpleRecipient(text: string): boolean {
 export function needsConversation(ctx: StepContext, q: Question, text: string): boolean {
   const t = text.trim();
   if (!t || matchChip(q, { kind: 'text', text: t }) !== null) return false;
-  const recipientQuestion = ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(q.code);
+  // Before the ENS test: "0.123456" also normalizes as an ENS name.
+  if (q.input === 'number' && parseAmountText(t, null).ok) return false;
+  // Questions whose literal answer is an address or ENS name (Q_GROUP_PARENT asks for the ENS parent).
+  const recipientQuestion = ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_GROUP_PARENT'].includes(q.code);
   if (ADDRESS_FULL_RE.test(t) || (t.includes('.') && !/\s/.test(t) && normalizeEns(t) !== null))
     return !recipientQuestion;
-  if (q.input === 'number' && parseAmountText(t, null).ok) return false;
   if (q.input === 'date') {
     const dates = chronoSpans(t, ctx.now());
     if (dates.some((d) => d.start === 0 && d.end === t.length)) return false;
