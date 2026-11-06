@@ -142,7 +142,12 @@ describe('schedule dates through HTTP', () => {
     );
   });
 
-  it.each(['starting November 20 2026 until November 10 2026', 'from 2026-11-20 to 2026-11-10'])(
+  it.each([
+    'starting November 20 2026 until November 10 2026',
+    'from 2026-11-20 to 2026-11-10',
+    'starting on November 20 2026 until November 10 2026',
+    'beginning on November 20 2026 until November 10 2026',
+  ])(
     'B17: rejects the reversed explicit range %s before confirmation or handoff',
     async (range) => {
       await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {

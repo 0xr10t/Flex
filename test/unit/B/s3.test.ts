@@ -281,7 +281,7 @@ describe('S3 rule 3 (number, parse, mismatch)', () => {
     expect(r2.ctx.req.amounts[0]?.amount).toBe('1.5');
   });
 
-  it.each(['0', 'zero', '0.000'])(
+  it.each(['0', 'zero', '0.000', '.0', '.000'])(
     'B01: a typed %s cannot become a positive amount without clarification',
     async (zero) => {
       const typed = `send ${zero} usdc to Mihir`;
@@ -302,13 +302,22 @@ describe('S3 rule 3 (number, parse, mismatch)', () => {
     },
   );
 
-  it('B01: zero glued to a supported token still requires mismatch clarification', async () => {
-    const r = await run('send 0usdc to Mihir', [{ phrase: '0usdc', number: '5', token: 'USDC' }]);
-    expect(q(r)?.code).toBe('Q_AMOUNT_MISMATCH');
-    expect(r.ctx.repos.tables.db1.size).toBe(0);
-    const valid = await run('send 50usdc to Mihir', [{ phrase: '50usdc', number: '50', token: 'USDC' }]);
+  it.each(['0usdc', '.000usdc'])(
+    'B01: zero glued to a supported token still requires mismatch clarification: %s',
+    async (phrase) => {
+      const r = await run(`send ${phrase} to Mihir`, [{ phrase, number: '5', token: 'USDC' }]);
+      expect(q(r)?.code).toBe('Q_AMOUNT_MISMATCH');
+      expect(r.ctx.repos.tables.db1.size).toBe(0);
+    },
+  );
+
+  it.each([
+    ['50usdc', '50'],
+    ['.5usdc', '0.5'],
+  ])('B01: positive %s remains independently verified', async (phrase, number) => {
+    const valid = await run(`send ${phrase} to Mihir`, [{ phrase, number, token: 'USDC' }]);
     expect(valid.result).toEqual({ kind: 'continue' });
-    expect(valid.ctx.req.amounts[0]).toMatchObject({ amount: '50', code_verified: true });
+    expect(valid.ctx.req.amounts[0]).toMatchObject({ amount: number, code_verified: true });
   });
 });
 
