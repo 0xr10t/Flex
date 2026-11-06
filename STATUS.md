@@ -50,7 +50,7 @@ After the account switch all of these are installed: `engineering:testing-strate
 | Tag | Date | Changes |
 | --- | --- | --- |
 | `contracts-v1` | 2026-11-06 | Initial contracts: types, step, repos, llm, io, catalog, static tables, schemas, schema.sql, registry stubs, test fakes |
-| `contracts-v2` | 2026-11-06 | `src/contracts/money.ts` (decimal/base-unit/short-address helpers), `LANES.md` (export names, conventions) |
+| `contracts-v2` | 2026-11-06 | `src/contracts/money.ts` (decimal/base-unit/short-address helpers), `LANES.md` (export names, conventions; removed after Phase 2) |
 | `contracts-v3` | 2026-11-05 | CCR B-2 + C-1 (same change): `AgentRequest.mentioned_spans: Span[]` (S5 → S7 `[person]` masking, §8.6 rule 6, §8.8) and `mentioned_spans: []` in `test/fakes/context.ts`; CCR B-1: `ITEM_LABEL` in `src/contracts/catalog.ts` (`{item}` slot, interim wording SQ-22) |
 
 ## CCR log
@@ -90,6 +90,8 @@ A-08 asserts the §10.6 `expires_at` (SQ-D-15); A-30 asserts the §15 template (
 A-60: 0 hits for registered addresses, names, ENS names, amounts and prompt fragments ≥ 12 characters.
 
 ## Standing decisions and gotchas
+
+- Orchestrator-owned (change only through the Orchestrator): `src/contracts/`, `src/schemas/`, `src/db/schema.sql`, `src/pipeline/registry.ts`, `src/llm/prompt-builder/index.ts`, `test/fakes/`, root config. CCRs B-1, B-2, C-1 (approved) and D-1 (rejected) are logged in the CCR table below; their files were removed after Phase 2.
 
 - Model rule, set by the human. Anyone who writes or changes production code under `src/**` (the four lane agents and
   any fix-up agent) runs on Opus 5.5 (`model: "opus"`). Anyone who tests, reviews or verifies runs on Sonnet 5.5

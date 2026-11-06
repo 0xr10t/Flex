@@ -1,5 +1,5 @@
 // Implements: §3.3 fixed step order S0–S12 (registry of step functions and answer handlers).
-// Owned by the Orchestrator. Phase 2: every step is the owning lane's real StepEntry (LANES.md export table).
+// Owned by the Orchestrator. Phase 2: every step is the owning lane's real StepEntry.
 
 import type { StepEntry, StepName } from '../contracts/step.js';
 import { s0 } from './s0-balances.js';

@@ -33,7 +33,7 @@ import { createSubnameSource } from './recipients/subnames.js';
 import { createExecutionClient } from './handoff/execution-client.js';
 import { registry } from './pipeline/registry.js';
 
-/** Factories owned by lanes B, C and D (LANES.md "Exports the Orchestrator will wire"). */
+/** Factories owned by lanes B, C and D (wired by the Orchestrator in Phase 2, see `productionFactories`). */
 export interface LaneFactories {
   /** Lane B `createOllamaClient(config, log)`. */
   createLlm: (config: Config, log: AllowlistLogger) => LlmClient;
