@@ -9,8 +9,15 @@ Review date: 2026-11-06. Project: `agent-layer` in `/Users/phantomxsd/Flex`.
 All 19 findings and the 3 gaps now have implemented fixes and regression coverage. Independent Astra/max reviewers
 tested the changes; they also found and verified fixes for interval-one schedules, donor-specific bridge rounding,
 leading-decimal zero amounts, optional “starting on” date markers, answer URL secrets, and chain scope across masked
-text and sentence boundaries. Full integrated checks and the 154-case live evaluation are being finalized; final
-counts are recorded in `STATUS.md`, `PROMPT_CHANGES.md`, and `CODEX_FIX_STATUS.md` when complete.
+text and sentence boundaries. A fresh final-code checkout passes **1,874 unit/acceptance tests and 169 audit checks**,
+plus typecheck, lint and build. The production TCP smoke test passes, and npm audit reports **zero vulnerabilities**,
+including development tools.
+
+The full 154-case live-model run has **0 wrong handoffs** (previously 2), **25 unexpected stops** (previously 54), and
+129 exact expected outcomes (previously 98), with no crashes or rejected summaries. Six baseline successes now stop
+safely, and the 20-second latency target remains unmet. Final-toolchain repeats are being recorded separately.
+See [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) for the raw results, metric definitions and remaining limits;
+[STATUS.md](STATUS.md) records the handoff checklist. Fix completion does not imply every model request succeeds.
 
 | Finding | Correction | Regression evidence |
 | --- | --- | --- |

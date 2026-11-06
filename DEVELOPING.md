@@ -96,6 +96,6 @@ LIVE_SET=all LIVE_TAG=validation-2026-11-06 npm run test:live
 node test/live/summarize.mjs validation-2026-11-06
 ```
 
-`LIVE_SET` selects `all`, `acceptance`, or `paraphrase`; `LIVE_FROM` and `LIVE_TO` select a zero-based slice within that set. The full set contains 154 cases. Results are written incrementally to `test/live/results/<tag>.json`; reusing a tag overwrites that file. The summarizer without explicit tags combines every result file, including partial runs and repeated cases, so pass the intended tag when comparing runs.
+`LIVE_SET` selects `all`, `acceptance`, or `paraphrase`. Optional `LIVE_IDS=A-15,P-061,P-073` selects named cases within that set; unknown IDs are rejected. `LIVE_FROM` and `LIVE_TO` select a zero-based slice after that filtering. The full set contains 154 cases. Results are written incrementally to `test/live/results/<tag>.json`; reusing a tag overwrites that file. The summarizer without explicit tags combines every result file, including partial runs and repeated cases, so pass the intended tag when comparing runs.
 
 Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, questions and latency in the results, not only Vitest's exit status. SQ-L-01 prompt changes require a full live run with zero wrong hand-offs and fewer unnecessary stops. Recheck unstable cases. A reviewer other than the production-code author grades final acceptance.

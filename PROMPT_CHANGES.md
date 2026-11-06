@@ -2,14 +2,16 @@
 
 Authorization: `SPEC_QUESTIONS.md` SQ-L-01 and `HANDOFF_PROMPT.md` §5.2 permit prompt edits and narrow action-label deduplication. JSON schemas and prompt slots remain unchanged; README remains the original specification.
 
-Baseline: `05e67e5`. Candidate source revision: `f7334e2b75860b831ba3f1232834233b77bc6693`. Complete live-set acceptance is pending: 154 cases, zero wrong handoffs, fewer than 54 needless stops. The nine focused probes below are supporting evidence, not a substitute for that gate.
+Baseline prompt text: `05e67e5`. Full live source revision: `33518a2`; the prompt bytes are unchanged on final code/toolchain revision `547a36e`. The complete 154-case run passes the SQ-L-01 retention gate: **0 wrong handoffs, 25 unexpected stops (previously 54)**. Exact expected outcomes improve from 98 to 129, including 98/119 exact plans; there are no crashes or rejected summaries. Final-toolchain repeats of all changed results plus A-15 are in progress. The nine focused probes below are supporting evidence, not a substitute for the full-set gate.
+
+See [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) for raw result links, independent comparison, six baseline successes that now stop, metric definitions and the unmet latency target. The full-run gate evaluates the combined prompts and code guards; it does not isolate each wording change's causal contribution.
 
 | Prompt | Reason | Focused evidence |
 | --- | --- | --- |
 | amounts.txt | Exact short amount spans; distinguish USDC from USD; no-amount messages return an empty list; bare-number story spans must not gain a currency word. | Balance and stop returned empty lists; multi-pay spans copied exactly; final story probe returned `100 usdc` as context and bare `30` as pay. |
 | requestType.txt | Actions list unique kinds; clarify daily/twice-weekly recurrence; classify split as a payment so deterministic split rejection runs. | Multi-pay returned one `i`; twice-weekly returned `k`. |
 | spans.txt | Recognize “all X members”; omit “myself”. | Model still emitted overbroad group/self spans in probes; deterministic S2/S5 guards handle them. No claim that wording alone fixes these cases. |
-| payments.txt | Separate recurrence frequency/interval from duration; preserve explicit chains; avoid invented weekdays. | Independent deterministic regressions cover LIVE-P061/P073, interval one/two, and chain swaps. Live results pending below. |
+| payments.txt | Separate recurrence frequency/interval from duration; preserve explicit chains; avoid invented weekdays. | Independent deterministic regressions cover LIVE-P061/P073, interval one/two, and chain swaps. Both formerly wrong cases produce exact plans in the full live run. |
 
 Focused raw production-client evidence: `/private/tmp/flex-codex-fixes/understanding-live-probes.json` and `understanding-live-story-reprobe.json`. Ollama `qwen2.5:7b-instruct`, temperature 0, seed 42, context 8192, timeout 60 seconds. Probes include raw prompt/response text and SHA-256 hashes.
 
