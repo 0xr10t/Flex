@@ -420,7 +420,8 @@ function pickChain(
     }
     const bad = checkChain(ctx, balances, pin);
     if (bad) return { kind: 'result', result: bad };
-    return { kind: 'ok', chain: pin, reused: reuseFrom(pin) };
+    // §9.5: a recipient pinned by ENS (§9.3 step 6) is never reused; its ENS record returned this address on `pin`.
+    return { kind: 'ok', chain: pin, reused: recipientPin !== null ? null : reuseFrom(pin) };
   }
   if (groupChain !== null) {
     if (stated !== 'unstated' && stated !== groupChain)
