@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
 import type { MessageInput } from '../../../src/contracts/types.js';
 import { detectSecret } from '../../../src/guard/secrets.js';
+import { isSecretRefusal, secretRefusal, urlHasSecret } from '../../../src/guard/urls.js';
 import { s1 } from '../../../src/pipeline/s1-guard.js';
 import { toQItem } from '../../../src/quarantine/qllm.js';
 import { makeTestContext, type TestContext } from '../../fakes/context.js';
@@ -250,6 +251,87 @@ describe('S1 secret scan (§8.2 step 2, C-061…C-068, C-360, C-442)', () => {
     const r = await s1.step(ctx);
     expect(r.kind).toBe('continue');
     expect(ctx.llm.recorded).toHaveLength(1);
+  });
+});
+
+describe('S1 secret scan of links (SQ-O-06)', () => {
+  const SEED_PCT = SEED.replace(/ /g, '%20');
+  const SEED_PLUS = SEED.replace(/ /g, '+');
+
+  it('SQ-O-06 urlHasSecret: as written and percent-decoded, "+" as space; clean URLs pass', () => {
+    expect(urlHasSecret(`https://a.example/?k=${HEX64}`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/?k=0x${HEX64}`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/?m=${SEED_PCT}`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/?m=${SEED_PLUS}`)).toBe(true);
+    expect(urlHasSecret(`https://a.example/#${HEX64}`)).toBe(true);
+    expect(urlHasSecret('https://a.example/path/%E0%A4%A?x=1')).toBe(false); // malformed escape does not throw
+    expect(urlHasSecret('https://a.example/page?id=42&q=hello+world')).toBe(false);
+    expect(urlHasSecret(`https://a.example/tx/0x${'ab'.repeat(20)}`)).toBe(false);
+  });
+
+  it('SQ-O-06 secretRefusal() is a failed FetchResult that isSecretRefusal tells apart from a plain failure', () => {
+    expect(secretRefusal().ok).toBe(false);
+    expect(isSecretRefusal(secretRefusal())).toBe(true);
+    expect(isSecretRefusal({ ok: false })).toBe(false);
+    expect(isSecretRefusal({ ok: true, text: 'x' })).toBe(false);
+  });
+
+  const bad: Array<[string, string, string]> = [
+    ['raw hex key in a query string', `https://a.example/?k=${HEX64}`, HEX64],
+    ['percent-encoded seed phrase', `https://a.example/?m=${SEED_PCT}`, 'abandon'],
+    ['plus-separated seed phrase', `https://a.example/?m=${SEED_PLUS}`, 'abandon'],
+  ];
+  it.each(bad)('SQ-O-06 %s in urls[] -> SECRET_DETECTED, nothing fetched or stored', async (_n, url, needle) => {
+    const ctx = s1ctx({ text: 'read this', urls: [url, 'https://clean.example/'] }, emptyCalls(2));
+    ctx.fetcher.pages.set('https://clean.example/', { ok: true, text: 'page' });
+    const r = await s1.step(ctx);
+    expect(r.kind).toBe('error');
+    if (r.kind === 'error') expect(r.code).toBe('SECRET_DETECTED');
+    expect(ctx.fetcher.calls).toEqual([]);
+    expect(ctx.llm.recorded).toHaveLength(0);
+    expect(ctx.repos.tables.db8_prompts).toHaveLength(0);
+    expect(ctx.repos.tables.db8_history).toHaveLength(0);
+    expect(ctx.repos.tables.db1.size).toBe(0);
+    expect(ctx.repos.tables.db3.size).toBe(0);
+    expect(JSON.stringify(ctx.log.lines)).not.toContain(needle);
+    expect(JSON.stringify(ctx.repos.tables)).not.toContain(needle);
+    expect(ctx.req.input).toBeUndefined();
+    expect(ctx.req.untrusted).toEqual([]);
+  });
+
+  it('SQ-O-06 a typed URL with a key is blocked (already was) and nothing is fetched', async () => {
+    const ctx = s1ctx({ text: `see https://a.example/?k=${HEX64} please` }, emptyCalls(1));
+    const r = await s1.step(ctx);
+    expect(r.kind === 'error' && r.code).toBe('SECRET_DETECTED');
+    expect(ctx.fetcher.calls).toEqual([]);
+  });
+
+  it('SQ-O-06 a clean URL is still fetched', async () => {
+    const ctx = s1ctx({ urls: ['https://a.example/page?id=42&q=hello+world'] }, emptyCalls(1));
+    ctx.fetcher.pages.set('https://a.example/page?id=42&q=hello+world', { ok: true, text: 'page' });
+    const r = await s1.step(ctx);
+    expect(r.kind).toBe('continue');
+    expect(ctx.fetcher.calls).toEqual(['https://a.example/page?id=42&q=hello+world']);
+  });
+
+  it('SQ-O-06 a fetcher secretRefusal() (key in a redirect target) -> SECRET_DETECTED, buffers dropped, nothing stored', async () => {
+    const ctx = s1ctx({ text: 'read this', urls: ['https://a.example/'] }, emptyCalls(1));
+    ctx.fetcher.pages.set('https://a.example/', secretRefusal());
+    const r = await s1.step(ctx);
+    expect(r.kind === 'error' && r.code).toBe('SECRET_DETECTED');
+    expect(ctx.llm.recorded).toHaveLength(0);
+    expect(ctx.repos.tables.db8_prompts).toHaveLength(0);
+    expect(ctx.repos.tables.db8_history).toHaveLength(0);
+    expect(ctx.req.input).toBeUndefined();
+    expect(ctx.req.typed_text).toBe('');
+    expect(ctx.req.untrusted).toEqual([]);
+    expect(JSON.stringify(ctx.log.lines)).not.toContain('a.example');
+  });
+
+  it('SQ-O-06 a plain fetch failure is still URL_FETCH_FAILED, not SECRET_DETECTED', async () => {
+    const ctx = s1ctx({ urls: ['https://a.example/'] }, emptyCalls(1));
+    const r = await s1.step(ctx);
+    expect(r.kind === 'error' && r.code).toBe('URL_FETCH_FAILED');
   });
 });
 
