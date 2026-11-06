@@ -24,7 +24,7 @@ import type { Execution } from '../chain/redeem.v2.js';
 import { asUpgraded, type Check } from '../guard/check.js';
 import { ETH, decodeCall, decodeExecuteBatch, describeCall, movementsOfCalls, type Movement } from '../guard/decode.js';
 import { encodeExecuteBatch } from '../payments/payment-i.js';
-import { finished, type StepHandler } from '../runner/handler.js';
+import { finished, type HandlerContext, type StepHandler } from '../runner/handler.js';
 import { CCIP } from '../schemas/bridge.v2.js';
 import type { BridgeJ, ChainId } from '../schemas/envelope.js';
 import { CCIP_V2_EVENTS } from './ccip-v2-abi.js';
@@ -63,6 +63,8 @@ interface WaitData {
   message?: TrackedMessage;
   tracking_status?: string;
   destination_tx_hash?: Hex;
+  observed_destination_tx_hash?: Hex;
+  destination_observe_next?: number;
   failure_data?: Hex;
   delayed?: boolean;
 }
@@ -78,6 +80,67 @@ interface TrackedMessage {
   dest_token: Hex;
   amount: string;
   receiver: Hex;
+}
+
+function hasDestinationTransfer(receipt: TxReceipt, message: TrackedMessage): boolean {
+  return parseEventLogs({ abi: erc20Abi, eventName: 'Transfer', logs: receipt.logs, strict: true }).some(
+    (e) =>
+      e.address.toLowerCase() === message.dest_token.toLowerCase() &&
+      e.args.to.toLowerCase() === message.receiver.toLowerCase() &&
+      e.args.value === BigInt(message.amount),
+  );
+}
+
+/** Provisional UI observation only. It cannot complete the step, emit a success report or unlock a payment. */
+async function observeDestination(ctx: HandlerContext, intent: BridgeJ, data: WaitData, message: TrackedMessage) {
+  const gateway = ctx.gatewayFor(intent.dest_chain_id);
+  const save = () => ctx.store.saveStepData(ctx.envelope.request_id, intent.step, data);
+  const delivered = (receipt: TxReceipt | null) =>
+    receipt?.status === 'success' &&
+    hasDestinationTransfer(receipt, message) &&
+    parseEventLogs({
+      abi: CCIP_V2_EVENTS,
+      eventName: 'ExecutionStateChanged',
+      logs: receipt.logs,
+      strict: true,
+    }).some(
+      (e) =>
+        e.address.toLowerCase() === message.off_ramp.toLowerCase() &&
+        e.args.sourceChainSelector === BigInt(message.source_selector) &&
+        e.args.messageNumber === BigInt(message.message_number) &&
+        e.args.messageId === message.message_id &&
+        e.args.state === 2,
+    );
+  if (data.observed_destination_tx_hash) {
+    if (delivered(await gateway.getReceipt(data.observed_destination_tx_hash))) return;
+    // An unfinalized observation can disappear in a reorg. Resume discovery without reporting success.
+    delete data.observed_destination_tx_hash;
+    data.destination_observe_next = data.dest_from_block;
+    if (data.tracking_status === 'destination_unfinalized') data.tracking_status = 'in_transit';
+    save();
+  }
+  const head = await gateway.latestBlock();
+  const fromBlock = data.destination_observe_next ?? data.dest_from_block;
+  if (head.number < fromBlock) return;
+  const logs = await scanLogs(gateway, {
+    address: message.off_ramp,
+    event: EXECUTION_EVENT,
+    args: { sourceChainSelector: BigInt(message.source_selector), messageId: message.message_id },
+    fromBlock,
+    toBlock: head.number,
+  });
+  for (const log of logs) {
+    if (log.args.state !== 2 || log.args.messageNumber !== BigInt(message.message_number)) continue;
+    if (delivered(await gateway.getReceipt(log.transactionHash))) {
+      data.observed_destination_tx_hash = log.transactionHash;
+      data.tracking_status = 'destination_unfinalized';
+      save();
+      return;
+    }
+  }
+  // Small overlap catches recent reorgs; the independent finalized scan covers the entire canonical history.
+  data.destination_observe_next = Math.max(data.dest_from_block, head.number - 64);
+  save();
 }
 
 /** The OnRamp must be the one discovered through the source Router before signing. */
@@ -318,6 +381,16 @@ export const bridgeHandler: StepHandler<BridgeJ> = {
       save();
       return null;
     }
+    // Source finality may arrive long before the destination's finalized head reaches our scan start.
+    // Keep the displayed stage accurate even when there is no destination range to scan yet.
+    if (
+      !data.tracking_status ||
+      ['source_unfinalized', 'source_message_unverified', 'destination_ramp_unverified'].includes(data.tracking_status)
+    ) {
+      data.tracking_status = 'in_transit';
+      save();
+    }
+    await observeDestination(ctx, intent, data, message);
     const latest = await gateway.finalizedBlock();
     const fromBlock = data.dest_scan_next ?? data.dest_from_block;
     if (latest.number < fromBlock) return null;
@@ -350,17 +423,7 @@ export const bridgeHandler: StepHandler<BridgeJ> = {
       if (!exact) return null;
       data.destination_tx_hash = log.transactionHash;
       if (exact.args.state === 2) {
-        const delivered = parseEventLogs({
-          abi: erc20Abi,
-          eventName: 'Transfer',
-          logs: receipt.logs,
-          strict: true,
-        }).some(
-          (e) =>
-            e.address.toLowerCase() === message.dest_token.toLowerCase() &&
-            e.args.to.toLowerCase() === ctx.walletAddress.toLowerCase() &&
-            e.args.value === BigInt(message.amount),
-        );
+        const delivered = hasDestinationTransfer(receipt, message);
         if (!delivered) {
           data.tracking_status = 'destination_effect_unverified';
           save();

@@ -55,7 +55,7 @@ export class BrowserWalletController {
           tracking: data?.tracking_status,
           delayed: data?.delayed,
           message: data?.message,
-          destinationTxHash: data?.destination_tx_hash,
+          destinationTxHash: data?.destination_tx_hash ?? data?.observed_destination_tx_hash,
           feeWei: data?.fee_wei,
           intent: this.deps.store.envelope(batch.request_id)?.intents.find((i) => i.step === batch.step),
         };

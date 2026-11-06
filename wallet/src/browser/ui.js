@@ -158,19 +158,21 @@ function render() {
         ? 'Delivered and verified'
         : batch.stepStatus === 'failed'
           ? `Stopped: ${batch.errorCode || 'check wallet activity'}`
-          : batch.tracking === 'destination_failed'
-            ? 'Destination execution failed. The transfer remains tracked.'
-            : batch.delayed
-              ? 'Delivery delayed. Still tracking; no second send.'
-              : batch.tracking
-                ? batch.tracking === 'source_unfinalized'
-                  ? 'Source confirmed. Waiting for source-chain finality.'
-                  : batch.tracking === 'in_transit'
-                    ? 'Waiting for verified, finalized delivery on the destination chain.'
-                    : `Tracking: ${batch.tracking.replaceAll('_', ' ')}`
-                : batch.status === 'draft'
-                  ? 'Checked · ready for your review'
-                  : 'Waiting for MetaMask / source confirmation';
+          : batch.tracking === 'destination_unfinalized'
+            ? 'Delivered on destination. Waiting for destination-chain finality before marking verified.'
+            : batch.tracking === 'destination_failed'
+              ? 'Destination execution failed. The transfer remains tracked.'
+              : batch.delayed
+                ? 'Delivery delayed. Still tracking; no second send.'
+                : batch.tracking
+                  ? batch.tracking === 'source_unfinalized'
+                    ? 'Source confirmed. Waiting for source-chain finality.'
+                    : batch.tracking === 'in_transit'
+                      ? 'Waiting for verified, finalized delivery on the destination chain.'
+                      : `Tracking: ${batch.tracking.replaceAll('_', ' ')}`
+                  : batch.status === 'draft'
+                    ? 'Checked · ready for your review'
+                    : 'Waiting for MetaMask / source confirmation';
     card.append(el('p', label));
     if (intent?.intent_id === 'j' && intent.source_chain_id === 11155111 && !complete)
       card.append(

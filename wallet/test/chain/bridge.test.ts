@@ -144,6 +144,15 @@ describe('a bridge, then a payment that needs it (j, i)', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(reportsFor(e.request_id)).toHaveLength(0);
     await world.arbitrum.rpc('anvil_mine', ['0x80']);
+    await vi.waitFor(
+      () =>
+        expect(wallet.service.store.stepData<{ tracking_status: string }>(e.request_id, 0)?.tracking_status).toBe(
+          'destination_unfinalized',
+        ),
+      { timeout: 15000 },
+    );
+    expect(reportsFor(e.request_id)).toHaveLength(0);
+    expect(await world.base.usdcOf(ALEX)).toBe(0n);
     await world.base.rpc('anvil_mine', ['0x80']);
     await vi.waitFor(() => expect(reportsFor(e.request_id)).toHaveLength(2), { timeout: 15_000, interval: 40 });
   });
@@ -160,6 +169,25 @@ describe('a bridge, then a payment that needs it (j, i)', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(reportsFor(e.request_id)).toHaveLength(0);
     expect(wallet.service.store.stepsOf(e.request_id).map((s) => s.status)).toEqual(['waiting', 'pending']);
+  });
+
+  it('withdraws a provisional delivery after a destination reorg without paying or resending', async () => {
+    const wallet = await world.startWallet();
+    const e = plan();
+    await wallet.post(e);
+    await waitForSent(wallet, e.request_id);
+    await world.arbitrum.rpc('anvil_mine', ['0x80']);
+    const beforeDelivery = await world.base.snapshot();
+    await deliver(wallet, e.request_id, true, messageOf(wallet, e.request_id), false);
+    const tracking = () =>
+      wallet.service.store.stepData<{ tracking_status: string; observed_destination_tx_hash?: Hex }>(e.request_id, 0);
+    await vi.waitFor(() => expect(tracking()?.tracking_status).toBe('destination_unfinalized'), { timeout: 15000 });
+    await world.base.revert(beforeDelivery);
+    await vi.waitFor(() => expect(tracking()?.tracking_status).toBe('in_transit'), { timeout: 15000 });
+    expect(tracking()?.observed_destination_tx_hash).toBeUndefined();
+    expect(reportsFor(e.request_id)).toHaveLength(0);
+    expect(await world.base.usdcOf(ALEX)).toBe(0n);
+    expect(await world.arbitrum.usdcOf(world.routerOf(world.arbitrum))).toBe(units('10'));
   });
 });
 
