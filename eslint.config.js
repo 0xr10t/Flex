@@ -3,7 +3,18 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.claude/**', 'test_frontend/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'wallet/dist/**',
+      'wallet/contracts/out/**',
+      'wallet/cre/**/.cre_build_tmp.js',
+      'node_modules/**',
+      'coverage/**',
+      '.claude/**',
+      'test_frontend/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flex · Testnet wallet</title>
+    <link rel="stylesheet" href="/wallet.css" />
+    <script src="/wallet.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><span class="brand">FLEX</span><span class="badge">TESTNET</span></div>
+        <button id="connect" type="button">Connect MetaMask</button>
+      </header>
+      <p class="eyebrow">YOUR WALLET, ACROSS CHAINS</p>
+      <h1>Move USDC.<br />Keep control.</h1>
+      <p class="intro">
+        Transfer test USDC between Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia. Funds arrive at your own wallet.
+      </p>
+      <p id="connection" class="muted">Connect the configured wallet to review and approve a transfer.</p>
+      <div class="layout">
+        <section class="panel">
+          <h2>Prepare a transfer</h2>
+          <form id="bridge-form">
+            <label for="source">From</label
+            ><select id="source" required></select>
+            <label for="dest">To</label
+            ><select id="dest" required></select>
+            <label for="amount">Amount in USDC</label
+            ><input id="amount" name="amount" inputmode="decimal" placeholder="1.00" autocomplete="off" required />
+            <p id="ceiling" class="muted"></p>
+            <button id="prepare" type="submit" disabled>Check transfer</button>
+          </form>
+          <p class="note">
+            Checking a transfer moves no funds. You review the exact amount and fee before approving in MetaMask.
+          </p>
+        </section>
+        <section class="activity">
+          <h2>Transfers &amp; approvals</h2>
+          <div id="requests"></div>
+          <div id="batches"><p class="muted">Your prepared transfers will appear here.</p></div>
+        </section>
+      </div>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <footer>
+        Test ETH pays transaction gas and CCIP fees. The app never asks for your recovery phrase or private key.
+      </footer>
+    </main>
+  </body>
+</html>

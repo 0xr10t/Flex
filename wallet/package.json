@@ -1,0 +1,39 @@
+{
+  "name": "flex-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Execution layer of the Wallet Access Layer (docs/spec/AGENT_SPEC_v1.1.md section 14.2, Appendix A).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "start": "node dist/src/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:chain": "vitest run --config vitest.chain.config.ts",
+    "prebuild": "npm --prefix ../packages/protocol run build",
+    "pretypecheck": "npm --prefix ../packages/protocol run build",
+    "pretest": "npm --prefix ../packages/protocol run build",
+    "pretest:chain": "npm --prefix ../packages/protocol run build"
+  },
+  "dependencies": {
+    "@metamask/smart-accounts-kit": "2.0.0",
+    "@napi-rs/keyring": "2.1.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "better-sqlite3-multiple-ciphers": "13.0.3",
+    "fastify": "5.12.8",
+    "viem": "2.57.16",
+    "zod": "4.6.7",
+    "@flex/protocol": "file:../packages/protocol"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "5.6.1",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

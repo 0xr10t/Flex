@@ -15,7 +15,12 @@
     "test:unit": "vitest run test/unit",
     "test:acceptance": "vitest run test/acceptance",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "start": "node dist/src/index.js"
+    "ens:check": "wallet/node_modules/.bin/vite-node scripts/ens-check.ts",
+    "ens:pay": "wallet/node_modules/.bin/vite-node scripts/ens-pay.ts",
+    "start": "node dist/src/index.js",
+    "prebuild": "npm --prefix packages/protocol run build",
+    "pretypecheck": "npm --prefix packages/protocol run build",
+    "pretest": "npm --prefix packages/protocol run build"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
@@ -31,7 +36,8 @@
     "luxon": "3.7.2",
     "pdf-parse": "2.4.5",
     "pino": "10.4.0",
-    "viem": "2.57.16"
+    "viem": "2.57.16",
+    "@flex/protocol": "file:packages/protocol"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
