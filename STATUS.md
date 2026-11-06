@@ -94,6 +94,8 @@ A-60: 0 hits for registered addresses, names, ENS names, amounts and prompt frag
 
 ## Standing decisions and gotchas
 
+- 2026-11-06 review swarm (6 Opus reviewers on `d5389df`): 19 code defects, none critical; the most serious was a session close/open racing an in-flight hand-off (possible double payment). Human answered SQ-R-01…06. Fix round: `phase6/fixes-core` (A, D, contracts) and `phase6/fixes-understanding` (B, C), both from `7af6321`, Opus + one Sonnet tester each. The live-model evaluation (`phase5/live`) is still running.
+
 - Interim wording added by the core agent (not covered by an answer; confirm at final acceptance): the `Q_PAIR_AMOUNT` re-ask hint "That would leave {name} with nothing."; `Q_LIMIT_OVERRIDE` chips "Yes, this once" / "Yes, set it up" / "No"; the daily fragment "today's limit of {daily_max} (only {remaining} is left)".
 
 - 2026-11-06, human decision: the post-answers deep review swarm runs on **Opus** reviewers (an exception to the Sonnet-reviews rule, for this review only). The live-model evaluation runs against the local Ollama `qwen2.5:7b-instruct` (installed 2026-11-06).
