@@ -57,8 +57,10 @@ export function createRepos(db: Database, options: Partial<RepoOptions> = {}): R
     db8: createDb8(db),
     clearSessionStores() {
       // secure_delete is ON for the connection (§7), so deleted content is overwritten; VACUUM then rebuilds the file.
+      // With journal_mode=WAL, deleted pages can linger in the -wal file, so checkpoint and truncate it (§16.4).
       clearTx();
       db.exec('VACUUM');
+      db.pragma('wal_checkpoint(TRUNCATE)');
     },
     transaction<T>(fn: () => T): T {
       return db.transaction(fn)();
