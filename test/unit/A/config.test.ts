@@ -60,6 +60,7 @@ describe('§6.1 config validation', () => {
     // The example carries "<…>" placeholders for addresses the team fills in; patch only those.
     const patched = structuredClone(raw) as ReturnType<typeof testConfig> & Record<string, unknown>;
     patched.wallet = { address: '0x00000000000000000000000000000000000000Aa' };
+    patched.autopay!.fee_collector = '0x00000000000000000000000000000000000000bb';
     patched.ens = {
       ...patched.ens,
       universal_resolver_address: '0x0000000000000000000000000000000000000001',
@@ -81,6 +82,26 @@ describe('§6.1 config validation', () => {
 
   it('C-002: an unknown key is rejected', () => {
     expect(() => validateConfig({ ...testConfig(), extra: 1 })).toThrow(ConfigError);
+  });
+
+  it.each(['0', '-1', '0.0000001', '1e2'])('rejects an invalid USDC operator fee %s', (fee) => {
+    const c = testConfig();
+    c.autopay!.fee.USDC = fee;
+    expect(() => validateConfig(c)).toThrow(/\/autopay\/fee\/USDC/);
+  });
+
+  it.each(['0', '0.010000000000000001', '0.0000000000000000001'])('rejects an invalid ETH bridge fee cap %s', (fee) => {
+    const c = testConfig();
+    c.bridge = { ccip_fee_max_eth: fee };
+    expect(() => validateConfig(c)).toThrow(/\/bridge\/ccip_fee_max_eth/);
+  });
+
+  it('requires an actual fee collector and a payable late window', () => {
+    const c = testConfig();
+    c.autopay!.fee_collector = '0x0000000000000000000000000000000000000000';
+    expect(() => validateConfig(c)).toThrow(/\/autopay\/fee_collector/);
+    c.autopay = { ...testConfig().autopay!, late_window_seconds: 59 };
+    expect(() => validateConfig(c)).toThrow(/\/autopay\/late_window_seconds/);
   });
 
   it('C-407 §16.4: server.host other than 127.0.0.1 is rejected', () => {

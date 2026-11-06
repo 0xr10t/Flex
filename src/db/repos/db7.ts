@@ -55,9 +55,14 @@ export function createDb7(db: Database): Db7Autopays {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'pending', ?, ?, NULL, NULL, ?, ?, ?)`,
   );
   const getStmt = db.prepare('SELECT * FROM db7_autopays WHERE autopay_id = ?');
-  const byRecipient = db.prepare('SELECT * FROM db7_autopays WHERE recipient_address = ? ORDER BY rowid');
+  // Legacy rows have only recipient_address; v2 plans may pay several recipients atomically.
+  const recipientMatch = `(lower(recipient_address) = lower(?) OR EXISTS (
+    SELECT 1 FROM json_each(COALESCE(recipients_json, '[]'))
+    WHERE lower(json_extract(value, '$.recipient')) = lower(?)
+  ))`;
+  const byRecipient = db.prepare(`SELECT * FROM db7_autopays WHERE ${recipientMatch} ORDER BY rowid`);
   const byRecipientStatus = db.prepare(
-    'SELECT * FROM db7_autopays WHERE recipient_address = ? AND status = ? ORDER BY rowid',
+    `SELECT * FROM db7_autopays WHERE ${recipientMatch} AND status = ? ORDER BY rowid`,
   );
   const byRequest = db.prepare('SELECT * FROM db7_autopays WHERE request_id = ? ORDER BY rowid');
 
@@ -85,7 +90,9 @@ export function createDb7(db: Database): Db7Autopays {
       return r ? fromRaw(r) : undefined;
     },
     findByRecipient(address, status) {
-      const rows = (status === undefined ? byRecipient.all(address) : byRecipientStatus.all(address, status)) as Raw[];
+      const rows = (
+        status === undefined ? byRecipient.all(address, address) : byRecipientStatus.all(address, address, status)
+      ) as Raw[];
       return rows.map(fromRaw);
     },
     listByRequest: (request_id) => (byRequest.all(request_id) as Raw[]).map(fromRaw),
@@ -104,8 +111,14 @@ export function createDb7(db: Database): Db7Autopays {
         sets.push('cre_job_id = ?');
         vals.push(patch.cre_job_id);
       }
-      if (patch.plan_id !== undefined) { sets.push('plan_id = ?'); vals.push(patch.plan_id); }
-      if (patch.executor_address !== undefined) { sets.push('executor_address = ?'); vals.push(patch.executor_address); }
+      if (patch.plan_id !== undefined) {
+        sets.push('plan_id = ?');
+        vals.push(patch.plan_id);
+      }
+      if (patch.executor_address !== undefined) {
+        sets.push('executor_address = ?');
+        vals.push(patch.executor_address);
+      }
       sets.push('updated_at = ?');
       vals.push(now);
       const res = db

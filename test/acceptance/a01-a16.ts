@@ -198,7 +198,7 @@ export function registerA01toA16(): void {
       return h;
     };
 
-    it('A-04: E4 with the parent in ENS -> Q_GROUP_CHAIN, Q_GROUP_MEMBERS, then n i intents (members not saved to DB2)', async () => {
+    it('A-04: E4 with the parent in ENS -> Q_GROUP_CHAIN, Q_GROUP_MEMBERS, then one atomic i (members not saved to DB2)', async () => {
       const members = { 'alice.iitr.ac.in': true, 'bob.iitr.ac.in': true, 'carol.iitr.ac.in': false };
       const h = await groupSetup('A-04', 'iitr.ac.in', members);
       const alice = addr(0xa1);

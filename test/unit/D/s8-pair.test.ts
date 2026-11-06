@@ -297,7 +297,7 @@ describe('S8 retry path (P1–P4, C-130)', () => {
     expect(ctx.req.payments).toHaveLength(2);
   });
 
-  it('C-136 P5 an l with a group recipient → retry (groups only with i)', async () => {
+  it('C-136 P5 an l with a group recipient → retry (cancel through a saved member)', async () => {
     const ctx = ctxD({ actions: ['i', 'l'] });
     const a1 = addAmount(ctx, '10');
     const g = addGroup(ctx, {
@@ -317,7 +317,7 @@ describe('S8 retry path (P1–P4, C-130)', () => {
 });
 
 describe('S8 checks without retry (P5–P9)', () => {
-  it('C-136 C-371 P5 k with a group → GROUP_AUTOPAY_UNSUPPORTED, no retry', async () => {
+  it('accepts a recurring group as one payment without inventing member placeholders', async () => {
     const ctx = ctxD({ actions: ['k'] });
     setClauses(ctx, ['pay iitr.eth 10 usdc every friday']);
     const a1 = addAmount(ctx, '10');
@@ -328,8 +328,8 @@ describe('S8 checks without retry (P5–P9)', () => {
     }).group;
     ctx.req.masked_text_s8 = `pay ${g} ${a1} every friday`;
     const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('k', a1, g, 'unstated', WEEKLY_FRI)])]);
-    const msg = expectError(await s8.step(ctx), 'GROUP_AUTOPAY_UNSUPPORTED');
-    expect(msg).toBe("Repeating payments to a whole group aren't supported yet.");
+    expect(await s8.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.req.payments).toEqual([expect.objectContaining({ kind: 'k', amount: a1, recipient: g })]);
     expect(llm.recorded).toHaveLength(1);
   });
 

@@ -67,6 +67,7 @@ describe('SQ-M-01 independent config review', () => {
     const configured = {
       ...qwen3,
       wallet: fixture.wallet,
+      autopay: { ...qwen3.autopay!, fee_collector: fixture.autopay!.fee_collector },
       ens: {
         ...qwen3.ens,
         universal_resolver_address: fixture.ens.universal_resolver_address,

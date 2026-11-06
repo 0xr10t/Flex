@@ -20,7 +20,7 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, AmountPh, ChainId, InternalIntent, QuestionId, Token } from '../contracts/types.js';
 import { validators } from '../schemas/index.js';
 import { newId } from '../util/ids.js';
-import { db1BaseUnits, decimalsOf, fmt, internalError, pushNote, recipientNameOf } from '../plan/common.js';
+import { db1BaseUnits, decimalsOf, fmt, internalError, isUntrustedRecipient, pushNote, recipientNameOf } from '../plan/common.js';
 import {
   autopayDurationBreach,
   autopayPeriodBreach,
@@ -106,14 +106,14 @@ function checkSelfPayment(ctx: StepContext, plan: InternalIntent[]): Failure {
 }
 
 function checkUntrusted(ctx: StepContext, plan: InternalIntent[]): Failure {
-  const { db1, db3 } = ctx.repos;
+  const { db1 } = ctx.repos;
   for (const it of plan) {
     for (const a of amountsOf(it)) {
       const row = db1.get(a);
       if (row?.source === 'untrusted' && !row.confirmed) return internalError(ctx, 's10', 'V-08');
     }
     if (it.intent_id !== 'k') continue;
-    if (it.recipients.some((p) => db1.get(p.amount)?.source === 'untrusted' || db3.get(p.recipient)?.source === 'untrusted')) {
+    if (it.recipients.some((p) => db1.get(p.amount)?.source === 'untrusted' || isUntrustedRecipient(ctx, p.recipient))) {
       return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
     }
   }

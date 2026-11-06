@@ -63,12 +63,20 @@ and oversized messages receive a request to shorten them. Initial wallet wording
 summary have separate bounds; chat cannot derive a current plan from stale original wording. These bounds retain
 space for Qwen's thinking within the configured context. Reasoning traces are neither returned nor logged.
 
-With chat enabled, address and balance questions use a read-only `wallet_info` path. Code reads the background-updated
-DB4 cache through S0 on a separate request context (fetching only chains never read before), so asking while a payment is open preserves its question,
-attempt count and confirmation. The model selects relevant verified fact IDs; code displays the exact address,
-per-network balances, spendable amounts, pending spending and gas reserves. Unreadable networks have no current
-amount, and partial totals are explicitly labelled subtotals. General conversation uses model-written text and the
-configured public wallet address, with no balance refresh or wallet writes. Neither path can approve a payment.
+Common address and balance questions bypass Ollama and RPC, even with chat disabled or the model offline. Each
+session captures its public wallet address when it opens. Balance replies read the background-updated DB4 cache
+and current local spending reservations. Cache timestamps stay in internal context, outside the answer text. Asking while a payment is open preserves
+its question, attempt count and confirmation. A cold or unavailable cache is reported as unavailable, never zero.
+Unreadable networks are excluded from totals, which are labelled subtotals when incomplete.
+
+Weekly received-payment questions and explicit hash explanations also bypass Ollama. Incoming history requires
+an opt-in Blockscout source and uses its own background cache; unknown hashes are inspected locally without
+being looked up or stored. See [received payments and identifiers](docs/agent/RECEIVED_PAYMENTS.md) for setup,
+coverage, week boundaries and the ambiguity between private keys and transaction hashes.
+
+With chat enabled, other contextual wallet questions use the read-only `wallet_info` path: the model selects
+verified fact IDs from the same local cache, and code renders their exact values. Mixed display/payment requests
+still use the payment pipeline. Neither wallet display path can approve a payment.
 
 The experimental Qwen3 wallet-chat check is `LIVE_MODEL=qwen3:8b npm run test:live -- test/live/wallet-chat.test.ts`.
 That suite enables Qwen3 chat thinking and does not validate the Qwen2.5 hackathon chat configuration.

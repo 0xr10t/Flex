@@ -388,7 +388,8 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
     const h = makeHarness();
     h.set('s4', { step: async () => ({ kind: 'answer', messages: ['You have 80 USDC on Base Sepolia.'] }) });
     const sid = await open(h);
-    const r = body(await h.manager.handleMessage(sid, msg('balance?')));
+    // Exercise a registry answer; simple address/balance lookups bypass the registry entirely.
+    const r = body(await h.manager.handleMessage(sid, msg('How much remains after my pending payments?')));
     expect(r).toMatchObject({ state: 'done', messages: [{ type: 'text', text: 'You have 80 USDC on Base Sepolia.' }] });
     expect(stepNames(h.calls)).toEqual(['s0', 's1', 's2', 's3', 's4']);
     expect(finals(h)).toEqual(['ANSWERED']);

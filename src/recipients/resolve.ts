@@ -456,6 +456,7 @@ function groupFinish(ctx: StepContext, flow: Extract<Flow, { t: 'group' }>, sele
   const chain_id = flow.chain_id as ChainId;
   const chain = chainName(ctx, chain_id);
   const base = { session_id: ctx.req.session_id, request_id: ctx.req.request_id };
+  const source = flow.origin.untrusted ? 'untrusted' : 'ens';
   const group_ph = ctx.repos.db3.mint({
     ...base,
     kind: 'group',
@@ -464,7 +465,7 @@ function groupFinish(ctx: StepContext, flow: Extract<Flow, { t: 'group' }>, sele
     ens_name: parent,
     chain_id,
     group_placeholder: null,
-    source: 'ens',
+    source,
   }) as GroupPh;
   const members: GroupMember[] = [];
   for (const m of flow.members) {
@@ -479,7 +480,7 @@ function groupFinish(ctx: StepContext, flow: Extract<Flow, { t: 'group' }>, sele
         ens_name: m.subname,
         chain_id,
         group_placeholder: group_ph,
-        source: 'ens',
+        source,
       });
     }
   }
@@ -497,7 +498,7 @@ function groupFinish(ctx: StepContext, flow: Extract<Flow, { t: 'group' }>, sele
       display_name: parent,
       address: null,
       ens_name: parent,
-      source: 'ens',
+      source,
       is_contact: false,
       contact_chain_ids: [],
       ens_chain_ids: [chain_id],

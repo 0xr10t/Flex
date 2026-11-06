@@ -2,6 +2,7 @@
 // the signed transaction, send, confirm. A handler only says what to send, and what success looks like.
 
 import type { SmartAccountsEnvironment } from '@metamask/smart-accounts-kit';
+import type { IntentResultReport } from '@flex/protocol';
 import type { Hex } from 'viem';
 import type { ChainGateway, TxReceipt, TxRequest } from '../chain/gateway.js';
 import type { Check } from '../guard/check.js';
@@ -53,5 +54,5 @@ export interface StepHandler<I extends EnvelopeIntent = EnvelopeIntent> {
   /** Only for handlers that wait. Null means keep waiting. */
   poll?(ctx: HandlerContext, intent: I, data: unknown, hash: Hex): Promise<StepOutcome | null>;
   /** §14.3 fields that every report for this intent carries, including a failure before anything was sent. */
-  baseReport?(intent: I): Record<string, unknown>;
+  baseReport?(intent: I): Pick<IntentResultReport, 'autopay' | 'bridge_fee_eth'>;
 }

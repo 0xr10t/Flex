@@ -125,6 +125,7 @@
           "$ref": "#/$defs/ChainId"
         },
         "depends_on": {
+          "description": "Earlier bridge steps that must complete before this payment can run.",
           "items": {
             "type": "number"
           },
@@ -170,9 +171,11 @@
           "$ref": "#/$defs/ChainId"
         },
         "fee_max_eth": {
+          "description": "Source-chain native ETH fee ceiling, separate from the USDC amount; > 0 and ≤ 0.01.",
           "type": "string"
         },
         "funds_steps": {
+          "description": "Later payment/autopay steps funded by this bridge; reciprocal with their depends_on.",
           "items": {
             "type": "number"
           },
@@ -215,6 +218,7 @@
       "additionalProperties": false,
       "properties": {
         "autopay_id": {
+          "description": "Agent registry identifier (ap_<12 hex>); distinct from the on-chain plan_id returned on success.",
           "type": "string"
         },
         "chain_id": {
@@ -333,7 +337,8 @@
           "type": "string"
         },
         "plan_id": {
-          "$ref": "#/$defs/Hex"
+          "$ref": "#/$defs/Hex",
+          "description": "32-byte on-chain plan ID from the wallet's successful k report, not an account address."
         },
         "recipient": {
           "$ref": "#/$defs/AddressPh",
@@ -383,20 +388,26 @@
     },
     "Schedule": {
       "additionalProperties": false,
+      "description": "Fixed UTC slots, not a calendar or cron expression. Missed slots are skipped, never accumulated.",
       "properties": {
         "end_at": {
+          "description": "Unix seconds; cannot precede the final slot's end, including its late window.",
           "type": "number"
         },
         "interval_seconds": {
+          "description": "Seconds between slots; at least 60. Local clock time can shift at daylight-saving changes.",
           "type": "number"
         },
         "late_window_seconds": {
+          "description": "Seconds after a slot starts during which it is payable; 60 through interval_seconds.",
           "type": "number"
         },
         "max_runs": {
+          "description": "Number of payable slots, at most 520; interval_seconds × max_runs ≤ 52 weeks.",
           "type": "number"
         },
         "start_at": {
+          "description": "First slot's Unix timestamp in seconds.",
           "type": "number"
         }
       },
@@ -480,5 +491,5 @@
       "type": "string"
     }
   },
-  "$id": "agent-layer/internal-plan/v1"
+  "$id": "agent-layer/internal-plan/v2"
 }

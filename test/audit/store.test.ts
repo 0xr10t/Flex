@@ -214,8 +214,10 @@ describe('§7.2 / §16.4 write paths', () => {
   });
 
   it('DB5 has exactly one write caller outside startup defaults: PUT /v1/settings/limits', () => {
-    expect(callers(/db5\.putAll\(/)).toEqual(['server/app.ts:149']);
-    expect(callers(/db5\.insertDefaultsIfMissing\(/)).toEqual(['index.ts:85']);
+    // Keep the exact caller count and file restriction; imports/comments must not invalidate the audit.
+    const paths = (sites: string[]) => sites.map((site) => site.replace(/:\d+$/, ''));
+    expect(paths(callers(/db5\.putAll\(/))).toEqual(['server/app.ts']);
+    expect(paths(callers(/db5\.insertDefaultsIfMissing\(/))).toEqual(['index.ts']);
     // Nothing else on the db5 handle besides reads.
     const other = callers(/\.db5\.(?!getAll|putAll|insertDefaultsIfMissing)/);
     expect(other).toEqual([]);

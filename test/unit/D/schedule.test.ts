@@ -19,7 +19,6 @@ import {
   ALICE_CS,
   ARB,
   BASE,
-  DELEGATE_CS,
   addAmount,
   addAutopay,
   addMihir,
@@ -567,7 +566,10 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it('SQ-D-16 F-5 content amount: C-234 §10.6 derived 3: 53 weekly payments end exactly on first + 52 weeks → allowed; 54 → LIMIT_AUTOPAY_DURATION', async () => {
     const ok = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 53 payments'));
-    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).display.schedule.end).toEqual({ type: 'after_count', count: 53 });
+    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).display.schedule.end).toEqual({
+      type: 'after_count',
+      count: 53,
+    });
     const bad = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 54 payments'));
     markContent(bad.ctx);
     expectError(await run(bad.ctx, [bad.payment]), 'LIMIT_AUTOPAY_DURATION');
@@ -729,7 +731,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     return { ctx, mi, payment: pay(ctx, 'l', null, mi) };
   };
 
-  it('C-206 C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id, delegate_address from DB7; refund_remaining true', async () => {
+  it('C-206 C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id and on-chain plan_id from DB7', async () => {
     const { ctx, mi, payment } = lSetup();
     addAutopay(ctx, { autopay_id: 'ap_0000000000f7', chain_id: ARB, delegate: ALICE_CS });
     const plan = await runOk(ctx, [payment]);

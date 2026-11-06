@@ -29,9 +29,11 @@ export interface WalletContext {
   facts: Record<string, string>;
 }
 
-/** Call after S0's cache read; the snapshot never treats unavailable DB4 rows as current balances. */
-export function buildWalletContext(ctx: StepContext): WalletContext {
-  const address = getAddress(ctx.config.wallet.address);
+/** Read local stores only; missing or unavailable DB4 rows never become a reported zero balance. */
+export function buildWalletContext(
+  ctx: StepContext,
+  address: Address = getAddress(ctx.config.wallet.address),
+): WalletContext {
   const rows = readBalances(ctx);
   const readable = rows.filter((row) => row.ok);
   const refreshedAt =

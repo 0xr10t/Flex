@@ -2,6 +2,18 @@
 
 Date: 6 November 2026. From: the wallet work on branch `wallet`.
 
+Update, 7 November 2026: the agent now emits the shared v2 contract from
+[`packages/protocol`](../../packages/protocol/README.md), including recipient arrays, execution fees, fixed UTC
+schedules and plan-ID cancellation. Both layers use the same semantic validator and report types. The historical
+request below describes the original mismatch; its duplicated schema paths are superseded. DB migrations preserve
+legacy rows rather than deleting old prefunds or delegate metadata. The agent now supports ENS group autopays:
+the same amount goes to each selected member (up to 50), with one atomic plan per schedule leg and one operator
+fee per run. Execution caps and funding include every member plus the fee; weekly policy counts all payees.
+The confirmed addresses are fixed, so later ENS membership changes do not alter a plan. Cancelling through any
+saved member cancels the whole matching plan, after confirmation. Cancellation by group name and recurring
+payroll imported from untrusted content remain unsupported. Live testnet results from before this migration
+do not validate the new agent-to-wallet flow; the group flow is covered by offline contract tests.
+
 ## What we need
 
 The wallet can't accept what the agent sends today. The agent sends envelope `version: "1"`, and the wallet accepts only

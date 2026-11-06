@@ -1,5 +1,5 @@
-// Implements: §8.11 / §10 S9 — Plan: §10.1 spendable, §10.2 expansion (groups → one `i` per selected member in
-// alphabetical order of subname, `k` schedule and caps first, `l` from DB7), §10.3 chain selection incl. silent reuse
+// Implements: §8.11 / §10 S9 — Plan with shared v2 execution semantics: §10.1 spendable, §10.2 expansion (groups →
+// sorted recipients in an atomic `i` or `k`, `k` schedule and caps first, `l` from DB7), §10.3 chain selection incl. silent reuse
 // marking (§9.5), §10.4 bridges with bigint padding/rounding, LIMIT_BRIDGES (left to S10's Q_LIMIT_OVERRIDE when it
 // can be lifted, SQ-D-16; likewise the autopay limits) and the gas check, §10.5 step numbering
 // and dependencies, §10.6 autopay schedule (questions Q_AUTOPAY_FREQUENCY / _START / _END / _COUNT / _DATE),
@@ -10,6 +10,7 @@
 
 import { DateTime } from 'luxon';
 import type { Schedule as ExecutionSchedule } from '@flex/protocol';
+import { MAX_RECIPIENTS, MAX_RECIPIENTS_AUTOMATED } from '@flex/protocol/schemas/intent.v2';
 import { CHIPS, NOTES, buildQuestion, joinList, matchChip, reask } from '../contracts/catalog.js';
 import type { Db7Row } from '../contracts/repos.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
@@ -23,6 +24,7 @@ import type {
   InternalIntent,
   Payment,
   PlanJ,
+  PlanPayee,
   QuestionCode,
   QuestionId,
   CalendarSchedule,
@@ -98,7 +100,13 @@ function stateOf(ctx: StepContext): S9State {
   if (existing) return existing;
   const kept = ctx.req.step_state[ANSWERS_KEY] as Omit<S9State, 'pending' | 'late'> | undefined;
   const st: S9State = kept
-    ? { freq: { ...kept.freq }, monthly: { ...kept.monthly }, start: { ...kept.start }, end: { ...kept.end }, pick: { ...kept.pick } }
+    ? {
+        freq: { ...kept.freq },
+        monthly: { ...kept.monthly },
+        start: { ...kept.start },
+        end: { ...kept.end },
+        pick: { ...kept.pick },
+      }
     : { freq: {}, monthly: {}, start: {}, end: {}, pick: {} };
   ctx.req.step_state.s9 = st;
   return st;
@@ -125,12 +133,38 @@ function ask(
 
 interface KDraft {
   schedule: CalendarSchedule;
-  amount: bigint;
-  token: Token;
+  targets: Target[];
+  perRun: bigint;
   perPeriod: bigint;
   total: bigint;
   fee: bigint;
   legs: ExecutionSchedule[];
+}
+
+interface Target {
+  recipient: AddressPh;
+  groupChain: ChainId | null;
+}
+
+/** Snapshot the selected ENS members; recurring groups stay together in one atomic plan per schedule leg. */
+function targetsFor(
+  ctx: StepContext,
+  p: Payment,
+): { kind: 'ok'; targets: Target[] } | { kind: 'result'; result: StepResult } {
+  if (!isGroupPh(p.recipient))
+    return { kind: 'ok', targets: [{ recipient: p.recipient as AddressPh, groupChain: null }] };
+  const group = ctx.repos.db3.get(p.recipient);
+  const members = ctx.repos.db3
+    .listMembers(p.recipient as GroupPh)
+    .sort((a, b) => ((a.name ?? '') < (b.name ?? '') ? -1 : (a.name ?? '') > (b.name ?? '') ? 1 : 0));
+  if (!group || group.chain_id === null || members.length === 0)
+    return { kind: 'result', result: internalError(ctx, 's9', 'S9_GROUP_EMPTY') };
+  const max = Math.min(ctx.limits.max_group_size, p.kind === 'k' ? MAX_RECIPIENTS_AUTOMATED : MAX_RECIPIENTS);
+  if (members.length > max) return { kind: 'result', result: { kind: 'error', code: 'LIMIT_GROUP_SIZE' } };
+  return {
+    kind: 'ok',
+    targets: members.map((m) => ({ recipient: m.placeholder as AddressPh, groupChain: group.chain_id })),
+  };
 }
 
 type Phase1 = { kind: 'ok'; k: Map<number, KDraft>; l: Map<number, Db7Row[]> } | { kind: 'result'; result: StepResult };
@@ -155,6 +189,8 @@ function resolveK(
 ): { kind: 'ok'; draft: KDraft } | { kind: 'result'; result: StepResult } {
   const { req, limits } = ctx;
   if (!ctx.config.autopay) return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NOT_CONFIGURED' } };
+  const selected = targetsFor(ctx, p);
+  if (selected.kind === 'result') return selected;
   const key = String(i);
   const today: DateTime = ctx.now().startOf('day');
   const clauses = paymentClauses(ctx, p);
@@ -174,10 +210,16 @@ function resolveK(
   let interval = p.interval ?? 1;
   if (frequency === 'monthly') {
     const choice = st.monthly[key];
-    if (!choice) return { kind: 'result', result: ask(ctx, st, 'Q_AUTOPAY_MONTHLY', i, { chips: [
-      { id: 'four_weeks', label: `Every ${4 * interval} weeks`, disabled: false, detail: '' },
-      { id: 'thirty_days', label: `Every ${30 * interval} days`, disabled: false, detail: '' },
-    ] }) };
+    if (!choice)
+      return {
+        kind: 'result',
+        result: ask(ctx, st, 'Q_AUTOPAY_MONTHLY', i, {
+          chips: [
+            { id: 'four_weeks', label: `Every ${4 * interval} weeks`, disabled: false, detail: '' },
+            { id: 'thirty_days', label: `Every ${30 * interval} days`, disabled: false, detail: '' },
+          ],
+        }),
+      };
     frequency = choice === 'four_weeks' ? 'weekly' : 'daily';
     interval *= choice === 'four_weeks' ? 4 : 30;
   }
@@ -233,7 +275,11 @@ function resolveK(
       end = parsed;
     }
   }
-  const schedule: CalendarSchedule = { ...core, first_occurrence: first.toISO({ suppressMilliseconds: true }) as string, end };
+  const schedule: CalendarSchedule = {
+    ...core,
+    first_occurrence: first.toISO({ suppressMilliseconds: true }) as string,
+    end,
+  };
 
   // Derived values (§10.6): 2 zero occurrences, 3 duration, 4 per-period cap, 5 per-payment limit.
   // A broken limit that can be lifted is left to S10, which asks Q_LIMIT_OVERRIDE once for all of them (SQ-D-16).
@@ -259,13 +305,15 @@ function resolveK(
   const amount = toBaseUnits(row.amount, decimalsOf(token));
   const count = BigInt(occ.occurrences.length);
   const fee = toBaseUnits(ctx.config.autopay.fee[token], decimalsOf(token));
-  const total = (amount + fee) * count;
-  // SQ-R-03: per_period_cap = min(amount × most payments in any 7-day window, total_cap).
-  const inWeek = amount * BigInt(mostInAnyWeek(occ.occurrences));
-  const perPeriod = inWeek < amount * count ? inWeek : amount * count;
+  const payeesPerRun = amount * BigInt(selected.targets.length);
+  const perRun = payeesPerRun + fee;
+  const total = perRun * count;
+  // Weekly policy counts every payee; the execution caps additionally include one operator fee per run.
+  const inWeek = payeesPerRun * BigInt(mostInAnyWeek(occ.occurrences));
+  const perPeriod = inWeek < payeesPerRun * count ? inWeek : payeesPerRun * count;
   const overLimit = autopayPeriodBreach(ctx, perPeriod, token) ?? perTxBreach(ctx, amount, token, true);
   if (overLimit && !liftable) return { kind: 'result', result: overLimit.error };
-  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total, fee, legs: occ.legs } };
+  return { kind: 'ok', draft: { schedule, targets: selected.targets, perRun, perPeriod, total, fee, legs: occ.legs } };
 }
 
 function scheduleLabel(s: CalendarSchedule): string {
@@ -292,10 +340,14 @@ function resolveL(
       result: { kind: 'error', code: 'NO_ACTIVE_AUTOPAY', params: { name: recipientNameOf(ctx, p.recipient) } },
     };
   }
-  const groups = [...new Map(active.map((a) => [a.request_id, active.filter((other) => other.request_id === a.request_id)])).values()];
-  const picked = groups.length === 1 ? groups[0] : groups.find((rows) => rows.some((a) => a.autopay_id === st.pick[String(i)]));
+  const groups = [
+    ...new Map(active.map((a) => [a.request_id, active.filter((other) => other.request_id === a.request_id)])).values(),
+  ];
+  const picked =
+    groups.length === 1 ? groups[0] : groups.find((rows) => rows.some((a) => a.autopay_id === st.pick[String(i)]));
   if (picked) {
-    if (picked.some((a) => !a.plan_id)) return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NOT_READY' } };
+    if (picked.some((a) => !a.plan_id))
+      return { kind: 'result', result: { kind: 'error', code: 'LEGACY_AUTOPAY_UNSUPPORTED' } };
     return { kind: 'ok', rows: picked };
   }
   const chips = groups.map((rows) => {
@@ -345,18 +397,17 @@ function phase1(ctx: StepContext, st: S9State, payments: Payment[]): Phase1 {
 
 // ───────────────────────────── phase 2: expansion, chains, bridges, steps ─────────────────────────────
 
-interface Item {
+interface PaymentItem {
   pay: number;
-  kind: 'i' | 'k' | 'l';
-  amount: AmountPh | null;
-  recipient: AddressPh;
-  token: Token | null;
-  need: bigint;
+  recipients: PlanPayee[];
+  token: Token;
   chain: ChainId;
-  reused: ChainId | null;
-  k?: KDraft;
-  l?: Db7Row;
 }
+
+type Item =
+  | (PaymentItem & { kind: 'i' })
+  | (PaymentItem & { kind: 'k'; k: KDraft })
+  | { pay: number; kind: 'l'; recipient: AddressPh; chain: ChainId; l: Db7Row };
 
 type ChainPick = { kind: 'ok'; chain: ChainId; reused: ChainId | null } | { kind: 'result'; result: StepResult };
 
@@ -512,19 +563,15 @@ async function step(ctx: StepContext): Promise<StepResult> {
     const p = payments[i] as Payment;
     if (p.kind === 'l') {
       for (const row of p1.l.get(i) ?? []) {
-      const bad = checkChain(ctx, balances, row.chain_id);
-      if (bad) return bad;
-      items.push({
-        pay: i,
-        kind: 'l',
-        amount: null,
-        recipient: p.recipient as AddressPh,
-        token: null,
-        need: 0n,
-        chain: row.chain_id,
-        reused: null,
-        l: row,
-      });
+        const bad = checkChain(ctx, balances, row.chain_id);
+        if (bad) return bad;
+        items.push({
+          pay: i,
+          kind: 'l',
+          recipient: p.recipient as AddressPh,
+          chain: row.chain_id,
+          l: row,
+        });
       }
       continue;
     }
@@ -533,37 +580,29 @@ async function step(ctx: StepContext): Promise<StepResult> {
     if (!db1) return internalError(ctx, 's9', 'S9_AMOUNT_MISSING');
     const token = db1.token;
     const draft = p1.k.get(i);
-    const need = p.kind === 'k' && draft ? draft.total : toBaseUnits(db1.amount, decimalsOf(token));
-    // §10.2 rule 1: a group expands into one `i` per selected member, alphabetical by subname, in place.
-    let targets: Array<{ recipient: AddressPh; groupChain: ChainId | null }>;
-    if (isGroupPh(p.recipient)) {
-      const group = ctx.repos.db3.get(p.recipient);
-      const members = ctx.repos.db3
-        .listMembers(p.recipient as GroupPh)
-        .sort((a, b) => ((a.name ?? '') < (b.name ?? '') ? -1 : (a.name ?? '') > (b.name ?? '') ? 1 : 0));
-      if (!group || group.chain_id === null || members.length === 0) return internalError(ctx, 's9', 'S9_GROUP_EMPTY');
-      if (members.length > limits.max_group_size) return { kind: 'error', code: 'LIMIT_GROUP_SIZE' };
-      targets = members.map((m) => ({ recipient: m.placeholder as AddressPh, groupChain: group.chain_id }));
-    } else {
-      targets = [{ recipient: p.recipient as AddressPh, groupChain: null }];
-    }
-    for (const t of targets) {
+    if (p.kind === 'k' && !draft) return internalError(ctx, 's9', 'S9_K_DRAFT_MISSING');
+    const selected = draft ? { kind: 'ok' as const, targets: draft.targets } : targetsFor(ctx, p);
+    if (selected.kind === 'result') return selected.result;
+    const need = draft ? draft.total : toBaseUnits(db1.amount, decimalsOf(token));
+    // One-off targets are batched below. An autopay group is funded and charged once as a whole.
+    const batches = draft ? [selected.targets] : selected.targets.map((target) => [target]);
+    for (const targets of batches) {
+      const t = targets[0]!;
       const pick = pickChain(ctx, balances, assigned, p, t.recipient, token, need, t.groupChain);
       if (pick.kind === 'result') return pick.result;
       const key = `${pick.chain}:${token}`;
       assigned.set(key, (assigned.get(key) ?? 0n) + need);
-      const item: Item = {
+      const item: PaymentItem = {
         pay: i,
-        kind: p.kind,
-        amount: p.amount,
-        recipient: t.recipient,
+        recipients: targets.map((target) => ({
+          recipient: target.recipient,
+          amount: p.amount as AmountPh,
+          reused_from_chain_id: pick.reused,
+        })),
         token,
-        need,
         chain: pick.chain,
-        reused: pick.reused,
       };
-      if (draft) item.k = draft;
-      items.push(item);
+      items.push(draft ? { ...item, kind: 'k', k: draft } : { ...item, kind: 'i' });
     }
   }
 
@@ -617,11 +656,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
     .map((x) => x.b);
 
   // Final phase: mint derived DB1 rows and autopay ids, build the plan.
-  const mint = (
-    amount: bigint,
-    token: Token,
-    origin: AmountOrigin,
-  ): AmountPh =>
+  const mint = (amount: bigint, token: Token, origin: AmountOrigin): AmountPh =>
     ctx.repos.db1.mint({
       session_id: req.session_id,
       request_id: req.request_id,
@@ -651,7 +686,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
   }
   for (const it of items) {
     const stepNo = plan.length;
-    if (it.kind === 'l' && it.l) {
+    if (it.kind === 'l') {
       plan.push({
         intent_id: 'l',
         step: stepNo,
@@ -662,54 +697,65 @@ async function step(ctx: StepContext): Promise<StepResult> {
       });
       continue;
     }
-    const token = it.token as Token;
+    const token = it.token;
     const depends_on = jSteps.filter((j) => j.dest_chain_id === it.chain && j.token === token).map((j) => j.step);
-    if (it.reused !== null) {
-      ctx.repos.db3.setReusedFromChain(it.recipient, it.reused);
-      pushNote(ctx, NOTES.SILENT_REUSE({ chains: reusedOnChains(ctx, it.recipient, it.chain) }));
+    for (const payee of it.recipients) {
+      if (payee.reused_from_chain_id === null) continue;
+      ctx.repos.db3.setReusedFromChain(payee.recipient, payee.reused_from_chain_id);
+      pushNote(ctx, NOTES.SILENT_REUSE({ chains: reusedOnChains(ctx, payee.recipient, it.chain) }));
     }
     if (it.kind === 'i') {
-      const address = ctx.repos.db3.get(it.recipient)?.address?.toLowerCase();
-      const batch = plan.find((other) => other.intent_id === 'i' && other.chain_id === it.chain && other.token === token &&
-        other.recipients.length < 100 && !other.recipients.some((payee) => ctx.repos.db3.get(payee.recipient)?.address?.toLowerCase() === address));
-      const payee = { amount: it.amount as AmountPh, recipient: it.recipient, reused_from_chain_id: it.reused };
+      const payee = it.recipients[0]!;
+      const address = ctx.repos.db3.get(payee.recipient)?.address?.toLowerCase();
+      const batch = plan.find(
+        (other) =>
+          other.intent_id === 'i' &&
+          other.chain_id === it.chain &&
+          other.token === token &&
+          other.recipients.length < MAX_RECIPIENTS &&
+          !other.recipients.some((payee) => ctx.repos.db3.get(payee.recipient)?.address?.toLowerCase() === address),
+      );
       if (batch?.intent_id === 'i') batch.recipients.push(payee);
-      else plan.push({
-        intent_id: 'i',
-        step: stepNo,
-        depends_on,
-        token,
-        chain_id: it.chain,
-        recipients: [payee],
-      });
-    } else if (it.k) {
+      else
+        plan.push({
+          intent_id: 'i',
+          step: stepNo,
+          depends_on,
+          token,
+          chain_id: it.chain,
+          recipients: [payee],
+        });
+    } else {
       const d = it.k;
       for (const schedule of d.legs) {
-      plan.push({
-        intent_id: 'k',
-        step: plan.length,
-        depends_on,
-        autopay_id: newId('autopay'),
-        token,
-        chain_id: it.chain,
-        recipients: [{ recipient: it.recipient, amount: it.amount as AmountPh, reused_from_chain_id: it.reused }],
-        fee: { to: ctx.config.autopay!.fee_collector, amount: mint(d.fee, token, 'autopay_fee') },
-        schedule,
-        limits: {
-          max_per_run: mint(d.amount + d.fee, token, 'autopay_max_per_run'),
-          max_total: mint((d.amount + d.fee) * BigInt(schedule.max_runs), token, 'autopay_max_total'),
-        },
-        executor: 'chainlink-cre',
-        display: {
-          schedule: d.schedule,
-          per_period_cap: mint(d.perPeriod, token, 'autopay_per_period_cap'),
-          payment_index: it.pay,
-        },
-      });
+        plan.push({
+          intent_id: 'k',
+          step: plan.length,
+          depends_on,
+          autopay_id: newId('autopay'),
+          token,
+          chain_id: it.chain,
+          recipients: it.recipients.map((payee) => ({ ...payee })),
+          fee: { to: ctx.config.autopay!.fee_collector, amount: mint(d.fee, token, 'autopay_fee') },
+          schedule,
+          limits: {
+            max_per_run: mint(d.perRun, token, 'autopay_max_per_run'),
+            max_total: mint(d.perRun * BigInt(schedule.max_runs), token, 'autopay_max_total'),
+          },
+          executor: 'chainlink-cre',
+          display: {
+            schedule: d.schedule,
+            per_period_cap: mint(d.perPeriod, token, 'autopay_per_period_cap'),
+            payment_index: it.pay,
+          },
+        });
       }
     }
   }
-  for (const j of jSteps) j.funds_steps = plan.filter((it) => (it.intent_id === 'i' || it.intent_id === 'k') && it.depends_on.includes(j.step)).map((it) => it.step);
+  for (const j of jSteps)
+    j.funds_steps = plan
+      .filter((it) => (it.intent_id === 'i' || it.intent_id === 'k') && it.depends_on.includes(j.step))
+      .map((it) => it.step);
   // §17.2 step 7: every follow-up payee gets the note (SQ-D-07 for a follow-up with a typed chain).
   if (payments.some((p) => req.recipients.some((r) => r.placeholder === p.recipient && r.followup))) {
     pushNote(ctx, req.retry_context !== undefined ? NOTES.PAYMENT_CORRECTION() : NOTES.FOLLOWUP());

@@ -66,10 +66,13 @@ export interface RefreshDeps {
   rpc: RpcClients;
   repos: Repos;
   config: Config;
+  /** Discard a late refresh after its connected wallet/session has been replaced. */
+  signal?: AbortSignal;
 }
 
 /** §8.1 steps 1–4 for `chains`, in parallel. Returns the chains that couldn't be read. */
 export async function refreshBalances(d: RefreshDeps, chains: ChainId[], nowIso: string): Promise<ChainId[]> {
+  if (d.signal?.aborted) return [];
   const results = await Promise.all(
     chains.map(async (chain_id) => {
       try {
@@ -81,6 +84,7 @@ export async function refreshBalances(d: RefreshDeps, chains: ChainId[], nowIso:
     }),
   );
   const unavailable: ChainId[] = [];
+  if (d.signal?.aborted) return unavailable;
   for (const r of results) {
     const name = chainName(d.config, r.chain_id);
     if (!r.ok) {
@@ -113,6 +117,7 @@ export const BALANCE_REFRESH_MS = 5 * 60_000;
 export interface BalanceRefresher {
   /** One read of every allowed chain, as the timer does. */
   tick(): Promise<void>;
+  isRefreshing(): boolean;
   stop(): void;
 }
 
@@ -129,14 +134,22 @@ export function startBalanceRefresher(
   const nowIso = o.nowIso ?? (() => new Date().toISOString());
   let timer: NodeJS.Timeout | null = null;
   let stopped = false;
+  let inflight: Promise<void> | null = null;
 
-  const tick = async (): Promise<void> => {
+  const read = async (): Promise<void> => {
     try {
       const unavailable = await refreshBalances(d, d.repos.db5.getAll().allowed_chain_ids, nowIso());
       if (unavailable.length > 0) d.log.warn({ event: 'balances_unavailable', chain_ids_unavailable: unavailable });
     } catch {
       d.log.error({ event: 'balance_refresh_failed' });
     }
+  };
+  const tick = (): Promise<void> => {
+    if (d.signal?.aborted) return Promise.resolve();
+    inflight ??= read().finally(() => {
+      inflight = null;
+    });
+    return inflight;
   };
   const schedule = (): void => {
     if (stopped) return;
@@ -146,6 +159,7 @@ export function startBalanceRefresher(
   void tick().finally(schedule);
   return {
     tick,
+    isRefreshing: () => inflight !== null,
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);

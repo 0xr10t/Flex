@@ -150,6 +150,21 @@ const CONFIG_SCHEMA = {
       required: ['ccip_fee_max_eth'],
       properties: { ccip_fee_max_eth: NON_EMPTY },
     },
+    history: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['enabled', 'sources'],
+      properties: {
+        enabled: { type: 'boolean' },
+        sources: {
+          type: 'array', maxItems: 3,
+          items: {
+            type: 'object', additionalProperties: false, required: ['chain_id', 'api_url'],
+            properties: { chain_id: { enum: [...CHAIN_IDS] }, api_url: NON_EMPTY },
+          },
+        },
+      },
+    },
     fetch: {
       type: 'object',
       additionalProperties: false,
@@ -197,6 +212,19 @@ export function validateConfig(raw: unknown): Config {
   if (new Set(ids).size !== ids.length) errors.push('/chains duplicate chain_id');
   if (!ids.includes(cfg.ens.rpc_chain_id)) errors.push('/ens/rpc_chain_id not a configured chain');
   if (!IANAZone.isValidZone(cfg.defaults.timezone)) errors.push('/defaults/timezone not an IANA timezone');
+  if (cfg.history) {
+    const seen = new Set<ChainId>();
+    if (cfg.history.enabled && !cfg.history.sources.length) errors.push('/history/sources must not be empty when enabled');
+    cfg.history.sources.forEach((source, i) => {
+      const field = `/history/sources/${i}`;
+      if (!ids.includes(source.chain_id) || seen.has(source.chain_id)) errors.push(`${field}/chain_id must be configured and unique`);
+      seen.add(source.chain_id);
+      if (!URL.canParse(source.api_url)) { errors.push(`${field}/api_url not a parsable URL`); return; }
+      const url = new URL(source.api_url);
+      if (!isHttpsOrLoopback(source.api_url) || url.username || url.password || url.search || url.hash || !/\/api\/v2\/?$/.test(url.pathname))
+        errors.push(`${field}/api_url must be an https or loopback Blockscout /api/v2 base without credentials, query or fragment`);
+    });
+  }
   if (cfg.autopay) {
     if (!isAddress(cfg.autopay.fee_collector) || cfg.autopay.fee_collector.toLowerCase() === zeroAddress)
       errors.push('/autopay/fee_collector must be a nonzero address');

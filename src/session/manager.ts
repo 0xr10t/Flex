@@ -8,10 +8,11 @@
 // → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
 // cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
 // SQ-S-01 / SQ-S-02: retain an unsubmitted failed payment for the next follow-up, without adding DB8 history.
-// SQ-CHAT-02: natural read-only wallet answers refresh a separate context, preserving the active payment state.
+// SQ-CHAT-02: read-only wallet answers use session memory and local stores, preserving the active payment state.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
+import { getAddress } from 'viem';
 import { ERROR_MESSAGE, REPLY, matchChip } from '../contracts/catalog.js';
 import type {
   AllowlistLogger,
@@ -33,6 +34,7 @@ import {
 } from '../contracts/step.js';
 import type {
   AgentRequest,
+  Address,
   AgentResponse,
   Answer,
   Config,
@@ -74,7 +76,10 @@ import {
   type ChatTurn,
 } from './general-chat.js';
 import { buildWalletContext } from './wallet-context.js';
-import { s0 } from '../pipeline/s0-balances.js';
+import { parseWalletQuery, renderWalletQuery } from './wallet-query.js';
+import type { HistoryReader } from '../history/types.js';
+import { parseReceivedQuery, renderReceivedQuery } from './received-query.js';
+import { explainIdentifierQuery } from './identifier-query.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -87,6 +92,8 @@ export interface SessionManagerDeps {
   repos: Repos;
   llm: LlmClient;
   rpc: RpcClients;
+  /** Informational account history, refreshed independently of requests. Never a signing authority. */
+  history?: HistoryReader;
   ens: EnsClient;
   subnames: SubnameSource;
   exec: ExecutionClient;
@@ -125,6 +132,8 @@ interface Active {
 
 interface OpenSession {
   session_id: SessionId;
+  /** Public account captured when this session opens; replaced on wallet reconnection. */
+  walletAddress: Address;
   timezone: string;
   active: Active | null;
   /** Opt-in generic exchanges only, bounded by rememberChat; never persisted or used as wallet answers. */
@@ -192,6 +201,7 @@ export class SessionManager {
         this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
         this.open = {
           session_id,
+          walletAddress: getAddress(this.deps.config.wallet.address),
           timezone,
           active: null,
           chatHistory: [],
@@ -262,6 +272,8 @@ export class SessionManager {
   /** POST /v1/sessions/{id}/messages: a new request, or an answer/confirmation per §17.3. */
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
+      const local = this.localWalletReply(s, input);
+      if (local !== null) return ok({ ...local, reply_source: 'local' });
       // SQ-CV-02: interpret an explicit edit against the validated draft before generic chat or replacement.
       // A fresh request identity prevents a confirmation for the old summary from approving its revision.
       const pending = s.active;
@@ -331,6 +343,10 @@ export class SessionManager {
             : { kind: 'selected', selected_ids: [...body.selected_ids] };
       // §13.4 "Every question also accepts 'cancel'" (§17.3 cancel texts).
       if (answer.kind === 'text' && isCancelText(answer.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+      if (answer.kind === 'text') {
+        const local = this.localWalletReply(s, { text: answer.text, pasted_blocks: [], attachments: [], urls: [] });
+        if (local !== null) return ok({ ...local, reply_source: 'local' });
+      }
       if (this.deps.config.chat?.enabled && answer.kind === 'text') {
         const input: MessageInput = { text: answer.text, pasted_blocks: [], attachments: [], urls: [] };
         const chat = await this.generalChat(s, input);
@@ -402,6 +418,52 @@ export class SessionManager {
     return { session_id: s.session_id, request_id, state: 'done', messages: [{ type: 'text', text }] };
   }
 
+  /** No model, RPC, pipeline stages or DB writes for an explicit wallet display request. */
+  private localWalletReply(s: OpenSession, input: MessageInput): AgentResponse | null {
+    if (input.attachments.length || input.pasted_blocks.length || input.urls.length) return null;
+    const allowed = this.deps.repos.db5.getAll().allowed_chain_ids;
+    const chains = this.deps.config.chains.filter((chain) => allowed.includes(chain.chain_id));
+    const info = { address: s.walletAddress, chains, history: this.deps.history };
+    // An explicit identifier explanation inspects bytes locally, before the normal secret rejection. Never retain it
+    // in chat memory: even a tx-shaped value may actually be a private key. All payment inputs still pass S1.
+    const identifier = explainIdentifierQuery(input.text, info);
+    if (identifier !== null) return this.chatReply(s, s.active, identifier);
+    const received = parseReceivedQuery(input.text);
+    if (received !== null && detectSecret(input.text) === null && !extractUrls(input.text, []).links.length) {
+      return this.chatReply(s, s.active, renderReceivedQuery(received, { ...info, now: this.clock().setZone(s.timezone) }));
+    }
+    const query = parseWalletQuery(input.text);
+    if (query === null || detectSecret(input.text) !== null || extractUrls(input.text, []).links.length) return null;
+    const a = s.active;
+    if (
+      a !== null &&
+      isAwaitingAnswer(a.req) &&
+      a.req.paused_at !== undefined &&
+      !needsConversation(this.context(s, a), a.req.paused_at.question, input.text)
+    )
+      return null;
+    const wallet = query.balances ? buildWalletContext(this.walletReadContext(s), s.walletAddress) : undefined;
+    const reply = renderWalletQuery(query, s.walletAddress, wallet);
+    if (this.deps.config.chat?.enabled) {
+      const history = rememberChat(s.chatHistory, input.text, reply);
+      s.chatHistoryOmitted ||= history.length < s.chatHistory.length + 1;
+      s.chatHistory = history;
+    }
+    return this.chatReply(s, a, reply);
+  }
+
+  private walletReadContext(s: OpenSession): StepContext {
+    return this.context(s, {
+      req: newAgentRequest(this.newId('request') as RequestId, s.session_id, {
+        text: '',
+        pasted_blocks: [],
+        attachments: [],
+        urls: [],
+      }),
+      limits: this.deps.repos.db5.getAll(),
+    });
+  }
+
   /**
    * Opt-in explanations are separate from payment interpretation. Only guarded, plain typed text is eligible;
    * a wallet classification returns the entire original input to the unchanged native handlers.
@@ -431,22 +493,8 @@ export class SessionManager {
       this.assertOpen(s);
       if (intent === 'wallet') return null;
       if (intent === 'wallet_info') {
-        // Use S0's background-populated cache; only a cold start may change DB4 here.
-        // No step mutates the active draft or resets its questions/confirmation.
-        const readContext = this.context(s, {
-          req: newAgentRequest(this.newId('request') as RequestId, s.session_id, {
-            text: '',
-            pasted_blocks: [],
-            attachments: [],
-            urls: [],
-          }),
-          limits: this.deps.repos.db5.getAll(),
-        });
-        const result = await s0.step(readContext);
-        this.assertOpen(s);
-        if (result.kind !== 'continue' && !(result.kind === 'error' && result.code === 'BALANCES_UNAVAILABLE'))
-          throw new Error('Wallet refresh failed');
-        context.wallet = buildWalletContext(readContext);
+        // Even contextual wallet questions use only the background-populated cache, including on a cold start.
+        context.wallet = buildWalletContext(this.walletReadContext(s), s.walletAddress);
       }
       const reply = await (intent === 'wallet_info' ? generateWalletReply : generateChatReply)(
         this.deps.llm,
@@ -467,9 +515,9 @@ export class SessionManager {
     }
   }
 
-  /** Current public wallet address and draft context only; balance facts are added after a wallet_info cache read. */
+  /** Session's public wallet address and draft context; balance facts come from the local DB4 cache. */
   private chatContext(s: OpenSession, a: Active | null): ChatContext {
-    const wallet_address = this.deps.config.wallet.address;
+    const wallet_address = s.walletAddress;
     if (a === null) return { state: 'IDLE', wallet_address, older_chat_omitted: s.chatHistoryOmitted };
     const context: ChatContext = {
       state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state,
