@@ -1,7 +1,8 @@
 // Implements: §6.1 config.json (path from env AGENT_CONFIG, default ~/.agent-layer/config.json; validated at
 // startup), §16.4 server bound to 127.0.0.1 only, NFR-01 Ollama on 127.0.0.1 only, §5 stack (Ajv draft 2020-12 shared instance).
 // Privacy fix 10: the execution layer on 127.0.0.1 only; RPC URLs https (anon-rpc) or http to 127.0.0.1; the indexer https
-// or null (off, fix 6); `fetch.enabled` switches link reading (fix 5).
+// or null (off, fix 6); `fetch.enabled` switches link reading (fix 5). anon-rpc over Tor: `network.socks_proxy` is
+// socks5h://127.0.0.1:<port> or null (direct).
 // Owner: Lane A.
 
 import { readFileSync } from 'node:fs';
@@ -35,7 +36,7 @@ const POS_INT = { type: 'integer', minimum: 1 } as const;
 const CONFIG_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['wallet', 'server', 'auth', 'db', 'llm', 'chains', 'ens', 'execution', 'fetch', 'defaults'],
+  required: ['wallet', 'server', 'auth', 'db', 'llm', 'chains', 'ens', 'execution', 'network', 'fetch', 'defaults'],
   properties: {
     wallet: {
       type: 'object',
@@ -109,6 +110,12 @@ const CONFIG_SCHEMA = {
       required: ['url', 'outbound_token_file', 'timeout_ms'],
       properties: { url: NON_EMPTY, outbound_token_file: NON_EMPTY, timeout_ms: POS_INT },
     },
+    network: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['socks_proxy'],
+      properties: { socks_proxy: { oneOf: [NON_EMPTY, { type: 'null' }] } },
+    },
     fetch: {
       type: 'object',
       additionalProperties: false,
@@ -177,6 +184,10 @@ export function validateConfig(raw: unknown): Config {
       errors.push(`/chains/${i}/rpc_url must be https, or http://127.0.0.1`);
     }
   });
+  // anon-rpc over Tor: the proxy is Tor's SOCKS port on this machine, and hostnames are resolved by Tor (socks5h).
+  if (cfg.network.socks_proxy !== null && !isTorSocks(cfg.network.socks_proxy)) {
+    errors.push('/network/socks_proxy must be socks5h://127.0.0.1:<port> or null');
+  }
   if (
     cfg.ens.indexer_url !== null &&
     URL.canParse(cfg.ens.indexer_url) &&
@@ -192,6 +203,22 @@ export function validateConfig(raw: unknown): Config {
 export function isLoopbackHttp(url: string): boolean {
   const u = new URL(url);
   return u.protocol === 'http:' && u.hostname === '127.0.0.1' && u.username === '' && u.password === '';
+}
+
+/** `socks5h://127.0.0.1:<port>`, nothing else: no credentials (one is set per circuit), no path. */
+export function isTorSocks(url: string): boolean {
+  if (!URL.canParse(url)) return false;
+  const u = new URL(url);
+  return (
+    u.protocol === 'socks5h:' &&
+    u.hostname === '127.0.0.1' &&
+    u.port !== '' &&
+    u.username === '' &&
+    u.password === '' &&
+    (u.pathname === '' || u.pathname === '/') &&
+    u.search === '' &&
+    u.hash === ''
+  );
 }
 
 /** https anywhere, or plain http to 127.0.0.1 (your own node). */

@@ -82,8 +82,8 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       'llm/ollama.ts',
       'quarantine/fetch.ts',
       'quarantine/ssrf.ts',
-      'recipients/subnames.ts',
-      // Privacy fix 7: the RPC transports' own connection pools (node:http / node:https).
+      // Privacy fix 7 and anon-rpc over Tor: every RPC, ENS and indexer request goes through here (node:http / node:https,
+      // Tor's SOCKS port when configured). recipients/subnames.ts uses it instead of the global fetch.
       'util/isolated-fetch.ts',
     ]);
   });
@@ -118,6 +118,14 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       visit(source);
     }
     expect(found.sort()).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
+  });
+
+  it('anon-rpc over Tor: every network factory routes through the configured proxy', () => {
+    const text = (path: string): string => files.find((f) => f.path === path)?.text ?? '';
+    expect(text('pipeline/s0-balances.ts')).toMatch(/proxy: config\.network\.socks_proxy,\s*isolation: 'balances'/);
+    expect(text('recipients/ens-client.ts')).toMatch(/proxy: config\.network\.socks_proxy, isolation: 'ens'/);
+    expect(text('recipients/subnames.ts')).toMatch(/proxy: config\.network\.socks_proxy, isolation: 'indexer'/);
+    expect(text('quarantine/fetch.ts')).toMatch(/proxyAgent\(proxy, 'links'\)/);
   });
 
   it('privacy fix 7: every call of viem http() in src passes a fetchFn, and only isolated-fetch.ts calls it', () => {

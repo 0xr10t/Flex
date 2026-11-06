@@ -68,12 +68,17 @@ export interface Config {
   ens: {
     rpc_chain_id: ChainId;
     universal_resolver_address: Address;
-    /** Null turns group sends off (privacy fix 6: the indexer is reached directly, not through anon-rpc). */
+    /** Null turns group sends off (privacy fix 6). Through Tor when `network.socks_proxy` is set. */
     indexer_url: string | null;
     indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
-  /** `enabled: false` turns link reading off (privacy fix 5: a fetch goes straight from this machine). */
+  /**
+   * anon-rpc over Tor: `socks5h://127.0.0.1:<port>` sends every request to a host that isn't this machine through Tor, one
+   * circuit per kind of query; null means direct connections.
+   */
+  network: { socks_proxy: string | null };
+  /** `enabled: false` turns link reading off (privacy fix 5). Through Tor when `network.socks_proxy` is set. */
   fetch: { enabled: boolean; max_bytes: number; timeout_ms: number; max_redirects: number };
   defaults: { timezone: string; autopay_time_of_day: string };
 }

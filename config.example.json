@@ -43,7 +43,7 @@
   "ens": {
     "rpc_chain_id": 11155111,
     "universal_resolver_address": "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
-    "indexer_url": null,
+    "indexer_url": "https://api.v2-sepolia.ensnode.io/api/omnigraph",
     "indexer_kind": "ensnode-omnigraph"
   },
   "execution": {
@@ -51,6 +51,7 @@
     "outbound_token_file": "~/.agent-layer/execution_outbound_token",
     "timeout_ms": 15000
   },
-  "fetch": { "enabled": false, "max_bytes": 1048576, "timeout_ms": 10000, "max_redirects": 3 },
+  "network": { "socks_proxy": "socks5h://127.0.0.1:9050" },
+  "fetch": { "enabled": true, "max_bytes": 1048576, "timeout_ms": 10000, "max_redirects": 3 },
   "defaults": { "timezone": "Asia/Kolkata", "autopay_time_of_day": "10:00" }
 }

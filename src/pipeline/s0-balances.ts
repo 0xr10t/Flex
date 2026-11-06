@@ -31,7 +31,10 @@ export type RpcTransportFactory = (rpc_url: string) => Transport;
 /** Production RPC clients (§14.5): one viem public client per chain. */
 export function createRpcClients(
   config: Config,
-  transportFor: RpcTransportFactory = isolatedHttp(RPC_TIMEOUT_MS),
+  transportFor: RpcTransportFactory = isolatedHttp(RPC_TIMEOUT_MS, {
+    proxy: config.network.socks_proxy,
+    isolation: 'balances',
+  }),
 ): RpcClients {
   const clients = new Map<ChainId, { client: PublicClient; usdc: `0x${string}` }>();
   for (const c of config.chains) {

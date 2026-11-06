@@ -1,16 +1,46 @@
-// Privacy fix 7: a fetch for one kind of outbound query (balances, ens). Each instance keeps its own keep-alive
-// connection pool, so balance reads (your address) and ENS lookups (the names you pay) never share a connection to the
-// RPC. JSON-RPC ids are replaced with random ones (viem numbers every request in the process from one counter, which
-// links them). Redirects are not followed: an RPC that redirects is refused, not followed somewhere else.
+// Privacy fix 7 and the Tor option (anon-rpc). A fetch for one kind of outbound query ("isolation": balances, ens, indexer,
+// links). With `network.socks_proxy` set, every request to a host that isn't this machine goes through Tor's SOCKS port:
+// the hostname is sent to Tor (DNS never happens here), and each isolation class uses its own SOCKS username, which Tor
+// (IsolateSOCKSAuth, on by default) turns into its own circuit. A proxied request opens a new stream each time (no
+// keep-alive), so one long-lived connection can't tie lookups together; Tor still reuses a class's circuit for up to 10
+// minutes. If the proxy can't be reached the request fails: nothing ever falls back to a direct connection. Requests to
+// 127.0.0.1 / ::1 (a node on this machine) go direct, each class with its own keep-alive pool.
+// JSON-RPC ids are replaced with random ones (viem numbers every request in the process from one counter, which links
+// them). Redirects are not followed.
 
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { Agent as HttpAgent, request as httpRequest, type IncomingMessage } from 'node:http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { http, type Transport } from 'viem';
 
 /** Statuses whose Response must have no body. */
 const NULL_BODY = new Set([204, 205, 304]);
+
+/** Random per process, so two runs never share a circuit. */
+const PROCESS_TOKEN = randomBytes(8).toString('hex');
+
+export interface NetOptions {
+  /** `socks5h://127.0.0.1:<port>` (Tor), or null for direct connections. */
+  proxy: string | null;
+  /** The kind of query; one Tor circuit per kind. */
+  isolation: string;
+}
+
+/** 127.0.0.1 or ::1: a service on this machine, reached directly. */
+export function isLoopbackHost(hostname: string): boolean {
+  return hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+}
+
+/** The SOCKS agent for one isolation class: Tor resolves the hostname, and the username picks the circuit. */
+export function proxyAgent(proxy: string, isolation: string): SocksProxyAgent {
+  const url = new URL(proxy);
+  if (url.protocol !== 'socks5h:') throw new Error('the proxy must be socks5h:// so the proxy resolves hostnames');
+  url.username = encodeURIComponent(isolation);
+  url.password = PROCESS_TOKEN;
+  return new SocksProxyAgent(url);
+}
 
 /**
  * A single JSON-RPC request with its id replaced by a random one; any other body is returned unchanged. viem doesn't
@@ -40,9 +70,10 @@ function toResponse(res: IncomingMessage): Response {
   return new Response(body, { status, headers });
 }
 
-/** A `fetch` (e.g. viem's `fetchFn`) with its own keep-alive pool and random JSON-RPC ids. One per kind of query. */
-export function isolatedFetch(): typeof fetch {
-  const agents = { 'http:': new HttpAgent({ keepAlive: true }), 'https:': new HttpsAgent({ keepAlive: true }) };
+/** A `fetch` (e.g. viem's `fetchFn`) for one isolation class: Tor for remote hosts when configured, random JSON-RPC ids. */
+export function isolatedFetch(o: NetOptions = { proxy: null, isolation: 'direct' }): typeof fetch {
+  const direct = { 'http:': new HttpAgent({ keepAlive: true }), 'https:': new HttpsAgent({ keepAlive: true }) };
+  const tor = o.proxy === null ? null : proxyAgent(o.proxy, o.isolation);
   const isolated = (input: string | URL | Request, init: RequestInit = {}): Promise<Response> =>
     new Promise<Response>((resolve, reject) => {
       const url = new URL(input instanceof Request ? input.url : input);
@@ -53,10 +84,11 @@ export function isolatedFetch(): typeof fetch {
       const body = typeof init.body === 'string' ? randomizeRpcId(init.body) : undefined;
       const headers = Object.fromEntries(new Headers(init.headers));
       if (body !== undefined) headers['content-length'] = String(Buffer.byteLength(body));
+      const agent = tor !== null && !isLoopbackHost(url.hostname) ? tor : direct[url.protocol];
       const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
       const req = send(
         url,
-        { method: init.method ?? 'GET', headers, agent: agents[url.protocol], signal: init.signal ?? undefined },
+        { method: init.method ?? 'GET', headers, agent, signal: init.signal ?? undefined },
         (res) => {
           try {
             resolve(toResponse(res));
@@ -72,8 +104,8 @@ export function isolatedFetch(): typeof fetch {
   return isolated as typeof fetch;
 }
 
-/** viem HTTP transports that share one isolated pool (§14.5: no retries). Call once per kind of query. */
-export function isolatedHttp(timeout: number): (url: string) => Transport {
-  const fetchFn = isolatedFetch();
+/** viem HTTP transports for one isolation class (§14.5: no retries). */
+export function isolatedHttp(timeout: number, net: NetOptions): (url: string) => Transport {
+  const fetchFn = isolatedFetch(net);
   return (url) => http(url, { timeout, retryCount: 0, fetchFn });
 }

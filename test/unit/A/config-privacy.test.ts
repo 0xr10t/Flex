@@ -1,8 +1,8 @@
-// Privacy fixes 5, 6 and 10 in config: the hand-off stays on 127.0.0.1, chain reads go over https (anon-rpc) or plain http
+// Privacy fixes 5, 6 and 10 and anon-rpc over Tor in config: the hand-off stays on 127.0.0.1, chain reads go over https (anon-rpc) or plain http
 // only to a node on this machine, the indexer is https or null (group sends off), and `fetch.enabled` switches link reading.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { isHttpsOrLoopback, isLoopbackHttp, validateConfig } from '../../../src/config/load.js';
+import { isHttpsOrLoopback, isLoopbackHttp, isTorSocks, validateConfig } from '../../../src/config/load.js';
 import type { Config } from '../../../src/contracts/types.js';
 import { testConfig } from '../../fakes/context.js';
 
@@ -96,11 +96,59 @@ describe('privacy fix 5: fetch.enabled is required and boolean', () => {
 describe('the shipped config.example.json is private by default', () => {
   const example = JSON.parse(readFileSync(new URL('../../../config.example.json', import.meta.url), 'utf8')) as Config;
 
-  it('link reading and group sends are off, and every chain uses the anon-rpc placeholder over https', () => {
-    expect(example.fetch.enabled).toBe(false);
-    expect(example.ens.indexer_url).toBeNull();
+  it("everything leaves through Tor's SOCKS port; RPCs use the anon-rpc placeholder over https", () => {
+    expect(example.network.socks_proxy).toBe('socks5h://127.0.0.1:9050');
     for (const c of example.chains) expect(c.rpc_url).toMatch(/^https:\/\/<anon-rpc>\//);
     expect(example.execution.url).toBe('http://127.0.0.1:8788');
+  });
+
+  it('with Tor on, link reading and group sends are on (both through Tor), and the indexer is https', () => {
+    expect(example.fetch.enabled).toBe(true);
+    expect(example.ens.indexer_url).toMatch(/^https:\/\//);
+  });
+});
+
+describe('anon-rpc over Tor: network.socks_proxy', () => {
+  const withProxy = (socks_proxy: unknown): unknown => ({ ...testConfig(), network: { socks_proxy } });
+
+  it.each(['socks5h://127.0.0.1:9050', 'socks5h://127.0.0.1:9150', 'socks5h://127.0.0.1:9050/'])('accepts %s', (p) => {
+    expect(validateConfig(withProxy(p)).network.socks_proxy).toBe(p);
+  });
+
+  it('accepts null (direct connections)', () => {
+    expect(validateConfig(withProxy(null)).network.socks_proxy).toBeNull();
+  });
+
+  it.each([
+    ['socks5://127.0.0.1:9050', 'resolves DNS here'],
+    ['socks4://127.0.0.1:9050', 'no hostnames'],
+    ['http://127.0.0.1:9080', 'not SOCKS'],
+    ['socks5h://10.0.0.2:9050', 'not this machine'],
+    ['socks5h://localhost:9050', 'name, not 127.0.0.1'],
+    ['socks5h://127.0.0.1', 'no port'],
+    ['socks5h://user:pw@127.0.0.1:9050', 'credentials are set per circuit'],
+    ['socks5h://127.0.0.1:9050/x', 'a path'],
+    ['not a url', 'unparsable'],
+    ['', 'empty'],
+  ])('rejects %s (%s)', (p) => {
+    expect(() => validateConfig(withProxy(p))).toThrow();
+  });
+
+  it('the error names the field', () => {
+    expect(() => validateConfig(withProxy('socks5://127.0.0.1:9050'))).toThrow(
+      /\/network\/socks_proxy must be socks5h:\/\/127\.0\.0\.1:<port> or null/,
+    );
+  });
+
+  it('network is required: leaving it out is not "direct"', () => {
+    const { network: _n, ...rest } = testConfig();
+    expect(() => validateConfig(rest)).toThrow();
+  });
+
+  it('isTorSocks', () => {
+    expect(isTorSocks('socks5h://127.0.0.1:9050')).toBe(true);
+    expect(isTorSocks('socks5://127.0.0.1:9050')).toBe(false);
+    expect(isTorSocks('socks5h://127.0.0.1:9050?x=1')).toBe(false);
   });
 });
 

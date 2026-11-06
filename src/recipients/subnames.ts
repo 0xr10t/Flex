@@ -7,6 +7,7 @@
 import { namehash } from 'viem/ens';
 import { IndexerUnavailable, type SubnameSource } from '../contracts/io.js';
 import type { Config } from '../contracts/types.js';
+import { isolatedFetch } from '../util/isolated-fetch.js';
 
 export const INDEXER_TIMEOUT_MS = 10_000;
 export const PAGE_SIZE = 1000;
@@ -52,7 +53,11 @@ interface OmnigraphPage {
   } | null;
 }
 
-export function createSubnameSource(config: Config, fetchFn: FetchFn = fetch): SubnameSource {
+/** anon-rpc over Tor: by default the indexer is queried on its own Tor circuit when `network.socks_proxy` is set. */
+export function createSubnameSource(
+  config: Config,
+  fetchFn: FetchFn = isolatedFetch({ proxy: config.network.socks_proxy, isolation: 'indexer' }),
+): SubnameSource {
   const url = config.ens.indexer_url;
 
   async function post<T>(query: string, variables: Record<string, unknown>): Promise<T> {
