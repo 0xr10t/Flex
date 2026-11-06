@@ -394,7 +394,16 @@ describe('S8 checks without retry (P5–P9)', () => {
     expectError(await s8.step(ctx), 'UNTRUSTED_IN_AUTOPAY');
   });
 
-  it('C-138 C-401 P7 k with an untrusted recipient that is an existing DB2 contact → allowed', async () => {
+  it('C-138 C-401 P7 §9.2 step 7 k with a recipient whose DB3 source is contact (pre-existing contact) → allowed', async () => {
+    const ctx = ctxD({ actions: ['k'] });
+    const a1 = addAmount(ctx, '10');
+    const r1 = addRecipient(ctx, { name: 'Aradhya', address: ARADHYA_CS, source: 'contact' });
+    ctx.req.masked_text_s8 = `pay ${a1} every friday`;
+    useFixture(ctx, [paymentsCall(a1, [llmItem('k', a1, r1, 'unstated', WEEKLY_FRI)])]);
+    expect((await s8.step(ctx)).kind).toBe('continue');
+  });
+
+  it('C-138 C-401 P7 §9.2 step 7 §16.1 k with DB3 source untrusted even though a DB2 row exists (add_contact just wrote it) → UNTRUSTED_IN_AUTOPAY', async () => {
     const ctx = ctxD({ actions: ['k'] });
     const a1 = addAmount(ctx, '10');
     const r1 = addRecipient(ctx, {
@@ -403,9 +412,10 @@ describe('S8 checks without retry (P5–P9)', () => {
       source: 'untrusted',
       untrusted_item_index: 0,
     });
+    expect(ctx.repos.db2.findByAddress(ARADHYA_CS).length).toBeGreaterThan(0);
     ctx.req.masked_text_s8 = `pay ${a1} every friday`;
     useFixture(ctx, [paymentsCall(a1, [llmItem('k', a1, r1, 'unstated', WEEKLY_FRI)])]);
-    expect((await s8.step(ctx)).kind).toBe('continue');
+    expectError(await s8.step(ctx), 'UNTRUSTED_IN_AUTOPAY');
   });
 
   it('C-139 C-369 P8 split word + one amount + two recipients → SPLIT_UNSUPPORTED, no retry', async () => {
