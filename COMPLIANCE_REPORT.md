@@ -1,29 +1,37 @@
 # Compliance and privacy review — 2026-11-06
 
-The checklist has 511 rows implemented and tested, plus three explicitly approved and tested differences from
-worked examples. C-514 is accepted for the documented live gate: the complete 154-case evaluation meets SQ-L-01's
-zero-wrong-handoff and reduced-stop conditions, and all 53 selected outcomes reproduce on the final source/toolchain.
+The checklist has 509 rows implemented and tested, plus five explicitly approved and tested differences: three
+worked examples and two pending-reply rules superseded by SQ-CV-01. C-514 is accepted for the documented live gate:
+the complete 154-case evaluation meets SQ-L-01's zero-wrong-handoff and reduced-stop conditions. A fresh full rerun
+on conversation revision `a05cb9d` preserves all 154 final outcome/stop/code signatures from `33518a2`.
 The 514-row inventory covers the listed §§5–20 contracts; its coverage is not blanket specification compliance.
-The three approved differences remain visible, and the NFR-03 latency requirement is not met by this evidence.
+The five approved differences remain visible, and the NFR-03 latency requirement is not met by this evidence.
 
-Production reviewed through `33518a2`, plus the narrow document-only chain guard `ef69e31`, including the merged
+The earlier review covered production through `33518a2`, plus the narrow document-only chain guard `ef69e31`, including the merged
 core, understanding, schedule, durable-handoff, secret-screening, chain-binding and confirmation changes. The independent reviewer authored tests and this report,
 not those production changes. The review uses `README.md` together with the binding answers in
 [SPEC_QUESTIONS.md](SPEC_QUESTIONS.md) and [SPEC_ANSWERS_FOLLOWUP.md](SPEC_ANSWERS_FOLLOWUP.md).
 The later human answers and the current request to fix all review findings govern the differences below.
-`README.md` is unchanged. Node 25.9.0 is accepted by SQ-11. The final verification checkout is `547a36e`, which also
+`README.md` is unchanged. Node 25.9.0 is accepted by SQ-11. That review's verification checkout was `547a36e`, which also
 includes the development dependency fixes in `791124c` and the explicit live-case selection harness.
+
+The later conversation work is independently graded by Astra/max reviewers, with production authors and graders
+separated. Revision `a05cb9d` passes **2,129 unit/acceptance tests, 205 audit checks, seven real-model conversation
+scenarios**, typecheck, lint and build. The final working-tree rerun repeats the same deterministic results with
+zero failed, skipped or todo tests. The additional prompt, reply routing, amount provenance and masking changes,
+adaptations to four legacy fixture files, and separate frontend TCP verification are documented in
+[CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md).
 
 ## Checklist accounting
 
 | Owner | Items | implemented + tested | approved deviation + tested | live acceptance pending |
 | --- | --- | --- | --- | --- |
-| Lane A | 81 | 81 | 0 | 0 |
+| Lane A | 81 | 79 | 2 | 0 |
 | Lane B | 123 | 123 | 0 | 0 |
 | Lane C | 73 | 73 | 0 | 0 |
 | Lane D | 152 | 152 | 0 | 0 |
 | Orchestrator | 85 | 82 | 3 | 0 |
-| **Total** | **514** | **511** | **3** | **0** |
+| **Total** | **514** | **509** | **5** | **0** |
 
 Every checklist row and the resolved question sets were inspected. The evidence inventory maps 503 rows to explicit
 `C-nnn` or `A-nn` references in test sources. Ten others map to section-based assertions or direct artifact checks:
@@ -53,6 +61,7 @@ These differences are recorded rather than presented as literal compliance with 
 
 | Authority | Behavior and affected contract |
 | --- | --- |
+| SQ-CV-01, human instruction in the current session | C-420/C-421: a pending free-text reply is interpreted before deciding whether it is an answer, correction, new request, clarification or explicit draft cancellation. Clarification/model failure keeps the question and attempt counter. Valid field answers retain native validation; consent and final confirmation cannot be inferred by the model. The additional conversation prompt/schema does not alter the four extraction schemas. |
 | SQ-L-01 | The system text of amounts, requestType, spans and payments may change, subject to the full live gate, now passed. All USER slots and §12 schemas remain unchanged. Only repeated valid action kinds are deduplicated before normal schema validation; invalid kinds, missing fields and extra fields still fail. Exact old/new text, reasons and live evidence are in [PROMPT_CHANGES.md](PROMPT_CHANGES.md). Retention is accepted on the evidence and limits below. |
 | Current request, B03/B04/B19/G02 | An additive encrypted `handoff_journal` migration records the confirmed envelope and original idempotency key, with DB6/DB7 reservations committed before submission. This changes the old post-2xx write timing. Timeout/5xx retain identity and reservations; definite rejection releases reservations. Reports are checked against request, step, intent and autopay identity. Executed spend and terminal autopays cannot be rolled back by stale reports. |
 | Current request, G01 | Explicit chain choices are checked independently of the model, including document-only payments with no typed amount/recipient spans. One unique typed chain binds those payments; an omitted chain triggers correction and then PAIRING_FAILED. Existing clause/sentence binding governs payments with typed spans. |
@@ -78,7 +87,8 @@ part of the authorized report-correlation fix; it is not described as session-on
 | Four §12.1 LLM schemas | Byte-for-byte equality with the README fenced JSON, also parsed equality. |
 | §12.5 handoff envelope schema | Byte-for-byte equality with the README fenced JSON. |
 | §12.2 payments schema / §12.3 internal plan | Passing schema tests enforce request-specific enums, limits, foreign-placeholder rejection and internal placeholder formats. |
-| Five prompts | Four changed system texts equal independently reviewed golden fixtures. Q-LLM remains identical to README. All five USER portions remain equal, with only SQ-21's documented removal of inline explanatory comments for payments. |
+| Five original prompts | Four changed system texts equal independently reviewed golden fixtures. Q-LLM remains identical to README. All five USER portions remain equal, with only SQ-21's documented removal of inline explanatory comments for payments. |
+| Additional conversation prompt | Authorized by SQ-CV-01; bounded typed context, strict intent validation and independent unit/HTTP checks. Seven real-model scenarios verify the new behavior separately from the fixed 154-case corpus. |
 | §7.1 DDL | Original `schema.sql` is identical except its header comment. The separate v2 migration adds the authorized journal; it does not rewrite that DDL. Guard tests check all ten original tables, constraints, keys and DB2 index. |
 | §6.1 config / §6.3 defaults | Parsed config equality; all eight default keys, values and types equal the spec. |
 | §6.2 static tables | Exact arrays/token metadata asserted by ten passing guard cases. Added recognition of explicit recurrence/group forms is in lexical patterns, not a silent rewrite of the tables. |
@@ -89,7 +99,7 @@ part of the authorized report-correlation fix; it is not described as session-on
 Machine-readable inventory and comparison results are saved in
 `/private/tmp/flex-codex-fixes/compliance-evidence.json` and `compliance-catalog-evidence.json`.
 
-## Independent verification and privacy sweep
+## Earlier independent verification and privacy sweep
 
 - Understanding, date and contract checks: 512/512 passed. The reviewer then found two uncovered variants, added
   failing regressions, and asked a different author to fix them: `.0`/`.000` must not turn into a positive amount,
@@ -131,7 +141,27 @@ The source and fixture checks use fake chain/execution services and do not sign 
 Ollama calls were made by this independent reviewer. The live metrics below come from the coordinator's separate
 local-model run and independent review of its results, not from the deterministic suite.
 
-## Live evaluation and acceptance limits
+## Latest live verification and acceptance limits
+
+The complete `a05cb9d` rerun contains the same 154 IDs, prompts and expected results in manifest order. It has
+**129 exact outcomes, 25 unexpected stops, zero wrong handoffs, crashes or rejected summaries**. Independent
+recomputation confirms that all final outcome/stop/code signatures match `33518a2`; P-044 adds a resolved
+`Q_NAME_ROLE` question and remains exact. The seven added conversation scenarios pass on the same source bytes,
+with 18 input turns, 41 real model calls and three explicitly confirmed local capture submissions. No scenario
+submits before confirmation. The actual frontend TCP reproduction also passes, with zero submissions.
+
+The legacy S8 first-pass validation proxy remains **106/107**. The new target-only proxy is **104/105**, excluding
+prior setup payments; neither measures raw semantic exact-match across all S8 outputs. No-question initial-response
+latency is median **8.245 s**, p95 **17.275 s**, maximum **24.406 s** across 92 cases. One exceeds 20 seconds; later
+clarification and confirmation time are excluded, and host/cache conditions are uncontrolled. Full NFR-03 compliance
+and a causal speedup are not established. The 25 stop cases remain visible; no universal language coverage is claimed.
+
+Raw results, hashes, the diagnostic run stopped to fix `5 more`, and independent comparison evidence are linked from
+[LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) and [CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md).
+Generated live-run JSON is excluded from Prettier so the recorded raw hashes remain stable; source linting remains
+enabled. The earlier review below is retained with its original revision and measurement scope.
+
+## Earlier live evaluation
 
 The primary run uses frozen source `33518a2`, Ollama 0.40.14 and `qwen2.5:7b-instruct` at temperature 0, seed 42,
 with 8,192 context tokens. The model digest starts `845dbda0ea48`. The baseline is exactly `acceptance.json`,

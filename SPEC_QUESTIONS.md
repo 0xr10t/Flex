@@ -364,3 +364,31 @@ the Bitcoin mainnet/testnet private variants in [SLIP-132](https://github.com/sa
 Short prefix mentions and extended public keys do not match this detector. The shared scan applies to message text,
 pasted blocks, decoded attachments, URLs (including percent decoding), and question answers. Existing secret-error,
 buffer-clearing and no-storage/no-model-call behavior remains in force; other secret detectors are unchanged.
+
+## Conversational replies to pending questions (2026-11-06)
+
+**SQ-CV-01 — requested by the human in chat.** The human reproduced a refund reply being treated as a person's
+name, a new autopay request being trapped in the previous address question, `10 usd` losing its currency, and
+`pay riya` repeating a question about Yash. The instruction was that the agent should parse a follow-up reply and
+determine whether it actually answers the question. This supersedes the unconditional answer routing in §17.3.
+
+Implementation decisions under that request:
+
+- Whole literal values and exact displayed choices use their existing field validators. Other typed replies are
+  classified by the real local model as an answer, recipient correction, complete new request, clarification, or
+  explicit draft cancellation. The model receives the original typed request, the pending question's purpose and
+  bounded recent typed replies. It does not receive document contents, the contact inventory or raw question/chip text.
+- An answer value must be copied from the current reply and pass the ordinary field handler. A model response cannot
+  approve a payment, save a contact, select a consent chip or override a limit. Clarification and interpretation
+  failure retain the pending question and its attempt counter.
+- A recipient-only correction at the unresolved S6 recipient question preserves the amount and schedule, then
+  repeats normal resolution, planning, validation and summary. Ambiguous targets and later-stage corrections ask
+  for the full updated request. A complete new request restarts from its original full input, with new confirmation.
+- Secret and decoded-URL scanning precedes model calls and answer storage. New attachments go through S1. An
+  already-submitted request cannot be reinterpreted or change its immutable retry envelope.
+- Currency-bearing amount answers retain their token/fiat meaning and accepted wording in the summary. USD keeps
+  the existing USD-to-USDC interpretation; no exchange-rate conversion is introduced.
+
+The new `conversation.txt` prompt and its separate intent schema are additional to the four extraction prompts
+and schemas, which remain unchanged by this work. `README.md` stays unchanged. Regressions and real-model evidence
+are recorded in `codex_review_report.md` and `CONVERSATION_FIX_REPORT.md`.

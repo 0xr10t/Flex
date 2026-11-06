@@ -92,10 +92,21 @@ The first command already includes unit and acceptance tests; the next two selec
 The live suite uses the real local Ollama model with fake RPC, ENS, content-fetch and execution dependencies. It sends no real payments. Run it without competing model calls or heavy test jobs, and use a new tag to preserve earlier results:
 
 ```sh
-LIVE_SET=all LIVE_TAG=validation-2026-11-06 npm run test:live
+LIVE_SET=all LIVE_TAG=validation-2026-11-06 npm run test:live -- test/live/live.test.ts
 node test/live/summarize.mjs validation-2026-11-06
 ```
 
 `LIVE_SET` selects `all`, `acceptance`, or `paraphrase`. Optional `LIVE_IDS=A-15,P-061,P-073` selects named cases within that set; unknown IDs are rejected. `LIVE_FROM` and `LIVE_TO` select a zero-based slice after that filtering. The full set contains 154 cases. Results are written incrementally to `test/live/results/<tag>.json`; reusing a tag overwrites that file. The summarizer without explicit tags combines every result file, including partial runs and repeated cases, so pass the intended tag when comparing runs.
 
 Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, questions and latency in the results, not only Vitest's exit status. SQ-L-01 prompt changes require a full live run with zero wrong hand-offs and fewer unnecessary stops. Recheck unstable cases. A reviewer other than the production-code author grades final acceptance.
+
+The separate conversational suite exercises seven multi-turn scenarios, including corrections while a question is
+pending, natural amount/address/token answers, refund clarification and new requests. Run it separately when
+comparing benchmark metrics:
+
+```sh
+LIVE_TAG=conversation-validation npm run test:live -- test/live/conversation.test.ts
+```
+
+Its transcripts and model outputs are written to `test/live/results/conversation/<tag>.json`, outside the
+154-case summarizer's input directory. Running `npm run test:live` without a file filter runs both suites serially.

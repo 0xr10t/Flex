@@ -1,5 +1,48 @@
 # Live-model remediation evaluation — 2026-11-06
 
+## Latest conversation revision — a05cb9d
+
+The full rerun after SQ-CV-01 preserves **all 154 final outcome/stop/code signatures** from the earlier `33518a2`
+remediation: **129 exact outcomes, 25 unexpected stops, zero wrong handoffs, zero crashes and zero rejected summaries**.
+It contains the same 54 acceptance prompts and 100 paraphrases in manifest order, with unchanged expected results.
+Vitest passes 155/155 assertions including model availability. Independent Astra/max recomputation verifies the
+raw artifacts, source hashes, metrics and comparison. This establishes non-regression on the fixed corpus; the
+new conversational behavior is tested separately in seven real-model scenarios, all passing.
+
+| Metric | Earlier remediation | Conversation revision |
+| --- | ---: | ---: |
+| Exact outcomes / unexpected stops / wrong handoffs | 129 / 25 / 0 | **129 / 25 / 0** |
+| Exact plans / non-plan outcomes | 98/119 / 31/35 | **98/119 / 31/35** |
+| Requests with questions | 61/154 | **62/154** |
+| Legacy S8 first-pass validation proxy | 106/107 | **106/107** |
+| Target-only S8 first-pass validation proxy | Not recorded | **104/105** |
+| No-question initial-response sample | 93 | **92** |
+| Median / p95 / maximum initial response | 14.056 / 30.331 / 50.204 s | **8.245 / 17.275 / 24.406 s** |
+| Initial responses over 20 seconds | 23/93 | **1/92** |
+| Client retries / MODEL_FAILED outcomes | 0 / 0 | **0 / 0** |
+
+P-044 adds a resolved `Q_NAME_ROLE` question and still finishes exactly; this is the only changed question sequence.
+The new pairing fields exclude prior setup payments: P-058/P-060 account for the two legacy-only reaches. P-072
+remains the sole target requiring a correction and ending in `PAIRING_FAILED`. Both S8 metrics are validation
+proxies, not raw semantic exact-match accuracy. The unchanged 25 stop cases are listed in the historical section below.
+
+The run uses the same local Qwen model/settings and fake chain/execution dependencies described below. Source is
+frozen at `a05cb9d1a9d64ca1ae5ac91d7f79c807d4e46773`, `src` tree `dcf1ceb084ff67654cbdfa3503a691763c2971d1`.
+Measured per-case time totals 29m43.624s. Host/cache conditions were not controlled; the no-question samples differ
+by P-044 and exclude later clarification/confirmation. These observations do not establish a causal speedup or
+compliance with NFR-03's full 20-second target. The maximum still exceeds 20 seconds.
+
+Evidence: [complete raw run](test/live/results/conversation-a05cb9d.json),
+[metrics and hashes](test/live/results/conversation/metrics-a05cb9d.json),
+[seven conversations](test/live/results/conversation/final-a05cb9d.json),
+[A-06/A-07 probe](test/live/results/conversation/followup-probe-a05cb9d.json), and
+[actual frontend TCP trace](test/live/results/conversation/frontend-a05cb9d.json).
+The primary raw SHA-256 is `43159365feb51e952898dc79d1bce3896fd27c68edab51ee136ee06a0ab8ac69`.
+The earlier 28-case diagnostic was stopped to fix the valid `5 more` regression and is retained separately;
+neither its rows nor probe rows replace any full-run result. See [CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md).
+
+## Earlier extraction-prompt remediation
+
 The complete 154-case run has **zero wrong handoffs**, compared with two in the historical baseline. Its unexpected-stop
 count falls from **54 to 25**, satisfying the SQ-L-01 gate for retaining the prompt changes. There are no crashes or
 rejected summaries. This gate does not establish complete language coverage or compliance with the latency target.

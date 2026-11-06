@@ -1,5 +1,26 @@
 # Prompt changes and live-model acceptance
 
+## Conversational reply interpretation — SQ-CV-01
+
+The later user instruction requires deciding whether a follow-up actually answers the pending question.
+Previously there was no conversation prompt: typed replies went directly into the pending field handler.
+The new complete prompt is [conversation.txt](src/llm/prompts/conversation.txt). Its inputs are the guarded original
+typed request, pending question code/purpose, recent typed replies and the complete latest reply. Its output schema
+selects `answer`, `recipient`, `new_request`, `clarify` or `cancel`, with a verbatim current-reply value or null.
+
+Initial real-model tests showed two classification errors: an address sentence labeled as a recipient change and
+`send 5 USDC to Mihir on Base` labeled as a recipient-only change. The prompt now gives complete requests priority
+over recipient-only corrections and includes explicit examples for both cases. The code also normalizes the narrow
+address/recipient-label ambiguity when both interpretations supply the identical literal address through the same
+existing validator. Neither change permits ignoring an amount, chain, condition or second instruction in a reply.
+
+The four extraction prompts below, their slots and their schemas are unchanged by SQ-CV-01. The new prompt is a
+separate user-authorized behavior change, with independent deterministic review and separate multi-turn live cases.
+See [CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md) for current verification and limits. The results below
+remain the historical evidence for the earlier extraction-prompt changes.
+
+## Earlier extraction-prompt remediation
+
 Authorization: `SPEC_QUESTIONS.md` SQ-L-01 and `HANDOFF_PROMPT.md` §5.2 permit prompt edits and narrow action-label deduplication. JSON schemas and prompt slots remain unchanged; README remains the original specification.
 
 Baseline prompt text: `05e67e5`. Full live source revision: `33518a2`; the prompt bytes are unchanged on final code/toolchain revision `547a36e`. The complete 154-case run passes the SQ-L-01 retention gate: **0 wrong handoffs, 25 unexpected stops (previously 54)**. Exact expected outcomes improve from 98 to 129, including 98/119 exact plans; there are no crashes or rejected summaries. All 53 final-toolchain repeats reproduce their primary outcome signatures. Independent review accepts retaining these prompt changes. The nine focused probes below are supporting evidence, not a substitute for the full-set gate.

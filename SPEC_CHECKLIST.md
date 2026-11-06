@@ -11,18 +11,20 @@ Status values: `implemented + tested` (deterministic or stated live evidence) an
 
 | Owner | Items | implemented + tested | approved deviation + tested | live acceptance pending |
 | --- | --- | --- | --- | --- |
-| Lane A | 81 | 81 | 0 | 0 |
+| Lane A | 81 | 79 | 2 | 0 |
 | Lane B | 123 | 123 | 0 | 0 |
 | Lane C | 73 | 73 | 0 | 0 |
 | Lane D | 152 | 152 | 0 | 0 |
 | Orchestrator | 85 | 82 | 3 | 0 |
-| **Total** | **514** | **511** | **3** | **0** |
+| **Total** | **514** | **509** | **5** | **0** |
 
-The three retained deviations describe approved differences from worked examples/acceptance prose, not open
-questions. All six former “implemented, no test” contracts now have passing guard tests. C-514's full 154-case run
-meets the zero-wrong-handoff and reduced-stop conditions (0 wrong; 25 stops versus 54); all 53 selected outcomes
-reproduce on the final source/toolchain. This evidence is separate from the 1,874 deterministic tests and 169 audit
-checks, which also pass in the clean `547a36e` checkout. This §§5–20 inventory is not blanket specification
+The five retained deviations are three approved differences from worked examples/acceptance prose and two pending-reply
+rules superseded by SQ-CV-01, not open questions. All six former “implemented, no test” contracts now have passing
+guard tests. C-514's full 154-case run meets the zero-wrong-handoff and reduced-stop conditions (0 wrong; 25 stops
+versus 54); the complete rerun on `a05cb9d` preserves every final outcome/stop/code signature. That revision also
+passes 2,129 unit/acceptance tests, 205 audit checks and seven real-model conversation scenarios, with typecheck,
+lint and build. The final working-tree rerun repeats the deterministic results with no skipped tests.
+This §§5–20 inventory is not blanket specification
 compliance: the live oracle's scope, uncaptured raw S8 semantic metric and unmet NFR-03 latency requirement are
 recorded in `COMPLIANCE_REPORT.md`.
 
@@ -449,8 +451,8 @@ recorded in `COMPLIANCE_REPORT.md`.
 | C-417 | §17.2 | Step 4a: chosen payee placeholder offered to S8 under SESSION, no new DB3 row | C | implemented + tested |
 | C-418 | §17.2 | Step 4b: "unstated" chain → previous chain as stated | D | implemented + tested |
 | C-419 | §17.2 | Step 7: follow-up summary note | D | implemented + tested |
-| C-420 | §17.3 | Table: Awaiting answer + answers call → validate, attempt+1, TOO_MANY_RETRIES after 4th | A | implemented + tested |
-| C-421 | §17.3 | Table: Awaiting answer + messages call → free-text answer | A | implemented + tested |
+| C-420 | §17.3 | Table: Awaiting answer + answers call → validate, attempt+1, TOO_MANY_RETRIES after 4th | A | deviates (human-approved; tested): SQ-CV-01 interprets free text first; clarification/model failure preserves the question and attempt; actual field answers retain native validation |
+| C-421 | §17.3 | Table: Awaiting answer + messages call → free-text answer | A | deviates (human-approved; tested): SQ-CV-01 distinguishes answers, corrections, complete new requests, clarification and explicit draft cancellation |
 | C-422 | §17.3 | Table: Cancel texts or cancel endpoint → DISCARDED, CANCELLED | A | implemented + tested (human-approved SQ-18) |
 | C-423 | §17.3 | Table: Awaiting confirmation + yes texts/confirm yes → S12 | A | implemented + tested (authorized pre-submit balance/settings/limit revalidation, G03) |
 | C-424 | §17.3 | Table: Awaiting confirmation + no texts/confirm no → DISCARDED + reply | A | implemented + tested (human-approved SQ-18) |
@@ -543,4 +545,4 @@ recorded in `COMPLIANCE_REPORT.md`.
 | C-511 | §20.2 | A-58 | O | implemented + tested |
 | C-512 | §20.2 | A-59 | O | implemented + tested |
 | C-513 | §20.2 | A-60 | O | implemented + tested |
-| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | implemented + tested (154 cases: 0 wrong, 25 stops; 53 final-source repeats reproduce; semantic plan counts and S8 proxy/measurement limits in COMPLIANCE_REPORT) |
+| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | implemented + tested (154 cases on a05cb9d: 0 wrong, 129 exact, 25 stops; all prior final signatures preserved; seven new conversation scenarios pass; semantic plan counts and legacy/target-only S8 proxy limits in COMPLIANCE_REPORT) |

@@ -1,5 +1,19 @@
 # Hand-off prompt for the next agent
 
+## Later conversational follow-up — SQ-CV-01
+
+The human subsequently reported replies being interpreted as names or trapped in old questions, then explicitly
+requested deciding whether a follow-up actually answers the pending question. This overrides the unconditional
+answer routing in §17.3. Additional work and its current verification status are in
+[CONVERSATION_FIX_REPORT.md](CONVERSATION_FIX_REPORT.md); its latest status takes precedence over the historical
+completion totals below. `SPEC_QUESTIONS.md` records the new behavior. Preserve the existing UI wording approvals.
+
+The follow-up is implemented and verified on `a05cb9d`: **2,129 unit/acceptance tests, 205 audits, seven real-model
+conversation scenarios**, typecheck, lint and build pass. The complete **154-prompt** rerun has **zero wrong
+handoffs**, **129 exact outcomes** and **25 existing stops**, matching all prior final signatures. An independent
+reviewer tested each production workstream. The frontend at **http://127.0.0.1:8791** serves the corrected runtime
+and passes the actual reported conversation over TCP; the previous port 8790 draft was retained.
+
 ## Execution update — 2026-11-06
 
 The requested continuation is implemented: the core fixes branch was independently tested and merged; every finding
