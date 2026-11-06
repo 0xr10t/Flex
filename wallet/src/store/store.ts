@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
 import type { Database } from 'better-sqlite3';
-import type { HandoffEnvelope, Hex } from '../schemas/envelope.js';
+import type { HandoffEnvelope, Hex } from '@flex/protocol/schemas/envelope';
 import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
 
 export type StepStatus = 'pending' | 'approved' | 'signed' | 'waiting' | 'executed' | 'failed';

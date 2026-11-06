@@ -1,7 +1,7 @@
 // Ported from lab src/schema.test.ts (TEST_MAP §4.1, 43 cases). Fixtures are mutated freely, hence the `any`.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
-import { IntentSchema, USDC } from '../../src/schemas/intent.v2.js';
+import { IntentSchema, USDC } from '@flex/protocol/schemas/intent.v2';
 
 const ME = '0x05d156A72ad376d808160964B04c10cd68b9d069';
 const ALICE = '0x000000000000000000000000000000000000a11c';

@@ -26,11 +26,11 @@ import {
   movementsOfCalls,
   type Movement,
 } from '../guard/decode.js';
-import { placeholderHashes, toPlan } from '../mapping/to-plan.js';
+import { placeholderHashes, toPlan } from '@flex/protocol/mapping/to-plan';
 import { encodeExecuteBatch, summaryOf } from '../payments/payment-i.js';
 import { finished, type HandlerContext, type StepHandler, type StepOutcome } from '../runner/handler.js';
-import type { AutopayK, HandoffEnvelope } from '../schemas/envelope.js';
-import type { Intent } from '../schemas/intent.v2.js';
+import type { AutopayK, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
 import type { AutopayRow } from '../store/store.js';
 import { EXECUTOR_ABI } from './abi.js';
 import {

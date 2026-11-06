@@ -51,10 +51,7 @@ ESLint and Prettier run from the repo root: `npm run lint`.
 | `src/autopay/watcher.ts` | Watches the chain, and reports each paid run to the agent |
 | `contracts/` | `IntentExecutorV3` and test stand-ins |
 | `cre/autopay/` | The shared cron workflow. `lib/due.ts` holds its decisions |
-| `src/schemas/handoff-envelope.schema.json` | The envelope: the contract between agent and wallet |
-| `src/schemas/envelope.ts` | Envelope types, and the first check (JSON schema) |
-| `src/schemas/intent.v2.ts`, `bridge.v2.ts` | The verified schemas, from the lab tests: the rules between fields |
-| `src/mapping/` | `checkEnvelope`: turns an envelope into the verified plan, and runs all the checks |
+| `../packages/protocol/` | `@flex/protocol`, shared with the agent: the envelope schema (the contract between agent and wallet), the verified `intent.v2` and `bridge.v2` schemas, and `checkEnvelope`, which turns an envelope into the verified plan and runs all the checks |
 | `src/chain/redeem.v2.ts` | Encodes a delegation redeem, for autopays |
 | `test/unit/` | No chain needed. Includes simulated crashes, and the agent's real client against this service |
 | `test/chain/` | Local anvil chains with MetaMask's real contracts. Includes `kill -9` of the real process with a payment in flight |

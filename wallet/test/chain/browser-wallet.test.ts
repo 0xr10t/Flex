@@ -1,7 +1,7 @@
 // Exercises the browser handoff with a test-only wallet on local Anvil chains. This does not claim real MetaMask or CCIP delivery.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeFunctionData, parseAbi, parseEther, type Hex } from 'viem';
-import { CCIP } from '../../src/schemas/bridge.v2.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
 import type { WalletBatchPayload } from '../../src/browser/types.js';
 import { ALEX, WALLET, envelope, payEth } from '../support/envelopes.js';
 import { userAccount } from './harness.js';

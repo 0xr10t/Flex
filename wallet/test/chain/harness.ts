@@ -19,7 +19,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { EIP7702_DELEGATOR } from '../../src/chain/addresses.js';
-import { USDC } from '../../src/schemas/intent.v2.js';
+import { USDC } from '@flex/protocol/schemas/intent.v2';
 
 // Public Anvil test keys. They hold nothing outside a local chain.
 const DEPLOYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';

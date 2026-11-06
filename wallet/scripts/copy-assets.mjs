@@ -1,11 +1,7 @@
-// tsc copies no JSON, and the envelope schema is read at runtime.
+// tsc copies no assets, and the browser approval page is served from dist at runtime.
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { URL } from 'node:url';
 
-copyFileSync(
-  new URL('../src/schemas/handoff-envelope.schema.json', import.meta.url),
-  new URL('../dist/src/schemas/handoff-envelope.schema.json', import.meta.url),
-);
 mkdirSync(new URL('../dist/src/browser', import.meta.url), { recursive: true });
 for (const file of ['ui.html', 'ui.js', 'ui.css'])
   copyFileSync(

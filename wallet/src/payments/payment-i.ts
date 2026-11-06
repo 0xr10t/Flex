@@ -7,7 +7,7 @@ import type { Execution } from '../chain/redeem.v2.js';
 import { asUpgraded } from '../guard/check.js';
 import { ETH, decodeCall, decodeExecuteBatch, describeCall, movementsOfCalls } from '../guard/decode.js';
 import { finished, type StepHandler } from '../runner/handler.js';
-import type { PaymentI } from '../schemas/envelope.js';
+import type { PaymentI } from '@flex/protocol/schemas/envelope';
 
 const BATCH_DEFAULT = '0x0100000000000000000000000000000000000000000000000000000000000000' as const;
 

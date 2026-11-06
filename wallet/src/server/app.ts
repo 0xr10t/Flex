@@ -8,9 +8,9 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Hex } from 'viem';
 import type { Logger } from '../log.js';
-import { checkEnvelope } from '../mapping/check.js';
-import { placeholderHashes } from '../mapping/to-plan.js';
-import { validateEnvelope, type HandoffEnvelope } from '../schemas/envelope.js';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
+import { placeholderHashes } from '@flex/protocol/mapping/to-plan';
+import { validateEnvelope, type HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import { envelopeHash, type Store } from '../store/store.js';
 
 export interface AppDeps {

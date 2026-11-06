@@ -22,9 +22,9 @@ import { resolveOnChain } from '../src/recipients/ens.js';
 import { accountProblem } from '../wallet/src/chain/account.js';
 import { ChainUnavailableError, createChainGateway, type ChainGateway } from '../wallet/src/chain/gateway.js';
 import { runCheck } from '../wallet/src/guard/check.js';
-import { checkEnvelope } from '../wallet/src/mapping/check.js';
+import { checkEnvelope } from '@flex/protocol/mapping/check';
 import { paymentHandler } from '../wallet/src/payments/payment-i.js';
-import type { PaymentI } from '../wallet/src/schemas/envelope.js';
+import type { PaymentI } from '@flex/protocol/schemas/envelope';
 
 const { Entry } = createRequire(resolvePath(import.meta.dirname, '../wallet/package.json'))('@napi-rs/keyring') as {
   Entry: new (
