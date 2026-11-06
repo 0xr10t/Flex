@@ -9,3 +9,6 @@ src/db/schema.sql
 *.md
 .claude
 test_frontend
+wallet/contracts/out
+wallet/contracts/cache
+wallet/cre/**/.cre_build_tmp.js
