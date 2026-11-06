@@ -36,7 +36,7 @@ function setup(
   const config = testConfig();
   config.llm = { ...config.llm, model, timeout_ms: timeoutMs, ...(think === undefined ? {} : { think }) };
   const log = new CapturingLogger();
-  return { client: createOllamaClient(config, log), calls, log };
+  return { client: createOllamaClient(config, log), calls, log, config };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -86,6 +86,77 @@ describe('SQ-M-01 independent Ollama compatibility review', () => {
       think,
       options: { temperature: 0, seed: 42, num_ctx: 8192 },
     });
+  });
+
+  it.each([false, true])(
+    'a per-call override beats configured think=%s without mutating it or affecting the next call',
+    async (configuredThink) => {
+      const { client, calls, config, log } = setup(() => reply(JSON.stringify(valid)), configuredThink);
+      const before = structuredClone(config);
+      Object.freeze(config.llm);
+      const overridden = Object.freeze({ ...args, think: !configuredThink });
+      expect(await client.call(overridden)).toEqual(valid);
+      expect(await client.call(args)).toEqual(valid);
+      expect(await client.call({ ...args, think: undefined })).toEqual(valid);
+      expect(calls.map((call) => JSON.parse(String(call.init.body)).think)).toEqual([
+        !configuredThink,
+        configuredThink,
+        configuredThink,
+      ]);
+      expect(calls[1]!.init.body).toBe(calls[2]!.init.body);
+      expect(config).toEqual(before);
+      expect(overridden.think).toBe(!configuredThink);
+      expect(Object.hasOwn(args, 'think')).toBe(false);
+      for (const call of calls) {
+        const body = JSON.parse(String(call.init.body));
+        expect(body.messages).toEqual([
+          { role: 'system', content: args.system },
+          { role: 'user', content: args.user },
+        ]);
+        expect(body.format).toEqual(SCHEMA.amounts);
+        expect(body.options).toEqual({ temperature: 0, seed: 42, num_ctx: 8192 });
+        expect(String(call.init.body)).not.toContain(thought);
+      }
+      expect(JSON.stringify(log.lines)).not.toContain('PRIVATE-');
+      for (const line of log.lines) for (const key of Object.keys(line)) expect(LOG_ALLOWED_FIELDS).toContain(key);
+    },
+  );
+
+  it.each([false, true])('a one-call think=%s override returns to omitted legacy bytes afterward', async (think) => {
+    const { client, calls, config } = setup(() => reply(JSON.stringify(valid)));
+    Object.freeze(config.llm);
+    await client.call(args);
+    await client.call({ ...args, think });
+    await client.call(args);
+    expect(JSON.parse(String(calls[1]!.init.body)).think).toBe(think);
+    expect(calls[0]!.init.body).toBe(calls[2]!.init.body);
+    expect(Object.hasOwn(JSON.parse(String(calls[2]!.init.body)), 'think')).toBe(false);
+    expect(Object.hasOwn(config.llm, 'think')).toBe(false);
+  });
+
+  it('a thinking override persists only through its own retry and never accepts or logs reasoning as content', async () => {
+    const { client, calls, log, config } = setup(
+      (_url, _init, attempt) => reply(attempt <= 2 ? undefined : JSON.stringify(valid), JSON.stringify(valid)),
+      false,
+    );
+    Object.freeze(config.llm);
+    const error: unknown = await client.call({ ...args, think: true }).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(LlmFailed);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.init.body).toBe(calls[1]!.init.body);
+    expect(calls.map((call) => JSON.parse(String(call.init.body)).think)).toEqual([true, true]);
+    expect(await client.call(args)).toEqual(valid);
+    expect(JSON.parse(String(calls[2]!.init.body)).think).toBe(false);
+    expect(config.llm.think).toBe(false);
+    expect(log.lines.map((line) => [line.event, line.llm_retry])).toEqual([
+      ['llm_call_failed', false],
+      ['llm_call_failed', true],
+      ['llm_call', false],
+    ]);
+    const diagnostic = `${String(error)} ${JSON.stringify(log.lines)}`;
+    expect(diagnostic).not.toContain(JSON.stringify(valid));
+    expect(diagnostic).not.toContain('PRIVATE-');
+    for (const line of log.lines) for (const key of Object.keys(line)) expect(LOG_ALLOWED_FIELDS).toContain(key);
   });
 
   it('returns only validated content and never carries thinking into the next fresh chat', async () => {
