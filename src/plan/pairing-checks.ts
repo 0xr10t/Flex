@@ -248,7 +248,7 @@ export function scheduleProblems(ctx: StepContext, pc: PairingContext, payments:
       } else {
         problems.push(`Payment ${n}: the request gives no interval such as "every other week"; interval must be 1.`);
       }
-    } else if (interval <= 1 && phrases[0] !== undefined) {
+    } else if (interval <= 1 && phrases[0] !== undefined && match === undefined) {
       const x = phrases[0];
       problems.push(`Payment ${n}: '${x.phrase}' means frequency "${x.frequency}" with interval ${x.interval}.`);
     }
