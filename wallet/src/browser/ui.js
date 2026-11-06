@@ -67,6 +67,7 @@ function action(label, fn, secondary = false) {
   // approving connects MetaMask first when needed, so there is no separate connect step
   node.disabled = sending;
   node.addEventListener('click', async () => {
+    notify('');
     try {
       await fn();
       await refresh();
@@ -75,6 +76,16 @@ function action(label, fn, secondary = false) {
     }
   });
   return node;
+}
+function every(seconds) {
+  for (const [unit, size] of [
+    ['week', 604800],
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+  ])
+    if (seconds % size === 0) return seconds === size ? `every ${unit}` : `every ${seconds / size} ${unit}s`;
+  return `every ${seconds} seconds`;
 }
 function eth(wei) {
   const s = BigInt(wei).toString().padStart(19, '0');
@@ -130,11 +141,14 @@ async function accountCheck(chainId) {
   if (actual !== chain) throw new Error('The wallet is on a different network.');
   return chain;
 }
+const PENDING = 'This batch is still pending in MetaMask. Its saved ID will be used for recovery.';
 async function track(batch, quiet = false) {
   try {
     const result = await provider.request({ method: 'wallet_getCallsStatus', params: [batch.walletId || batch.id] });
-    if (result.receipts?.length) await api('/browser/receipt', { id: batch.id, result });
-    else if (!quiet) notify('This batch is still pending in MetaMask. Its saved ID will be used for recovery.');
+    if (result.receipts?.length) {
+      await api('/browser/receipt', { id: batch.id, result });
+      if ($('notice').textContent === PENDING) notify('');
+    } else if (!quiet) notify(PENDING);
   } catch (e) {
     if (!quiet)
       notify(
@@ -400,13 +414,13 @@ function render() {
     card.append(
       el(
         'p',
-        `Fee per run: ${intent.fee.amount.value} ${intent.token}. Maximum ${intent.schedule.max_runs} runs, every ${intent.schedule.interval_seconds} seconds.`,
+        `Fee per run: ${intent.fee.amount.value} ${intent.token}. Maximum ${intent.schedule.max_runs} runs, ${every(intent.schedule.interval_seconds)}.`,
       ),
     );
     card.append(
       el(
         'p',
-        `Starts ${new Date(intent.schedule.start_at * 1000).toISOString()}. Total cap: ${intent.limits.max_total.value} ${intent.token}.`,
+        `Starts ${new Date(intent.schedule.start_at * 1000).toLocaleString()}. Total cap: ${intent.limits.max_total.value} ${intent.token}.`,
       ),
     );
     card.append(
@@ -417,7 +431,14 @@ function render() {
     );
     card.append(
       action('Review permission in MetaMask', () => signDelegation(request)),
-      action('Reject permission', () => api('/browser/reject-delegation', { id: request.id }), true),
+      action(
+        'Reject permission',
+        async () => {
+          await api('/browser/reject-delegation', { id: request.id });
+          notify('Recurring permission rejected. Nothing was registered.');
+        },
+        true,
+      ),
     );
     container.append(card);
   }
@@ -425,7 +446,8 @@ function render() {
   const pending = queued.filter((r) =>
     r.steps.some((s) => !['executed', 'failed'].includes(s.status) && s.error !== 'BROWSER_ACCOUNT_UPGRADE_REQUIRED'),
   );
-  const stopped = queued.filter((r) => r.steps.some((s) => s.status === 'failed'));
+  // Newest first; older stopped checks drop off instead of piling up.
+  const stopped = queued.filter((r) => r.steps.some((s) => s.status === 'failed')).slice(0, 3);
   $('requests').replaceChildren();
   if (pending.length)
     $('requests').append(el('p', `${pending.length} request(s) checking route, fee and simulation agreement…`));
@@ -474,8 +496,12 @@ function render() {
                       ? 'Waiting for verified, finalized delivery on the destination chain.'
                       : `Tracking: ${batch.tracking.replaceAll('_', ' ')}`
                   : batch.status === 'draft'
-                    ? 'Checked · ready for your review'
-                    : 'Waiting for MetaMask / source confirmation';
+                    ? batch.expired
+                      ? 'Quote expired · refresh to check again'
+                      : 'Checked · ready for your review'
+                    : batch.txHash
+                      ? 'Source confirmed. Waiting for source-chain finality.'
+                      : 'Waiting for MetaMask / source confirmation';
     card.append(el('p', label));
     if (intent?.intent_id === 'j' && intent.source_chain_id === 11155111 && !complete)
       card.append(
