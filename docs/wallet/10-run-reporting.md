@@ -31,6 +31,9 @@
 
 ## Where each field comes from
 
+For an autopay with a list of recipients, `autopay.amount` is the run's total paid to recipients, not counting the fee (C-1 in
+[ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md)).
+
 | Field | Source |
 | --- | --- |
 | `autopay.plan_id` | `Executed.intentId` |

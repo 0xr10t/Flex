@@ -1,8 +1,10 @@
 # Wallet implementation plan
 
-Date: 6 November 2026. Spec: `README_2.md` (v1.1), mainly §12.5, §14.2, §14.3 and Appendix A (§25).
+Date: 6 November 2026. Spec: `docs/spec/AGENT_SPEC_v1.1.md` (v1.1), mainly §12.5, §14.2, §14.3 and Appendix A (§25).
 
-Progress, decisions and findings are recorded in [IMPL_TRACKER.md](IMPL_TRACKER.md).
+Progress, decisions and findings are recorded in [IMPL_TRACKER.md](IMPL_TRACKER.md). The order of work is in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Changes from the agent design are in
+[ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md).
 
 This plan covers what the README calls the **execution layer**: the 7702 account, signing, one-time payments, bridges,
 autopays, cancels, the executor contract, the CRE workflow and the reports back to the agent.
@@ -13,8 +15,9 @@ Where sources disagree, the higher one wins. This follows README §0.
 
 | Rank | Source | Used for |
 | --- | --- | --- |
-| 1 | `README_2.md` | What must be built |
-| 2 | `DECISIONS_2.md`, `TESTED_2.md`, `TESTED.md` | Why, and how far each thing is proven |
+| 0 | [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md) | Changes to the spec, for what it covers |
+| 1 | `docs/spec/AGENT_SPEC_v1.1.md` | What must be built |
+| 2 | `docs/spec/DECISIONS.md`, `docs/spec/TEST_MAP.md`, `docs/spec/TESTED.md` | Why, and how far each thing is proven |
 | 3 | Code in `~/zkApi` (`final/code/`, `final/flex/lab.zip`, `work2/`, `ccipfork/`) | What already exists and how the tests really did it |
 
 Every task names its source. Three labels are used throughout:
@@ -24,7 +27,7 @@ Every task names its source. Three labels are used throughout:
 - **Needs decision (OQ-nn):** nothing settles it. It is listed in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) and **not**
   assumed in this plan. A recommendation there is only a recommendation.
 
-Test results are quoted from `TESTED*.md`. They were not re-run while writing this plan.
+Test results are quoted from `docs/spec/TESTED.md` and `docs/spec/TEST_MAP.md`. They were not re-run while writing this plan.
 
 ## What exists today
 
@@ -157,9 +160,9 @@ runs the money-moving ones against the real wallet.
 
 ## Not in this plan
 
-The README or `DECISIONS_2.md` lists these as out of scope or still open:
+The README or `docs/spec/DECISIONS.md` lists these as out of scope or still open:
 
-- Simulating a hand-off before the summary (`/v1/simulate`). `DECISIONS_2.md` "Still open" 1; "Flex has no simulate step".
+- Simulating a hand-off before the summary (`/v1/simulate`). `docs/spec/DECISIONS.md` "Still open" 1; "Flex has no simulate step".
 - Opening the executor to any keeper; session keys; monthly schedules; group autopays; moving ETH between chains.
 - Swaps, mainnet, tokens other than USDC and ETH (§1.5).
 - Wallet UI design. The README defines only UI ↔ agent (§14.1). See OQ-02.

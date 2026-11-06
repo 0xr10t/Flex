@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | W0-01 | Answer OQ-01, 02, 03, 04, 06 | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) | Answers recorded in that file |
 | W0-02 | Decide who does the agent v1.1 work (OQ-05) | §24, evidence in OQ-05 | Owner named; agent work tracked separately |
-| W0-03 | Run the CCIP fork suite: `cd ~/zkApi/ccipfork && bash run.sh` | A.6, `TESTED_2.md` §6 | 9 tests have results in `results/fork.txt` |
+| W0-03 | Run the CCIP fork suite: `cd ~/zkApi/ccipfork && bash run.sh` | A.6, `docs/spec/TEST_MAP.md` §6 | 9 tests have results in `results/fork.txt` |
 | W0-04 | Use fork test 4 to confirm or change `bridge_buffer_pct` | A.6, D16 | 1:1 confirmed, or a new value given to the agent config |
 | W0-05 | Request CRE deploy access: `cre account access` | `RESULTS.md`, A.6 | Access enabled, or a date from Chainlink |
 | W0-06 | Fund one testnet wallet with ETH and USDC on all three chains | A.6 "needs a funded testnet wallet" | Balances visible |
@@ -21,9 +21,15 @@
 ## Facts about the fork run
 
 - `results/fork.txt` holds only the first failure ("stack too deep" at `CcipLive.t.sol:225`). The test file changed after
-  that result was written, which matches `TESTED_2.md`: fix made, rerun pending.
+  that result was written, which matches `docs/spec/TEST_MAP.md`: fix made, rerun pending.
 - `forge`, `anvil`, `cre` and `bun` are installed on this machine.
 - `run.sh` reads `ALCHEMY_KEY` from `../work1/.env`. No funds are needed for forks.
+
+## Update after running it (6 Nov)
+
+The suite needs `--via-ir` to compile, and **forks cannot show USDC arriving**: these lanes burn and mint through Circle
+CCTP, and the simulator has no attestation to mint with. `bridge_buffer_pct` is therefore decided by the real send
+(W0-07), not by test 4. The table below is the original intent. See F-1 to F-8 in [IMPL_TRACKER.md](IMPL_TRACKER.md).
 
 ## What each fork test decides
 

@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | W1-01 | Bring in `intent.v2.ts`, `bridge.v2.ts`, `redeem.v2.ts` unchanged, with their schema tests | A.2 |
 | W1-02 | Validate incoming envelopes against §12.5 with Ajv 2020 strict | Spec: §12 |
-| W1-03 | Write the real translator from the §12.5 mapping table | Spec: §12.5; `TESTED_2.md` §8 "port the mapping" |
+| W1-03 | Write the real translator from the §12.5 mapping table | Spec: §12.5; `docs/spec/TEST_MAP.md` §8 "port the mapping" |
 | W1-04 | Run `PlanSchema` on every translated envelope | Spec: §12.5, D3 |
 | W1-05 | Port the 29 `flex.handoff.test.ts` cases against the real translator | Tested code |
 | W1-06 | Add the wallet's value-free rejection messages | Spec: §14.2 → `EXECUTION_REJECTED`, §15 "never contain amounts…" |
@@ -30,7 +30,7 @@
 | Envelope | Verified field |
 | --- | --- |
 | `i` | `IntentSchema`: `schedule.type "once"`, `execution.mode "immediate"`, `executor null`, `fee null`, `atomic true`, `recipients[] {to, amount}`, `limits.maxPerRun` = Σ amounts, `maxTotal null` |
-| `k` | `IntentSchema`: `schedule.type "recurring"`, `startAt` = ISO of `start_at`, `interval`, `maxRuns`, `lateWindow`, `endAt`; `execution.mode "automated"`, `executor "chainlink-cre"`, `fee {to, amount}`; one recipient; `limits {maxPerRun, maxTotal}` |
+| `k` | `IntentSchema`: `schedule.type "recurring"`, `startAt` = ISO of `start_at`, `interval`, `maxRuns`, `lateWindow`, `endAt`; `execution.mode "automated"`, `executor "chainlink-cre"`, `fee {to, amount}`; `recipients[] {to, amount}`, 1 to 50 (C-1); `limits {maxPerRun, maxTotal}` |
 | `j` | `BridgeSchema`: `receiver` = `wallet_address`, `asset` = USDC of source, `fee {payIn "native", max: fee_max_eth}`, `execution.mode "immediate"` |
 | `l` | `CancelSchema`: `autopayId`, `chainId`, `delegationHash` |
 | `token`/`token_address` | `asset {type "native", token null, decimals 18}` or `{type "erc20", token, decimals 6}` |
@@ -66,7 +66,9 @@ All from A.2, each from a test:
 - Bridge: USDC of source only, `receiver` = `from`, source ≠ destination, `fee.max` ≤ 0.01 ETH (J5, P).
 - Plan: bridges first, ≤ 3, one `from`, each bridge lands on the chain of every payment it funds (P).
 
-**Open:** the 8-step limit (OQ-12) and the 52-week mismatch (OQ-13).
+**Changed:** the plan limit is now 16 steps, in both schemas (C-3 in [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md)).
+
+**Open:** the 52-week mismatch (OQ-13).
 
 ## Tests
 

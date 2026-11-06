@@ -64,6 +64,13 @@ ccipSend(destSelector, {
 | Real transfer and arrival time | **Not tested**: W0-07 |
 | 7702 receiver on the live router | **Not tested**: fork test 8 |
 
+## Findings from the fork run (6 Nov)
+
+- **USDC burns and mints through Circle CCTP on the live lanes** (F-7, F-8). A.3's "plain token transfer" comes from the
+  local router. Forks cannot show arrival, so the real send (W0-07) is the only proof of 1:1 and of timing.
+- **Quote the exact message that will be sent** (F-3). `gasLimit` changes the fee, so quoting a different message underpays.
+- **The router keeps overpayment on the real router too** (fork test 7, F-5).
+
 ## Points to confirm while building
 
 - **Time between quote and mining.** The fee is quoted before signing. If it rises before the transaction lands, J4

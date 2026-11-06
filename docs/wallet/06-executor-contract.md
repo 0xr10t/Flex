@@ -67,6 +67,9 @@ report can only run a registered plan, in its window, with its exact batch.
 
 ## Test gaps to close
 
+**Do this first:** run a plan with 50 USDC recipients through `register`, a report and a run, then record gas and report size. The
+largest run on V3 so far has 2 recipients. C-1 in [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md) depends on this.
+
 | Case | Why |
 | --- | --- |
 | ETH autopay through V3 | §6.1 has `autopay.fee.ETH` and §12.5 allows it. V ran USDC only; native ran on the first executor only (R1) |

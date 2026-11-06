@@ -2,7 +2,7 @@
 
 **Goal:** agent and wallet working together, and every "not tested yet" item in A.6 closed with a result.
 
-**Spec:** A.6, §20.2, D1, `TESTED_2.md` §8. **Depends on:** all other parts, and the agent's v1.1 work (OQ-05).
+**Spec:** A.6, §20.2, D1, `docs/spec/TEST_MAP.md` §8. **Depends on:** all other parts, and the agent's v1.1 work (OQ-05).
 
 ## Stage 1: agent ↔ wallet on a local chain
 
@@ -25,7 +25,7 @@ A-02 and A-03 need a working cross-chain path, so they run in Stage 2.
 
 ## Stage 2: live testnets
 
-Each row is an A.6 item or a stand-in from `TESTED_2.md` §2 that must be replaced. Update `TESTED*.md` when each one finishes.
+Each row is an A.6 item or a stand-in from `docs/spec/TEST_MAP.md` §2 that must be replaced. Update `docs/spec/TESTED.md` and `docs/spec/TEST_MAP.md` when each one finishes.
 
 | Item | How | Replaces | Part |
 | --- | --- | --- | --- |
@@ -42,8 +42,8 @@ Each row is an A.6 item or a stand-in from `TESTED_2.md` §2 that must be replac
 
 ## Stage 3: full user journeys on testnets
 
-Real local model if available. `TESTED_2.md` notes the model has never been run, and C-514 (§20.3 evaluation) is an agent
-item that this plan does not cover.
+Use the real local model. `docs/spec/TEST_MAP.md` says it has never been run, but the agent's live evaluation has since run
+(`phase5/live`, merged in `19210d3`). That evaluation is an agent item that this plan does not cover.
 
 | Journey | Check on chain |
 | --- | --- |
@@ -84,6 +84,6 @@ From §16.2 and D1:
 ## Exit criteria
 
 - Every A.6 row has a recorded result or a named owner and reason.
-- `TESTED*.md` and the README's status notes reflect the results.
+- `docs/spec/TESTED.md` and `docs/spec/TEST_MAP.md` and the README's status notes reflect the results.
 - If `bridge_buffer_pct` changed, the config and §6.3 are updated.
 - Every OQ is closed or explicitly deferred.

@@ -7,7 +7,9 @@
 
 ## Flow
 
-1. **Executions.** `[transfer(recipient, amount), transfer(fee.to, fee.amount)]`: the payment, then the fee, in one batch.
+1. **Executions.** One `transfer` per entry in `recipients[]`, then `transfer(fee.to, fee.amount)`, in one batch. A list holds 1 to
+   50 people (C-1 in [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md)). 50 has not been run through `IntentExecutorV3` yet; Part 6
+   adds that test.
 2. **Delegation.** Delegator = user. Delegate = the chain's `IntentExecutorV3`. Authority = root.
    Caveats: `exactExecutionBatch(executions)`, `limitedCalls(max_runs)`, `timestamp(start_at, end_at)`.
    `salt` = hash of the intent. The user signs with EIP-712. Nothing moves.
@@ -75,7 +77,8 @@ wait can use up the time before `start_at`.
 
 ## Privacy
 
-A `k`'s recipient, amount, fee, run times and run count become public when `Registered` is emitted (§16.2). Names and
+A `k`'s recipients, amounts, fee, run times and run count become public when `Registered` is emitted (§16.2). For payroll, that
+publishes everyone's pay together. Names and
 timezones must not appear anywhere in this flow; the §12.5 envelope has no field for them.
 
 ## Tests

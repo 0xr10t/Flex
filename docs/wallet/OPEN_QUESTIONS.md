@@ -51,13 +51,13 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
   - **Zero** files in `src/` contain `ETH_NOT_BRIDGEABLE`, `BRIDGE_LANE_UNAVAILABLE`, `LIMIT_GROUP_SIZE`,
     `Q_AUTOPAY_MONTHLY`, `fee_collector`, `ccip_fee_max_eth`, `isChainSupported`, `plan_id`, `bridge_fee`, `autopay_fee`,
     `late_window_seconds` or `max_group_size`. Tests A-61 to A-64 do not exist.
-  - The binding answers in `SPEC_ANSWERS_FOLLOWUP.md` are also not in the code: the new `UNSUPPORTED_REQUEST` text is
-    absent. Some were written against v1, for example SQ-D-15 on `expires_at`, a field v1.1 removes. They need
-    re-checking against v1.1.
+  - Re-checked on `cae2664` after 60 more agent commits: all of the above still holds. Those commits did apply the answers
+    in `SPEC_ANSWERS_FOLLOWUP.md` (`contracts-v4`) and ran the live-model evaluation. Some of those answers were written
+    against v1, for example SQ-D-15 on `expires_at`, a field v1.1 removes, so they need re-checking against v1.1.
 - **Why it matters:** the agent is done for the spec it was built from, but today every `k` or `l` it sends would fail
   the §12.5 schema. Every other intent would too, because of `version` and the `i` shape.
 - **Impact:** blocks Part 11 only. The wallet can be built against §12.5 fixtures.
-- **Note:** §24 lists the code impact. `DECISIONS_2.md` D9 and D17 and `TESTED*.md` describe the Flex status from before
+- **Note:** §24 lists the code impact. `docs/spec/DECISIONS.md` D9 and D17 and `docs/spec/TESTED.md` and `docs/spec/TEST_MAP.md` describe the Flex status from before
   the lanes finished, so read those status lines as out of date.
 
 ### OQ-06: Where does the V-09c check run?
@@ -78,7 +78,8 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 - **Options:** poll the destination USDC balance through the wallet's RPC, or track the CCIP message. Balance polling
   needs no extra provider, but an unrelated incoming transfer could look like arrival. Tracking may need a third-party
   API, which has privacy implications.
-- **Needs first:** the real transfer in Part 0, to size the timeout.
+- **New (6 Nov):** the live USDC lanes burn and mint through Circle CCTP (F-7, F-8), so arrival may also depend on CCTP.
+- **Needs first:** the real transfer in Part 0, to size the timeout. Forks cannot answer this.
 - **Blocks:** Part 5.
 
 ### OQ-08: What happens to other steps when one fails?
@@ -130,7 +131,8 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 - **Conflict:** `PlanSchema` has `.max(8)` steps. §12.5 has no limit, and A.2 does not list the rule. A request with 3
   bridges and legs on 6 weekdays passes the envelope and S10, then fails at the wallet.
 - **Options:** raise the limit in `PlanSchema`, or add it to the agent's validation with its own message.
-- **Blocks:** Part 1.
+- **Provisional answer:** both. The limit is now 16 in the JSON schema and `PlanSchema`, and the agent should refuse larger plans
+  before the summary. See C-3 in [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md).
 
 ### OQ-13: 52 weeks at the wallet, up to 520 in agent settings
 
@@ -153,7 +155,7 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 
 ### OQ-15: Which RPC and which address config does the wallet use?
 
-- **Sources:** §6.1 config covers the agent. "Who runs the RPC and the ENS indexer" is `DECISIONS_2.md` open item 3. R1
+- **Sources:** §6.1 config covers the agent. "Who runs the RPC and the ENS indexer" is `docs/spec/DECISIONS.md` open item 3. R1
   used Alchemy; `run.sh` notes Alchemy apps often lack Base and Arbitrum and falls back to public endpoints.
 - **Needed fields regardless:** per chain RPC, executor address, deployment block, plus the A.1 and A.4 constants.
 - **Blocks:** Parts 2 and 10.
@@ -194,6 +196,25 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
   anything other than `0x63c0…E32B`.
 - **Blocks:** Part 3.
 
+## Payroll
+
+### OQ-20: How is the fee set for an autopay with a list of recipients?
+
+- **Sources:** `fee` is one amount per run (§12.5). C-1 lets a run hold 50 recipients. A run with 2 recipients and a fee took 271 k to
+  318 k gas (A.3). 100 USDC transfers took 3.91 M (B12), so 50 is roughly 2 M. This has not been measured on `IntentExecutorV3`.
+- **Gap:** a flat fee could leave the operator paying for most of a large run. Nothing says who covers that.
+- **Recommendation:** a base fee plus an amount per recipient, decided once the 50-recipient test gives a real gas number.
+- **Blocks:** Part 7, for lists above one person.
+
+### OQ-21: Where does the payroll list come from?
+
+- **Sources:** §9.6 pays group members one shared amount. §1.3 says values from untrusted content need explicit confirmation and "can
+  never fund an autopay".
+- **Options:** (a) typed in the chat; (b) a pasted or uploaded list, confirmed row by row; (c) a saved list in settings.
+- **Gap:** under the current rule, option (b) can't create recurring payroll unless confirming a row removes the untrusted tag.
+- **Recommendation:** (b) for one-time payroll. Decide the recurring rule separately, because it weakens a safety rule.
+- **Blocks:** the agent's R-2 work. The envelope doesn't change.
+
 ## Stale spec text: no decision needed
 
 §0 settles these. Recorded so nobody builds from the old text.
@@ -205,3 +226,4 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 | §24, first list | `autopay_prefund`, `prefund`, `first_occurrence` | The v1.1 list below it, which removes them |
 | `bridge.v2.ts` comments | Cancel looks up the delegation "in DB7"; "prefunded once" | §12.5 and A.3: read from `Registered`; no prefund |
 | `flex.handoff.test.ts` | `delegationHash: x.plan_id` (marked "stand-in") | §12.5: hash of the delegation from `Registered` |
+| §12.5, §10.2, §14.2 rule 5, §1.5 | `k` with one `recipient`; `l` with `recipient`; "group autopays" out of scope | [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md) |
