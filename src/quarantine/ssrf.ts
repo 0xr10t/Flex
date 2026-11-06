@@ -2,7 +2,8 @@
 // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, ::1, fc00::/7, fe80::/10)", §16.4 outbound limits.
 // 0.0.0.0/8 ("this host") and :: are also refused (spec-questions/B.md SQB-12). SQ-O-08 / F-13 (human, 2026-11-06)
 // add 100.64.0.0/10, 192.0.0.0/24, 198.18.0.0/15, 224.0.0.0/4, 255.255.255.255, ff00::/8, fec0::/10, and refuse
-// 64:ff9b::/96 (NAT64) and 2002::/16 (6to4) entirely. IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d)
+// 64:ff9b::/96 (NAT64) and 2002::/16 (6to4) entirely; 64:ff9b:1::/48 (local-use NAT64, RFC 8215) is refused entirely
+// too (R6-2). IPv4-mapped (::ffff:a.b.c.d), IPv4-compatible (::a.b.c.d) and IPv4-translated (::ffff:0:a.b.c.d, R6-2)
 // addresses are decoded and checked as their IPv4 address. The same check runs before the request and at connect
 // time (fetch.ts `pinnedLookup`).
 // Owner: Lane B.
@@ -28,6 +29,7 @@ blocked.addSubnet('fe80::', 10, 'ipv6');
 blocked.addSubnet('fec0::', 10, 'ipv6');
 blocked.addSubnet('ff00::', 8, 'ipv6');
 blocked.addSubnet('64:ff9b::', 96, 'ipv6');
+blocked.addSubnet('64:ff9b:1::', 48, 'ipv6');
 blocked.addSubnet('2002::', 16, 'ipv6');
 
 /** The eight 16-bit groups of a valid IPv6 literal (a trailing dotted quad becomes the last two groups). */
@@ -45,11 +47,16 @@ function ipv6Groups(ip: string): number[] {
   return [...h, ...Array<number>(8 - h.length - t.length).fill(0), ...t];
 }
 
-/** IPv4 address embedded as IPv4-mapped (::ffff:0:0/96) or IPv4-compatible (::/96), else null. */
+/**
+ * IPv4 address embedded as IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96) or IPv4-translated
+ * (::ffff:0:0:0/96, R6-2), else null.
+ */
 function embeddedV4(ip: string): string | null {
   const g = ipv6Groups(ip);
-  const zeros = g.slice(0, 5).every((x) => x === 0);
-  if (!zeros || (g[5] !== 0 && g[5] !== 0xffff)) return null;
+  if (!g.slice(0, 4).every((x) => x === 0)) return null;
+  const mappedOrCompatible = g[4] === 0 && (g[5] === 0 || g[5] === 0xffff);
+  const translated = g[4] === 0xffff && g[5] === 0;
+  if (!mappedOrCompatible && !translated) return null;
   const hi = g[6] ?? 0;
   const lo = g[7] ?? 0;
   return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;

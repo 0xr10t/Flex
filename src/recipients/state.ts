@@ -1,7 +1,7 @@
 // Implements: §9.7 (one question at a time, in payee order; attempt counting) — the resumable S6 progress kept in
 // `req.step_state.s6` (contracts step.ts: an AnswerHandler returning `continue` re-enters S6, which resumes here).
 
-import type { Address, AgentRequest, ChainId, GroupPh, Question } from '../contracts/types.js';
+import type { Address, AgentRequest, ChainId, GroupPh, Question, Span } from '../contracts/types.js';
 import type { ChainAddress } from './ens.js';
 import type { MemberLookup } from './group.js';
 
@@ -62,6 +62,16 @@ export interface S6State {
   index: number;
   /** Payees removed with "Don't pay this one". */
   removed: number;
+  /**
+   * The removed payees' texts and typed ranges (in masked_text_s3, null for a document payee): S7 masks them as
+   * `[person]` so a removed payee never reaches LLM #4 (§16.1, §8.8).
+   */
+  removed_spans: Array<{ text: string; span: Span | null }>;
+  /**
+   * Lower-cased addresses written to DB2 during this request (add_contact, §9.4 "Use new address"). For a document
+   * payee only DB2 rows that existed before the request count as saved contacts (§9.2 step 7, §16.1, R3-1).
+   */
+  added: string[];
   flow: Flow | null;
   /** The question currently asked and its text without any re-ask hint. */
   pending: { question: Question; base_text: string } | null;
@@ -72,8 +82,21 @@ export interface S6State {
 
 export function s6State(req: AgentRequest): S6State {
   const cur = req.step_state.s6 as S6State | undefined;
-  if (cur) return cur;
-  const fresh: S6State = { index: 0, removed: 0, flow: null, pending: null, groups: {}, done: false };
+  if (cur) {
+    cur.removed_spans ??= [];
+    cur.added ??= [];
+    return cur;
+  }
+  const fresh: S6State = {
+    index: 0,
+    removed: 0,
+    removed_spans: [],
+    added: [],
+    flow: null,
+    pending: null,
+    groups: {},
+    done: false,
+  };
   req.step_state.s6 = fresh;
   return fresh;
 }

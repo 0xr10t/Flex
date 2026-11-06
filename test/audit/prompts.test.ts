@@ -1,4 +1,5 @@
 // Phase 3 audit (§3.2): Q-LLM output never reaches a P-LLM prompt except as a placeholder (§16.1), and SQ-O-01.
+import { getAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { FixtureFile } from '../fakes/llm.js';
 import { Harness } from '../acceptance/harness.js';
@@ -198,5 +199,36 @@ describe('F-12: a name tagged both payee and mentioned asks Q_NAME_ROLE', () => 
     expect(r2.body.question?.code).toBe('Q_NO_PAYEE');
     expect(h.count('db3_address_placeholders')).toBe(0);
     await h.finish({ allowUnused: true });
+  });
+});
+
+describe('R3-3: the S7 sweep catches names whose lowercase form changes length', () => {
+  it('R3-3: a repeat of a tagged "İrem" does not reach the LLM #4 user message', async () => {
+    const TEXT = 'send 50 usdc to İrem. İrem is my flatmate';
+    const fixture: FixtureFile = {
+      calls: [
+        {
+          name: 'amounts',
+          match: 'İrem',
+          output: {
+            amounts: [{ phrase: '50 usdc', number: '50', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+          },
+        },
+        {
+          name: 'request_type',
+          match: 'İrem',
+          output: { request_type: 'actions', actions: ['i'], also_balance: false },
+        },
+        { name: 'spans', match: 'İrem', output: { spans: [{ text: 'İrem', kind: 'name', role: 'payee' }] } },
+        { name: 'payments', match: 'ACTION KINDS:', output: { payments: [PAYMENT] } },
+      ],
+    };
+    const h = new Harness('audit-r33', fixture, {});
+    h.addContact('İrem', getAddress(ADDR), [84532]);
+    await h.say(TEXT);
+    const four = h.llm.recorded.find((c) => c.name === 'payments')?.user ?? '';
+    await h.finish({ allowUnused: true });
+    expect(four).toMatch(/address_[0-9a-f]{8}/);
+    expect(four).not.toContain('İrem');
   });
 });

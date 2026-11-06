@@ -112,6 +112,21 @@ describe('SSRF address table (src/quarantine/ssrf.ts)', () => {
     expect(isBlockedIp(ip)).toBe(true);
   });
 
+  it.each([
+    '64:ff9b:1::a00:1',
+    '64:ff9b:1::1',
+    '64:ff9b:1:ffff::8.8.8.8',
+    '::ffff:0:7f00:1',
+    '::ffff:0:127.0.0.1',
+    '::ffff:0:a00:1',
+  ])('R6-2 refuses %s', (ip) => {
+    expect(isBlockedIp(ip)).toBe(true);
+  });
+
+  it('R6-2 allows the IPv4-translated form of a public address (::ffff:0:808:808)', () => {
+    expect(isBlockedIp('::ffff:0:808:808')).toBe(false);
+  });
+
   const boundaryAllowed = ['100.128.0.1', '100.63.255.255', '192.0.1.1', '198.20.0.1', '198.17.255.255', '::8.8.8.8'];
   it.each(boundaryAllowed)('SQ-O-08: boundary address %s just outside the new ranges is allowed', (ip) => {
     expect(isBlockedIp(ip)).toBe(false);
@@ -230,6 +245,31 @@ describe('URL fetcher (§8.2 step 3)', () => {
       let n = 0;
       const f = createContentFetcher(cfg, {
         resolve: async () => (++n === 1 ? PUBLIC : [{ address: addr, family: addr.includes(':') ? 6 : 4 }]),
+      });
+      expect(await f.fetchUrl('https://rebind.example.com/')).toEqual({ ok: false });
+      expect(n).toBe(2);
+    },
+  );
+
+  it.each(['64:ff9b:1::a00:1', '64:ff9b:1:ffff::8.8.8.8', '::ffff:0:7f00:1', '::ffff:0:a00:1'])(
+    'R6-2 pre-check: a host resolving to %s is refused without a request',
+    async (addr) => {
+      let gets = 0;
+      const f = createContentFetcher(cfg, {
+        resolve: async () => [{ address: addr, family: 6 }],
+        httpGet: async () => (gets++, ok()),
+      });
+      expect(await f.fetchUrl('https://h.example.com/')).toEqual({ ok: false });
+      expect(gets).toBe(0);
+    },
+  );
+
+  it.each(['64:ff9b:1::a00:1', '::ffff:0:7f00:1'])(
+    'R6-2 DNS rebinding: first lookup public, connect-time lookup %s -> refused',
+    async (addr) => {
+      let n = 0;
+      const f = createContentFetcher(cfg, {
+        resolve: async () => (++n === 1 ? PUBLIC : [{ address: addr, family: 6 }]),
       });
       expect(await f.fetchUrl('https://rebind.example.com/')).toEqual({ ok: false });
       expect(n).toBe(2);

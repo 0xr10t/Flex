@@ -355,6 +355,16 @@ describe('S3 token inference (§8.4 step 3 (a)–(e), C-093, C-311, C-416)', () 
 });
 
 describe('S3 fiat, precision, zero (C-093, C-094, C-310, C-312)', () => {
+  it('R2-3: a typed non-USD marker (₹) wins over an LLM that says fiat USD → Q_FIAT_OTHER', async () => {
+    const r = await run(
+      'send ₹500 to riya',
+      [{ phrase: '₹500', number: '500', fiat: 'USD' }],
+      [text('6'), chip('USDC')],
+    );
+    expect(r.questions[0]?.code).toBe('Q_FIAT_OTHER');
+    expect(r.ctx.req.amounts[0]).toMatchObject({ amount: '6' });
+  });
+
   it('fiat OTHER → Q_FIAT_OTHER; a number answer then Q_TOKEN for the token', async () => {
     const r = await run(
       'pay riya 5000 rupees',

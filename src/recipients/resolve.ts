@@ -107,6 +107,22 @@ function contactResolved(rows: Db2Row[]): Resolved {
   };
 }
 
+/**
+ * DB2 rows that count as saved contacts for this payee. For a document payee only rows that existed before this
+ * request count: a row add_contact wrote in this same request (another document payee confirmed a moment ago) does
+ * not make it trusted (§9.2 step 7 "stays flagged untrusted for this request only", §16.1, R3-1).
+ */
+function savedRows(ctx: StepContext, origin: Origin, rows: Db2Row[]): Db2Row[] {
+  if (!origin.untrusted) return rows;
+  const added = s6State(ctx.req).added;
+  return rows.filter((r) => !added.includes(r.address.toLowerCase()));
+}
+
+function noteAdded(st: S6State, address: Address): void {
+  const a = address.toLowerCase();
+  if (!st.added.includes(a)) st.added.push(a);
+}
+
 // ───────────────────────────── §9.4 ENS re-check ─────────────────────────────
 
 async function contactOutcome(ctx: StepContext, rows: Db2Row[]): Promise<Outcome> {
@@ -162,7 +178,7 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
 
 async function nameFlow(ctx: StepContext, text: string, origin: Origin): Promise<Outcome> {
   const key = nameKey(text);
-  const rows = ctx.repos.db2.findByNameKey(key);
+  const rows = savedRows(ctx, origin, ctx.repos.db2.findByNameKey(key));
   if (rows.length > 0) return contactOutcome(ctx, rows);
   if (text.includes('.')) return ensFlow(ctx, text, origin, 1);
   return ask({ t: 'who_is', origin }, whoIsQuestion(ctx, text));
@@ -191,7 +207,7 @@ async function ensFlow(ctx: StepContext, raw: string, origin: Origin, attempt: n
     return ask({ t: 'who_is', origin }, whoIsQuestion(ctx, origin.text, QUESTION_VARIANT.WHO_IS_INVALID_ENS()));
   }
   // §9.3 step 2.
-  const saved = ctx.repos.db2.findByEnsName(name);
+  const saved = savedRows(ctx, origin, ctx.repos.db2.findByEnsName(name));
   if (saved.length > 0) return contactOutcome(ctx, saved);
   // §9.3 step 3.
   const target = statedChain(ctx.req.scan, origin.clause_index);
@@ -286,8 +302,8 @@ function addressChecked(
 ): Outcome {
   // Step 3.
   if (isSelf(address, ctx.config.wallet.address)) return stop({ kind: 'error', code: 'SELF_PAYMENT' });
-  // Step 4.
-  const rows = ctx.repos.db2.findByAddress(address);
+  // Step 4 (a document payee: only contacts saved before this request, R3-1).
+  const rows = savedRows(ctx, origin, ctx.repos.db2.findByAddress(address));
   if (rows.length > 0) {
     const r = contactResolved(rows);
     if (ens !== null) {
@@ -541,13 +557,16 @@ function settle(ctx: StepContext, st: S6State, out: Outcome): StepResult | null 
       st.pending = null;
       return null;
     }
-    case 'removed':
-      // §9.2 step 5: "Don't pay this one" removes this payee from the request.
+    case 'removed': {
+      // §9.2 step 5: "Don't pay this one" removes this payee from the request; S7 masks its text as [person].
+      const removed = ctx.req.spans[st.index];
+      if (removed !== undefined) st.removed_spans.push({ text: removed.text, span: removed.span });
       ctx.req.spans.splice(st.index, 1);
       st.removed++;
       st.flow = null;
       st.pending = null;
       return null;
+    }
     case 'ask':
       st.flow = out.flow;
       st.pending = { question: out.question, base_text: out.base ?? out.question.text };
@@ -654,6 +673,22 @@ function answerCorrect(
   if (chip === null) return again(st, q);
   if (chip.id === CHIPS.DONT_PAY.id) return proceed(ctx, st, { k: 'removed' });
   if (chip.id === CHIPS.YES.id) {
+    // The address is already in DB2 because add_contact saved it earlier in this request (R3-1): no second name
+    // question or add_contact; a document payee stays untrusted for this request.
+    const existing = flow.address !== null ? ctx.repos.db2.findByAddress(flow.address) : [];
+    if (existing.length > 0) {
+      const c = contactResolved(existing);
+      return proceed(ctx, st, {
+        k: 'resolved',
+        r: {
+          ...c,
+          ens_name: flow.ens?.name ?? c.ens_name,
+          source: flow.origin.untrusted ? 'untrusted' : 'contact',
+          ens_chain_ids: flow.ens?.chain_ids ?? [],
+          pinned_chain_id: flow.ens?.pinned ?? null,
+        },
+      });
+    }
     const prefill = flow.ens !== null ? firstLabel(flow.ens.name) : flow.origin.suggested;
     return proceed(ctx, st, ask({ ...flow, stage: 'name' }, nameQuestion(prefill)));
   }
@@ -714,6 +749,7 @@ function answerName(
     if (added.reason === 'name_taken') return again(st, q, REASK_HINT.NAME_TAKEN());
     return { kind: 'error', code: 'INTERNAL_ERROR' };
   }
+  noteAdded(st, address);
   const rows = ctx.repos.db2.findByNameKey(nameKey(check.name));
   const source = flow.origin.untrusted ? 'untrusted' : flow.ens !== null ? 'ens' : 'user';
   return proceed(ctx, st, {
@@ -778,6 +814,7 @@ function answerEnsChanged(
     const upd = ctx.repos.db2.updateAddressForName(flow.name_key, flow.fresh);
     // spec-questions/C.md SQ-C-03: the new address is already saved under another name (§7.1 invariant).
     if (!upd.ok) return proceed(ctx, st, unsupported(ctx, 'ens_new_address_saved_under_other_name'));
+    noteAdded(st, flow.fresh);
   }
   const rows = ctx.repos.db2.findByNameKey(flow.name_key);
   return proceed(ctx, st, { k: 'resolved', r: contactResolved(rows) });
