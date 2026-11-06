@@ -1,66 +1,142 @@
 # SPEC_QUESTIONS
 
 Format: **SQ-nn** · section · question · what the code does now · status.
-Status: `ANSWERED (spec §x)` = settled by the Orchestrator from the spec text; `OPEN (human)` = needs the human;
-until answered, the affected code path follows the stated interim behaviour (or returns `UNSUPPORTED_REQUEST` where marked).
+Status: `ANSWERED (spec §x)` = settled by the Orchestrator from the spec text; `ANSWERED (human, 2026-11-06)` = answered by
+the human (see the section below); `NEEDS FOLLOW-UP` = answered, with a detail in `SPEC_ANSWERS_FOLLOWUP.md`.
+No entry is open any more.
 
-## Open — need the human
+## Answered by the human (2026-11-06)
+
+The human's answers (given in chat) are binding. README.md (the spec) is not edited; where an answer differs from
+the spec text, the difference is human-approved and recorded here. Items marked **NEEDS FOLLOW-UP** are answered, but
+the consistency check found an open detail: see `SPEC_ANSWERS_FOLLOWUP.md` (ids F-1 to F-13). Code changes are listed
+in that file under "Code changes required". Lanes: A platform, B S0–S5, C S6–S7, D S8–S12, O Orchestrator contracts.
+
+### Answered with a decision
+
+- **SQ-O-01** and **SQB-23** (masking repeated names): option (b). Every further occurrence of a tagged span's text in
+  the masked text is replaced by that span's placeholder (payee: its `address_…`/`group_…` placeholder; mentioned:
+  `[person]`). No new DB3 row, no extra payment. (code change needed: lane B, lane C; audit `it.fails` tests become
+  normal) **NEEDS FOLLOW-UP** (F-12).
+- **SQ-O-06** (secret scan of URLs): run the S1 secret scan over every `urls[]` entry and every redirect target before
+  fetching. A hit gives `SECRET_DETECTED`; nothing is fetched or stored. (code change needed: lane B)
+- **SQ-O-08** (extends **SQB-12**): the fetcher also refuses `100.64.0.0/10`, `64:ff9b::/96` and `2002::/16`
+  (decoding the embedded IPv4), `::7f00:1`-style IPv4-compatible addresses, `192.0.0.0/24`, `198.18.0.0/15`, multicast
+  (`224.0.0.0/4`, `ff00::/8`), `255.255.255.255` and `fec0::/10`. It keeps refusing `0.0.0.0/8` and `::`; SQB-12 is
+  confirmed. (code change needed: lane B) **NEEDS FOLLOW-UP** (F-13).
+- **SQ-O-09**: the `EXECUTION_REJECTED` text shows the execution layer's message cut to at most 200 characters, with
+  control characters removed. (code change needed: lane D)
+- **SQ-O-02** and **SQ-D-15**: the §10.6 rule wins over worked example E6: `expires_at` is 23:59:59 on the last
+  occurrence's date. (no code change)
+- **SQ-O-03** (A-57 vs P4): relax P4. A payment whose amount and recipient are in different clauses passes P4 when the
+  amount's clause contains no recipient placeholder of its own ("send 10 usdc and 0.01 eth to mihir" gives two payments
+  to Mihir). When the amount's clause has its own recipient ("10 to A and 20 to B"), P4 applies as written.
+  (code change needed: lane D; A-57 `it.fails` becomes normal) **NEEDS FOLLOW-UP** (F-11).
+- **SQ-O-05**: "send 10 usdc to me" gives `Q_NO_PAYEE`, the current behaviour; A-44's "me" variant keeps that
+  expectation. Human-approved difference from the A-44 row of README §20.2. (no code change)
+- **SQ-08**: `INSUFFICIENT_FUNDS` lists each chain's spendable amount: "You don't have enough USDC: you need 150, and can
+  use 140 across Base Sepolia (80) and Arbitrum Sepolia (60)." (code change needed: lane O catalog, lane D, lane B for
+  the relative-amount case) **NEEDS FOLLOW-UP** (F-10).
+- **SQ-A-06**: after the 3rd failed hand-off (request `FAILED`) the reply is "I couldn't reach your wallet after 3
+  tries. Nothing was sent. Please try again later." Failures 1 and 2 keep the §15 `EXECUTION_UNAVAILABLE` text.
+  (code change needed: lane D, lane O catalog) **NEEDS FOLLOW-UP** (F-9).
+- **SQ-01** (`UNSUPPORTED_REQUEST` text): the reply becomes "I can send USDC or ETH, bridge funds between chains, set up
+  or stop repeating payments, and show balances. I can't help with that part." It is used everywhere
+  `UNSUPPORTED_REQUEST` is shown; no short reason is generated. Human-approved difference from §8.5 rule 1 and §15. A
+  direct user request to bridge ("move my USDC from Base to Arbitrum") stays unsupported for now. **Planned feature:
+  direct user bridging, to be integrated via CCIP**; until then such a request gets this reply. (code change needed:
+  lane O catalog; the C-395 error-message test and the compliance row) **NEEDS FOLLOW-UP** (F-7).
+- **SQ-18**: "stop" while a summary waits for confirmation gives the cancel reply "Cancelled. Nothing was sent.", the
+  current behaviour. (no code change)
+- **SQ-15**: `Q_ENS_CHANGED` "Cancel" and `Q_GROUP_OVER_LIMIT` "No" give "Cancelled. Nothing was sent.", the current
+  behaviour. (no code change) The `Q_GROUP_OVER_LIMIT` part is touched by SQ-D-16: **NEEDS FOLLOW-UP** (F-2).
+- **SQ-D-16** (plus new behaviour: one-time limit overrides): when a request breaks any DB5 limit (V-13, V-14
+  `amount_per_payment`, V-15, autopay per-period, autopay duration; "all limits"), the agent asks a one-time "go ahead
+  this once?" question (Yes / No) instead of ending with the limit error. Example: "This is 120 USDC, over your
+  per-payment limit of 100. Go ahead this once?" Yes overrides for this request only; DB5 is never changed. No gives
+  `DISCARDED` and "Cancelled. Nothing was sent." The question is asked only when the amounts involved were typed by the
+  user; if any amount involved came from attached content (untrusted), the limit error stands, so the E9 invoice still
+  ends with `LIMIT_PER_TX` under the default limits. Human-approved difference from §11.3 ("the only question S10 can
+  ask is `Q_GROUP_OVER_LIMIT`"). Consistent with §1.3 ("DB5 can only be changed from settings, never from chat") because
+  DB5 stays unchanged, as with the existing group override. (code change needed: lane D, lane O catalog and question
+  codes) **NEEDS FOLLOW-UP** (F-1 to F-6).
+- **SQ-A-01**: the cancel endpoint with nothing active (or an already-ended request) replies "Cancelled. Nothing was
+  sent." (HTTP 200, state done), changes nothing, and is safe to repeat. (code change needed: lane A)
+  **NEEDS FOLLOW-UP** (F-8).
+- **SQ-11**: Node 25 is accepted. Closed. (no code change)
+
+### Answered by the default rule (item 17: accepted as currently implemented)
+
+Each "Now" / interim behaviour in the entry below becomes the answer. (no code change) for all of them, except where
+noted by the decisions above.
+
+- **SQ-03** and **SQ-C-09** (UI fields): the human did not choose, so item 17 applies: keep the `prefill` field name;
+  the UI pre-ticks every enabled chip of `Q_GROUP_MEMBERS`.
+- **SQ-04, SQ-05, SQ-06** (also settles **SQB-01**), **SQ-07, SQ-09, SQ-22** (also settles **SQB-02**).
+- **SQ-A-02, SQ-A-03, SQ-A-04, SQ-A-05, SQ-A-07, SQ-A-08**.
+- **SQB-03, SQB-06, SQB-07, SQB-08, SQB-14, SQB-17, SQB-24, SQB-25, SQB-26, SQB-27**.
+- **SQ-C-01, SQ-C-02, SQ-C-03, SQ-C-10, SQ-C-11**.
+- **SQ-D-01 to SQ-D-14, SQ-D-17, SQ-D-18**.
+- **SQ-O-07**.
+
+Totals: 64 ids answered; 10 of them also carry a follow-up (SQ-O-01, SQB-23, SQ-O-03, SQ-O-08, SQ-08, SQ-A-06, SQ-01,
+SQ-A-01, SQ-D-16, SQ-15).
+
+## Previously open — now answered (original entries)
 
 **SQ-01** · §8.5 rule 1 vs §15 `UNSUPPORTED_REQUEST`
 §8.5 says the reply is "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't do: <short reason>". §15 says "… I can't help with that part." By §0 precedence §8 wins, but nothing produces a `<short reason>` (the LLM #2 schema has no reason field and code has no list of reasons).
 *Now:* §15 wording everywhere (`ERROR_MESSAGE.UNSUPPORTED_REQUEST`).
-*Status:* OPEN (human). Options: (a) use §15 wording always; (b) code-generated reason from a fixed list (which?).
+*Status:* ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-7). See the section "Answered by the human".
 
 **SQ-03** · §9.2 step 5 / §13.4 `Q_NAME_FOR_ADDRESS` "text, prefilled"
 The §13.4 question JSON has no field for a prefilled value.
 *Now:* contracts add optional `prefill` to `Question` (omitted when none). The UI team must read it.
-*Status:* OPEN (human) — confirm the field name `prefill`.
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-04** · §9.2 steps 1, 2, 6 and §8.4 step 3 — re-ask wording
 The spec quotes hint sentences for invalid answers ("That address has a typo: its checksum doesn't match.", "That's not a usable address.", "That name is already saved…", and "amount must be more than 0") but not how they combine with the question.
 *Now:* re-ask text = hint + one space + original question text (`withHint`), hint text verbatim (including the lower-case "amount must be more than 0").
-*Status:* OPEN (human).
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-05** · §9.6 step 9 `Q_GROUP_MEMBERS` total
 "The question text shows the count and the total (amount × selected) when the amount is known", but §13.4 text has no slot for the total.
 *Now:* text without the total.
-*Status:* OPEN (human) — give the wording with the total.
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-06** · §9.2 step 5 / §9.3 step 7 `Q_ADDRESS_CORRECT`
 (a) "the full address and its first and last 4 hex characters emphasised": the API is plain text — no emphasis format is defined. (b) ENS wording "riya.eth → 0x3fA9…c21E on Base Sepolia. Correct?" names one chain; when the record matched several chains, how are they listed?
 *Now:* (a) plain full address, no emphasis markup; (b) chain names joined with ", " and a final " and ".
-*Status:* OPEN (human).
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-07** · §9.6 step 7 duplicate-address note
 "Duplicate addresses → keep the alphabetically first subname, note the others" — no note wording given (`Skipped {name}: …`).
 *Now:* the duplicate is excluded as specified, but no note is added until the wording is given.
-*Status:* OPEN (human) — give the reason wording.
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-08** · §10.4 vs §15 `INSUFFICIENT_FUNDS`
 §10.4: "message lists per chain: spendable vs needed, for the token". §15 template: "You don't have enough {token}: you need {need}, and can use {have} across {chains}." A-30 expects "per-chain numbers".
 *Now:* §15 template; `{have}`/`{chains}` filled with totals and chain names.
-*Status:* OPEN (human) — give the per-chain wording (or confirm §15 with `{chains}` = "Base Sepolia (30), Arbitrum Sepolia (60)" style).
+*Status:* ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-10). See the section "Answered by the human".
 
 **SQ-09** · §13.4 mixed inputs
 `Q_WHO_IS` = chips + free input (address or ENS); `Q_AMOUNT_MISSING` = number (+ token chips if unknown); `Q_FIAT_OTHER` = number + token chips. The question JSON has one `input` value, and §13.4 answer parsing says free text to a chips question is invalid unless it equals a chip label.
 *Now:* `Q_WHO_IS` uses `input: "chips"`; free text that is not a chip label is processed by §9.1 step 4 (address → §9.2, ENS → §9.3, else re-ask) — §9.1 is the more specific rule. `Q_AMOUNT_MISSING` / `Q_FIAT_OTHER` use `input: "number"`; when the token is unknown the token is asked afterwards with `Q_TOKEN`.
-*Status:* OPEN (human) — confirm, or define a combined input kind.
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-11** · §5 Node.js version
 Spec: Node.js 22 LTS. This machine has Node 23.11.1. `package.json` declares `engines.node >= 22`.
-*Status:* OPEN (human) — install Node 22 (nvm/fnm) for the final clean-clone run, or accept 23.
-*Update 2026-11-05:* the cloud build environment runs Node 22.23.4; the clean-clone checks run there. Proposed resolution: closed by using Node 22.
-*Update 2026-11-06:* this machine runs Node 25.9.0; the human declined installing Node 22 here. All suites pass on 25.9.0. Still open: confirm 25 is acceptable, or run the final clean-clone check on Node 22.
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 **SQ-15** · §9.4 `Q_ENS_CHANGED` "Cancel" and §11.3 `Q_GROUP_OVER_LIMIT` "No" → `DISCARDED`
 No reply text is given for these discards.
 *Now:* reply `Cancelled. Nothing was sent.` (§13.3 "User cancelled").
-*Status:* OPEN (human).
+*Status:* ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-2). See the section "Answered by the human".
 
 **SQ-18** · §17.3 "stop" while awaiting confirmation
 "stop" is in both the cancel list (→ `DISCARDED`, reply `CANCELLED`) and the confirmation "no" list (→ `DISCARDED`, reply "OK, I've dropped that…"). Same state, different reply.
 *Now:* the cancel row (listed first) wins: reply `Cancelled. Nothing was sent.`
-*Status:* OPEN (human).
+*Status:* ANSWERED (human, 2026-11-06). See the section "Answered by the human".
 
 ## Answered from the spec
 
@@ -96,7 +172,7 @@ No reply text is given for these discards.
 
 **SQ-22** · §8.2 steps 4–5, §15 `DOCUMENT_TOO_LARGE`, §13.1 note "Couldn't read anything usable from {item}" — the `{item}` slot has no wording (raised by Lane B as SQB-02; CCR B-1).
 *Now (contracts-v3 `ITEM_LABEL`):* attachment → its filename; link → `link N` (as in `[link N]` / `URL_FETCH_FAILED`); pasted block → `pasted text N`.
-*Status:* OPEN (human) — confirm the labels, especially `pasted text N`.
+*Status:* ANSWERED (human, 2026-11-06): accepted as implemented (see the section "Answered by the human").
 
 
 ## Lane questions — Orchestrator triage (2026-11-06)
@@ -128,38 +204,38 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
 - **SQ-C-04** → unreachable: §8.1 step 5 stops the request when every allowed chain is unavailable and §14.1 rejects an
   empty `allowed_chain_ids`. The branch stays as a guard.
 
-### Open — need the human (interim behaviour applies)
+### Previously open — now answered by the human (2026-11-06)
 
-- **SQ-A-01** `/cancel` with no active request → now 200 + `UNSUPPORTED_REQUEST`.
-- **SQ-A-02** settings validation details (precision, `eth_gas_reserve` keys, duplicates, string pct, unknown keys) → now strict.
-- **SQ-A-03** `messages` while `HANDOFF_FAILED` → now cancel words cancel; other text → `UNSUPPORTED_REQUEST`.
-- **SQB-03** which "chain-like words" raise `UNSUPPORTED_CHAIN` → now only `polygon`, `solana`.
-- **SQB-06** LLM #1 `number` not matching `^\d+(\.\d+)?$` → now `UNSUPPORTED_REQUEST`.
-- **SQB-07** inflected cancel words ("cancelled", "stopping") → now counted.
-- **SQB-08** unreadable PDF → now `UNSUPPORTED_REQUEST`.
-- **SQB-12** also refuse `0.0.0.0/8` and `::` in the SSRF check → now refused.
-- **SQB-14** model returned only `l` with no cancel word → now `UNSUPPORTED_REQUEST`.
-- **SQB-17** a `QItem` with both address and ENS name → now the address is used.
-- **SQ-C-01** ENS RPC failure for a payee → now `UNSUPPORTED_REQUEST`.
-- **SQ-C-02** re-check returns two different new addresses → now `UNSUPPORTED_REQUEST`.
-- **SQ-C-03** "Use new address" when it is saved under another name → now `UNSUPPORTED_REQUEST`.
-- **SQ-C-09** `Q_GROUP_MEMBERS` preselection has no chip flag → now "all enabled chips are preselected" (UI rule).
-- **SQ-C-10** §9 flowchart vs §9.4: which resolved contacts get the ENS re-check? → now a `Q_WHO_IS` contact chip does; an address already in DB2 does not.
-- **SQ-C-11** viem returns null on `HttpError`/`ResolverError` reverts, so a gateway failure reads as "no address" → now the user is asked (no wrong address can result).
-- **SQ-O-01** (raised by the Orchestrator from Lane C's report) §8.8 / §16.1 / §16.2 / §7.3 rule 5: §8.8 masks spans only, but §16.1 says LLM #4 sees recipients masked. If S5 tags one occurrence of a name and the same name appears again untagged, the name reaches LLM #4. Tagging every occurrence as a payee would mint extra placeholders that P3 then requires to be paid. → now spans only. Options: (a) keep; (b) replace further occurrences of a tagged text by that span's placeholder, with no new DB3 row; (c) replace them by `[person]`.
-- **SQ-A-04** how an `intent_result` finds the DB7 row → now by `autopay.autopay_id`; a failed `l` leaves the row unchanged; a `k` report with no `autopay` updates DB6 only.
-- **SQ-A-05** closing a leftover session id while another session is open → now 404, clears nothing.
-- **SQ-A-06** after the third failed hand-off the request is `FAILED`, but the only text says "Confirm again to retry" and confirm returns 409 → now the §15 text unchanged. Wording needed.
-- **SQ-A-07** an existing token file not at mode 0600 → now refused at startup, including 0400.
-- **SQ-A-08** base64 attachments → now strict RFC 4648, no whitespace; non-zero trailing bits accepted.
-- **SQ-D-15 / SQ-O-02** §10.6 rule 8 vs §19 E6 `expires_at`: rule 8 gives 23:59:59 on the last occurrence's date (E6: Fri 2026-12-25 → `2026-12-25T18:29:59Z`); E6 prints `2026-12-31T18:29:59Z` (the `on_date`). → now §10.6 rule 8.
-- **SQ-D-16** §19 E9's 120 USDC is over the default `per_tx_max` 100 (§6.3), so E9 as written ends in `LIMIT_PER_TX`. → now V-13 applies; A-15 raises the limit in its setup.
-- **SQ-O-03** §8.9 P4 vs §20.2 A-57 ("10 usdc and 0.01 eth to mihir"): the clause split at "and" puts the 10 USDC in a different clause from Mihir, whose clause holds the 0.01 ETH amount, so P4 rejects the pairing; A-57 expects two `i` intents. By §0 precedence §8 wins. → now P4 as written.
-- Lane questions added since the last batch (interim behaviour applies; full text in each lane's `spec-questions/` file, merged into `agentic_layer`): SQB-23…27 (B), SQ-D-01…18 (D).
-- **SQ-O-05** §8.6 rule 2 vs §20.2 A-44 ("send 10 usdc to me"): rule 2 drops "me" as a span, so the request reaches `Q_NO_PAYEE`; A-44 expects `SELF_PAYMENT`. By §0 precedence §8 wins. → now `Q_NO_PAYEE` (A-44's own-address variant does give `SELF_PAYMENT`).
-- **SQ-O-04** (raised by the Acceptance Tester) → answered by §0: "All examples use … illustrative (non-checksummed) addresses." Tests use `getAddress()` of the examples; the code checksums (§7, §12.5).
-- **SQ-O-06** (audit V1) §8.2 step 2 scans typed text, pasted blocks and attachments, but not `urls[]` entries. A raw key put in a `urls[]` query string (`https://host/?k=<64 hex>`) is sent out in the fetch; the same URL typed in the text is blocked. → now the spec's literal list (not scanned). Recommended: also scan `urls[]` and redirect targets before step 3.
-- **SQ-O-01 update** (audit V2): confirmed with tests: "Send 50 usdc to Aradhya. Aradhya is my flatmate…" leaves two "Aradhya" in the LLM #4 prompt; a repeated mentioned name likewise. Recommended: option (b).
-- **SQ-O-07** (audit O2) §16.4 "DB2 is written only by `add_contact`" vs §9.4 "Use new address (update the address on all of this name's DB2 rows)". → now §9.4's update runs. Spec wording question only.
-- **SQ-O-08** (audit O3) SSRF: besides the §8.2 ranges, should the fetcher refuse `100.64.0.0/10`, `64:ff9b::/96`, `2002::/16` (these two can wrap 127.0.0.1), `192.0.0.0/24`, `198.18.0.0/15`, multicast and `fec0::/10`? → now only the spec's ranges (plus `0.0.0.0/8`, `::`, SQB-12).
-- **SQ-O-09** (audit O5) the `EXECUTION_REJECTED` reply passes the execution layer's 4xx `message` unchanged (§8.14 step 5), with no length cap. → now unchanged. Option: cap at e.g. 200 characters and strip control characters.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-8) · **SQ-A-01** `/cancel` with no active request → now 200 + `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQ-A-02** settings validation details (precision, `eth_gas_reserve` keys, duplicates, string pct, unknown keys) → now strict.
+- ANSWERED (human, 2026-11-06) · **SQ-A-03** `messages` while `HANDOFF_FAILED` → now cancel words cancel; other text → `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQB-03** which "chain-like words" raise `UNSUPPORTED_CHAIN` → now only `polygon`, `solana`.
+- ANSWERED (human, 2026-11-06) · **SQB-06** LLM #1 `number` not matching `^\d+(\.\d+)?$` → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQB-07** inflected cancel words ("cancelled", "stopping") → now counted.
+- ANSWERED (human, 2026-11-06) · **SQB-08** unreadable PDF → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQB-12** also refuse `0.0.0.0/8` and `::` in the SSRF check → now refused.
+- ANSWERED (human, 2026-11-06) · **SQB-14** model returned only `l` with no cancel word → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQB-17** a `QItem` with both address and ENS name → now the address is used.
+- ANSWERED (human, 2026-11-06) · **SQ-C-01** ENS RPC failure for a payee → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQ-C-02** re-check returns two different new addresses → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQ-C-03** "Use new address" when it is saved under another name → now `UNSUPPORTED_REQUEST`.
+- ANSWERED (human, 2026-11-06) · **SQ-C-09** `Q_GROUP_MEMBERS` preselection has no chip flag → now "all enabled chips are preselected" (UI rule).
+- ANSWERED (human, 2026-11-06) · **SQ-C-10** §9 flowchart vs §9.4: which resolved contacts get the ENS re-check? → now a `Q_WHO_IS` contact chip does; an address already in DB2 does not.
+- ANSWERED (human, 2026-11-06) · **SQ-C-11** viem returns null on `HttpError`/`ResolverError` reverts, so a gateway failure reads as "no address" → now the user is asked (no wrong address can result).
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-12) · **SQ-O-01** (raised by the Orchestrator from Lane C's report) §8.8 / §16.1 / §16.2 / §7.3 rule 5: §8.8 masks spans only, but §16.1 says LLM #4 sees recipients masked. If S5 tags one occurrence of a name and the same name appears again untagged, the name reaches LLM #4. Tagging every occurrence as a payee would mint extra placeholders that P3 then requires to be paid. → now spans only. Options: (a) keep; (b) replace further occurrences of a tagged text by that span's placeholder, with no new DB3 row; (c) replace them by `[person]`.
+- ANSWERED (human, 2026-11-06) · **SQ-A-04** how an `intent_result` finds the DB7 row → now by `autopay.autopay_id`; a failed `l` leaves the row unchanged; a `k` report with no `autopay` updates DB6 only.
+- ANSWERED (human, 2026-11-06) · **SQ-A-05** closing a leftover session id while another session is open → now 404, clears nothing.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-9) · **SQ-A-06** after the third failed hand-off the request is `FAILED`, but the only text says "Confirm again to retry" and confirm returns 409 → now the §15 text unchanged. Wording needed.
+- ANSWERED (human, 2026-11-06) · **SQ-A-07** an existing token file not at mode 0600 → now refused at startup, including 0400.
+- ANSWERED (human, 2026-11-06) · **SQ-A-08** base64 attachments → now strict RFC 4648, no whitespace; non-zero trailing bits accepted.
+- ANSWERED (human, 2026-11-06) · **SQ-D-15 / SQ-O-02** §10.6 rule 8 vs §19 E6 `expires_at`: rule 8 gives 23:59:59 on the last occurrence's date (E6: Fri 2026-12-25 → `2026-12-25T18:29:59Z`); E6 prints `2026-12-31T18:29:59Z` (the `on_date`). → now §10.6 rule 8.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-1 to F-6) · **SQ-D-16** §19 E9's 120 USDC is over the default `per_tx_max` 100 (§6.3), so E9 as written ends in `LIMIT_PER_TX`. → now V-13 applies; A-15 raises the limit in its setup.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-11) · **SQ-O-03** §8.9 P4 vs §20.2 A-57 ("10 usdc and 0.01 eth to mihir"): the clause split at "and" puts the 10 USDC in a different clause from Mihir, whose clause holds the 0.01 ETH amount, so P4 rejects the pairing; A-57 expects two `i` intents. By §0 precedence §8 wins. → now P4 as written.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (SQB-23: F-12) · Lane questions added since the last batch (interim behaviour applies; full text in each lane's `spec-questions/` file, merged into `agentic_layer`): SQB-23…27 (B), SQ-D-01…18 (D).
+- ANSWERED (human, 2026-11-06) · **SQ-O-05** §8.6 rule 2 vs §20.2 A-44 ("send 10 usdc to me"): rule 2 drops "me" as a span, so the request reaches `Q_NO_PAYEE`; A-44 expects `SELF_PAYMENT`. By §0 precedence §8 wins. → now `Q_NO_PAYEE` (A-44's own-address variant does give `SELF_PAYMENT`).
+- ANSWERED (spec §0) · **SQ-O-04** (raised by the Acceptance Tester) → answered by §0: "All examples use … illustrative (non-checksummed) addresses." Tests use `getAddress()` of the examples; the code checksums (§7, §12.5).
+- ANSWERED (human, 2026-11-06) · **SQ-O-06** (audit V1) §8.2 step 2 scans typed text, pasted blocks and attachments, but not `urls[]` entries. A raw key put in a `urls[]` query string (`https://host/?k=<64 hex>`) is sent out in the fetch; the same URL typed in the text is blocked. → now the spec's literal list (not scanned). Recommended: also scan `urls[]` and redirect targets before step 3.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-12) · **SQ-O-01 update** (audit V2): confirmed with tests: "Send 50 usdc to Aradhya. Aradhya is my flatmate…" leaves two "Aradhya" in the LLM #4 prompt; a repeated mentioned name likewise. Recommended: option (b).
+- ANSWERED (human, 2026-11-06) · **SQ-O-07** (audit O2) §16.4 "DB2 is written only by `add_contact`" vs §9.4 "Use new address (update the address on all of this name's DB2 rows)". → now §9.4's update runs. Spec wording question only.
+- ANSWERED (human, 2026-11-06) — NEEDS FOLLOW-UP (F-13) · **SQ-O-08** (audit O3) SSRF: besides the §8.2 ranges, should the fetcher refuse `100.64.0.0/10`, `64:ff9b::/96`, `2002::/16` (these two can wrap 127.0.0.1), `192.0.0.0/24`, `198.18.0.0/15`, multicast and `fec0::/10`? → now only the spec's ranges (plus `0.0.0.0/8`, `::`, SQB-12).
+- ANSWERED (human, 2026-11-06) · **SQ-O-09** (audit O5) the `EXECUTION_REJECTED` reply passes the execution layer's 4xx `message` unchanged (§8.14 step 5), with no length cap. → now unchanged. Option: cap at e.g. 200 characters and strip control characters.
