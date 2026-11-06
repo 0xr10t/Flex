@@ -9,3 +9,5 @@ src/db/schema.sql
 *.md
 .claude
 test_frontend
+# Preserve generated live-run evidence byte-for-byte for its recorded hashes.
+test/live/results/
