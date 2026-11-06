@@ -80,12 +80,6 @@ if (missing.length) {
   cfg.llm.ollama_url = env.OLLAMA_URL || cfg.llm.ollama_url;
   cfg.llm.model = env.OLLAMA_MODEL || cfg.llm.model;
   cfg.ens.indexer_url = env.ENS_INDEXER_URL || cfg.ens.indexer_url;
-  cfg.autopay = {
-    late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || 3600),
-    fee: { USDC: env.AUTOPAY_FEE_USDC || '0.05', ETH: env.AUTOPAY_FEE_ETH || '0.00002' },
-    fee_collector: env.AUTOPAY_FEE_COLLECTOR || env.FLEX_WALLET_ADDRESS,
-  };
-  cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || '0.003' };
   validateConfig(cfg);
   const deploymentsPath = resolve(local, 'deployments.json');
   const deployments = existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {};
@@ -98,7 +92,8 @@ if (missing.length) {
     },
     db: { path: resolve(local, 'wallet.db') },
     approval: { mode: 'metamask', wallet_address: env.FLEX_WALLET_ADDRESS },
-    bridge: { ccip_fee_max_eth: cfg.bridge.ccip_fee_max_eth },
+    network: { socks_proxy: cfg.network.socks_proxy },
+    bridge: { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || '0.003' },
     chains: cfg.chains.map((chain) => ({
       chain_id: chain.chain_id,
       rpc_url: chain.rpc_url,
