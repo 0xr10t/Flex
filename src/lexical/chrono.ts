@@ -101,7 +101,9 @@ export function chronoSpans(text: string, now: DateTime): RawChronoSpan[] {
   for (const r of results) {
     const start = r.index;
     const end = r.index + r.text.length;
-    const before = /([A-Za-z]+)\W*$/.exec(text.slice(0, start))?.[1]?.toLowerCase() ?? null;
+    const prefix = text.slice(0, start);
+    const startMarker = /\b(starting|from|beginning)(?:\s+on)?\s*$/i.exec(prefix)?.[1];
+    const before = startMarker?.toLowerCase() ?? /([A-Za-z]+)\W*$/.exec(prefix)?.[1]?.toLowerCase() ?? null;
     const kind = kindOf(r.text, before, r.start);
     // Swap the original components back, retaining their inferred fields (including a shared timezone).
     let first = r.start;

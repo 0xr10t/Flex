@@ -102,7 +102,8 @@ function digitsCore(s: string): string | null {
 
 function parseDigits(core: string): bigint | null {
   // number, optional space, optional suffix
-  const m = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(core);
+  const numeric = core.replace(/^\.(?=\d)/, '0.');
+  const m = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(numeric);
   if (!m) return null;
   const plain = digitsCore(m[1] ?? '');
   if (plain === null) return null;
