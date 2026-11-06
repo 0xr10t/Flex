@@ -62,6 +62,14 @@ import {
   type ConversationTurn,
 } from './conversation.js';
 import { canCorrectPendingRecipient, correctPendingRecipient } from '../recipients/resolve.js';
+import {
+  ChatInputTooLong,
+  classifyChatMessage,
+  generateChatReply,
+  rememberChat,
+  type ChatContext,
+  type ChatTurn,
+} from './general-chat.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -106,12 +114,16 @@ interface Active {
   failedPayment?: FailedPaymentContext;
   /** SQ-CV-01: bounded, guarded user replies for the current draft only; cleared with its in-memory state. */
   conversation?: ConversationTurn[];
+  /** The native error is retained for chat context and the hand-off retry UI; it is never model-authored. */
+  lastError?: AgentResponse['error'];
 }
 
 interface OpenSession {
   session_id: SessionId;
   timezone: string;
   active: Active | null;
+  /** Opt-in generic exchanges only, bounded by rememberChat; never persisted or used as wallet answers. */
+  chatHistory: ChatTurn[];
   /** §14.1: one call per session at a time. */
   busy: boolean;
   /** The call in progress (R1-F1: closing the session waits for it). */
@@ -171,7 +183,16 @@ export class SessionManager {
         const session_id = this.newId('session') as SessionId;
         if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
         this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
-        this.open = { session_id, timezone, active: null, busy: false, inflight: null, closing: false, closed: false };
+        this.open = {
+          session_id,
+          timezone,
+          active: null,
+          chatHistory: [],
+          busy: false,
+          inflight: null,
+          closing: false,
+          closed: false,
+        };
         this.deps.log.info({ event: 'session_opened', session_id });
         return { session_id };
       }
@@ -222,6 +243,7 @@ export class SessionManager {
     const a = s.active;
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
+    s.chatHistory = [];
     this.deps.repos.clearSessionStores();
     this.deps.log.info({ event: 'session_closed', session_id: s.session_id });
   }
@@ -231,6 +253,10 @@ export class SessionManager {
   /** POST /v1/sessions/{id}/messages: a new request, or an answer/confirmation per §17.3. */
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
+      if (this.deps.config.chat?.enabled) {
+        const chat = await this.generalChat(s, input);
+        if (chat !== null) return ok(chat);
+      }
       const a = s.active;
       if (a?.failedPayment !== undefined && isCancelText(input.text)) {
         delete a.failedPayment;
@@ -283,6 +309,12 @@ export class SessionManager {
             : { kind: 'selected', selected_ids: [...body.selected_ids] };
       // §13.4 "Every question also accepts 'cancel'" (§17.3 cancel texts).
       if (answer.kind === 'text' && isCancelText(answer.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+      if (this.deps.config.chat?.enabled && answer.kind === 'text') {
+        const input: MessageInput = { text: answer.text, pasted_blocks: [], attachments: [], urls: [] };
+        const chat = await this.generalChat(s, input);
+        if (chat !== null) return ok(chat);
+        return ok(await this.answer(s, a, answer, input));
+      }
       return ok(await this.answer(s, a, answer));
     });
   }
@@ -346,6 +378,87 @@ export class SessionManager {
   /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
   private noopReply(s: OpenSession, request_id: string, text: string): AgentResponse {
     return { session_id: s.session_id, request_id, state: 'done', messages: [{ type: 'text', text }] };
+  }
+
+  /**
+   * Opt-in explanations are separate from payment interpretation. Only guarded, plain typed text is eligible;
+   * a wallet classification returns the entire original input to the unchanged native handlers.
+   */
+  private async generalChat(s: OpenSession, input: MessageInput): Promise<AgentResponse | null> {
+    const settings = this.deps.config.chat;
+    if (!settings?.enabled) return null;
+    const { text } = input;
+    const links = extractUrls(text, input.urls).links;
+    // Do not send even an intent classifier secret material or raw URLs. S1 / answer() owns their rejection.
+    if (detectSecret(text) !== null || links.some((link) => urlHasSecret(link.url))) return null;
+    if (input.attachments.length || input.pasted_blocks.length || input.urls.length || links.length) return null;
+    if (!text.trim()) return null;
+    // Native confirmation words and literal field answers must never depend on model classification.
+    if (classifyConfirmationText(text) !== 'other') return null;
+    const a = s.active;
+    if (
+      a !== null &&
+      isAwaitingAnswer(a.req) &&
+      a.req.paused_at !== undefined &&
+      !needsConversation(this.context(s, a), a.req.paused_at.question, text)
+    )
+      return null;
+    const context = this.chatContext(s, a);
+    try {
+      const intent = await classifyChatMessage(this.deps.llm, text, context, s.chatHistory);
+      this.assertOpen(s);
+      if (intent === 'wallet') return null;
+      const reply = await generateChatReply(this.deps.llm, text, context, s.chatHistory, settings.think);
+      this.assertOpen(s);
+      s.chatHistory = rememberChat(s.chatHistory, text, reply);
+      return this.chatReply(s, a, reply);
+    } catch (error) {
+      this.assertOpen(s);
+      // An unavailable/invalid chat response is never reinterpreted as a payment or a field answer.
+      return this.chatReply(
+        s,
+        a,
+        error instanceof ChatInputTooLong
+          ? 'Please shorten your message and try again.'
+          : "I couldn't answer that right now. Please try again.",
+      );
+    }
+  }
+
+  /** No raw question text, choices, documents, contacts, submitted envelope or DB records enter chat context. */
+  private chatContext(s: OpenSession, a: Active | null): ChatContext {
+    if (a === null) return { state: 'IDLE' };
+    const context: ChatContext = { state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state };
+    const text = a.req.typed_text;
+    // S1 alone sets typed_text. Recheck here so future call sites cannot pass unguarded context to chat.
+    if (text && detectSecret(text) === null && extractUrls(text, []).links.length === 0)
+      context.original_request = text;
+    if (isAwaitingAnswer(a.req) && a.req.paused_at !== undefined) {
+      context.question_code = a.req.paused_at.question.code;
+      context.guidance = replyGuidance(this.context(s, a), a.req.paused_at.question);
+    }
+    if (a.lastError !== undefined) context.last_error = a.lastError.code;
+    return context;
+  }
+
+  /** Chat leaves every native field untouched, including failed-payment/back-reference context after completion. */
+  private chatReply(s: OpenSession, a: Active | null, text: string): AgentResponse {
+    if (a === null || isTerminal(a.req)) return this.noopReply(s, this.newId('request'), text);
+    const body = this.noopReply(s, a.req.request_id, text);
+    if (isAwaitingAnswer(a.req) && a.req.paused_at !== undefined) {
+      body.state = 'awaiting_answer';
+      body.question = a.req.paused_at.question;
+    } else if (a.req.state === 'AWAITING_CONFIRMATION') {
+      body.state = 'awaiting_confirmation';
+      body.summary = a.req.summary;
+    } else if (a.req.state === 'HANDOFF_FAILED') {
+      body.state = 'error';
+      body.error = a.lastError ?? {
+        code: 'EXECUTION_UNAVAILABLE',
+        message: ERROR_MESSAGE.EXECUTION_UNAVAILABLE({}),
+      };
+    }
+    return body;
   }
 
   /** §0 / SQ-19: an uncovered input is logged with its state and branch id (no request is changed). */
@@ -451,7 +564,13 @@ export class SessionManager {
     }
     // New content cannot be silently consumed as a field answer. Its full input goes through S1, before any
     // conversational model call could see it; attachments and extracted document values never enter the router.
-    if (input && (input.attachments.length || input.pasted_blocks.length || input.urls.length)) {
+    if (
+      input &&
+      (input.attachments.length ||
+        input.pasted_blocks.length ||
+        input.urls.length ||
+        (this.deps.config.chat?.enabled && extractUrls(text, []).links.length > 0))
+    ) {
       if (this.deps.repos.handoffs.get(a.req.request_id) !== undefined)
         return this.respond(s, a, 'awaiting_answer', [replyGuidance(this.context(s, a), paused.question)], {
           question: paused.question,
@@ -670,6 +789,7 @@ export class SessionManager {
   /** Applies a non-`continue` step result (or `continue` from S12) to the request and builds the response. */
   private finish(s: OpenSession, a: Active, step: StepName, res: StepResult): AgentResponse {
     const req = a.req;
+    if (res.kind !== 'error') delete a.lastError;
     req.paused_at = undefined;
     switch (res.kind) {
       case 'question': {
@@ -751,14 +871,16 @@ export class SessionManager {
     }
     a.req.state = state;
     a.req.paused_at = undefined;
+    a.lastError = { code: errCode, message };
     a.failedPayment =
       state === 'FAILED' && errCode === 'INSUFFICIENT_FUNDS' ? failedPaymentContext(a.req, this.deps.repos) : undefined;
     if (state !== 'HANDOFF_FAILED') this.logFinal(a.req, errCode);
-    return this.respond(s, a, 'error', [], { error: { code: errCode, message } });
+    return this.respond(s, a, 'error', [], { error: a.lastError });
   }
 
   /** Request DISCARDED with a reply (§17.3, §13.3). Never written to db8_history (only S12 appends). */
   private discard(s: OpenSession, a: Active, ...messages: string[]): AgentResponse {
+    delete a.lastError;
     this.markDiscarded(a.req);
     return this.respond(s, a, 'done', messages);
   }
