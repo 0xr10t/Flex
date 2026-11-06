@@ -105,6 +105,48 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
     expect(h.exec.submissions).toHaveLength(0);
   });
 
+  it.each(['answers', 'messages'] as const)(
+    'accepts an offered token copied from a polite reply via /%s',
+    async (channel) => {
+      const initial = opening('Riya');
+      initial[0] = call('amounts', { amounts: [{ ...amount(), phrase: '10', token: null }] });
+      const h = make(`polite-token-${channel}`, [initial[0], route('answer', 'USDC'), ...initial.slice(1), paired()]);
+      const pending = await h.say('pay Riya 10');
+      expect(pending.body.question?.code).toBe('Q_TOKEN');
+      const summary = await respond(h, pending, 'USDC please', channel);
+      expect(summary.body.state).toBe('awaiting_confirmation');
+      expect(summary.body.summary?.text).toContain('10 USDC');
+      expect(h.exec.submissions).toHaveLength(0);
+      expect(h.rows('SELECT amount, token, source FROM db1_amount_placeholders')).toEqual([
+        { amount: '10', token: 'USDC', source: 'user' },
+      ]);
+      await h.confirm(summary, 'yes');
+      expect(h.envelope.intents[0]).toMatchObject({ recipient: RIYA, token: 'USDC', amount: { value: '10' } });
+      expect(h.llm.remaining()).toEqual([]);
+    },
+  );
+
+  it.each([
+    { text: 'USDC please and pay Mihir', value: 'USDC' },
+    { text: "please don't use USDC", value: 'USDC' },
+    { text: 'USDC please', value: 'ETH' },
+    { text: 'DAI please', value: 'DAI' },
+  ])('keeps Q_TOKEN open when a copied choice is unsafe or unavailable: $text / $value', async ({ text, value }) => {
+    const h = make('invalid-token-answer', [
+      call('amounts', { amounts: [{ ...amount(), phrase: '10', token: null }] }),
+      route('answer', value),
+    ]);
+    const pending = await h.say('pay Riya 10');
+    expect(pending.body.question?.code).toBe('Q_TOKEN');
+    const response = await h.answer(pending, { text });
+    expect(response.body.question).toEqual(pending.body.question);
+    expect(response.body.request_id).toBe(pending.body.request_id);
+    expect(h.count('db1_amount_placeholders')).toBe(0);
+    expect(h.count('db3_address_placeholders')).toBe(0);
+    expect(h.exec.submissions).toHaveLength(0);
+    expect(h.llm.remaining()).toEqual([]);
+  });
+
   it('extracts a recipient from a sentence at Q_NO_PAYEE instead of saving the sentence as a name', async () => {
     const h = make('no-payee', [...opening(''), route('answer', 'Riya'), paired()]);
     const pending = await h.say('send 10 usdc');
