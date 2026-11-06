@@ -6,7 +6,7 @@ The execution layer: it receives the agent's hand-off envelope, checks it, and w
 agent handoff and MetaMask approval flow. Payment executors are deployed on Ethereum Sepolia, Base Sepolia and Arbitrum
 Sepolia; their public addresses are in `cre/deployments.testnet.json`. Native CRE build-and-simulate broadcasting has
 executed payments on local chains for all three chain IDs. A live recurring payment still requires a user-approved plan.
-See the [spec's operator notes](../docs/SPEC.md#cre-autopay-workflow-local-build-and-simulate) for setup and operator commands.
+See the [root README](../README.md#recurring-payments) for setup and operator commands.
 
 ## Commands
 

@@ -1,7 +1,7 @@
 // Tests: §8.10 prompt builders — C-141 (one function per call returning {system,user,schema}; slots only), C-142 (LLM #1
 // verbatim), C-143 (LLM #2 verbatim), C-144 (LLM #3 verbatim incl. CANDIDATES), C-145 (Q-LLM verbatim), §12.1 (the
 // schema objects are the spec's), SQB-10 ({candidates_json} is a JSON array of strings), C-399 (builders take only the
-// text their step is allowed to show). Schemas and user slots stay verbatim to docs/SPEC.md. SQ-L-01 approved system
+// text their step is allowed to show). Schemas and user slots stay verbatim to test/fixtures/spec-v1.md. SQ-L-01 approved system
 // text is checked against reviewed golden fixtures.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { buildRequestTypePrompt } from '../../../src/llm/prompt-builder/requestT
 import { buildSpansPrompt } from '../../../src/llm/prompt-builder/spans.js';
 import { SCHEMA } from '../../../src/schemas/index.js';
 
-const README = readFileSync(new URL('../../../docs/SPEC.md', import.meta.url), 'utf8');
+const README = readFileSync(new URL('../../fixtures/spec-v1.md', import.meta.url), 'utf8');
 
 function specPrompt(heading: string): { system: string; user: string } {
   const i = README.indexOf(`**${heading}`);
@@ -33,9 +33,7 @@ function approvedPrompt(file: string): { system: string; user: string } {
 }
 
 function specSchemas(): object[] {
-  const a = README.indexOf('### 12.1');
-  const b = README.indexOf('### 12.2');
-  const part = README.slice(a, b);
+  const part = README.slice(README.indexOf('### 12.1'));
   return [...part.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1] ?? '') as object);
 }
 

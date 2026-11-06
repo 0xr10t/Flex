@@ -4,7 +4,7 @@
 
 Flex lets you type something like *"send 40 usdc to aradhya on base and 20 to mihir on arbitrum"* and turns it into real transactions. It works out who you mean, which chain your money is sitting on, whether it has to bridge first, and what to ask you when something is unclear. Then it shows you a summary. Nothing moves until you say yes, and MetaMask still asks you once more before anything is signed.
 
-The model runs locally through Ollama, so your requests, contacts and balances never go to someone else's API. RPC traffic can go through Tor.
+The model runs locally through Ollama, so your requests, contacts and balances never go to someone else's API. By default, chain reads, ENS lookups and fetched web pages all go out through Tor.
 
 Flex runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, with USDC and ETH.
 
@@ -30,17 +30,9 @@ Letting a language model near a wallet is asking for trouble, so most of Flex is
 
 ## How it works
 
-```mermaid
-flowchart LR
-  You -->|plain text| CLI["flexx terminal"]
-  CLI --> Agent["Agent :8787"]
-  Agent <--> Ollama["Ollama (local model)"]
-  Agent -->|plan you confirmed| Wallet["Wallet :8788"]
-  Wallet --> MetaMask
-  MetaMask --> Chains[("Sepolia / Base Sepolia / Arbitrum Sepolia")]
-  CRE["Chainlink CRE cron"] -->|due runs| Executor["IntentExecutorV3"]
-  Executor --> Chains
-```
+![How Flex works](assets/architecture.png)
+
+<sub>Source: [`assets/architecture.excalidraw`](assets/architecture.excalidraw). Open it at [excalidraw.com](https://excalidraw.com) to edit.</sub>
 
 1. You type a request into `flexx`.
 2. The agent refreshes balances, checks for secrets and untrusted content, pulls out the amounts and recipients, and resolves names through your contacts and ENS.
@@ -71,11 +63,12 @@ The repo has three parts:
 
 ### You'll need
 
-- Node 24 (see `.nvmrc`), or 22.12 or later
+- Node 24 (see `.nvmrc`), or 22.12+ on the 22.x line
 - [Ollama](https://ollama.com) with the model pulled: `ollama pull qwen2.5:7b-instruct`
+- Tor listening on `127.0.0.1:9050`, unless you switch it off (see below)
 - MetaMask, plus test USDC ([faucet.circle.com](https://faucet.circle.com)) and test ETH on the chains you want to use
 - RPC URLs for the three testnets, and RPCs that support `eth_simulateV1`
-- Optional: [Foundry](https://getfoundry.sh) for the contract tests, the CRE CLI for recurring payments, and Tor
+- For recurring payments and the contract tests: [Foundry](https://getfoundry.sh) and the CRE CLI
 
 ### Install
 
@@ -99,38 +92,47 @@ npm run testnet:setup   # writes the agent, wallet and CRE configs to .local/
 
 Flex only needs your wallet's public address. Signing happens in MetaMask.
 
+Tor is on by default. `FLEX_SOCKS_PROXY` in `.env` controls it: set it to `direct` to connect without Tor, or to `socks5h://127.0.0.1:9050` to use Tor. Left blank, setup keeps whatever the current config uses, which is Tor on a fresh setup. Run `npm run testnet:setup` again after changing `.env`.
+
+Questions about payments you've received are off by default. They need a Blockscout API for each chain under `history` in the agent config.
+
 ### Run
 
 ```sh
-npm run testnet:start   # agent on 127.0.0.1:8787, wallet on 127.0.0.1:8788
-npm link                # once, puts flexx on your PATH
-flexx
+npm link                                                 # once, puts flexx on your PATH
+node wallet/dist/src/main.js .local/wallet.config.json   # the wallet, on 127.0.0.1:8788
+flexx                                                    # in a second terminal; starts the agent on 127.0.0.1:8787
 ```
-
-If you route traffic through Tor, `testnet:start` refuses to run because the local CRE runner can't use a SOCKS proxy. Start the wallet on its own instead (`node wallet/dist/src/main.js .local/wallet.config.json`) and run `flexx`, which starts the agent for you.
 
 Then just talk to it:
 
 ```text
 send 50 usdc to aradhya on base
+what's my balance on arbitrum?
 pay mihir 10 usdc every friday for 8 weeks
-how much did I receive this week?
 stop paying mihir
 ```
+
+When you say yes to a summary, `flexx` opens the wallet's approval page and MetaMask pops up. The first payment on each network also asks you to switch your MetaMask account to a smart account (EIP-7702). The approval page walks you through it, and it costs a little test ETH.
 
 Type `/` for commands and `?` for keyboard shortcuts. If something isn't working, `/doctor` checks Node, the config, the agent, the database, the model, Tor and the wallet, and tells you how to fix whatever failed.
 
 ### Recurring payments
 
-Recurring payments need a logged-in CRE CLI (`cre login`) and a funded, test-only transmitter key (`CRE_ETH_PRIVATE_KEY`) in `.env`. Run the one-time onboarding page, then start with broadcasting on:
+Recurring payments need a few more things:
+
+- Foundry
+- The CRE CLI, logged in with `cre login`, and either installed at `.local/bin/cre` or pointed to by `CRE_CLI_PATH`
+- `FLEX_SOCKS_PROXY=direct`, because the local CRE runner can't go through Tor
+- A test-only transmitter key in `.env` (`CRE_ETH_PRIVATE_KEY`), with test ETH on all three chains
 
 ```sh
 forge build --root wallet/contracts
-npm run testnet:onboard            # open http://127.0.0.1:8792 in your MetaMask browser
-npm run testnet:start -- --broadcast
+npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser
+npm run testnet:start -- --broadcast  # the agent, the wallet and the CRE runner together
 ```
 
-Keep it running. A run that misses its window is skipped, not paid late. The full operator notes are in [`docs/SPEC.md`](docs/SPEC.md#cre-autopay-workflow-local-build-and-simulate).
+Use `testnet:start` instead of starting the wallet by hand, then run `flexx` in another terminal. Keep everything running. A run that misses its window is skipped, not paid late.
 
 ## Tests
 
@@ -153,10 +155,8 @@ To run the acceptance prompts against your real local model, use `LIVE_SET=all L
 
 ## Docs
 
-- [`docs/SPEC.md`](docs/SPEC.md) is the full design: the pipeline step by step, the data model, schemas, the threat model and the decision log.
 - [`wallet/README.md`](wallet/README.md) covers the execution layer and how each payment is checked.
 - [`packages/protocol/README.md`](packages/protocol/README.md) describes the hand-off format between agent and wallet.
-- [`docs/agent/README.md`](docs/agent/README.md) explains received payments, identifier lookups and payment status.
 - `agent-layer-architecture.html` is a visual walkthrough of the agent. Open it in a browser.
 
 ## Team

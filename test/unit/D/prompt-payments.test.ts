@@ -13,7 +13,7 @@ import { buildPaymentsSchema, compileEphemeral } from '../../../src/schemas/inde
 
 /** The §8.10 "LLM #4 — Pair payments (S8)" block, read from the spec itself. */
 function specBlock(): { system: string; user: string } {
-  const readme = readFileSync(new URL('../../../docs/SPEC.md', import.meta.url), 'utf8');
+  const readme = readFileSync(new URL('../../fixtures/spec-v1.md', import.meta.url), 'utf8');
   const start = readme.indexOf('**LLM #4 — Pair payments (S8)**');
   const open = readme.indexOf('```text\n', start) + '```text\n'.length;
   const close = readme.indexOf('\n```', open);
