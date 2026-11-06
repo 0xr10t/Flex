@@ -124,6 +124,38 @@ describe('S3 rules 1-2 and 8 (verbatim, context, none)', () => {
     expect(ctx.req.masked_text_s3).toBe('stop paying riya');
   });
 
+  it.each(["what's my balance", 'stop paying mihir', 'show my eth balance'])(
+    'B13: invented context rows cannot erase a no-amount request: %s',
+    async (typed) => {
+      for (const number of [null, '5']) {
+        const { ctx, result } = await run(typed, [{ phrase: typed, number, role: 'context' }]);
+        expect(result).toEqual({ kind: 'continue' });
+        expect(ctx.req.masked_text_s3).toBe(typed);
+        expect(ctx.req.amounts).toEqual([]);
+        expect(ctx.repos.tables.db1.size).toBe(0);
+      }
+    },
+  );
+
+  it('B13: a whole context sentence cannot hide its real amount or recipient', async () => {
+    const typed = 'send 5 usdc to mihir';
+    const r = await run(typed, [{ phrase: typed, number: '5', token: 'USDC', role: 'context' }]);
+    expect(q(r)?.code).toBe('Q_AMOUNT_UNCOVERED');
+    expect(r.ctx.req.amounts).toEqual([]);
+    expect(r.ctx.repos.tables.db1.size).toBe(0);
+  });
+
+  it('B13: independently stated numeric and relative context amounts are still masked', async () => {
+    const typed = 'I used all my eth after paying one hundred usdc yesterday';
+    const { ctx, result } = await run(typed, [
+      { phrase: 'all my eth', number: null, relative: 'all', token: 'ETH', role: 'context' },
+      { phrase: 'one hundred usdc', number: '100', token: 'USDC', role: 'context' },
+    ]);
+    expect(result).toEqual({ kind: 'continue' });
+    expect(ctx.req.masked_text_s3).toBe('I used [amount] after paying [amount] yesterday');
+    expect(ctx.repos.tables.db1.size).toBe(0);
+  });
+
   it('C-390: LLM #1 failing twice → MODEL_FAILED with the catalog message', async () => {
     const typed = 'send 5 usdc to a';
     const ctx = await scannedCtx(typed, {

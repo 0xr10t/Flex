@@ -12,6 +12,7 @@
 
 import { CHIPS, NOTES, QUESTION_TEXT, buildQuestion, matchChip } from '../contracts/catalog.js';
 import { LlmFailed } from '../contracts/llm.js';
+import { TOKENS } from '../contracts/static-tables.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { Answer, Question, Span } from '../contracts/types.js';
 import { parseAmountText } from '../amounts/parse.js';
@@ -26,7 +27,7 @@ import {
   type WorkItem,
 } from '../amounts/verify.js';
 import { buildAmountsPrompt } from '../llm/prompt-builder/amounts.js';
-import { clauseIndexAt, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
+import { clauseIndexAt, escapeRe, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
 import { qid, unsupported } from '../lexical/step-util.js';
 
 interface LlmAmount {
@@ -65,6 +66,20 @@ export interface S3State {
 }
 
 export const AMOUNT_MASK = '[amount]';
+
+const RELATIVE_AMOUNT_RE = new RegExp(
+  `^(?:all|half|max)(?:\\s+of)?(?:\\s+my)?\\s+(?:${Object.values(TOKENS)
+    .flatMap((token) => token.aliases)
+    .map(escapeRe)
+    .join('|')})$`,
+  'i',
+);
+
+/** B13: the model's number/relative fields do not prove that an arbitrary context phrase states an amount. */
+function isContextAmount(phrase: string): boolean {
+  const parsed = parseAmountText(phrase, null);
+  return parsed.ok || parsed.reason === 'zero' || RELATIVE_AMOUNT_RE.test(phrase.trim());
+}
 
 /** Maps an offset of masked_text_s3 back to typed_text (an offset inside a replacement maps to its start). */
 export function maskedToTyped(masks: readonly Mask[], offset: number): number {
@@ -122,6 +137,7 @@ function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
   for (const a of out.amounts) {
     const r = findUnused(text, a.phrase, used, true);
     if (r === null) continue; // rule 1: not verbatim → dropped
+    if (a.role === 'context' && !isContextAmount(a.phrase)) continue;
     used.push(r);
     st.covered.push(r);
     if (a.role === 'context') {
