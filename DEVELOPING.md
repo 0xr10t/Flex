@@ -21,11 +21,15 @@ Run `npm ci` in each fresh checkout or worktree. `better-sqlite3-multiple-cipher
 Start Ollama with `ollama serve` if it is not already running. In another terminal:
 
 ```sh
-ollama pull qwen2.5:7b-instruct
+ollama pull qwen3:8b
 curl --fail --silent http://127.0.0.1:11434/api/tags
 ```
 
-The production settings in `config.example.json` are model `qwen2.5:7b-instruct`, temperature `0`, seed `42`, context `8192`, and timeout `60000` milliseconds. Ollama must use an `http://127.0.0.1` URL; configuration rejects remote hosts. A fixed seed does not make model output fully deterministic.
+The user-selected model profile is `config.qwen3.example.json`: `qwen3:8b`, `think: false`, temperature `0`, seed `42`,
+context `8192`, and timeout `60000` milliseconds. The explicit Ollama `think` setting selects non-thinking mode for
+the wallet's structured extraction calls. An omitted `think` retains the model's default; only boolean values are
+accepted. The original `config.example.json` remains the Qwen2.5 specification/baseline profile. Ollama must use an
+`http://127.0.0.1` URL; configuration rejects remote hosts. A fixed seed does not make model output fully deterministic.
 
 Create a local configuration from the template, preserving an existing configuration:
 
@@ -33,11 +37,14 @@ Create a local configuration from the template, preserving an existing configura
 umask 077
 mkdir -p "$HOME/.agent-layer"
 if [ ! -e "$HOME/.agent-layer/config.json" ]; then
-  cp config.example.json "$HOME/.agent-layer/config.json"
+  cp config.qwen3.example.json "$HOME/.agent-layer/config.json"
 fi
 ```
 
-Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the RPC and ENS-indexer URL placeholders with working endpoints. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires every declared field and rejects extra fields. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
+Edit that local copy before starting. Replace the example wallet and universal-resolver address placeholders with the intended public addresses, and replace the RPC and ENS-indexer URL placeholders with working endpoints. Configure the separate execution service URL and its token file. The template intentionally contains invalid placeholder addresses and is not a ready-to-run deployment. Configuration requires the baseline fields and rejects unknown fields; `llm.think` is optional. Supported chain IDs are Sepolia `11155111`, Base Sepolia `84532`, and Arbitrum Sepolia `421614`.
+
+For an existing configured installation, change only `llm.model` to `qwen3:8b` and add `llm.think: false`; retain its
+wallet, endpoints, tokens and database paths. This model switch does not add a general chat route or new wallet actions.
 
 The default configuration path is `~/.agent-layer/config.json`; `AGENT_CONFIG=/absolute/path/config.json` selects another file. Leading `~/` in configured filesystem paths is expanded. Keep local credentials, token files and database keys out of the repository. The wallet setting is a public address; the agent does not need a wallet private key or seed phrase.
 
@@ -99,6 +106,16 @@ node test/live/summarize.mjs validation-2026-11-06
 `LIVE_SET` selects `all`, `acceptance`, or `paraphrase`. Optional `LIVE_IDS=A-15,P-061,P-073` selects named cases within that set; unknown IDs are rejected. `LIVE_FROM` and `LIVE_TO` select a zero-based slice after that filtering. The full set contains 154 cases. Results are written incrementally to `test/live/results/<tag>.json`; reusing a tag overwrites that file. The summarizer without explicit tags combines every result file, including partial runs and repeated cases, so pass the intended tag when comparing runs.
 
 Inspect wrong hand-offs, unexpected stops, rejected summaries, crashes, questions and latency in the results, not only Vitest's exit status. SQ-L-01 prompt changes require a full live run with zero wrong hand-offs and fewer unnecessary stops. Recheck unstable cases. A reviewer other than the production-code author grades final acceptance.
+
+Live tests default to the original Qwen2.5 fixture profile for reproducibility. Select the new model explicitly:
+
+```sh
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_SET=all LIVE_TAG=qwen3-validation npm run test:live -- test/live/live.test.ts
+LIVE_MODEL=qwen3:8b LIVE_THINK=false LIVE_TAG=qwen3-conversation npm run test:live -- test/live/conversation.test.ts
+```
+
+Both suites record the model settings with their results. `LIVE_THINK` must be `true` or `false`; unset values
+preserve the baseline configuration. The deterministic fixtures and live comparison oracle are unchanged.
 
 The separate conversational suite exercises seven multi-turn scenarios, including corrections while a question is
 pending, natural amount/address/token answers, refund clarification and new requests. Run it separately when

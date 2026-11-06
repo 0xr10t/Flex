@@ -71,6 +71,7 @@ const CONFIG_SCHEMA = {
         seed: { type: 'integer' },
         num_ctx: POS_INT,
         timeout_ms: POS_INT,
+        think: { type: 'boolean' },
       },
     },
     chains: {

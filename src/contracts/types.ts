@@ -63,6 +63,8 @@ export interface Config {
     seed: number;
     num_ctx: number;
     timeout_ms: number;
+    /** Optional Ollama thinking control; omitted preserves the model's default. SQ-M-01. */
+    think?: boolean;
   };
   chains: ChainConfig[];
   ens: {

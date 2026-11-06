@@ -6,12 +6,15 @@ import { describe, expect, it } from 'vitest';
 import type { LlmCallArgs } from '../../src/contracts/llm.js';
 import { createOllamaClient } from '../../src/llm/ollama.js';
 import { addr, ARB, BASE, Harness, MIHIR, type Resp } from '../acceptance/harness.js';
+import { testConfig } from '../fakes/context.js';
+import { liveModelConfig } from './model-config.js';
 
 const RIYA = addr(44);
 const directory = join(import.meta.dirname, 'results', 'conversation');
 mkdirSync(directory, { recursive: true });
 const results: unknown[] = [];
 const tag = process.env.LIVE_TAG ?? 'latest';
+const MODEL_CONFIG = liveModelConfig(testConfig().llm);
 
 async function scenario(
   id: string,
@@ -23,6 +26,7 @@ async function scenario(
     { balances: { [BASE]: { USDC: '2000', ETH: '0.1' } } },
   );
   h.addContact('Riya', RIYA, [BASE, ARB]);
+  h.config.llm = { ...MODEL_CONFIG };
   const real = createOllamaClient(h.config, { info() {}, warn() {}, error() {} });
   const trace: Array<{ name: string; output: unknown; ms: number }> = [];
   const turns: Array<{ channel: string; text: string; response: Resp }> = [];
@@ -53,7 +57,15 @@ async function scenario(
     await check(h, trace);
     passed = true;
   } finally {
-    results.push({ id, passed, ms: Date.now() - start, turns, trace, submissions: h.exec.submissions });
+    results.push({
+      id,
+      passed,
+      llm_config: h.config.llm,
+      ms: Date.now() - start,
+      turns,
+      trace,
+      submissions: h.exec.submissions,
+    });
     writeFileSync(join(directory, `${tag}.json`), JSON.stringify(results, null, 2));
     await h.finish({ allowUnused: true });
   }

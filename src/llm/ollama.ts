@@ -94,6 +94,8 @@ class OllamaLlmClient implements LlmClient {
         ],
         format: args.schema,
         stream: false,
+        // SQ-M-01: use the API's hard switch for structured Qwen3 extraction; legacy configs omit it.
+        ...(llm.think === undefined ? {} : { think: llm.think }),
         options: { temperature: llm.temperature, seed: llm.seed, num_ctx: llm.num_ctx },
       }),
       signal: AbortSignal.timeout(llm.timeout_ms),

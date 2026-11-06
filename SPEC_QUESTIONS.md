@@ -392,3 +392,13 @@ Implementation decisions under that request:
 The new `conversation.txt` prompt and its separate intent schema are additional to the four extraction prompts
 and schemas, which remain unchanged by this work. `README.md` stays unchanged. Regressions and real-model evidence
 are recorded in `codex_review_report.md` and `CONVERSATION_FIX_REPORT.md`.
+
+## Model selection — Qwen3 8B (2026-11-06)
+
+**SQ-M-01 — requested by the human in chat: “use qwen3 8b”.** Select local Ollama `qwen3:8b` for the new demo and
+configuration profile. An optional boolean `llm.think` is forwarded as the Ollama request's top-level `think` field;
+the Qwen3 profile sets it to `false` for structured extraction. Omission preserves existing clients' request bytes.
+The existing context, seed, schema validation, retry, local-only endpoint and explicit confirmation rules remain.
+`config.qwen3.example.json` records this profile; the original config example, README and deterministic fixtures
+remain the specification/baseline. Live comparisons identify model settings explicitly and retain their original
+outcome assertions. This instruction selects a model; it does not add a general-purpose chat route.
