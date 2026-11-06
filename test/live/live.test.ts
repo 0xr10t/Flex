@@ -4,7 +4,8 @@
 // not match the expected plan, and confirms the rest; the envelope handed to the execution fake is then compared
 // with the expected plan (any difference = WRONG HAND-OFF, which must never happen).
 //
-// Env: LIVE_SET=acceptance|paraphrase|all (default all), LIVE_FROM / LIVE_TO (slice within the set), LIVE_TAG.
+// Env: LIVE_SET=acceptance|paraphrase|all (default all), LIVE_IDS (comma-separated IDs),
+// LIVE_FROM / LIVE_TO (slice within the selected set), LIVE_TAG.
 // Results: test/live/results/<tag>.json (all entries, incremental). Test data only, never user data.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +34,15 @@ const DAY: Record<string, string> = {
 const SET = process.env.LIVE_SET ?? 'all';
 const ALL = JSON.parse(readFileSync(join(import.meta.dirname, 'prompts.json'), 'utf8')) as Json[];
 let entries = ALL.filter((e) => SET === 'all' || e.source === SET);
+if (process.env.LIVE_IDS !== undefined) {
+  const ids = process.env.LIVE_IDS.split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const missing = ids.filter((id) => !entries.some((entry) => entry.id === id));
+  if (ids.length === 0 || missing.length > 0) throw new Error(`Invalid LIVE_IDS selection: ${missing.join(', ')}`);
+  const selected = new Set(ids);
+  entries = entries.filter((entry) => selected.has(String(entry.id)));
+}
 entries = entries.slice(
   Number(process.env.LIVE_FROM ?? 0),
   process.env.LIVE_TO ? Number(process.env.LIVE_TO) : undefined,
