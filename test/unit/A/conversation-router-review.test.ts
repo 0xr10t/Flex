@@ -25,6 +25,12 @@ describe('SQ-CV-01 independent interpretation boundaries', () => {
     ['Q_NO_PAYEE', 'Riya', false],
     ['Q_NO_PAYEE', 'pay Riya', true],
     ['Q_AMOUNT_MISSING', '10 usdc', false],
+    ['Q_AMOUNT_PRECISION', '0.123456', false],
+    ['Q_AMOUNT_MISSING', '0', false],
+    ['Q_AMOUNT_MISSING', '-1', false],
+    ['Q_AMOUNT_MISSING', 'thanks', true],
+    ['Q_AMOUNT_MISSING', 'hmm', true],
+    ['Q_GROUP_PARENT', 'iitr.eth', false],
     ['Q_AMOUNT_MISSING', '10 usdc to Riya', true],
     ['Q_AUTOPAY_START', '2027-02-03', false],
     ['Q_AUTOPAY_START', 'next friday but change to Riya', true],
@@ -101,6 +107,32 @@ describe('SQ-CV-01 independent interpretation boundaries', () => {
       value: null,
     });
     expect(ctx.llm.recorded).toEqual([]);
+  });
+
+  it('does not classify against a truncated original request', async () => {
+    const ctx = makeTestContext({ req: { typed_text: 'x'.repeat(6001) } });
+    expect(await interpretReply(ctx, question('Q_WHO_IS'), 'pay Riya instead', [])).toEqual({
+      intent: 'clarify',
+      value: null,
+    });
+    expect(ctx.llm.recorded).toEqual([]);
+  });
+
+  it('bounds recent context by dropping whole older replies and marking their omission', async () => {
+    const ctx = makeTestContext({
+      fixture: { calls: [{ name: 'conversation', match: '', output: { intent: 'clarify', value: null } }] },
+    });
+    const turns = Array.from({ length: 7 }, (_, n) => ({
+      question: 'Q_WHO_IS' as const,
+      reply: `${n}: ${'x'.repeat(997)}`,
+    }));
+    await interpretReply(ctx, question('Q_WHO_IS'), 'why do you need that?', turns);
+    const context = JSON.parse(ctx.llm.recorded[0]!.user) as {
+      recent_user_replies: typeof turns;
+      older_replies_omitted: boolean;
+    };
+    expect(context.older_replies_omitted).toBe(true);
+    expect(context.recent_user_replies).toEqual(turns.slice(-4));
   });
 
   it.each([
