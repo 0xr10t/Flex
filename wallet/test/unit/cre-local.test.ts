@@ -127,7 +127,7 @@ describe('CRE local runner safety', () => {
     first.state.snapshot.blockHash = blockHash(999n);
     h.calls.length = 0;
     const second = await indexPlans(chain, first.state, h.rpc);
-    expect(h.calls[0][0]).toBe(1n);
+    expect(h.calls[0]?.[0]).toBe(1n);
     expect(second.state.snapshot.plans).toHaveLength(1);
   });
   it('does not shrink or advance past an outage', async () => {
