@@ -1,4 +1,5 @@
 // Lane D tester: §8.10 LLM #4 prompt builder, §8.9 / §12.2 per-request schema slots.
+// SQ-L-01 permits reviewed system text changes; full live acceptance is recorded in PROMPT_CHANGES.md.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AddressPh, AmountPh, GroupPh } from '../../../src/contracts/types.js';
@@ -23,6 +24,14 @@ function specBlock(): { system: string; user: string } {
   return { system: lines.slice(s + 1, u).join('\n'), user: lines.slice(u + 1).join('\n') };
 }
 
+function reviewedBlock(): { system: string; user: string } {
+  const block = readFileSync(new URL('../../fixtures/prompts/payments.txt', import.meta.url), 'utf8').trimEnd();
+  const split = block.indexOf('\nUSER\n');
+  expect(block.startsWith('SYSTEM\n')).toBe(true);
+  expect(split).toBeGreaterThan(0);
+  return { system: block.slice('SYSTEM\n'.length, split), user: block.slice(split + '\nUSER\n'.length) };
+}
+
 const A1 = 'amount_7f2c1a90' as AmountPh;
 const A2 = 'amount_02bd6e15' as AmountPh;
 const R1 = 'address_91ab33f0' as AddressPh;
@@ -44,13 +53,20 @@ function input(over: Partial<PaymentsPromptInput> = {}): PaymentsPromptInput {
 }
 
 describe('LLM #4 prompt builder (§8.10)', () => {
-  it('C-148 §8.10 system text is the SYSTEM part of the spec block, verbatim', () => {
+  it('C-148 / SQ-L-01 system text equals the independently reviewed recurrence and chain instructions', () => {
     const p = buildPaymentsPrompt(input());
-    expect(p.system).toBe(specBlock().system);
+    expect(p.system).toBe(reviewedBlock().system);
   });
 
-  it('C-148 §8.10 PAYMENTS_PROMPT_TEMPLATE carries the spec SYSTEM text and every USER slot', () => {
-    expect(PAYMENTS_PROMPT_TEMPLATE).toContain(specBlock().system);
+  it('C-148 / SQ-L-01 PAYMENTS_PROMPT_TEMPLATE preserves every USER slot from the spec', () => {
+    const reviewed = reviewedBlock();
+    // SQ-21: the spec's inline comments describe slots and are not sent to the model.
+    const specUser = specBlock()
+      .user.split('\n')
+      .map((line) => line.replace(/\s+\/\/.*$/, ''))
+      .join('\n');
+    expect(reviewed.user).toBe(specUser);
+    expect(PAYMENTS_PROMPT_TEMPLATE).toBe(`SYSTEM\n${reviewed.system}\nUSER\n${reviewed.user}`);
     for (const slot of [
       'Message: <<<{masked_text_s8}>>>',
       'AMOUNTS: {amounts_json}',

@@ -98,9 +98,10 @@ describe('C-447 §20.1 pairing/checks: S8 call and output (§8.9)', () => {
     }).group;
     const s = addFollowup(ctx, { name: 'Aradhya', address: ARADHYA_CS, last_chain_id: BASE });
     addChainMention(ctx, 'base', BASE);
-    ctx.req.masked_text_s8 = `send ${a1} each to ${g} and ${s}`;
+    ctx.req.masked_text_s8 = `send ${a1} each to ${g} and ${s} on base`;
     addWord(ctx, 'distributive', 'each');
-    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, g, BASE), llmItem('i', a1, s)])]);
+    // G01: both payments preserve the explicitly named chain; the schema still also permits "unstated".
+    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, g, BASE), llmItem('i', a1, s, BASE)])]);
     expect((await s8.step(ctx)).kind).toBe('continue');
     const call = llm.recorded[0];
     const props = (
