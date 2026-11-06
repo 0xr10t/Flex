@@ -117,13 +117,21 @@ describe('snap', () => {
 describe('opening', () => {
   // 160 × 50: the 43-row opening starts on row 3
   const top = 3;
-  const at = (phase: Phase, snapS = 0, repl = new Repl()): string[] => {
+  const at = (phase: Phase, opts: { snapS?: number; shrinkP?: number; repl?: Repl } = {}): string[] => {
     const layout = stageLayout(160, 50)!;
     const header = new SplashAnimation();
     header.frame(0);
     const pointer = { x: 0, y: 0, on: false };
-    const state = { phase, sceneT: 6, snapS, nowMs: 6000, pointer, starfield: false };
-    return frameLines(composeOpening(layout, state, header, repl));
+    const state = {
+      phase,
+      sceneT: 6,
+      snapS: opts.snapS ?? 0,
+      shrinkP: opts.shrinkP ?? 0,
+      nowMs: 6000,
+      pointer,
+      starfield: false,
+    };
+    return frameLines(composeOpening(layout, state, header, opts.repl ?? new Repl()));
   };
   const header = (lines: string[]): string[] => lines.slice(top, top + 17);
 
@@ -141,53 +149,77 @@ describe('opening', () => {
   });
 
   it('turns only the globe, gateway and diamond to dust', () => {
-    const lines = at('snap', SNAP_SECONDS + 0.01);
+    const lines = at('snap', { snapS: SNAP_SECONDS + 0.01 });
     expect(header(lines)).toEqual(header(at('intro')));
     expect(lines.join('\n')).not.toMatch(/FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
     expect(lines.join('\n')).toContain('flex.access');
   });
 
-  it('opens the command box where they were, header unmoved', () => {
-    const lines = at('box');
-    expect(header(lines)).toEqual(header(at('intro')));
-    expect(lines[top + 18]).toMatch(/╭─ flex ─+╮/);
-    expect(lines[top + 40]).toMatch(/╰─+╯/);
-    expect(lines[top + 39]).toContain('flex $ █');
-    expect(lines[top + 38]).toContain('type help to see the commands');
-    expect(lines[top + 42]).toContain('flex.access');
+  it('shrinks the cube and FLEXX towards the corner without the tagline', () => {
+    const start = at('shrink', { shrinkP: 0 }).join('\n');
+    expect(start).toContain('██████████');
+    const mid = at('shrink', { shrinkP: 0.75 });
+    expect(mid.join('\n')).toMatch(/[▀▄]/);
+    expect(mid.join('\n')).not.toContain('the access layer');
+    expect(mid.join('\n')).not.toContain('╭');
   });
 
-  it('shows what was typed and run in the box', () => {
+  it('ends with the small logo on the left and the box from the top', () => {
+    const lines = at('box').map((l) => l.trimEnd());
+    // the box: from row 0 at column 34 to the row above the footer
+    expect(lines[0]!.slice(34)).toMatch(/^╭─ flex ─+╮$/);
+    expect(lines[47]!.slice(34)).toMatch(/^╰─+╯$/);
+    expect(lines[1]!.slice(34)).toMatch(/^│ type help to see the commands +│$/);
+    expect(lines[2]!.slice(34)).toMatch(/^│ flex \$ █ +│$/);
+    expect(lines[49]).toContain('flex.access');
+    // the small FLEXX in half blocks, the tagline under it
+    expect(lines[11]!.slice(2, 31)).toBe('█▀▀▀▀ █     █▀▀▀▀ █   █ █   █');
+    expect(lines[16]!.slice(2)).toMatch(/^the access layer between AI/);
+    expect(lines[17]!.slice(2)).toMatch(/^and ethereum/);
+    // the small cube above it
+    expect(lines.slice(0, 10).some((l) => /[#+]/.test(l.slice(0, 32)))).toBe(true);
+  });
+
+  it('writes the conversation down from the top', () => {
     const repl = new Repl();
     for (const c of 'help') repl.handle({ kind: 'key', key: 'char', char: c });
     repl.handle({ kind: 'key', key: 'enter' });
     for (const c of 'pay') repl.handle({ kind: 'key', key: 'char', char: c });
-    const all = at('box', 0, repl).join('\n');
-    expect(all).toContain('flex $ help');
-    expect(all).toMatch(/exit +leave flexx/);
-    expect(all).toContain('flex $ pay█');
+    const lines = at('box', { repl }).map((l) => l.slice(34));
+    expect(lines[2]).toContain('flex $ help');
+    expect(lines[3]).toMatch(/help +list the commands/);
+    expect(lines[5]).toMatch(/exit +leave flexx/);
+    expect(lines[6]).toContain('flex $ pay█');
   });
 });
 
 describe('stage layout', () => {
   it('centres the full opening when it fits', () => {
-    expect(stageLayout(120, 43)).toMatchObject({ scene: { x: 0, y: 4 }, box: { x: 10, y: 18, w: 100, h: 23 } });
+    expect(stageLayout(120, 43)).toMatchObject({
+      scene: { x: 0, y: 4 },
+      final: { box: { x: 34, y: 0, w: 85, h: 41 } },
+    });
     expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 12 } });
   });
 
-  it('skips the opening below 120 × 43 but keeps the header and box', () => {
+  it('plays only the header below 120 × 43, then the same final layout', () => {
     const l = stageLayout(100, 32)!;
     expect(l.scene).toBeNull();
     expect(l.footer).toBeNull();
     expect(l.header?.objectX).not.toBeNull();
-    expect(l.box).toMatchObject({ y: 17, h: 14 });
+    expect(l.final.box).toEqual({ x: 34, y: 0, w: 65, h: 30 });
+    expect(l.final.footer).not.toBeNull();
+    expect(stageLayout(80, 30)!.header?.objectX).toBeNull();
+    expect(stageLayout(80, 30)!.final.footer).toBeNull();
   });
 
-  it('drops the cube, then the header, as the terminal shrinks', () => {
-    expect(stageLayout(80, 30)!.header?.objectX).toBeNull();
-    expect(stageLayout(100, 20)!.header?.objectX).toBeNull();
-    expect(stageLayout(80, 16)!.header).toBeNull();
-    expect(stageLayout(80, 16)!.box).toMatchObject({ y: 0, h: 16 });
+  it('moves the small logo to a bar on top, then drops it, as the terminal shrinks', () => {
+    const bar = stageLayout(70, 16)!;
+    expect(bar.final.logo?.morph.cubeX).toBeNull();
+    expect(bar.final.box).toEqual({ x: 0, y: 5, w: 70, h: 11 });
+    const bare = stageLayout(60, 10)!;
+    expect(bare.header).toBeNull();
+    expect(bare.final).toMatchObject({ logo: null, box: { x: 0, y: 0, w: 60, h: 10 } });
     expect(stageLayout(41, 20)).toBeNull();
     expect(stageLayout(60, 5)).toBeNull();
   });
@@ -262,7 +294,7 @@ describe('painting', () => {
   it('prints plain text without colour', () => {
     const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
-    expect(out).toContain('the access layer between AI and ethereum');
+    expect(out).toContain('the access layer between AI');
     expect(out).toContain('flex $');
     expect(out).toContain('flex.access');
     expect(out.split('\n')).toHaveLength(43 + 1);

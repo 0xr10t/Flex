@@ -1,19 +1,30 @@
 // Runs the CLI full-screen in the terminal: alternate screen, hidden cursor, ~30 fps redraw that rewrites only the
 // rows that changed, SGR mouse reporting so the pointer steers the header's cube, and a full restore on every exit
-// path. The opening plays the gateway scene under the cube and FLEXX header, snaps the globe, gateway and diamond away
-// into dust and opens the command box in their place; the header, stars and footer stay put. Everything is laid out
-// for the terminal's current size. Also renders a single still frame for pipes and `--static`.
+// path. The opening plays the gateway scene under the cube and FLEXX header and snaps the globe, gateway and diamond
+// away into dust; then the cube and FLEXX shrink into a small logo on the left and the command box opens from the top
+// of the screen. Everything is laid out for the terminal's current size. Also renders a single still frame for pipes
+// and `--static`.
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
 import { parseInput, type KeyEvent } from './input.js';
 import { Repl } from './repl.js';
-import { createFrame, overlay, type Frame } from './render/frame.js';
+import { createFrame, overlay, text, type Frame } from './render/frame.js';
 import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
 import { renderScene, SCENE_COLS, SCENE_ROWS, type SceneOptions } from './render/scene.js';
 import { snap, SNAP_SECONDS } from './render/snap.js';
 import { placeSplash, SplashAnimation, SPLASH_TEXT_ROWS, type Pointer, type SplashOptions } from './render/splash.js';
-import { drawBackdrop, MIN_COLS, MIN_ROWS, objectsLayer, stageLayout, type StageLayout } from './render/stage.js';
+import {
+  blendMorph,
+  drawBackdrop,
+  headerMorph,
+  MIN_COLS,
+  MIN_ROWS,
+  objectsLayer,
+  stageLayout,
+  type Origin,
+  type StageLayout,
+} from './render/stage.js';
 
 /** What to show: the opening into the command box, or the splash or scene alone. */
 export type View = 'opening' | 'splash' | 'scene';
@@ -31,8 +42,8 @@ export interface ViewOptions {
 
 export type ExitReason = 'continue' | 'quit' | 'interrupt';
 
-/** Opening phases: the scene, its snap, then the command box. */
-export type Phase = 'intro' | 'snap' | 'box';
+/** Opening phases: the scene (or the header alone), its snap, the logo shrinking away, then the command box. */
+export type Phase = 'intro' | 'snap' | 'shrink' | 'box';
 
 const ESC = '\u001b';
 const CSI = `${ESC}[`;
@@ -51,6 +62,10 @@ const SYNC_END = `${CSI}?2026l`;
 
 /** Scene seconds the opening plays before the snap: long enough for the gateway log to fill. */
 export const INTRO_SECONDS = 5.5;
+/** Without the scene, how long the header plays: until its tagline and rule have drawn in. */
+export const HEADER_SECONDS = 4.6;
+/** How long the logo takes to shrink into the corner. */
+export const SHRINK_SECONDS = 1.2;
 
 /** Picks a colour mode from the stream and environment (NO_COLOR wins, then FORCE_COLOR, then the TTY's depth). */
 export function detectColorMode(
@@ -77,22 +92,47 @@ function paintFrame(f: Frame, palette: Palette, mode: ColorMode): string[] {
 
 export interface OpeningState {
   phase: Phase;
-  /** Scene seconds (speed-scaled) since the opening began, and since the snap. */
+  /** Scene seconds (speed-scaled) since the opening began, since the snap, and the shrink's progress (0–1). */
   sceneT: number;
   snapS: number;
+  shrinkP: number;
   nowMs: number;
   pointer: Pointer;
   starfield: boolean;
 }
 
+/** Where the footer is: under the opening, gliding down with the shrink, then under the box. */
+function footerAt(layout: StageLayout, s: OpeningState): Origin | null {
+  const from = layout.footer;
+  const to = layout.final.footer;
+  if (s.phase === 'intro' || s.phase === 'snap') return from;
+  if (s.phase === 'box') return to;
+  if (!from || !to) return null;
+  const e = s.shrinkP * s.shrinkP * (3 - 2 * s.shrinkP);
+  return { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+}
+
 /** Composes one screen of the opening for its current phase. */
 export function composeOpening(layout: StageLayout, s: OpeningState, header: SplashAnimation, repl: Repl): Frame {
   const f = createFrame(layout.cols, layout.rows);
-  drawBackdrop(f, s.sceneT, layout, s.starfield);
-  if (layout.header) header.draw(f, s.nowMs, s.pointer, layout.header, false);
-  const objects = s.phase === 'box' ? null : objectsLayer(s.sceneT, layout);
-  if (objects) overlay(f, s.phase === 'snap' ? snap(objects, s.snapS) : objects);
-  else repl.draw(f, layout.box, s.nowMs);
+  const { logo, box } = layout.final;
+  drawBackdrop(f, s.sceneT, footerAt(layout, s), s.starfield);
+
+  if (s.phase === 'intro' || s.phase === 'snap') {
+    if (layout.header) header.draw(f, s.nowMs, s.pointer, layout.header, false);
+    const objects = objectsLayer(s.sceneT, layout);
+    if (objects) overlay(f, s.phase === 'snap' ? snap(objects, s.snapS) : objects);
+    return f;
+  }
+  if (s.phase === 'shrink' && layout.header && logo) {
+    header.drawMorph(f, s.nowMs, s.pointer, blendMorph(headerMorph(layout.header), logo.morph, s.shrinkP));
+    return f;
+  }
+  if (logo) {
+    header.drawMorph(f, s.nowMs, s.pointer, logo.morph);
+    logo.tagline?.lines.forEach((line, i) => text(f, logo.tagline!.x, logo.tagline!.y + i, line, 1));
+  }
+  repl.draw(f, box, s.nowMs);
   return f;
 }
 
@@ -108,7 +148,8 @@ export function renderStatic(opts: ViewOptions, t = 6): string {
     const layout = stageLayout(SCENE_COLS, 43)!;
     const pointer = { x: 0, y: 0, on: false };
     const starfield = opts.scene?.starfield ?? true;
-    frame = composeOpening(layout, { phase: 'box', sceneT: t, snapS: 0, nowMs, pointer, starfield }, anim, new Repl());
+    const state = { phase: 'box' as const, sceneT: t, snapS: 0, shrinkP: 1, nowMs, pointer, starfield };
+    frame = composeOpening(layout, state, anim, new Repl());
   }
   return paintFrame(frame, viewPalette(opts), opts.colorMode).join('\n') + '\n';
 }
@@ -123,6 +164,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
   const t0 = performance.now();
   let phase: Phase = 'intro';
   let snapAt = 0;
+  let shrinkAt = 0;
   let mouse: { col: number; row: number; at: number } | undefined;
   let painted: string[] = [];
 
@@ -154,17 +196,28 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     }
     const layout = stageLayout(cols, rows);
     if (!layout) return tooSmall(cols, rows, MIN_COLS, MIN_ROWS);
-    if (phase === 'intro' && sceneTime(now) >= INTRO_SECONDS) {
-      phase = 'snap';
-      snapAt = now;
+    const startShrink = (): void => {
+      phase = 'shrink';
+      shrinkAt = now;
+    };
+    // nothing to play at this size: straight to the command box
+    if (!layout.header) phase = 'box';
+    // the objects no longer fit (the terminal shrank): skip their snap
+    if (!layout.scene && phase === 'snap') startShrink();
+    if (phase === 'intro' && sceneTime(now) >= (layout.scene ? INTRO_SECONDS : HEADER_SECONDS)) {
+      if (layout.scene) {
+        phase = 'snap';
+        snapAt = now;
+      } else startShrink();
     }
-    if (phase === 'snap' && snapTime(now) >= SNAP_SECONDS) phase = 'box';
-    // no room for the opening's objects: straight to the command box
-    if (!layout.scene) phase = 'box';
+    if (phase === 'snap' && snapTime(now) >= SNAP_SECONDS) startShrink();
+    const shrinkP = Math.min(1, ((now - shrinkAt) / 1000 / SHRINK_SECONDS) * sceneSpeed);
+    if (phase === 'shrink' && shrinkP >= 1) phase = 'box';
     const state: OpeningState = {
       phase,
       sceneT: sceneTime(now),
       snapS: snapTime(now),
+      shrinkP,
       nowMs: now,
       pointer: pointer(now, cols, rows),
       starfield,

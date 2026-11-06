@@ -7,6 +7,7 @@ import {
   createFrame,
   dot,
   drawWordmark,
+  drawWordmarkScaled,
   norm,
   put,
   setCell,
@@ -78,6 +79,23 @@ export function placeSplash(cols: number, textY: number, logo = true): SplashPla
   return { objectX: null, objectY, textX: Math.floor((cols - SPLASH_TEXT_WIDTH) / 2), textY };
 }
 
+/** The splash's FLEXX letters, for drawing the logo at other sizes. */
+export const SPLASH_WORD = WORD;
+/** Columns between letter origins at full size and in the small logo. */
+export const SPLASH_PITCH = PITCH;
+export const SMALL_PITCH = 6;
+
+/** The logo between full size (scale 1) and the small one (0.5): the cube's centre and the wordmark's top left. */
+export interface LogoMorph {
+  cubeX: number | null;
+  cubeY: number;
+  cubeScale: number;
+  wordX: number;
+  wordY: number;
+  wordScale: number;
+  pitch: number;
+}
+
 /** The standalone splash frame's own placement. */
 const OWN_PLACEMENT = placeSplash(SPLASH_COLS, Math.floor((SPLASH_ROWS - SPLASH_TEXT_ROWS) / 2));
 
@@ -114,6 +132,20 @@ export class SplashAnimation {
    * leaves out the `flex $` line (the command box has its own).
    */
   draw(f: Frame, nowMs: number, pointer: Pointer, at: SplashPlacement, prompt = true): void {
+    const t = this.advance(nowMs, pointer);
+    if (at.objectX !== null) this.drawObject(f, at.objectX, at.objectY, 1);
+    this.drawText(f, t, at.textX, at.textY, prompt);
+  }
+
+  /** Draws the cube and a solid FLEXX at `m` (no reveal effects, tagline or prompt): the shrinking and small logo. */
+  drawMorph(f: Frame, nowMs: number, pointer: Pointer, m: LogoMorph): void {
+    this.advance(nowMs, pointer);
+    if (m.cubeX !== null && m.cubeScale > 0.05) this.drawObject(f, m.cubeX, m.cubeY, m.cubeScale);
+    drawWordmarkScaled(f, WORD, m.wordX, m.wordY, m.wordScale, m.pitch);
+  }
+
+  /** Moves the clock to `nowMs` and eases the steering; returns the splash's own time in seconds. */
+  private advance(nowMs: number, pointer: Pointer): number {
     if (this.t0 === undefined) {
       this.t0 = nowMs;
       this.prev = nowMs;
@@ -129,15 +161,13 @@ export class SplashAnimation {
     const tp = 0.45 + (pointer.on ? pointer.y * 0.9 : 0);
     this.yaw += (ty - this.yaw) * Math.min(1, dt * 5);
     this.pitch += (tp - this.pitch) * Math.min(1, dt * 5);
-
-    if (at.objectX !== null) this.drawObject(f, at.objectX, at.objectY);
-    this.drawText(f, t, at.textX, at.textY, prompt);
+    return t;
   }
 
-  private drawObject(f: Frame, cx: number, cy: number): void {
+  private drawObject(f: Frame, cx: number, cy: number, scale: number): void {
     const cube = this.shape === 'cube';
-    const sx = cube ? 8.6 : 11;
-    const sy = cube ? 4.5 : 5.6;
+    const sx = (cube ? 8.6 : 11) * scale;
+    const sy = (cube ? 4.5 : 5.6) * scale;
     const cyw = Math.cos(this.yaw);
     const syw = Math.sin(this.yaw);
     const cp = Math.cos(this.pitch);

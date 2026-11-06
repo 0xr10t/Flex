@@ -1,4 +1,5 @@
-// The command box: a bordered region with the session's output above a `flex $` input line. It edits like a shell
+// The command box: a bordered region where the session's output flows down from the top, the `flex $` input line
+// following it. It edits like a shell
 // line (cursor keys, Home/End, Backspace/Delete, history on Up/Down, Ctrl-C to drop the line or leave, Ctrl-L to
 // clear) and runs commands from a table. Only the built-in commands exist so far; the wallet commands plug in here.
 
@@ -189,13 +190,15 @@ export class Repl {
 
     const innerX = r.x + 2;
     const innerW = r.w - 4;
+    const innerTop = r.y + 1;
     const innerRows = r.h - 2;
-    const inputY = bottom - 1;
 
-    // output, wrapped to the box, newest at the bottom just above the input line
+    // output flows down from the top with the input line right after it; once the box is full, the oldest lines
+    // scroll off the top and the input line stays on the last row
     const wrapped = this.lines.flatMap((l) => wrap(l, innerW));
     const shown = wrapped.slice(Math.max(0, wrapped.length - (innerRows - 1)));
-    shown.forEach((line, i) => drawLine(f, innerX, inputY - shown.length + i, line));
+    shown.forEach((line, i) => drawLine(f, innerX, innerTop + i, line));
+    const inputY = innerTop + shown.length;
 
     // input line, scrolled so the cursor stays visible
     const prompt = 'flex $ ';

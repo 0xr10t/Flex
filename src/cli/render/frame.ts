@@ -142,3 +142,35 @@ export function drawWordmark(f: Frame, t: number, s: WordmarkSpec): void {
       }
   }
 }
+
+/**
+ * The wordmark drawn solid at `scale`: 1 is full size (two columns and one row per font pixel, as `drawWordmark`
+ * settles), 0.5 the small logo (one column and half a row per pixel, drawn with half blocks). `pitch` is the columns
+ * between letter origins. In between it samples the font, so the mark can shrink smoothly.
+ */
+export function drawWordmarkScaled(
+  f: Frame,
+  word: readonly WordmarkLetter[],
+  x: number,
+  y: number,
+  scale: number,
+  pitch: number,
+): void {
+  const pxW = 2 * scale;
+  const pxH = scale;
+  const width = (word.length - 1) * pitch + 5 * pxW;
+  const on = (u: number, v: number): boolean => {
+    const li = Math.floor(u / pitch);
+    if (li < 0 || li >= word.length) return false;
+    const px = Math.floor((u - li * pitch) / pxW);
+    const py = Math.floor(v / pxH);
+    return px >= 0 && px < 5 && py >= 0 && py < 7 && FONT[word[li]!][py]![px] === '#';
+  };
+  for (let cy = Math.floor(y); cy < Math.ceil(y + 7 * pxH); cy++)
+    for (let cx = Math.floor(x); cx < Math.ceil(x + width); cx++) {
+      const u = cx + 0.5 - x;
+      const top = on(u, cy + 0.25 - y);
+      const bottom = on(u, cy + 0.75 - y);
+      if (top || bottom) put(f, cx, cy, top && bottom ? '█' : top ? '▀' : '▄', 0);
+    }
+}
