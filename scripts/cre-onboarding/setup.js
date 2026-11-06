@@ -4,6 +4,12 @@ let state,
   connected,
   busy = false;
 const providers = [];
+// Public endpoints MetaMask uses only when the network is missing; the configured RPC URLs never reach the page.
+const networks = {
+  11155111: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.etherscan.io'],
+  84532: ['https://sepolia.base.org', 'https://sepolia.basescan.org'],
+  421614: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://sepolia.arbiscan.io'],
+};
 window.addEventListener('eip6963:announceProvider', (event) => {
   if (event.detail.info.rdns === 'io.metamask') providers.push(event.detail.provider);
 });
@@ -24,14 +30,36 @@ async function api(path, body) {
 async function account(chainId) {
   provider ??= providers[0] ?? window.ethereum?.providers?.find((p) => p.isMetaMask) ?? window.ethereum;
   if (!provider) throw new Error('Open this page in the browser where MetaMask is installed.');
-  const accounts = await provider.request({ method: 'eth_requestAccounts' });
-  connected = accounts[0];
-  if (connected?.toLowerCase() !== state.wallet.toLowerCase()) throw new Error(`Select ${state.wallet} in MetaMask.`);
-  if (chainId)
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: `0x${chainId.toString(16)}` }],
-    });
+  const configured = (accounts) => accounts.find((a) => a.toLowerCase() === state.wallet.toLowerCase());
+  let accounts = await provider.request({ method: 'eth_requestAccounts' });
+  // A site already connected to another account gets no prompt, so ask MetaMask to choose accounts again.
+  if (!configured(accounts)) {
+    await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    accounts = await provider.request({ method: 'eth_accounts' });
+  }
+  connected = configured(accounts);
+  if (!connected) throw new Error(`Select ${state.wallet} in MetaMask.`);
+  if (chainId) {
+    const chain = `0x${chainId.toString(16)}`;
+    try {
+      await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain }] });
+    } catch (error) {
+      if (error.code !== 4902 && error.data?.originalError?.code !== 4902) throw error;
+      const [rpc, explorer] = networks[chainId];
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [
+          {
+            chainId: chain,
+            chainName: state.chains.find((c) => c.chainId === chainId)?.name,
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: [rpc],
+            blockExplorerUrls: [explorer],
+          },
+        ],
+      });
+    }
+  }
   return connected;
 }
 async function act(fn) {
