@@ -2,7 +2,47 @@
 
 Review date: 2026-11-06. Project: `agent-layer` in `/Users/phantomxsd/Flex`.
 
-**Completed: 19 grouped open findings (9 P1, 10 P2), plus 3 separately identified contract/semantic gaps.** Nine independent reviewers ran with `gpt-6-astra`, reasoning effort `max`, in waves of three, alongside the coordinating agent. Five findings reproduce previously acknowledged pending fixes (SQ-R-02 through SQ-R-06). Two earlier defects were fixed by concurrent changes and passed rechecks; they are excluded from the open count.
+**Original review: 19 grouped findings (9 P1, 10 P2), plus 3 separately identified contract/semantic gaps.** Nine independent reviewers ran with `gpt-6-astra`, reasoning effort `max`, in waves of three, alongside the coordinating agent. Five findings reproduced previously acknowledged pending fixes (SQ-R-02 through SQ-R-06). Two earlier defects were fixed by concurrent changes and passed rechecks; they are excluded from that count.
+
+## Remediation status — 2026-11-06
+
+All 19 findings and the 3 gaps now have implemented fixes and regression coverage. Independent Astra/max reviewers
+tested the changes; they also found and verified fixes for interval-one schedules, donor-specific bridge rounding,
+leading-decimal zero amounts, optional “starting on” date markers, answer URL secrets, and chain scope across masked
+text and sentence boundaries. Full integrated checks and the 154-case live evaluation are being finalized; final
+counts are recorded in `STATUS.md`, `PROMPT_CHANGES.md`, and `CODEX_FIX_STATUS.md` when complete.
+
+| Finding | Correction | Regression evidence |
+| --- | --- | --- |
+| B01 | Deterministically parsed zero never becomes a positive model amount; glued tokens and leading decimal zeros are covered. | `test/unit/B/s3.test.ts` |
+| B02 | Distributive words relax pairing only in their own clauses. | `test/unit/D/core-review.test.ts`, `s8-pair.test.ts` |
+| B03 | Reports match the submitted request, step, kind and autopay ID, including cancel-only requests. | `test/acceptance/handoff-independent.test.ts`, `review-hardening.test.ts` |
+| B04 | Executed spend cannot be downgraded; stale reports cannot revive cancelled/ended autopays. | Same HTTP/SQLCipher suites, including actual create → cancel → replay |
+| B05 | Session close/replacement waits for in-flight work, then clears session stores and deferred journal history. | `test/acceptance/core-review.test.ts`, `handoff-independent.test.ts` |
+| B06 | Cancellation of an earlier handed-off request consults history and durable submission state. | `test/acceptance/core-review.test.ts` |
+| B07 | Ambiguous timeout cancellation uses the wallet-check warning. | `test/acceptance/core-review.test.ts` |
+| B08 | Both answer entrypoints scan raw text and decoded URLs before storage or model calls. | `test/acceptance/review-hardening.test.ts`, `handoff-independent.test.ts` |
+| B09 | A late first confirmation asks for a new autopay start and a fresh summary. Already-submitted retries remain immutable. | `test/acceptance/core-review.test.ts`, `review-hardening.test.ts` |
+| B10 | Duplicate report transaction hashes do not insert spend twice. | `test/acceptance/core-review.test.ts` |
+| B11 | Contact-name matching uses Unicode identifier boundaries. | `test/unit/B/s5.test.ts` |
+| B12 | Unsupported token screening handles glued quantities and compound number words. | `test/unit/B/lexical.test.ts` |
+| B13 | Context masking requires independently recognizable amount evidence; no-amount prompts remain intact. | `test/unit/B/s3.test.ts`; complete live evaluation |
+| B14 | Repeated valid action labels are narrowly deduplicated before schema validation. | `test/unit/B/ollama.test.ts`; complete live evaluation |
+| B15 | Malformed URL escapes cannot suppress scanning of separately encoded secrets. | `test/unit/B/s1.test.ts`, `fetch.test.ts` |
+| B16 | Future local dates/times use date-aware IANA offsets. | `test/unit/B/chrono.test.ts`, `test/acceptance/schedule-dates.test.ts` |
+| B17 | Explicit date-range direction survives chrono normalization, including optional start prepositions. | Same date suites |
+| B18 | A short autopay's period cap is bounded by its total cap. | `test/unit/D/core-review.test.ts` |
+| B19 | SQLCipher commits immutable submission identity and DB6/DB7 reservations before sending; post-accept failures remain recoverable. | Independent real `SQLITE_FULL`, cold reopen and fresh HTTP callback tests |
+| G01 | Explicit chains are checked per payment and sentence, using consistent typed-text offsets. | `test/acceptance/chain-binding.test.ts`, `handoff-independent.test.ts` |
+| G02 | Pre-submit persistence allows valid callbacks before the executor's HTTP response. | Independent early i/k/l callback tests |
+| G03 | First confirmation refreshes balances/settings, revalidates funding/limits, and requires renewed consent when changed. | `test/acceptance/review-hardening.test.ts`, `handoff-independent.test.ts` |
+
+The durable journal is an additive encrypted schema-v2 table. The original schema file and README specification are
+unchanged. Protocol decisions, including the immutable-retry boundary for late schedules, are documented in
+`SPEC_QUESTIONS.md`. The human approved retaining all three previously interim UI texts.
+
+The original review evidence below is retained unchanged in substance. Its source locations and “observed” behavior
+describe the reviewed revision before remediation, not the current implementation.
 
 ## Scope and evidence
 
@@ -49,7 +89,7 @@ Detailed synthetic traces, reviewer reports, logs, and reproduction artifacts ar
 
 The coordinator added three secret-answer cases, performed the TCP smoke test, and reran the baseline and consolidated review suites. The newly merged 154-prompt live suite was not rerun wholesale; pre-existing live result files were not counted as this review's executions.
 
-## Open implementation defects
+## Original implementation findings
 
 Priority: **P1** warrants attention before relying on payment/accounting/privacy guarantees; **P2** is a correctness or availability defect. Priorities describe impact, not a claim that real financial loss occurred.
 

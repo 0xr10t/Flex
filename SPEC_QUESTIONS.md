@@ -280,3 +280,27 @@ LLM output in code where the model's answer is reasonable but fails a strict sch
 deduplicated). Conditions: every change is re-tested on the full live set (`test/live`, 154 prompts); it is kept only if
 the wrong-hand-off count stays 0 and the number of unnecessary stops falls; every changed prompt is recorded as a
 human-approved difference from §8.10 (the compliance check reports it as such). `README.md` stays unchanged.
+
+## Codex review remediation (2026-11-06)
+
+The human requested fixing every finding and gap in `codex_review_report.md` and completing `HANDOFF_PROMPT.md`.
+The following are implementation decisions made under that request, rather than quotations of the original spec:
+
+- **B03/B04/B19/G02:** add an encrypted, persistent submission journal and commit the confirmed envelope plus DB6/DB7
+  reservations before submitting it. Reports must match the actual request, step, intent kind and autopay ID. This
+  supersedes the earlier accepted gap for an unrecorded `l`-only request. Timeouts/5xx keep reservations; definite
+  rejections mark them failed. Execution cannot be undone by an older report, and terminal autopays cannot be revived.
+  Session history held temporarily by the journal is erased on session clear.
+- **G03:** refresh balances and settings before the first submission. Changed settings require replanning and a new
+  confirmation; newly broken limits require consent. Revalidate current funding and spend accounting before sending.
+- **B19 retry identity / SQ-R-05 boundary:** late-start replanning applies before the first external submission.
+  After an ambiguous submission, a retry uses the original envelope and idempotency key, even if its scheduled start
+  has since passed. Replacing an already-submitted payload under the same key could create an inconsistent or duplicate
+  autopay. The user can cancel locally with the existing uncertainty warning and check the wallet.
+- **G01:** independently enforce explicit chain binding to payment clauses, including a global leading/trailing chain.
+  A model omission or swap triggers the existing correction retry and then `PAIRING_FAILED` if still wrong.
+
+**SQ-CX-01 — interim copy: ANSWERED (human, 2026-11-06).** The human selected “Keep these texts” in response to the
+`HANDOFF_PROMPT.md` §5.4 wording check. Approved exactly: “That would leave {name} with nothing.”;
+“Yes, this once” / “Yes, set it up” / “No”; and “today's limit of {daily_max} (only {remaining} is left)”.
+These texts no longer await approval. This does not authorize pushing or deleting branches, worktrees or process files.
