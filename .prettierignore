@@ -1,8 +1,6 @@
 dist
 node_modules
 package-lock.json
-README.md
-docs/agent/ORCHESTRATOR_PROMPT.md
 src/llm/prompts
 src/schemas/*.json
 src/db/schema.sql
