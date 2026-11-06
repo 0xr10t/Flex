@@ -16,9 +16,9 @@ export const SUMMARY_LINE = {
     `Move ${req(p, 'padded')} ${req(p, 'token')} from ${req(p, 'source')} to ${req(p, 'dest')} (your own account; includes a ${req(p, 'b')}% fee buffer, anything left over stays with you).`,
   I: (p: P) =>
     `Send ${req(p, 'amount')} ${req(p, 'token')} to ${req(p, 'name')} (${req(p, 'addr')}) on ${req(p, 'chain')}.`,
-  /** Appended to an `i` line when `depends_on` is non-empty (SQ-D3: several steps are joined with " and "). */
+  /** Appended to an `i` line when `depends_on` is non-empty (SQ-D-03: several steps are joined with " and "). */
   AFTER_STEP: (p: P) => ` After step ${req(p, 'n')}.`,
-  /** SQ-D2: the template has no final period; the §19 E4 example ends with one. */
+  /** SQ-D-02: the template has no final period; the §19 E4 example ends with one. */
   I_GROUP: (p: P) =>
     `Send ${req(p, 'amount')} ${req(p, 'token')} each to ${req(p, 'count')} members of ${req(p, 'parent')} on ${req(p, 'chain')}: ${req(p, 'names')}.`,
   K: (p: P) =>
@@ -27,7 +27,7 @@ export const SUMMARY_LINE = {
     `Stop paying ${req(p, 'name')} ${req(p, 'amount')} ${req(p, 'token')} ${req(p, 'cadence')} on ${req(p, 'chain')}, and refund what's left in it to you.`,
 } as const;
 
-/** §13.1 {cadence}. `days` already joined ("Mon and Thu"), `d` already an ordinal ("28th", SQ-D4). */
+/** §13.1 {cadence}. `days` already joined ("Mon and Thu"), `d` already an ordinal ("28th", SQ-D-04). */
 export const CADENCE = {
   DAILY: () => 'every day',
   DAILY_N: (p: P) => `every ${req(p, 'n')} days`,
@@ -44,7 +44,7 @@ export const END_TEXT = {
   CANCEL: (p: P) => `until you cancel (at most ${req(p, 'weeks')} weeks)`,
 } as const;
 
-/** §10.7 step 3 chip label, e.g. "10 USDC weekly on MON, Base Sepolia, since 2026-11-10" (SQ-D5). */
+/** §10.7 step 3 chip label, e.g. "10 USDC weekly on MON, Base Sepolia, since 2026-11-10" (SQ-D-05). */
 export const AUTOPAY_PICK_LABEL = (p: P): string =>
   `${req(p, 'amount')} ${req(p, 'token')} ${req(p, 'schedule')}, ${req(p, 'chain')}, since ${req(p, 'since')}`;
 

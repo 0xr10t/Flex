@@ -9,19 +9,18 @@ import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contr
 import type { AddressPh, AmountPh, ChainId, InternalIntent, QuestionId, Token } from '../contracts/types.js';
 import { validators } from '../schemas/index.js';
 import { newId } from '../util/ids.js';
+import { db1BaseUnits, decimalsOf, fmt, internalError, isGroupPh, pushNote, recipientNameOf } from '../plan/common.js';
 import {
-  chainName,
-  db1BaseUnits,
-  decimalsOf,
-  fmt,
-  internalError,
-  isGroupPh,
-  pushNote,
-  recipientNameOf,
-} from '../plan/common.js';
-import { spentToday, thisRequest, tokensUsed } from '../plan/limits.js';
+  autopayDurationError,
+  checkAutopayPeriod,
+  checkBridgeCount,
+  checkPerTx,
+  spentToday,
+  thisRequest,
+  tokensUsed,
+} from '../plan/limits.js';
 import { enumerateOccurrences } from '../plan/schedule.js';
-import { balanceOf, hasGas, insufficientParams, readBalances, type ChainBalance } from '../plan/spendable.js';
+import { checkChain, checkGas, insufficientParams, readBalances, type ChainBalance } from '../plan/spendable.js';
 
 type Failure = StepResult | null;
 
@@ -76,12 +75,8 @@ function amountsPositive(ctx: StepContext, plan: InternalIntent[]): boolean {
 
 function checkChains(ctx: StepContext, plan: InternalIntent[], balances: ChainBalance[]): Failure {
   for (const c of plan.flatMap(chainsOf)) {
-    if (!ctx.limits.allowed_chain_ids.includes(c)) {
-      return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx, c) } };
-    }
-    if (!balanceOf(balances, c)?.ok) {
-      return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx, c) } };
-    }
+    const bad = checkChain(ctx, balances, c);
+    if (bad) return bad;
   }
   return null;
 }
@@ -162,7 +157,6 @@ function needAndAvailable(
 }
 
 function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalance[]): Failure {
-  const { limits } = ctx;
   for (const token of tokensUsed(plan)) {
     const perChain = balances.map((b) => needAndAvailable(ctx, plan, b, token));
     if (perChain.some((x) => x.need > x.available)) {
@@ -170,56 +164,24 @@ function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalanc
       return { kind: 'error', code: 'INSUFFICIENT_FUNDS', params: insufficientParams(ctx, token, balances, total) };
     }
   }
-  for (const c of limits.allowed_chain_ids) {
-    const touched = plan.some((it) => (it.intent_id === 'j' ? it.source_chain_id === c : it.chain_id === c));
-    const b = balanceOf(balances, c);
-    if (touched && (!b || !hasGas(b))) {
-      return {
-        kind: 'error',
-        code: 'NO_GAS',
-        params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx, c) },
-      };
-    }
-  }
-  const bridges = plan.filter((it) => it.intent_id === 'j').length;
-  if (bridges > limits.max_bridges_per_request) {
-    return {
-      kind: 'error',
-      code: 'LIMIT_BRIDGES',
-      params: { n: String(bridges), max: String(limits.max_bridges_per_request) },
-    };
-  }
-  return null;
+  const touched = new Set(plan.map((it) => (it.intent_id === 'j' ? it.source_chain_id : it.chain_id)));
+  return checkGas(ctx, balances, touched) ?? checkBridgeCount(ctx, plan.filter((it) => it.intent_id === 'j').length);
 }
 
 // ───────────────────────────── §11.3 limits ─────────────────────────────
 
-function perTxError(ctx: StepContext, units: bigint, token: Token): Failure {
-  const max = ctx.limits.per_tx_max[token];
-  if (units <= toBaseUnits(max, decimalsOf(token))) return null;
-  return { kind: 'error', code: 'LIMIT_PER_TX', params: { amount: fmt(units, token), token, max } };
-}
-
 function perIntentLimits(ctx: StepContext, plan: InternalIntent[]): Failure {
-  const { limits } = ctx;
   for (const it of plan) {
     if (it.intent_id === 'i') {
-      const bad = perTxError(ctx, db1BaseUnits(ctx, it.amount).units, it.token);
+      const bad = checkPerTx(ctx, db1BaseUnits(ctx, it.amount).units, it.token);
       if (bad) return bad;
     } else if (it.intent_id === 'k') {
-      const bad = perTxError(ctx, db1BaseUnits(ctx, it.amount_per_payment).units, it.token);
+      const bad =
+        checkPerTx(ctx, db1BaseUnits(ctx, it.amount_per_payment).units, it.token) ??
+        checkAutopayPeriod(ctx, db1BaseUnits(ctx, it.limits.per_period_cap).units, it.token);
       if (bad) return bad;
-      const cap = db1BaseUnits(ctx, it.limits.per_period_cap).units;
-      const max = limits.autopay_max_per_period[it.token];
-      if (cap > toBaseUnits(max, decimalsOf(it.token))) {
-        return {
-          kind: 'error',
-          code: 'LIMIT_AUTOPAY_PERIOD',
-          params: { cap: fmt(cap, it.token), token: it.token, max },
-        };
-      }
-      if (enumerateOccurrences(it.schedule, limits.autopay_max_weeks).exceedsMaxWeeks) {
-        return { kind: 'error', code: 'LIMIT_AUTOPAY_DURATION', params: { weeks: String(limits.autopay_max_weeks) } };
+      if (enumerateOccurrences(it.schedule, ctx.limits.autopay_max_weeks).exceedsMaxWeeks) {
+        return autopayDurationError(ctx);
       }
     }
   }

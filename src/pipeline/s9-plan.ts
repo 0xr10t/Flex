@@ -57,12 +57,14 @@ import {
 } from '../plan/schedule.js';
 import {
   balanceOf,
-  hasGas,
+  checkChain,
+  checkGas,
   insufficientParams,
   readBalances,
   TOKENS_ORDER,
   type ChainBalance,
 } from '../plan/spendable.js';
+import { autopayDurationError, checkAutopayPeriod, checkBridgeCount, checkPerTx } from '../plan/limits.js';
 import { AUTOPAY_PICK_LABEL } from '../messages/templates.js';
 
 // ───────────────────────────── re-entrant state ─────────────────────────────
@@ -205,26 +207,11 @@ function resolveK(
       end = parsed;
     }
   }
-  const schedule: Schedule = {
-    frequency,
-    interval,
-    days_of_week,
-    day_of_month,
-    time_of_day,
-    timezone: ctx.timezone,
-    start_date,
-    first_occurrence: first.toISO({ suppressMilliseconds: true }) as string,
-    end,
-  };
+  const schedule: Schedule = { ...core, first_occurrence: first.toISO({ suppressMilliseconds: true }) as string, end };
 
   // Derived values (§10.6): 2 zero occurrences, 3 duration, 4 per-period cap, 5 per-payment limit.
   const occ = enumerateOccurrences(schedule, limits.autopay_max_weeks);
-  if (occ.exceedsMaxWeeks) {
-    return {
-      kind: 'result',
-      result: { kind: 'error', code: 'LIMIT_AUTOPAY_DURATION', params: { weeks: String(limits.autopay_max_weeks) } },
-    };
-  }
+  if (occ.exceedsMaxWeeks) return { kind: 'result', result: autopayDurationError(ctx) };
   if (occ.occurrences.length === 0)
     return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NO_OCCURRENCES' } };
   // §12.5 caps after_count at 520 and the spec has no reply for a longer count within the duration limit (SQ-D-06).
@@ -234,30 +221,10 @@ function resolveK(
   const row = p.amount === null ? undefined : ctx.repos.db1.get(p.amount);
   if (!row) return { kind: 'result', result: internalError(ctx, 's9', 'S9_K_AMOUNT_MISSING') };
   const token = row.token;
-  const dec = decimalsOf(token);
-  const amount = toBaseUnits(row.amount, dec);
+  const amount = toBaseUnits(row.amount, decimalsOf(token));
   const perPeriod = amount * paymentsPerWeek(schedule);
-  const maxPeriod = toBaseUnits(limits.autopay_max_per_period[token], dec);
-  if (perPeriod > maxPeriod) {
-    return {
-      kind: 'result',
-      result: {
-        kind: 'error',
-        code: 'LIMIT_AUTOPAY_PERIOD',
-        params: { cap: fmt(perPeriod, token), token, max: limits.autopay_max_per_period[token] },
-      },
-    };
-  }
-  if (amount > toBaseUnits(limits.per_tx_max[token], dec)) {
-    return {
-      kind: 'result',
-      result: {
-        kind: 'error',
-        code: 'LIMIT_PER_TX',
-        params: { amount: fmt(amount, token), token, max: limits.per_tx_max[token] },
-      },
-    };
-  }
+  const overLimit = checkAutopayPeriod(ctx, perPeriod, token) ?? checkPerTx(ctx, amount, token);
+  if (overLimit) return { kind: 'result', result: overLimit };
   const count = BigInt(occ.occurrences.length);
   const last = occ.occurrences[occ.occurrences.length - 1] as DateTime;
   return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total: amount * count, day28, last } };
@@ -350,16 +317,6 @@ interface Item {
 }
 
 type ChainPick = { kind: 'ok'; chain: ChainId; reused: ChainId | null } | { kind: 'result'; result: StepResult };
-
-function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainId): StepResult | null {
-  if (!ctx.limits.allowed_chain_ids.includes(c)) {
-    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx, c) } };
-  }
-  if (!balanceOf(balances, c)?.ok) {
-    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx, c) } };
-  }
-  return null;
-}
 
 function pickChain(
   ctx: StepContext,
@@ -563,26 +520,10 @@ async function step(ctx: StepContext): Promise<StepResult> {
     }
     bridges.push(...planned);
   }
-  if (bridges.length > limits.max_bridges_per_request) {
-    return {
-      kind: 'error',
-      code: 'LIMIT_BRIDGES',
-      params: { n: String(bridges.length), max: String(limits.max_bridges_per_request) },
-    };
-  }
-  // Gas check: every chain the plan touches.
+  // LIMIT_BRIDGES, then the gas check on every chain the plan touches.
   const touched = new Set<ChainId>([...bridges.map((b) => b.source), ...items.map((it) => it.chain)]);
-  for (const c of limits.allowed_chain_ids) {
-    if (!touched.has(c)) continue;
-    const b = balanceOf(balances, c);
-    if (!b || !hasGas(b)) {
-      return {
-        kind: 'error',
-        code: 'NO_GAS',
-        params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx, c) },
-      };
-    }
-  }
+  const capped = checkBridgeCount(ctx, bridges.length) ?? checkGas(ctx, balances, touched);
+  if (capped) return capped;
 
   // §10.5 ordering: all j first (by first payment needing the destination, then source in allowed order).
   const firstNeed = (b: PlannedBridge): number => {

@@ -2,7 +2,7 @@
 // autopay_prefund − ETH gas reserve, floored at 0; unavailable chains excluded; bigint base units), §10.4 gas check
 // input (raw ETH − pending ETH, SQ-16), §11.2 V-11.
 
-import type { StepContext } from '../contracts/step.js';
+import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { chainName, decimalsOf, fmt, joinAnd, nowUtcIso } from './common.js';
@@ -30,21 +30,21 @@ export function readBalances(ctx: StepContext): ChainBalance[] {
   const now = nowUtcIso(ctx);
   return ctx.limits.allowed_chain_ids.map((chain_id) => {
     const rows = TOKENS_ORDER.map((t) => ctx.repos.db4.get(chain_id, t));
-    const ok = rows.every((r) => r !== undefined && r.status === 'ok');
+    const ok = rows.every((r) => r?.status === 'ok');
     const raw = { USDC: 0n, ETH: 0n } as Record<Token, bigint>;
     const pending = { USDC: 0n, ETH: 0n } as Record<Token, bigint>;
     const spendable = { USDC: 0n, ETH: 0n } as Record<Token, bigint>;
     const reserve = gasReserve(ctx, chain_id);
     if (ok) {
-      for (const t of TOKENS_ORDER) {
-        const row = ctx.repos.db4.get(chain_id, t);
+      TOKENS_ORDER.forEach((t, n) => {
+        const row = rows[n];
         raw[t] = row ? BigInt(row.base_units) : 0n;
         pending[t] = ctx.repos.db6
           .pendingRecent(chain_id, t, now)
           .reduce((s, r) => s + toBaseUnits(r.amount, decimalsOf(t)), 0n);
         const s = raw[t] - pending[t] - (t === 'ETH' ? reserve : 0n);
         spendable[t] = s > 0n ? s : 0n;
-      }
+      });
     }
     return { chain_id, ok, raw, pending, spendable, reserve };
   });
@@ -57,6 +57,33 @@ export function balanceOf(balances: ChainBalance[], chain_id: ChainId): ChainBal
 /** §10.4 gas check: raw ETH − pending ETH ≥ eth_gas_reserve[c]. */
 export function hasGas(b: ChainBalance): boolean {
   return b.ok && b.raw.ETH - b.pending.ETH >= b.reserve;
+}
+
+/** §10.3 rule 2 / V-05: the chain is in `allowed_chain_ids` and its balances are readable. */
+export function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainId): StepResult | null {
+  if (!ctx.limits.allowed_chain_ids.includes(c)) {
+    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx, c) } };
+  }
+  if (!balanceOf(balances, c)?.ok) {
+    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx, c) } };
+  }
+  return null;
+}
+
+/** §10.4 gas check / V-11 for every touched chain, in `allowed_chain_ids` order. */
+export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: ReadonlySet<ChainId>): StepResult | null {
+  const { limits } = ctx;
+  for (const c of limits.allowed_chain_ids) {
+    if (!touched.has(c)) continue;
+    const b = balanceOf(balances, c);
+    if (b && hasGas(b)) continue;
+    return {
+      kind: 'error',
+      code: 'NO_GAS',
+      params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx, c) },
+    };
+  }
+  return null;
 }
 
 /** §15 INSUFFICIENT_FUNDS params (SQ-08): totals across the readable chains. */
