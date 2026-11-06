@@ -5,7 +5,7 @@
 // S0 runs only for new messages (the runner never calls it for answers; it asks no questions, so no onAnswer).
 // Owner: Lane B.
 
-import { createPublicClient, erc20Abi, http, type PublicClient } from 'viem';
+import { createPublicClient, erc20Abi, http, type PublicClient, type Transport } from 'viem';
 import { NOTES } from '../contracts/catalog.js';
 import type { RpcClients } from '../contracts/io.js';
 import { fromBaseUnits } from '../contracts/money.js';
@@ -16,12 +16,20 @@ import { chainName, joinNames } from '../lexical/step-util.js';
 /** §14.5: 10 s timeout, no retries inside a request. */
 const RPC_TIMEOUT_MS = 10_000;
 
-/** Production RPC clients (§14.5). */
-export function createRpcClients(config: Config): RpcClients {
+/** §14.5 transport options: 10 s timeout, no retries. */
+export const RPC_TRANSPORT_OPTIONS = { timeout: RPC_TIMEOUT_MS, retryCount: 0 } as const;
+
+/** Builds the transport for one chain; unit tests replace it (no network). */
+export type RpcTransportFactory = (rpc_url: string) => Transport;
+
+const httpTransport: RpcTransportFactory = (rpc_url) => http(rpc_url, RPC_TRANSPORT_OPTIONS);
+
+/** Production RPC clients (§14.5): one viem public client per chain. */
+export function createRpcClients(config: Config, transportFor: RpcTransportFactory = httpTransport): RpcClients {
   const clients = new Map<ChainId, { client: PublicClient; usdc: `0x${string}` }>();
   for (const c of config.chains) {
     clients.set(c.chain_id, {
-      client: createPublicClient({ transport: http(c.rpc_url, { timeout: RPC_TIMEOUT_MS, retryCount: 0 }) }),
+      client: createPublicClient({ transport: transportFor(c.rpc_url) }),
       usdc: c.usdc_address,
     });
   }
