@@ -19,7 +19,7 @@ import type {
   Summary,
   Weekday,
 } from '../contracts/types.js';
-import { chainName } from '../lexical/step-util.js';
+import { chainName } from '../pipeline/step-util.js';
 import { db1BaseUnits, decimalsOf, fmt, pushNote, recipientName, recipientNameOf } from '../plan/common.js';
 import { spentToday, thisRequest, tokensUsed } from '../plan/limits.js';
 import { CADENCE, END_TEXT, SUMMARY_LINE } from './templates.js';

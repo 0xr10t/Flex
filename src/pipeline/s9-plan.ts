@@ -31,7 +31,7 @@ import { toBaseUnits } from '../contracts/money.js';
 import { newId } from '../util/ids.js';
 import { answerText, parseCount, parseDateAnswer } from '../plan/answers.js';
 import { neededWithPadding, planBridges, type PlannedBridge } from '../plan/bridges.js';
-import { chainName, qid } from '../lexical/step-util.js';
+import { chainName, qid } from './step-util.js';
 import { decimalsOf, fmt, internalError, isGroupPh, pushNote, recipientNameOf, unsupported } from '../plan/common.js';
 import {
   clampDayOfMonth,

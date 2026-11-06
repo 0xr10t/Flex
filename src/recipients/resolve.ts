@@ -40,7 +40,7 @@ import type {
 } from '../contracts/types.js';
 import { checkAddress, isSelf, looksLikeAddress, sameAddress, type AddressCheck } from './address.js';
 import { okChains, statedChain } from './chains.js';
-import { chainName, qid } from '../lexical/step-util.js';
+import { chainName, qid } from '../pipeline/step-util.js';
 import { nameKey } from '../lexical/text.js';
 import { firstLabel, normalizeEns, resolveOnChain, resolveOnChains, type ChainAddress } from './ens.js';
 import { resolveMembers, triageMembers } from './group.js';

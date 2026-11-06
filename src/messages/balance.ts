@@ -2,7 +2,7 @@
 // USDC, unreadable chains, totals of the readable chains. Lane B's S4 and S11 (§8.5 rule 3, SQB-15) call it.
 
 import type { BuildBalanceAnswer } from '../contracts/step.js';
-import { chainName } from '../lexical/step-util.js';
+import { chainName } from '../pipeline/step-util.js';
 import { fmt } from '../plan/common.js';
 import { readBalances } from '../plan/spendable.js';
 import { BALANCE } from './templates.js';

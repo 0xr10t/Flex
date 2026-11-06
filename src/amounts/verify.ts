@@ -35,7 +35,7 @@ import {
   type Token,
   type TokenWordKind,
 } from '../contracts/types.js';
-import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
+import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../pipeline/step-util.js';
 import { amountCurrencyKinds, parseAmountText } from './parse.js';
 
 /** One amount being verified. Lives in `req.step_state` (S3 / S4), so it must stay JSON-serialisable. */

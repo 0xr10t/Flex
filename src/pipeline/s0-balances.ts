@@ -16,7 +16,7 @@ import { fromBaseUnits } from '../contracts/money.js';
 import type { Repos } from '../contracts/repos.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import { TOKEN_DECIMALS, type ChainId, type Config } from '../contracts/types.js';
-import { chainName } from '../lexical/step-util.js';
+import { chainName } from './step-util.js';
 import { isolatedHttp } from '../util/isolated-fetch.js';
 
 /** §14.5: 10 s timeout, no retries inside a request. */

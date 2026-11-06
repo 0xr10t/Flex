@@ -8,7 +8,7 @@ import type { BrokenLimit } from '../contracts/catalog.js';
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { InternalIntent, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
-import { nowUtcIso } from '../lexical/step-util.js';
+import { nowUtcIso } from '../pipeline/step-util.js';
 import { db1BaseUnits, decimalsOf, fmt } from './common.js';
 import { TOKENS_ORDER } from './spendable.js';
 

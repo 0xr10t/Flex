@@ -28,7 +28,7 @@ import {
 } from '../amounts/verify.js';
 import { buildAmountsPrompt } from '../llm/prompt-builder/amounts.js';
 import { clauseIndexAt, escapeRe, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
-import { qid, unsupported } from '../lexical/step-util.js';
+import { qid, unsupported } from './step-util.js';
 
 interface LlmAmount {
   phrase: string;

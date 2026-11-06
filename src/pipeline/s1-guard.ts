@@ -16,7 +16,7 @@ import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { MessageInput, QItem } from '../contracts/types.js';
 import { detectSecret } from '../guard/secrets.js';
 import { extractUrls, isHttpsUrl, isSecretRefusal, urlHasSecret } from '../guard/urls.js';
-import { nowUtcIso, unsupported } from '../lexical/step-util.js';
+import { nowUtcIso, unsupported } from './step-util.js';
 import { decodeUtf8, pdfToText } from '../quarantine/extract.js';
 import { ITEM_LABEL } from '../quarantine/labels.js';
 import { extractUntrusted } from '../quarantine/qllm.js';

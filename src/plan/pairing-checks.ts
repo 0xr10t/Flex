@@ -6,7 +6,7 @@
 
 import type { StepContext } from '../contracts/step.js';
 import type { AmountPh, ChainId, ErrorCode, Frequency, Payment, RecipientPh, Weekday } from '../contracts/types.js';
-import { chainName } from '../lexical/step-util.js';
+import { chainName } from '../pipeline/step-util.js';
 import { isGroupPh, recipientNameOf } from './common.js';
 import { chainBindingProblems } from './chain-binding.js';
 import { parseCount } from './answers.js';

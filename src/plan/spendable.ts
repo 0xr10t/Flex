@@ -6,7 +6,7 @@ import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { insufficientFundsParams } from '../contracts/catalog.js';
-import { chainName, nowUtcIso } from '../lexical/step-util.js';
+import { chainName, nowUtcIso } from '../pipeline/step-util.js';
 import { decimalsOf, fmt } from './common.js';
 
 export const TOKENS_ORDER: readonly Token[] = ['USDC', 'ETH'];

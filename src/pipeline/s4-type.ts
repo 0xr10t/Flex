@@ -24,7 +24,7 @@ import {
 } from '../amounts/verify.js';
 import { buildRequestTypePrompt } from '../llm/prompt-builder/requestType.js';
 import { buildBalanceAnswer } from '../messages/balance.js';
-import { qid, unsupported } from '../lexical/step-util.js';
+import { qid, unsupported } from './step-util.js';
 
 interface RequestTypeOut {
   request_type: 'actions' | 'balance' | 'unsupported';
