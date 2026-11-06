@@ -74,6 +74,12 @@ const CONFIG_SCHEMA = {
         think: { type: 'boolean' },
       },
     },
+    chat: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['enabled', 'think'],
+      properties: { enabled: { type: 'boolean' }, think: { type: 'boolean' } },
+    },
     chains: {
       type: 'array',
       minItems: 1,

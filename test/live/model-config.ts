@@ -16,3 +16,12 @@ export function liveModelConfig(base: Config['llm'], env: NodeJS.ProcessEnv = pr
   }
   return llm;
 }
+
+/** Enable the production chat profile explicitly; an omitted flag preserves the historical wallet-only run. */
+export function liveChatConfig(base: Config['chat'], env: NodeJS.ProcessEnv = process.env): Config['chat'] {
+  if (env.LIVE_CHAT === undefined) return base === undefined ? undefined : { ...base };
+  if (env.LIVE_CHAT !== 'true' && env.LIVE_CHAT !== 'false') {
+    throw new Error('LIVE_CHAT must be true or false');
+  }
+  return { enabled: env.LIVE_CHAT === 'true', think: true };
+}

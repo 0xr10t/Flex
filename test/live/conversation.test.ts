@@ -7,7 +7,7 @@ import type { LlmCallArgs } from '../../src/contracts/llm.js';
 import { createOllamaClient } from '../../src/llm/ollama.js';
 import { addr, ARB, BASE, Harness, MIHIR, type Resp } from '../acceptance/harness.js';
 import { testConfig } from '../fakes/context.js';
-import { liveModelConfig } from './model-config.js';
+import { liveChatConfig, liveModelConfig } from './model-config.js';
 
 const RIYA = addr(44);
 const directory = join(import.meta.dirname, 'results', 'conversation');
@@ -15,6 +15,7 @@ mkdirSync(directory, { recursive: true });
 const results: unknown[] = [];
 const tag = process.env.LIVE_TAG ?? 'latest';
 const MODEL_CONFIG = liveModelConfig(testConfig().llm);
+const CHAT_CONFIG = liveChatConfig(testConfig().chat);
 
 async function scenario(
   id: string,
@@ -27,14 +28,15 @@ async function scenario(
   );
   h.addContact('Riya', RIYA, [BASE, ARB]);
   h.config.llm = { ...MODEL_CONFIG };
+  if (CHAT_CONFIG !== undefined) h.config.chat = { ...CHAT_CONFIG };
   const real = createOllamaClient(h.config, { info() {}, warn() {}, error() {} });
-  const trace: Array<{ name: string; output: unknown; ms: number }> = [];
+  const trace: Array<{ name: string; think?: boolean; output: unknown; ms: number }> = [];
   const turns: Array<{ channel: string; text: string; response: Resp }> = [];
   h.llm.modelAvailable = () => real.modelAvailable();
   h.llm.call = async <T>(args: LlmCallArgs): Promise<T> => {
     const start = Date.now();
     const output = await real.call<T>(args);
-    trace.push({ name: args.name, output, ms: Date.now() - start });
+    trace.push({ name: args.name, think: args.think ?? h.config.llm.think, output, ms: Date.now() - start });
     return output;
   };
   const say = h.say.bind(h);
@@ -61,6 +63,7 @@ async function scenario(
       id,
       passed,
       llm_config: h.config.llm,
+      chat_config: h.config.chat,
       ms: Date.now() - start,
       turns,
       trace,
