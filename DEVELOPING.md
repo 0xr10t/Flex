@@ -111,6 +111,20 @@ The server binds only to `127.0.0.1`, normally port `8787`. Every route requires
 
 Production requests can contact configured RPC servers, the ENS indexer, the execution service, local Ollama, and user-supplied HTTPS content. A plan still needs confirmation. Before its first submission, confirmation refreshes balances and current limits and checks whether an autopay start has passed. Changed settings or summaries require another confirmation; a stale autopay start asks for a new start. A retry after submission preserves the original envelope and idempotency identity.
 
+## The `flexx` terminal
+
+```sh
+npm run build
+npm link        # once: puts `flexx` on your PATH
+flexx
+```
+
+`flexx` is a terminal client for the agent's UI API. It reads the agent's config (`AGENT_CONFIG`, default `~/.agent-layer/config.json`). If nothing answers on the agent's port, it starts `dist/src/index.js` with that config and stops it again on exit; an agent that was already running is left alone. If the config does not validate, the chat lists the failing fields instead of starting anything.
+
+Type a request in your own words. A question shows numbered choices: type a number, several numbers (`1,3` or `all`) for a member list, or answer in words. A summary asks `[y] Yes  [n] No`; after a yes, `flexx` opens the wallet's MetaMask approval page (the agent's `execution.url`) in your browser. Commands: `/balance`, `/limits` (and `/limits <name> <value>`, or `/limits daily_max USDC 250` for one token), `/cancel`, `/new`, `/wallet`, `/status`, `/clear`, `/help`, `/exit`. Leaving closes the session, which clears its data in the agent.
+
+`flexx splash` and `flexx scene` show the animations alone; `flexx --static` prints one still frame.
+
 ## Tests
 
 Install dependencies first. Unit and acceptance tests use model fixtures, temporary databases, fake key stores and fake execution; they do not send real payments or require Ollama. The audit suite is separate from the default test command and includes local transport checks. These suites do not require external RPC, ENS or wallet services.

@@ -7,6 +7,9 @@ import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { ReadStream, WriteStream } from 'node:tty';
+import { connectAgent } from './agent/launcher.js';
+import { Chat } from './chat.js';
+import { openLocalPage } from './open.js';
 import { isHexColor } from './render/paint.js';
 import type { SplashShape } from './render/splash.js';
 import { detectColorMode, renderStatic, runInteractive, type View, type ViewOptions } from './terminal.js';
@@ -112,7 +115,17 @@ export async function runCli(argv: string[]): Promise<number> {
     process.stdout.write(renderStatic(opts));
     return 0;
   }
-  const reason = await runInteractive(opts, process.stdin, process.stdout);
+  const chat =
+    args.view === 'opening'
+      ? new Chat({
+          connect: () => connectAgent(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          openPage: (url) => openLocalPage(url),
+        })
+      : undefined;
+  const reason = await runInteractive({ ...opts, conversation: chat }, process.stdin, process.stdout);
+  // close the session (the agent clears its data) and stop an agent flexx started
+  await chat?.close();
   return reason === 'interrupt' ? 130 : 0;
 }
 

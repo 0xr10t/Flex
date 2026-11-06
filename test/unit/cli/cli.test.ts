@@ -7,7 +7,7 @@ import { snap, SNAP_SECONDS } from '../../../src/cli/render/snap.js';
 import { SplashAnimation, SPLASH_COLS, SPLASH_ROWS } from '../../../src/cli/render/splash.js';
 import { composeOpening, detectColorMode, renderStatic, type Phase } from '../../../src/cli/terminal.js';
 import { parseInput, type KeyEvent } from '../../../src/cli/input.js';
-import { Repl } from '../../../src/cli/repl.js';
+import { Repl, type Line } from '../../../src/cli/repl.js';
 import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
 
 const ESC = '\u001b';
@@ -177,17 +177,17 @@ describe('opening', () => {
     expect(lines[1]!.slice(18, 47)).toBe('█▀▀▀▀ █     █▀▀▀▀ █   █ █   █');
     expect(lines[6]!.slice(18)).toMatch(/^the access layer between AI and ethereum +│$/);
     // the conversation under the logo, then the box's bottom, then the input between its rules
-    expect(lines[8]).toMatch(/^ │ type help to see the commands +│$/);
+    expect(lines[8]).toMatch(/^ │ type a request, or \/help to see the commands +│$/);
     expect(lines[44]).toMatch(/^ ╰─+╯$/);
     expect(lines[46]).toMatch(/^ ─+$/);
-    expect(lines[47]).toMatch(/^ {2}❯ █ry "help"$/);
+    expect(lines[47]).toMatch(/^ {2}❯ █ry "send 10 usdc to aradhya on base"$/);
     expect(lines[48]).toMatch(/^ ─+$/);
     expect(lines[49]).toContain('flex.access');
   });
 
   it('marks your messages and the replies like the Claude CLI', () => {
     const repl = new Repl();
-    for (const c of 'help') repl.handle({ kind: 'key', key: 'char', char: c });
+    for (const c of '/help') repl.handle({ kind: 'key', key: 'char', char: c });
     repl.handle({ kind: 'key', key: 'enter' });
     for (const c of 'pay') repl.handle({ kind: 'key', key: 'char', char: c });
     const layout = stageLayout(160, 50)!;
@@ -203,13 +203,14 @@ describe('opening', () => {
     };
     const f = composeOpening(layout, state, header, repl);
     const lines = frameLines(f).map((l) => l.trimEnd());
-    expect(lines[10]!.slice(3)).toMatch(/^❯ help +│$/);
+    expect(lines[10]!.slice(3)).toMatch(/^❯ \/help +│$/);
     // the whole conversation width of your message is on the bar
     for (let x = 3; x < 3 + 154; x++) expect(f.tone[10 * 160 + x]).toBe(3);
     expect(f.tone[10 * 160 + 2]).not.toBe(3);
-    expect(lines[12]!.slice(3)).toMatch(/^● help +list the commands/);
-    expect(lines[13]!.slice(3)).toMatch(/^ {2}clear +clear the conversation/);
-    expect(lines[14]!.slice(3)).toMatch(/^ {2}exit +leave flexx/);
+    expect(lines[12]!.slice(3)).toMatch(/^● Type a request in your own words/);
+    expect(lines[13]!.slice(3)).toMatch(/^ {2}\/help +list the commands/);
+    expect(lines[14]!.slice(3)).toMatch(/^ {2}\/clear +clear the conversation/);
+    expect(lines[15]!.slice(3)).toMatch(/^ {2}\/exit +leave flexx/);
     expect(lines[47]).toMatch(/^ {2}❯ pay█ *$/);
   });
 });
@@ -266,19 +267,71 @@ describe('command box', () => {
         .trimEnd(),
     );
 
-  it('runs help, marking the message and the reply', () => {
-    const repl = new Repl();
-    type(repl, 'help\r');
-    expect(repl.conversation.at(-2)).toEqual({ kind: 'user', text: 'help' });
-    expect(said(repl)).toContain('❯ help');
-    expect(said(repl).some((l) => /^● help +list the commands$/.test(l))).toBe(true);
-    expect(said(repl).some((l) => /^ {2}clear +clear the conversation$/.test(l))).toBe(true);
+  it('runs /help, marking the message and the reply', () => {
+    const repl = new Repl({ commands: [{ name: 'balance', summary: 'show your balances', run: () => [] }] });
+    type(repl, '/help\r');
+    expect(repl.conversation.at(-2)).toEqual({ kind: 'user', text: '/help' });
+    expect(said(repl)).toContain('❯ /help');
+    expect(said(repl).some((l) => /^ {2}\/help +list the commands$/.test(l))).toBe(true);
+    expect(said(repl).some((l) => /^ {2}\/clear +clear the conversation$/.test(l))).toBe(true);
+    expect(said(repl).some((l) => /^ {2}\/balance +show your balances$/.test(l))).toBe(true);
   });
 
-  it('reports unknown commands', () => {
+  it('reports unknown commands, and plain text when nothing takes messages', () => {
     const repl = new Repl();
+    type(repl, '/pay 5 usdc\r');
+    expect(said(repl).slice(-3)).toEqual(['❯ /pay 5 usdc', '', '● unknown command: /pay · type /help']);
     type(repl, 'pay 5 usdc\r');
-    expect(said(repl).slice(-3)).toEqual(['❯ pay 5 usdc', '', '● unknown command: pay · type help']);
+    expect(said(repl).at(-1)).toBe('● unknown command: pay · type /help');
+  });
+
+  it('sends plain text to onMessage, shows the working line, then the reply and its time', async () => {
+    let clock = 1_000;
+    let resolve!: (lines: Line[]) => void;
+    const sent: string[] = [];
+    const repl = new Repl({
+      now: () => clock,
+      onMessage: (text) => {
+        sent.push(text);
+        return new Promise((r) => (resolve = r));
+      },
+    });
+    type(repl, 'send 10 usdc to aradhya\r');
+    expect(sent).toEqual(['send 10 usdc to aradhya']);
+    expect(repl.busy).toBe(true);
+    clock += 3_200;
+    expect(said(repl).at(-1)).toMatch(/^. Working… 3s$/);
+    // Enter waits while a reply is on its way; the typed line stays
+    type(repl, 'again\r');
+    expect(sent).toHaveLength(1);
+    expect(repl.input).toBe('again');
+    resolve([[{ text: 'Please confirm:', tone: 0 }]]);
+    await repl.idle();
+    expect(repl.busy).toBe(false);
+    expect(said(repl).slice(-3)).toEqual(['● Please confirm:', '', '✻ Worked for 3s']);
+  });
+
+  it('runs asynchronous commands and leaves when one asks to', async () => {
+    let quit = 0;
+    const repl = new Repl({
+      onQuit: () => quit++,
+      commands: [
+        { name: 'status', summary: 'check', run: async () => [[{ text: 'all good', tone: 0 }]] },
+        { name: 'bye', summary: 'leave', run: async () => 'quit' as const },
+      ],
+    });
+    type(repl, '/status\r');
+    await repl.idle();
+    expect(said(repl)).toContain('● all good');
+    type(repl, '/bye\r');
+    await repl.idle();
+    expect(quit).toBe(1);
+  });
+
+  it('adds lines that arrive on their own', () => {
+    const repl = new Repl();
+    repl.notify([[{ text: 'Connected to the agent', tone: 0 }]]);
+    expect(said(repl).at(-1)).toBe('● Connected to the agent');
   });
 
   it('wraps long lines under their mark', () => {
@@ -326,7 +379,7 @@ describe('command box', () => {
 
   it('clears, and leaves on exit or Ctrl-C on an empty line', () => {
     const repl = new Repl();
-    type(repl, 'help\rclear\r');
+    type(repl, '/help\r/clear\r');
     expect(repl.conversation).toHaveLength(0);
     expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBe('quit');
     type(repl, 'abc');
@@ -370,7 +423,7 @@ describe('painting', () => {
     const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
     expect(out).toContain('the access layer between AI');
-    expect(out).toContain('❯ █ry "help"');
+    expect(out).toContain('❯ █ry "send 10 usdc to aradhya on base"');
     expect(out).toContain('flex.access');
     expect(out.split('\n')).toHaveLength(43 + 1);
   });

@@ -7,7 +7,7 @@
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
 import { parseInput, type KeyEvent } from './input.js';
-import { drawFrame, Repl } from './repl.js';
+import { drawFrame, Repl, type Command, type Line } from './repl.js';
 import { createFrame, overlay, text, type Frame } from './render/frame.js';
 import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
 import { renderScene, SCENE_COLS, SCENE_ROWS, type SceneOptions } from './render/scene.js';
@@ -28,8 +28,17 @@ import {
 /** What to show: the opening into the command box, or the splash or scene alone. */
 export type View = 'opening' | 'splash' | 'scene';
 
+/** What the command box talks to: the agent conversation (see chat.ts). */
+export interface Conversation {
+  connect(): Promise<Line[]>;
+  send(text: string): Promise<Line[]>;
+  commands(): Command[];
+}
+
 export interface ViewOptions {
   view: View;
+  /** The conversation behind the box; without one the box only has its built-in commands. */
+  conversation?: Conversation;
   splash?: SplashOptions;
   scene?: SceneOptions;
   /** Scene speed multiplier (the splash takes its own in `splash.speed`). */
@@ -159,7 +168,15 @@ export function renderStatic(opts: ViewOptions, t = 6): string {
 export function runInteractive(opts: ViewOptions, input: ReadStream, output: WriteStream): Promise<ExitReason> {
   const palette = viewPalette(opts);
   const header = new SplashAnimation(opts.splash);
-  const repl = new Repl();
+  let quit = (): void => undefined;
+  const conversation = opts.conversation;
+  const repl = new Repl({
+    commands: conversation?.commands() ?? [],
+    onMessage: conversation ? (text) => conversation.send(text) : undefined,
+    onQuit: () => quit(),
+  });
+  // connect while the opening plays, so the agent is ready by the time the box opens
+  if (conversation && opts.view === 'opening') void conversation.connect().then((lines) => repl.notify(lines));
   const sceneSpeed = opts.sceneSpeed ?? 1;
   const starfield = opts.scene?.starfield ?? true;
   const t0 = performance.now();
@@ -263,6 +280,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     };
     const finish = (reason: ExitReason): void => {
       if (done) return;
+      quit = () => undefined;
       done = true;
       clearInterval(timer);
       input.off('data', onData);
@@ -305,6 +323,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     };
     const onTerm = (): void => finish('interrupt');
 
+    quit = () => finish('quit');
     output.write(ENTER_SCREEN + MOUSE_ON);
     input.setRawMode(true);
     input.resume();

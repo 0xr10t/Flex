@@ -1,8 +1,9 @@
 // The conversation: what you type and what comes back, styled like the Claude CLI. Your messages show as `❯ message`
-// on a light bar across the width, replies as `● reply` with their further lines indented under it, a blank line between exchanges. The input line sits
-// apart, between two rules, with a `❯` prompt and a dim hint while it is empty. It edits like a shell line (cursor
-// keys, Home/End, Backspace/Delete, history on Up/Down, Ctrl-C to drop the line or leave, Ctrl-L to clear) and runs
-// commands from a table. Only the built-in commands exist so far; the wallet commands plug in here.
+// on a light bar across the width, replies as `● reply` with their further lines indented under it, a blank line
+// between exchanges, and `✻ Working…` while a reply is on its way. The input line sits apart, between two rules, with a
+// `❯` prompt and a dim hint while it is empty. It edits like a shell line (cursor keys, Home/End, Backspace/Delete,
+// history on Up/Down, Ctrl-C to drop the line or leave, Ctrl-L to clear). A line starting with `/` runs a command
+// from the table; anything else goes to `onMessage` (the agent).
 
 import { put, text, type Frame, type Rect, type Tone } from './render/frame.js';
 import type { KeyEvent } from './input.js';
@@ -18,9 +19,10 @@ export type Line = Segment[];
 export type CommandResult = Line[] | 'clear' | 'quit';
 
 export interface Command {
+  /** Typed as `/name`. */
   name: string;
   summary: string;
-  run(args: string[], commands: readonly Command[]): CommandResult;
+  run(args: string[], commands: readonly Command[]): CommandResult | Promise<CommandResult>;
 }
 
 /** One turn of the conversation. */
@@ -31,11 +33,14 @@ export const BUILTIN_COMMANDS: readonly Command[] = [
     name: 'help',
     summary: 'list the commands',
     run: (_args, commands) => {
-      const width = Math.max(...commands.map((c) => c.name.length)) + 3;
-      return commands.map((c) => [
-        { text: c.name.padEnd(width), tone: 2 },
-        { text: c.summary, tone: 1 },
-      ]);
+      const width = Math.max(...commands.map((c) => c.name.length)) + 4;
+      return [
+        [{ text: 'Type a request in your own words, e.g. send 10 usdc to aradhya on base. Or:', tone: 0 }],
+        ...commands.map((c) => [
+          { text: ('/' + c.name).padEnd(width), tone: 2 as Tone },
+          { text: c.summary, tone: 1 as Tone },
+        ]),
+      ];
     },
   },
   { name: 'clear', summary: 'clear the conversation', run: () => 'clear' },
@@ -45,15 +50,31 @@ export const BUILTIN_COMMANDS: readonly Command[] = [
 const WELCOME: Entry = {
   kind: 'note',
   line: [
-    { text: 'type ', tone: 1 },
-    { text: 'help', tone: 2 },
+    { text: 'type a request, or ', tone: 1 },
+    { text: '/help', tone: 2 },
     { text: ' to see the commands', tone: 1 },
   ],
 };
 
 const USER_MARK = '❯ ';
 const REPLY_MARK = '● ';
-const PLACEHOLDER = 'Try "help"';
+const WORK_MARK = '✻ ';
+/** The working line's spinner, as in the Claude CLI. */
+const SPINNER = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'];
+const PLACEHOLDER = 'Try "send 10 usdc to aradhya on base"';
+/** Typed without a slash, these still leave. */
+const QUIT_WORDS = new Set(['exit', 'quit']);
+
+export interface ReplOptions {
+  /** Commands typed as `/name`, after the built-in help, clear and exit. */
+  commands?: readonly Command[];
+  /** Where anything that isn't a command goes; without it such lines are unknown commands. */
+  onMessage?: (text: string) => Promise<Line[]>;
+  /** Called when an asynchronous command asks to leave. */
+  onQuit?: () => void;
+  /** The clock for the working line's timer (milliseconds). */
+  now?: () => number;
+}
 /** Most entries kept. */
 const SCROLLBACK = 300;
 
@@ -66,8 +87,34 @@ export class Repl {
   /** Index into `history` while recalling with Up/Down; `history.length` is the line being written. */
   private recall = 0;
   private draft: string[] = [];
+  /** Set while a reply is on its way: when it started, for the `✻ Working…` timer. */
+  private busySince: number | undefined;
+  private readonly commands: readonly Command[];
 
-  constructor(private readonly commands: readonly Command[] = BUILTIN_COMMANDS) {}
+  constructor(private readonly opts: ReplOptions = {}) {
+    this.commands = [...BUILTIN_COMMANDS, ...(opts.commands ?? [])];
+  }
+
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
+
+  /** True while a reply is on its way; Enter waits until it has arrived. */
+  get busy(): boolean {
+    return this.busySince !== undefined;
+  }
+
+  /** Adds lines that arrived on their own (connection status and the like) as a reply. */
+  notify(lines: Line[]): void {
+    if (lines.length) this.push({ kind: 'reply', lines });
+  }
+
+  /** Resolves once no reply is on its way (for tests and shutdown). */
+  idle(): Promise<void> {
+    return this.pendingWork ?? Promise.resolve();
+  }
+
+  private pendingWork: Promise<void> | undefined;
 
   /** The current input line. */
   get input(): string {
@@ -144,34 +191,54 @@ export class Repl {
   }
 
   private submit(): 'quit' | undefined {
-    const line = this.input;
+    // a reply is on its way: keep the line until it has arrived
+    if (this.busy) return undefined;
+    const line = this.input.trim();
+    if (line === '') return undefined;
     this.setInput([]);
-    const words = line.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return undefined;
     if (this.history.at(-1) !== line) this.history.push(line);
     this.recall = this.history.length;
-    this.push({ kind: 'user', text: line.trim() });
+    if (QUIT_WORDS.has(line.toLowerCase())) return 'quit';
+    this.push({ kind: 'user', text: line });
 
-    const [name, ...args] = words;
+    if (!line.startsWith('/')) {
+      if (this.opts.onMessage) this.work(this.opts.onMessage(line));
+      else this.push({ kind: 'reply', lines: [unknownCommand(line.split(/\s+/)[0]!)] });
+      return undefined;
+    }
+    const [name, ...args] = line.slice(1).split(/\s+/);
     const command = this.commands.find((c) => c.name === name!.toLowerCase());
     if (!command) {
-      this.push({
-        kind: 'reply',
-        lines: [
-          [
-            { text: `unknown command: ${name}`, tone: 0 },
-            { text: ' · type ', tone: 1 },
-            { text: 'help', tone: 2 },
-          ],
-        ],
-      });
+      this.push({ kind: 'reply', lines: [unknownCommand('/' + name)] });
       return undefined;
     }
     const result = command.run(args, this.commands);
+    if (result instanceof Promise) {
+      this.work(result);
+      return undefined;
+    }
+    return this.apply(result);
+  }
+
+  private apply(result: CommandResult): 'quit' | undefined {
     if (result === 'quit') return 'quit';
     if (result === 'clear') this.entries = [];
     else this.push({ kind: 'reply', lines: result });
     return undefined;
+  }
+
+  /** Shows `✻ Working…` until `reply` arrives, then the reply and how long it took. */
+  private work(reply: Promise<CommandResult>): void {
+    const started = this.now();
+    this.busySince = started;
+    this.pendingWork = reply
+      .catch((): CommandResult => [[{ text: 'Something went wrong.', tone: 0 }]])
+      .then((result) => {
+        this.busySince = undefined;
+        if (this.apply(result) === 'quit') return this.opts.onQuit?.();
+        const secs = Math.max(1, Math.round((this.now() - started) / 1000));
+        this.push({ kind: 'note', line: [{ text: `${WORK_MARK}Worked for ${secs}s`, tone: 1 }] });
+      });
   }
 
   private push(entry: Entry): void {
@@ -180,7 +247,7 @@ export class Repl {
   }
 
   /** The conversation as display rows `width` columns wide: marks, wrapping and the blank rows between turns. */
-  rows(width: number): Line[] {
+  rows(width: number, nowMs = this.now()): Line[] {
     const out: Line[] = [];
     this.entries.forEach((entry, i) => {
       if (i > 0) out.push([]);
@@ -194,6 +261,15 @@ export class Repl {
         );
       else out.push(...hang({ text: REPLY_MARK, tone: 0 }, entry.lines, width));
     });
+    if (this.busySince !== undefined) {
+      if (out.length) out.push([]);
+      const secs = Math.floor((nowMs - this.busySince) / 1000);
+      const spin = SPINNER[Math.floor(nowMs / 120) % SPINNER.length]!;
+      out.push([
+        { text: `${spin} `, tone: 2 },
+        { text: `Working… ${secs}s`, tone: 1 },
+      ]);
+    }
     return out;
   }
 
@@ -225,6 +301,14 @@ export class Repl {
     this.buffer.slice(from, from + room).forEach((c, i) => put(f, start + i, y, c, 0));
     if (cursorOn) put(f, start + this.cursor - from, y, '█', 0);
   }
+}
+
+function unknownCommand(name: string): Line {
+  return [
+    { text: `unknown command: ${name}`, tone: 0 },
+    { text: ' · type ', tone: 1 },
+    { text: '/help', tone: 2 },
+  ];
 }
 
 /** Draws a bordered box, leaving the top edge open over `gap` (for a logo sitting on it); its inside is cleared. */
