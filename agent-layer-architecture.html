@@ -1,0 +1,3261 @@
+<!doctype html>
+<!--
+  Flex agent-layer architecture. Documents README §§3–18; src/contracts/step.ts;
+  src/pipeline; session/server; DB1–DB8 and the v2 submission journal.
+  Current behavior includes the rulings in SPEC_QUESTIONS.md. Documentation only.
+  Self-contained: inline SVG, CSS and JavaScript. No fonts, libraries or network calls.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="Architecture of Flex’s local wallet agent: the S0–S12 pipeline, trust boundaries, encrypted storage and confirmed execution hand-off."
+    />
+    <title>Flex — Agent layer architecture</title>
+    <style>
+      :root {
+        --paper: #fbfaf7;
+        --surface: #fff;
+        --rail: #f1efe9;
+        --ink: #202b31;
+        --muted: #626c70;
+        --line: #dcded8;
+        --soft: #eceee8;
+        --accent: #b74424;
+        --accent-soft: #f7e9e2;
+        --green: #285d4e;
+        --green-soft: #e9f2ed;
+        --blue: #315f7b;
+        --blue-soft: #eaf0f5;
+        --gold: #7a5c20;
+        --gold-soft: #f5efdf;
+        --sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 32px;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: var(--accent);
+      }
+      button:focus-visible,
+      a:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 4px;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      p {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3,
+      h4 {
+        line-height: 1.16;
+      }
+      h1 {
+        font-size: clamp(44px, 5.5vw, 76px);
+        font-weight: 600;
+        letter-spacing: -0.055em;
+      }
+      h2 {
+        font-size: clamp(27px, 3vw, 36px);
+        font-weight: 550;
+        letter-spacing: -0.04em;
+      }
+      h3 {
+        font-size: 22px;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+      }
+      p + p {
+        margin-top: 12px;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.87em;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .skip-link {
+        position: fixed;
+        top: -90px;
+        left: 16px;
+        z-index: 20;
+        padding: 12px 20px;
+        background: var(--ink);
+        color: white;
+      }
+      .skip-link:focus {
+        top: 16px;
+      }
+      .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: 238px;
+        padding: 32px 24px;
+        background: var(--rail);
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        z-index: 5;
+      }
+      .brand {
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 29px;
+        font-weight: 650;
+        letter-spacing: -1.5px;
+        line-height: 1;
+      }
+      .brand-icon {
+        width: 28px;
+        height: 30px;
+        display: block;
+      }
+      .brand-label {
+        margin-top: 16px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10px;
+        line-height: 1.8;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      .nav-label {
+        margin: 44px 8px 12px;
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 1.8px;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .nav-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .nav-list li + li {
+        margin-top: 5px;
+      }
+      .nav-list a {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        text-decoration: none;
+        padding: 9px 10px;
+        border-radius: 3px;
+        font-size: 13px;
+      }
+      .nav-list a span {
+        font: 10px var(--mono);
+        color: var(--muted);
+      }
+      .nav-list a[aria-current='location'] {
+        background: var(--ink);
+        color: #fff;
+      }
+      .nav-list a[aria-current='location'] span {
+        color: #c6cfcf;
+      }
+      .sidebar-bottom {
+        margin-top: auto;
+        padding-top: 32px;
+      }
+      .status-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: var(--green);
+        border-radius: 50%;
+        margin-right: 7px;
+        vertical-align: middle;
+      }
+      .sidebar-note {
+        font: 11px/1.8 var(--mono);
+        color: var(--muted);
+      }
+      .sidebar-rule {
+        height: 1px;
+        background: var(--line);
+        margin: 16px 0;
+      }
+      main {
+        margin-left: 238px;
+        padding: 28px clamp(24px, 4.4vw, 72px) 0;
+        max-width: 1680px;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 22px;
+      }
+      .breadcrumb {
+        font: 10px/1.5 var(--mono);
+        color: var(--muted);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      .breadcrumb b {
+        color: var(--ink);
+        font-weight: 500;
+      }
+      .print-button {
+        border: 1px solid var(--line);
+        background: transparent;
+        padding: 8px 12px;
+        border-radius: 3px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .print-button:hover {
+        background: var(--surface);
+        border-color: var(--ink);
+      }
+      .hero {
+        padding: 56px 0 40px;
+      }
+      .eyebrow {
+        font: 11px/1.5 var(--mono);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 18px;
+      }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 206px;
+        gap: 40px;
+        align-items: end;
+      }
+      .hero h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .hero-description {
+        max-width: 630px;
+        font-size: 17px;
+        line-height: 1.7;
+        color: var(--muted);
+        margin-top: 24px;
+      }
+      .hero-aside {
+        border-left: 1px solid var(--line);
+        padding-left: 24px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .hero-aside strong {
+        display: block;
+        font-weight: 600;
+        color: var(--ink);
+        margin: 8px 0 2px;
+      }
+      .hero-aside strong:first-child {
+        margin-top: 0;
+      }
+      .scope-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 24px;
+        border-top: 1px solid var(--line);
+        margin-top: 32px;
+        padding-top: 20px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .scope-strip b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .section {
+        padding: 44px 0 48px;
+        border-top: 1px solid var(--line);
+        scroll-margin-top: 24px;
+      }
+      .section-heading {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+      .section-index {
+        font: 12px var(--mono);
+        color: var(--accent);
+      }
+      .section-intro {
+        max-width: 780px;
+        color: var(--muted);
+        margin-bottom: 28px;
+        font-size: 15px;
+      }
+      .section-intro strong {
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .small-label {
+        display: block;
+        font: 10px/1.5 var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 1.3px;
+        color: var(--muted);
+      }
+      .diagram-frame {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 5px;
+        overflow: hidden;
+      }
+      .diagram-topline {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--line);
+        font: 10px/1.5 var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+      }
+      .diagram-scroll {
+        overflow: auto;
+        padding: 12px 4px 4px;
+      }
+      .architecture-svg {
+        display: block;
+        width: 100%;
+        min-width: 800px;
+        height: auto;
+      }
+      .architecture-svg text {
+        font-family: var(--sans);
+        fill: var(--ink);
+      }
+      .architecture-svg .label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 1.3px;
+        fill: var(--muted);
+      }
+      .architecture-svg .node-title {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+      }
+      .architecture-svg .node-body {
+        font-size: 12px;
+        fill: var(--muted);
+      }
+      .architecture-svg .flow {
+        fill: none;
+        stroke: #77878b;
+        stroke-width: 1.5;
+        marker-end: url(#arrow);
+      }
+      .architecture-svg .data-flow {
+        fill: none;
+        stroke: var(--blue);
+        stroke-width: 1.5;
+        marker-end: url(#arrow-blue);
+      }
+      .architecture-svg .send-flow {
+        fill: none;
+        stroke: var(--green);
+        stroke-width: 2;
+        marker-end: url(#arrow-green);
+      }
+      .architecture-svg .report-flow {
+        fill: none;
+        stroke: var(--green);
+        stroke-width: 1.4;
+        stroke-dasharray: 5 4;
+        marker-end: url(#arrow-green);
+      }
+      .diagram-caption {
+        padding: 16px 20px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        gap: 12px 24px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .legend-item {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .legend-line {
+        width: 20px;
+        height: 0;
+        border-top: 2px solid #77878b;
+      }
+      .legend-line.blue {
+        border-color: var(--blue);
+      }
+      .legend-line.green {
+        border-color: var(--green);
+      }
+      .legend-line.dashed {
+        border-top-style: dashed;
+      }
+      .overview-notes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .overview-notes h3 {
+        font-size: 15px;
+        margin-bottom: 8px;
+        letter-spacing: -0.01em;
+      }
+      .overview-notes p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .source-link {
+        display: inline-block;
+        font: 11px/1.6 var(--mono);
+        color: var(--muted);
+        text-decoration: none;
+        overflow-wrap: anywhere;
+      }
+      .source-link:hover {
+        text-decoration: underline;
+      }
+      .source-row {
+        display: flex;
+        gap: 8px 20px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .pipeline-map {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .phase {
+        min-width: 0;
+        border-top: 2px solid var(--line);
+        padding-top: 10px;
+      }
+      .phase-label {
+        font: 9px/1.5 var(--mono);
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 10px;
+        min-height: 28px;
+      }
+      .phase:last-child {
+        border-color: var(--green);
+      }
+      .stage-button {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        padding: 11px 9px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 3px;
+        text-align: left;
+        font-size: 11px;
+        line-height: 1.25;
+        margin-bottom: 8px;
+        min-height: 44px;
+      }
+      .step-code {
+        font: 10px var(--mono);
+        color: var(--muted);
+        min-width: 23px;
+      }
+      .stage-arrow {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .stage-button:hover {
+        border-color: var(--accent);
+      }
+      .stage-button[aria-pressed='true'] {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #fff;
+      }
+      .stage-button[aria-pressed='true'] .step-code,
+      .stage-button[aria-pressed='true'] .stage-arrow {
+        color: #d1d8d8;
+      }
+      .inspector {
+        border: 1px solid var(--line);
+        border-top: 3px solid var(--accent);
+        border-radius: 4px;
+        background: var(--surface);
+      }
+      .stage-panel {
+        padding: 28px 28px 24px;
+      }
+      .stage-topline {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        font-size: 12px;
+      }
+      .tag {
+        background: var(--blue-soft);
+        color: var(--blue);
+        padding: 3px 8px;
+        border-radius: 3px;
+        font: 10px/1.6 var(--mono);
+      }
+      .stage-number {
+        color: var(--accent);
+        font: 18px var(--mono);
+        margin-right: 8px;
+      }
+      .stage-description {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 14px;
+        max-width: 780px;
+      }
+      .stage-io {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin: 22px 0;
+      }
+      .stage-io dt {
+        font: 10px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .stage-io dd {
+        margin: 0;
+        font-size: 13px;
+      }
+      .stage-guard {
+        border-left: 2px solid var(--accent);
+        padding: 0 0 0 14px;
+        margin: 22px 0;
+      }
+      .stage-guard p {
+        font-size: 13px;
+        margin-top: 6px;
+      }
+      .inspector-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--line);
+        padding: 10px 16px;
+        background: var(--paper);
+        font-size: 11px;
+      }
+      .control-buttons {
+        display: flex;
+        gap: 6px;
+      }
+      .control-buttons button {
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        background: var(--surface);
+        min-width: 38px;
+        min-height: 34px;
+      }
+      .control-buttons button:hover:not(:disabled) {
+        border-color: var(--ink);
+      }
+      .inline-note {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 18px;
+      }
+      .inline-note strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .branch-note {
+        display: flex;
+        gap: 14px;
+        padding: 16px 18px;
+        background: var(--green-soft);
+        color: var(--green);
+        border-radius: 3px;
+        margin-top: 18px;
+        font-size: 12px;
+      }
+      .branch-note span:first-child {
+        font: 12px var(--mono);
+        white-space: nowrap;
+        padding-top: 2px;
+      }
+      .example {
+        margin-top: 32px;
+      }
+      .example-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .example-heading h3 {
+        font-size: 19px;
+      }
+      .example-heading span {
+        font: 9px var(--mono);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .example-tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .example-tabs button {
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 8px 12px;
+        font-size: 11px;
+      }
+      .example-tabs button[aria-pressed='true'] {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .trace {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .trace-prompt {
+        background: var(--rail);
+        padding: 20px 24px;
+      }
+      .trace-prompt blockquote {
+        margin: 8px 0 0;
+        font-size: 18px;
+        line-height: 1.5;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+      }
+      .trace-assumption {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 10px 0 0;
+      }
+      .trace-steps {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        counter-reset: trace;
+        background: var(--surface);
+      }
+      .trace-steps li {
+        display: grid;
+        grid-template-columns: 28px 110px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        padding: 18px 24px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        counter-increment: trace;
+      }
+      .trace-steps li::before {
+        content: counter(trace, decimal-leading-zero);
+        font: 10px/1.8 var(--mono);
+        color: var(--muted);
+      }
+      .trace-steps b {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .trace-steps code {
+        font-size: 11px;
+        background: var(--rail);
+        padding: 2px 4px;
+      }
+      .trace-result {
+        padding: 16px 24px;
+        background: var(--green-soft);
+        color: var(--green);
+        font-size: 12px;
+      }
+      .trust-grid {
+        border-top: 1px solid var(--line);
+      }
+      .trust-row {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px;
+        padding: 22px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .trust-name h3 {
+        font-size: 16px;
+        margin-bottom: 6px;
+      }
+      .trust-name span {
+        font: 10px var(--mono);
+        color: var(--muted);
+      }
+      .trust-row p {
+        font-size: 13px;
+      }
+      .trust-row .small-label {
+        margin-bottom: 8px;
+      }
+      .trust-row .can .small-label {
+        color: var(--green);
+      }
+      .trust-row .cannot .small-label {
+        color: var(--accent);
+      }
+      .principles {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 26px;
+      }
+      .principle {
+        display: flex;
+        gap: 14px;
+      }
+      .principle-number {
+        font: 11px/1.8 var(--mono);
+        color: var(--accent);
+      }
+      .principle h3 {
+        font-size: 14px;
+        margin-bottom: 6px;
+        letter-spacing: 0;
+      }
+      .principle p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .storage-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        padding: 20px 24px;
+        border-radius: 4px 4px 0 0;
+      }
+      .storage-header h3 {
+        font-size: 17px;
+      }
+      .storage-header p {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .keychain {
+        font: 10px/1.7 var(--mono);
+        color: var(--green);
+        text-align: right;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 0 4px 4px;
+        background: var(--surface);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 15px 20px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      thead th {
+        font: 10px/1.5 var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        background: var(--paper);
+      }
+      tbody tr:last-child td,
+      tbody tr:last-child th {
+        border-bottom: 0;
+      }
+      tbody th {
+        width: 65px;
+        font-weight: 500;
+      }
+      .db-id {
+        font: 11px var(--mono);
+        color: var(--blue);
+      }
+      td a {
+        text-decoration: none;
+        font-weight: 550;
+      }
+      .table-detail {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 3px;
+      }
+      .retention {
+        font: 10px var(--mono);
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      .retention.session {
+        color: var(--accent);
+      }
+      .storage-notes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .storage-note {
+        border-top: 2px solid var(--line);
+        padding-top: 14px;
+      }
+      .storage-note h3 {
+        font-size: 14px;
+        margin-bottom: 8px;
+        letter-spacing: 0;
+      }
+      .storage-note p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .memory-note {
+        padding: 16px 20px;
+        background: var(--rail);
+        border-radius: 3px;
+        margin-top: 20px;
+        font-size: 12px;
+      }
+      .memory-note strong {
+        font-weight: 600;
+      }
+      .flow-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+      }
+      .state {
+        font: 10px/1.5 var(--mono);
+        padding: 10px 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+      }
+      .state.green {
+        background: var(--green-soft);
+        border-color: #c3d8cb;
+        color: var(--green);
+      }
+      .state.orange {
+        background: var(--accent-soft);
+        border-color: #e8c2b2;
+        color: var(--accent);
+      }
+      .flow-arrow {
+        color: var(--muted);
+      }
+      .handoff-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 28px;
+      }
+      .sequence {
+        list-style: none;
+        counter-reset: sequence;
+        padding: 0;
+        margin: 0;
+      }
+      .sequence li {
+        position: relative;
+        padding: 0 0 24px 36px;
+        counter-increment: sequence;
+        border-left: 1px solid var(--line);
+        margin-left: 11px;
+      }
+      .sequence li::before {
+        content: counter(sequence);
+        position: absolute;
+        left: -12px;
+        top: 0;
+        width: 23px;
+        height: 23px;
+        display: grid;
+        place-items: center;
+        font: 10px var(--mono);
+        border: 1px solid var(--line);
+        background: var(--paper);
+        border-radius: 50%;
+      }
+      .sequence li:last-child {
+        padding-bottom: 0;
+        border-left-color: transparent;
+      }
+      .sequence h3 {
+        font-size: 14px;
+        line-height: 1.6;
+        letter-spacing: 0;
+        margin-bottom: 6px;
+      }
+      .sequence p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .contract-box {
+        background: var(--ink);
+        color: #e8eded;
+        border-radius: 4px;
+        padding: 24px;
+        align-self: start;
+      }
+      .contract-box .small-label {
+        color: #aebfc4;
+      }
+      .contract-box h3 {
+        font-size: 19px;
+        margin: 12px 0 18px;
+      }
+      .contract-field {
+        border-top: 1px solid #405056;
+        padding: 12px 0;
+        font-size: 12px;
+      }
+      .contract-field span {
+        color: #afc0c5;
+        display: block;
+        font-size: 11px;
+        margin-top: 3px;
+      }
+      .contract-box .contract-footnote {
+        font-size: 11px;
+        color: #c0cdcf;
+        border-top: 1px solid #405056;
+        padding-top: 16px;
+        margin-top: 4px;
+      }
+      .contract-box code {
+        color: #fff;
+      }
+      .outcomes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 20px;
+        margin-top: 28px;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+      }
+      .outcomes h3 {
+        font-size: 14px;
+        letter-spacing: 0;
+        margin-bottom: 8px;
+      }
+      .outcomes p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .outcome-label {
+        font: 10px var(--mono);
+        color: var(--green);
+        margin-bottom: 8px;
+      }
+      .outcomes > div:last-child .outcome-label {
+        color: var(--accent);
+      }
+      .intent-table {
+        margin-top: 28px;
+      }
+      .intent-table table {
+        min-width: 520px;
+      }
+      .intent-table .intent-id {
+        font: 17px var(--mono);
+        color: var(--accent);
+      }
+      .intent-table td {
+        font-size: 12px;
+      }
+      .intent-table td:last-child {
+        color: var(--muted);
+      }
+      .api-table table {
+        min-width: 580px;
+      }
+      .api-table code {
+        font-size: 11px;
+      }
+      .method {
+        font: 10px var(--mono);
+        color: var(--blue);
+      }
+      .api-table td:first-child {
+        width: 70px;
+      }
+      .api-table td:last-child {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .token-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 22px;
+      }
+      .token-strip div {
+        padding-top: 12px;
+        border-top: 2px solid var(--line);
+        font-size: 12px;
+      }
+      .token-strip strong {
+        font-size: 12px;
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 600;
+      }
+      .token-strip p {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .source-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 30px;
+      }
+      .source-item {
+        border-top: 1px solid var(--line);
+        padding: 16px 0;
+      }
+      .source-item h3 {
+        font-size: 14px;
+        letter-spacing: 0;
+        margin-bottom: 6px;
+      }
+      .source-item p {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .verification-note {
+        border-left: 2px solid var(--blue);
+        padding-left: 18px;
+        margin-top: 24px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .verification-note strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        border-top: 1px solid var(--line);
+        padding: 22px 0 30px;
+        font: 10px/1.7 var(--mono);
+        color: var(--muted);
+      }
+      @media (min-width: 1700px) {
+        main {
+          margin-right: auto;
+        }
+      }
+      @media (max-width: 1150px) {
+        .sidebar {
+          width: 202px;
+          padding: 28px 18px;
+        }
+        main {
+          margin-left: 202px;
+          padding-left: 28px;
+          padding-right: 28px;
+        }
+        .hero-grid {
+          grid-template-columns: minmax(0, 1fr) 170px;
+          gap: 24px;
+        }
+        .hero-aside {
+          padding-left: 18px;
+        }
+        .pipeline-map {
+          gap: 6px;
+        }
+        .stage-button {
+          font-size: 10px;
+          padding: 10px 6px;
+          gap: 4px;
+        }
+        .stage-arrow {
+          display: none;
+        }
+        .phase-label {
+          font-size: 8px;
+        }
+        .trust-row {
+          grid-template-columns: 145px 1fr 1fr;
+          gap: 18px;
+        }
+      }
+      @media (max-width: 850px) {
+        html {
+          scroll-padding-top: 130px;
+        }
+        .sidebar {
+          position: sticky;
+          top: 0;
+          width: auto;
+          padding: 12px 20px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          display: block;
+        }
+        .brand {
+          font-size: 22px;
+        }
+        .brand-icon {
+          width: 21px;
+          height: 23px;
+        }
+        .brand-label,
+        .nav-label,
+        .sidebar-bottom {
+          display: none;
+        }
+        .sidebar nav {
+          margin-top: 10px;
+          overflow-x: auto;
+        }
+        .nav-list {
+          display: flex;
+          gap: 4px;
+          width: max-content;
+        }
+        .nav-list li + li {
+          margin: 0;
+        }
+        .nav-list a {
+          padding: 6px 9px;
+          font-size: 11px;
+          gap: 6px;
+        }
+        .nav-list a span {
+          font-size: 9px;
+        }
+        main {
+          margin-left: 0;
+          padding: 22px 24px 0;
+        }
+        .hero {
+          padding-top: 36px;
+        }
+        .hero h1 {
+          font-size: 58px;
+        }
+        .section {
+          scroll-margin-top: 128px;
+        }
+        .hero-grid {
+          grid-template-columns: 1fr 190px;
+        }
+        .source-grid {
+          gap: 10px 24px;
+        }
+      }
+      @media (max-width: 580px) {
+        body {
+          font-size: 14px;
+        }
+        main {
+          padding: 18px 18px 0;
+        }
+        .sidebar {
+          padding: 12px 18px;
+        }
+        .topbar {
+          padding-bottom: 16px;
+          align-items: center;
+        }
+        .breadcrumb {
+          font-size: 8px;
+          letter-spacing: 0.7px;
+        }
+        .print-button {
+          font-size: 10px;
+          padding: 7px 8px;
+        }
+        .hero {
+          padding: 32px 0;
+        }
+        .eyebrow {
+          font-size: 10px;
+        }
+        .hero-grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        .hero h1 {
+          font-size: 49px;
+        }
+        .hero-description {
+          font-size: 15px;
+          margin-top: 20px;
+        }
+        .hero-aside {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+          padding: 15px 0 0;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+        }
+        .hero-aside strong {
+          margin: 0 0 3px;
+        }
+        .hero-aside .aside-item:last-child {
+          display: none;
+        }
+        .scope-strip {
+          margin-top: 22px;
+          gap: 6px 16px;
+          font-size: 10px;
+        }
+        .section {
+          padding: 32px 0;
+        }
+        .section-heading {
+          gap: 10px;
+        }
+        .section-intro {
+          font-size: 13px;
+          margin-bottom: 22px;
+        }
+        .overview-notes {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+        .overview-notes h3 {
+          margin-bottom: 4px;
+        }
+        .diagram-topline {
+          font-size: 8px;
+          padding: 12px;
+          letter-spacing: 0.5px;
+        }
+        .diagram-caption {
+          padding: 12px;
+          gap: 10px 14px;
+          font-size: 10px;
+        }
+        .pipeline-map {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .phase-label {
+          font-size: 9px;
+          min-height: auto;
+          margin-bottom: 8px;
+        }
+        .phase:last-child {
+          grid-column: 1/-1;
+        }
+        .stage-button {
+          font-size: 12px;
+          padding: 11px 10px;
+          gap: 8px;
+        }
+        .stage-arrow {
+          display: block;
+        }
+        .stage-panel {
+          padding: 20px 18px;
+        }
+        .stage-topline {
+          font-size: 10px;
+          gap: 8px;
+        }
+        .tag {
+          font-size: 9px;
+        }
+        .stage-panel h3 {
+          font-size: 21px;
+        }
+        .stage-number {
+          font-size: 16px;
+        }
+        .stage-description {
+          font-size: 13px;
+        }
+        .stage-io {
+          grid-template-columns: 1fr;
+          gap: 18px;
+          margin: 20px 0;
+        }
+        .stage-guard {
+          margin: 20px 0;
+        }
+        .inspector-controls {
+          font-size: 10px;
+          gap: 8px;
+          padding: 10px 12px;
+        }
+        .branch-note {
+          padding: 14px;
+          gap: 10px;
+        }
+        .example-heading {
+          display: block;
+        }
+        .example-heading span {
+          display: block;
+          margin-top: 8px;
+        }
+        .example-tabs button {
+          font-size: 10px;
+          padding: 8px 9px;
+        }
+        .trace-prompt {
+          padding: 18px;
+        }
+        .trace-prompt blockquote {
+          font-size: 16px;
+        }
+        .trace-steps li {
+          grid-template-columns: 23px 1fr;
+          gap: 4px 8px;
+          padding: 16px 18px;
+        }
+        .trace-steps li > span {
+          grid-column: 2;
+        }
+        .trace-result {
+          padding: 14px 18px;
+        }
+        .trust-row {
+          grid-template-columns: 1fr;
+          gap: 14px;
+          padding: 20px 0;
+        }
+        .trust-name {
+          display: flex;
+          align-items: baseline;
+          gap: 12px;
+        }
+        .trust-name h3 {
+          margin: 0;
+        }
+        .trust-row .small-label {
+          margin-bottom: 4px;
+        }
+        .principles {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        .storage-header {
+          padding: 16px;
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .keychain {
+          text-align: left;
+        }
+        th,
+        td {
+          padding: 12px;
+        }
+        .table-detail {
+          font-size: 11px;
+        }
+        .storage-notes {
+          grid-template-columns: 1fr;
+          gap: 18px;
+        }
+        .retention {
+          font-size: 9px;
+        }
+        .storage-table {
+          min-width: 350px;
+        }
+        .memory-note {
+          padding: 14px 16px;
+        }
+        .flow-row {
+          gap: 7px;
+        }
+        .state {
+          font-size: 9px;
+          padding: 8px;
+        }
+        .handoff-grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        .outcomes {
+          grid-template-columns: 1fr;
+          gap: 18px;
+        }
+        .outcomes h3 {
+          margin-bottom: 5px;
+        }
+        .outcome-label {
+          margin-bottom: 4px;
+        }
+        .token-strip {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        .source-grid {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+        footer {
+          flex-direction: column;
+          gap: 4px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      @media print {
+        @page {
+          size: A4;
+          margin: 15mm;
+        }
+        body {
+          background: white;
+          font-size: 10pt;
+          color: #17242b;
+        }
+        .sidebar,
+        .topbar,
+        .skip-link,
+        .pipeline-map,
+        .inspector-controls,
+        .example-tabs,
+        .print-button {
+          display: none !important;
+        }
+        main {
+          margin: 0;
+          padding: 0;
+          max-width: none;
+        }
+        .hero {
+          padding: 0 0 20px;
+        }
+        .hero h1 {
+          font-size: 40pt;
+        }
+        .hero-grid {
+          grid-template-columns: 1fr 150px;
+          gap: 24px;
+        }
+        .hero-description {
+          font-size: 11pt;
+        }
+        .section {
+          padding: 24px 0;
+          scroll-margin: 0;
+        }
+        .section-heading h2 {
+          font-size: 23pt;
+        }
+        .section-intro {
+          font-size: 10pt;
+        }
+        .diagram-scroll {
+          overflow: visible;
+          padding: 6px;
+        }
+        .architecture-svg {
+          min-width: 0;
+          width: 100%;
+        }
+        .diagram-frame {
+          break-inside: avoid;
+        }
+        .diagram-caption {
+          font-size: 8pt;
+        }
+        .inspector {
+          border: 0;
+          background: white;
+        }
+        .stage-panel[hidden] {
+          display: block !important;
+        }
+        .stage-panel {
+          break-inside: avoid;
+          border-top: 1px solid #bbb;
+          padding: 18px 0;
+        }
+        .stage-description,
+        .stage-io dd,
+        .stage-guard p {
+          font-size: 9pt;
+        }
+        .stage-io {
+          gap: 20px;
+        }
+        .example {
+          break-inside: avoid;
+        }
+        .trace-prompt,
+        .trace-result,
+        .contract-box {
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+        .table-wrap {
+          overflow: visible;
+        }
+        .trust-row,
+        .storage-note,
+        .source-item,
+        .principle,
+        .sequence li,
+        .outcomes > div,
+        table tr {
+          break-inside: avoid;
+        }
+        .source-link {
+          font-size: 8pt;
+        }
+        .contract-box {
+          color: #17242b;
+          background: #f1f3f3;
+          border: 1px solid #aaa;
+        }
+        .contract-box code,
+        .contract-box .small-label,
+        .contract-box .contract-footnote,
+        .contract-field span {
+          color: #334951;
+        }
+        .flow-row {
+          margin-bottom: 20px;
+        }
+        footer {
+          font-size: 8pt;
+        }
+        .source-grid {
+          gap: 8px 20px;
+        }
+        a {
+          text-decoration: none;
+        }
+        .table-wrap table {
+          min-width: 0;
+        }
+      }
+    </style>
+    <noscript
+      ><style>
+        .stage-panel[hidden] {
+          display: block !important;
+        }
+        .stage-panel {
+          border-bottom: 1px solid var(--line);
+        }
+        .pipeline-map,
+        .inspector-controls,
+        .example-tabs,
+        .print-button {
+          display: none !important;
+        }
+      </style></noscript
+    >
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to architecture</a>
+    <aside class="sidebar" aria-label="Document navigation">
+      <a class="brand" href="#main" aria-label="Flex architecture, back to top"
+        ><svg class="brand-icon" viewBox="0 0 28 30" aria-hidden="true">
+          <path fill="#b74424" d="M1 2h26v7H9v5h14v7H9v9H1z" /></svg
+        >flex<span style="font-weight: 400; color: var(--muted)">/</span></a
+      >
+      <p class="brand-label">Engineering notes<br />Agent layer · v1</p>
+      <p class="nav-label">In this document</p>
+      <nav aria-label="Architecture sections">
+        <ol class="nav-list">
+          <li>
+            <a href="#overview" aria-current="location"><span>01</span> System overview</a>
+          </li>
+          <li>
+            <a href="#pipeline"><span>02</span> Request pipeline</a>
+          </li>
+          <li>
+            <a href="#boundaries"><span>03</span> Trust boundaries</a>
+          </li>
+          <li>
+            <a href="#storage"><span>04</span> Data & memory</a>
+          </li>
+          <li>
+            <a href="#handoff"><span>05</span> Confirmation & hand-off</a>
+          </li>
+          <li>
+            <a href="#interfaces"><span>06</span> Interfaces</a>
+          </li>
+          <li>
+            <a href="#sources"><span>07</span> Code map</a>
+          </li>
+        </ol>
+      </nav>
+      <div class="sidebar-bottom">
+        <p class="sidebar-note"><span class="status-dot"></span>Local inference<br />Testnet scope</p>
+        <div class="sidebar-rule"></div>
+        <p class="sidebar-note">
+          Working-tree reference<br />06 November 2026<br /><br />Self-contained document<br />Works offline
+        </p>
+      </div>
+    </aside>
+    <main id="main">
+      <header class="topbar">
+        <p class="breadcrumb">Flex / Engineering / <b>Architecture</b></p>
+        <button class="print-button" type="button" id="print-button">
+          Print / Save PDF <span aria-hidden="true">↗</span>
+        </button>
+      </header>
+      <div class="hero">
+        <p class="eyebrow">A natural-language interface to a wallet</p>
+        <div class="hero-grid">
+          <div>
+            <h1>The agent<br /><em>layer.</em></h1>
+            <p class="hero-description">
+              Turn a user’s words into a fully resolved payment plan. Keep control in code, inference on the device, and
+              execution behind an explicit “yes”.
+            </p>
+          </div>
+          <div class="hero-aside">
+            <div class="aside-item"><strong>13 ordered stages</strong>S0 through S12</div>
+            <div class="aside-item">
+              <strong>4 + 1 model call sites</strong>Four privileged tasks;<br />quarantine when needed
+            </div>
+            <div class="aside-item"><strong>One encrypted database</strong>SQLCipher + OS keychain</div>
+          </div>
+        </div>
+        <div class="scope-strip">
+          <span><b>NETWORKS</b> &nbsp;Sepolia · Base Sepolia · Arbitrum Sepolia</span
+          ><span><b>ASSETS</b> &nbsp;USDC · Native ETH</span><span><b>SCOPE</b> &nbsp;One user · One wallet</span>
+        </div>
+      </div>
+
+      <section class="section" id="overview" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <span class="section-index">01</span>
+          <h2 id="overview-title">The system at a glance</h2>
+        </div>
+        <p class="section-intro">
+          The wallet UI, agent service, local model and execution service have separate responsibilities.
+          <strong>Deterministic code owns every step, write and network call.</strong> The model supplies constrained
+          interpretations.
+        </p>
+        <figure class="diagram-frame" style="margin: 0">
+          <div class="diagram-topline">
+            <span>Component & data-flow map</span><span>Scroll diagram on small screens →</span>
+          </div>
+          <div
+            class="diagram-scroll"
+            tabindex="0"
+            role="region"
+            aria-label="System diagram; scroll horizontally on a small screen"
+          >
+            <svg class="architecture-svg" viewBox="0 0 1100 710" role="img" aria-labelledby="arch-title arch-desc">
+              <title id="arch-title">Flex agent layer component diagram</title>
+              <desc id="arch-desc">
+                On the user’s device, the wallet UI talks to an authenticated Fastify API and session manager. The fixed
+                S0–S12 pipeline calls local Ollama, deterministic helpers and encrypted storage. Only after confirmation
+                does it send a resolved envelope to the separate executor, which reports back to the API. Deterministic
+                code reads external web content, testnet RPCs and an ENS indexer.
+              </desc>
+              <defs>
+                <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                  <path d="M0 0L7 3.5L0 7" fill="#77878b" />
+                </marker>
+                <marker id="arrow-blue" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                  <path d="M0 0L7 3.5L0 7" fill="#315f7b" />
+                </marker>
+                <marker id="arrow-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                  <path d="M0 0L7 3.5L0 7" fill="#285d4e" />
+                </marker>
+              </defs>
+              <rect
+                x="16"
+                y="20"
+                width="1068"
+                height="510"
+                rx="7"
+                fill="#fbfaf7"
+                stroke="#dcded8"
+                stroke-dasharray="5 5"
+              />
+              <text class="label" x="38" y="45">USER’S DEVICE / LOCAL SERVICES</text>
+              <rect x="280" y="72" width="520" height="416" rx="5" fill="#fff" stroke="#bfc9c9" />
+              <text class="label" x="300" y="93">AGENT PROCESS · TYPESCRIPT / NODE.JS</text>
+              <rect x="44" y="112" width="200" height="100" rx="4" fill="#fff" stroke="#dcded8" />
+              <text class="node-title" x="62" y="143">Wallet UI</text>
+              <text class="node-body" x="62" y="167">Messages, answers, “yes”</text>
+              <text class="node-body" x="62" y="188">Questions & summaries</text>
+              <rect x="304" y="112" width="204" height="76" rx="4" fill="#f1efe9" stroke="#dcded8" />
+              <text class="node-title" x="320" y="141">HTTP API</text>
+              <text class="node-body" x="320" y="165">Fastify · 127.0.0.1</text>
+              <rect x="544" y="112" width="232" height="76" rx="4" fill="#f1efe9" stroke="#dcded8" />
+              <text class="node-title" x="560" y="141">Session manager</text>
+              <text class="node-body" x="560" y="165">One active request · pause/resume</text>
+              <path class="flow" d="M244 150H304" />
+              <path class="flow" d="M508 150H544" />
+              <path class="flow" d="M660 188V240" />
+              <rect x="304" y="240" width="472" height="96" rx="4" fill="#202b31" />
+              <text x="326" y="273" style="fill: #fff; font-size: 20px; font-weight: 600">Fixed request pipeline</text>
+              <text x="326" y="300" style="fill: #c3cfd0; font-size: 14px; font-family: var(--mono)">
+                S0 → S1 → ··· → S11 → S12
+              </text>
+              <text x="326" y="320" style="fill: #c3cfd0; font-size: 11px">
+                Interpret → resolve → plan → validate → confirm → hand off
+              </text>
+              <rect x="44" y="302" width="200" height="152" rx="4" fill="#eaf0f5" stroke="#c3d2dd" />
+              <text class="node-title" x="62" y="333">Local Ollama</text>
+              <text class="node-body" x="62" y="357">qwen2.5:7b-instruct</text>
+              <path d="M62 372H226" stroke="#c3d2dd" />
+              <text class="node-body" x="62" y="394">4 privileged call sites</text>
+              <text class="node-body" x="62" y="415">+ isolated quarantine calls</text>
+              <text class="label" x="62" y="438" style="font-size: 10px">NO MODEL TOOLS</text>
+              <path class="data-flow" d="M304 283H266V352H244" />
+              <path class="data-flow" d="M244 407H275V310H304" />
+              <rect x="304" y="382" width="204" height="80" rx="4" fill="#fff" stroke="#dcded8" />
+              <text class="node-title" x="320" y="411">Code helpers</text>
+              <text class="node-body" x="320" y="435">Parse · resolve · plan · validate</text>
+              <rect x="544" y="382" width="232" height="80" rx="4" fill="#fff" stroke="#dcded8" />
+              <text class="node-title" x="560" y="411">Encrypted storage</text>
+              <text class="node-body" x="560" y="435">DB1–DB8 + submission journal</text>
+              <path class="flow" d="M406 336V382" />
+              <path class="flow" d="M660 336V382" />
+              <path class="flow" d="M508 420H544" />
+              <rect x="836" y="112" width="220" height="150" rx="4" fill="#e9f2ed" stroke="#c3d8cb" />
+              <text class="node-title" x="854" y="145">Execution layer</text>
+              <text class="node-body" x="854" y="170">Separate wallet service</text>
+              <text class="node-body" x="854" y="196">Signs · broadcasts · bridges</text>
+              <text class="node-body" x="854" y="219">Schedules & cancels autopays</text>
+              <text class="label" x="854" y="244" style="font-size: 10px; fill: #285d4e">SEPARATE AUTHORITY</text>
+              <path class="send-flow" d="M776 282H814V188H836" />
+              <text class="label" x="835" y="289" style="fill: #285d4e; font-size: 10px">CONFIRMED ENVELOPE ONLY</text>
+              <text class="node-body" x="835" y="309">S12 · POST /v1/intents</text>
+              <path class="report-flow" d="M946 112V59H406V112" />
+              <rect x="810" y="40" width="244" height="18" fill="#fbfaf7" />
+              <text class="label" x="824" y="53" style="fill: #285d4e; font-size: 10px">EXECUTION REPORTS → API</text>
+              <text class="label" x="836" y="389">AUTHORITY BOUNDARY</text>
+              <text class="node-body" x="836" y="414">The agent prepares intents.</text>
+              <text class="node-body" x="836" y="435">The executor performs them.</text>
+              <text class="node-body" x="836" y="456">A hand-off is not a receipt.</text>
+              <path class="flow" d="M406 462V553H184V596" />
+              <path class="flow" d="M406 553H520V596" />
+              <path class="flow" d="M520 553H886V596" />
+              <rect x="430" y="541" width="285" height="23" fill="#fff" />
+              <text class="label" x="442" y="556" style="font-size: 10px">CODE-OWNED OUTBOUND READS</text>
+              <text class="label" x="44" y="580">OUTSIDE THE DEVICE</text>
+              <rect x="44" y="596" width="280" height="85" rx="4" fill="#f5efdf" stroke="#dfd2b6" />
+              <text class="node-title" x="62" y="628" style="font-size: 16px">User-shared web pages</text>
+              <text class="node-body" x="62" y="653">Guarded fetch → untrusted content</text>
+              <rect x="352" y="596" width="336" height="85" rx="4" fill="#fff" stroke="#dcded8" />
+              <text class="node-title" x="370" y="628" style="font-size: 16px">Testnet RPCs / ENS resolver</text>
+              <text class="node-body" x="370" y="653">Balances, address resolution, read-only calls</text>
+              <rect x="716" y="596" width="340" height="85" rx="4" fill="#fff" stroke="#dcded8" />
+              <text class="node-title" x="734" y="628" style="font-size: 16px">ENS subname indexer</text>
+              <text class="node-body" x="734" y="653">Group enumeration → per-member resolution</text>
+            </svg>
+          </div>
+          <figcaption class="diagram-caption">
+            <span class="legend-item"><i class="legend-line" aria-hidden="true"></i>Code-controlled flow</span
+            ><span class="legend-item"><i class="legend-line blue" aria-hidden="true"></i>Local inference</span
+            ><span class="legend-item"><i class="legend-line green" aria-hidden="true"></i>Confirmed hand-off</span
+            ><span class="legend-item"
+              ><i class="legend-line green dashed" aria-hidden="true"></i>Authenticated reports</span
+            >
+          </figcaption>
+        </figure>
+        <div class="overview-notes">
+          <div>
+            <h3>Local inference, external reads</h3>
+            <p>
+              There is no remote model or Flex-hosted backend. Chain RPCs, the ENS indexer and user-shared URLs are
+              still external services.
+            </p>
+          </div>
+          <div>
+            <h3>One model, separate contexts</h3>
+            <p>
+              “Dual LLM” means isolated privileged and quarantined calls to the same local model. No conversational
+              memory is shared between them.
+            </p>
+          </div>
+          <div>
+            <h3>Intent planning only</h3>
+            <p>
+              The agent returns an answer, an error/refusal, or ordered intents. Signing keys and transaction execution
+              remain in the wallet’s execution layer.
+            </p>
+          </div>
+        </div>
+        <div class="source-row">
+          <a class="source-link" href="src/index.ts">src/index.ts <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="src/pipeline/registry.ts"
+            >src/pipeline/registry.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="README.md">README.md <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="section" id="pipeline" aria-labelledby="pipeline-title">
+        <div class="section-heading">
+          <span class="section-index">02</span>
+          <h2 id="pipeline-title">One request, a fixed path</h2>
+        </div>
+        <p class="section-intro">
+          Select a stage to inspect its inputs, outputs and checks. A normal action request reaches S11 and waits.
+          <strong>S12 runs only after the user confirms.</strong> Questions pause the current stage.
+        </p>
+        <div class="pipeline-map" role="group" aria-label="Explore pipeline stages">
+          <div class="phase">
+            <p class="phase-label">01 / Observe</p>
+            <button class="stage-button" type="button" data-stage="0" aria-controls="stage-0" aria-pressed="false">
+              <span class="step-code">S0</span><span>Balances</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="1" aria-controls="stage-1" aria-pressed="false">
+              <span class="step-code">S1</span><span>Guard</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="2" aria-controls="stage-2" aria-pressed="false">
+              <span class="step-code">S2</span><span>Lexical scan</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div class="phase">
+            <p class="phase-label">02 / Understand</p>
+            <button class="stage-button" type="button" data-stage="3" aria-controls="stage-3" aria-pressed="false">
+              <span class="step-code">S3</span><span>Amounts</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="4" aria-controls="stage-4" aria-pressed="false">
+              <span class="step-code">S4</span><span>Request type</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="5" aria-controls="stage-5" aria-pressed="false">
+              <span class="step-code">S5</span><span>Payee spans</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div class="phase">
+            <p class="phase-label">03 / Resolve &amp; pair</p>
+            <button class="stage-button" type="button" data-stage="6" aria-controls="stage-6" aria-pressed="false">
+              <span class="step-code">S6</span><span>Resolve</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="7" aria-controls="stage-7" aria-pressed="false">
+              <span class="step-code">S7</span><span>Mask</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="8" aria-controls="stage-8" aria-pressed="true">
+              <span class="step-code">S8</span><span>Pair</span><span class="stage-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div class="phase">
+            <p class="phase-label">04 / Plan &amp; confirm</p>
+            <button class="stage-button" type="button" data-stage="9" aria-controls="stage-9" aria-pressed="false">
+              <span class="step-code">S9</span><span>Plan</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="10" aria-controls="stage-10" aria-pressed="false">
+              <span class="step-code">S10</span><span>Validate</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span></button
+            ><button class="stage-button" type="button" data-stage="11" aria-controls="stage-11" aria-pressed="false">
+              <span class="step-code">S11</span><span>Summary</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div class="phase">
+            <p class="phase-label">05 / Deliver</p>
+            <button class="stage-button" type="button" data-stage="12" aria-controls="stage-12" aria-pressed="false">
+              <span class="step-code">S12</span><span>Hand-off</span
+              ><span class="stage-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </div>
+        <div class="inspector">
+          <div id="stage-panels">
+            <article class="stage-panel" id="stage-0" aria-labelledby="stage-heading-0" hidden>
+              <div class="stage-topline"><span class="tag">Code + RPC</span><span class="mono muted">§8.1</span></div>
+              <h3 id="stage-heading-0"><span class="stage-number">S0</span> Refresh balances</h3>
+              <p class="stage-description">
+                Read native ETH and USDC balances on each allowed testnet before interpreting a new request.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Configured wallet, allowed chains, public RPC clients.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    DB4 balance snapshots, decimal strings and integer base units; unreadable chains marked unavailable.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  If every allowed chain is unavailable, stop with BALANCES_UNAVAILABLE. The first submission also
+                  refreshes balances before it is sent.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s0-balances.ts"
+                >src/pipeline/s0-balances.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-1" aria-labelledby="stage-heading-1" hidden>
+              <div class="stage-topline">
+                <span class="tag">Code + Q-LLM</span><span class="mono muted">§8.2 · §16.1</span>
+              </div>
+              <h3 id="stage-heading-1"><span class="stage-number">S1</span> Guard the input</h3>
+              <p class="stage-description">
+                Separate the user’s typed instruction from pasted text, attachments and web pages. Scan for secrets
+                before persisting prompt content.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Typed text, pasted blocks, supported text/PDF attachments, and user-supplied URLs.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    Typed instruction with link markers; separately extracted, untrusted amount and payee candidates;
+                    permitted DB8 prompt rows.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Fetch code enforces HTTPS, SSRF checks, redirect checks and size/time limits. A separate local Q-LLM
+                  call sees content only. ENS text records are not fetched.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s1-guard.ts"
+                >src/pipeline/s1-guard.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-2" aria-labelledby="stage-heading-2" hidden>
+              <div class="stage-topline"><span class="tag">Code</span><span class="mono muted">§8.3</span></div>
+              <h3 id="stage-heading-2"><span class="stage-number">S2</span> Scan the language</h3>
+              <p class="stage-description">Build deterministic evidence that later model outputs must agree with.</p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>The typed instruction, chain aliases, current time and session timezone.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    Clause boundaries; chain, token, date, recurrence, address, ENS, group and numeric candidates.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Unsupported chains and tokens stop here. Clause positions later constrain amount pairing, distribution
+                  and explicit chain binding.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s2-lexical.ts"
+                >src/pipeline/s2-lexical.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-3" aria-labelledby="stage-heading-3" hidden>
+              <div class="stage-topline">
+                <span class="tag">P-LLM #1 + code</span><span class="mono muted">§8.4</span>
+              </div>
+              <h3 id="stage-heading-3"><span class="stage-number">S3</span> Extract and verify amounts</h3>
+              <p class="stage-description">
+                Ask the model for amount spans, then parse and verify their values in code before creating placeholders.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>
+                    The user’s typed words and lexical evidence. Untrusted extracted amounts stay outside the privileged
+                    prompt.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>DB1 amount rows with provenance; amount_&lt;8hex&gt; placeholders; masked_text_s3.</dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Resolve token, precision and missing-value questions explicitly. Ignore contextual amounts.
+                  Attached-content amounts require confirmation; they are not silently substituted for typed amounts.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s3-amounts.ts"
+                >src/pipeline/s3-amounts.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-4" aria-labelledby="stage-heading-4" hidden>
+              <div class="stage-topline">
+                <span class="tag">P-LLM #2 + code</span><span class="mono muted">§8.5</span>
+              </div>
+              <h3 id="stage-heading-4"><span class="stage-number">S4</span> Classify the request</h3>
+              <p class="stage-description">
+                Classify the request as actions, balance, or unsupported and cross-check recurrence and cancellation
+                cues.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Typed words with amounts already masked.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>Action kinds i / k / l, an optional balance flag, or a terminal balance answer / refusal.</dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Balance-only requests end here. The model does not select bridge intents. Code checks missing amounts
+                  and ambiguous recurrence before continuing.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s4-type.ts"
+                >src/pipeline/s4-type.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-5" aria-labelledby="stage-heading-5" hidden>
+              <div class="stage-topline">
+                <span class="tag">P-LLM #3 + code</span><span class="mono muted">§8.6 · §17.2</span>
+              </div>
+              <h3 id="stage-heading-5"><span class="stage-number">S5</span> Find the intended payees</h3>
+              <p class="stage-description">Distinguish the people being paid from people mentioned in a story.</p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Amount-masked text plus lexical address, ENS and group candidates.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>Verified payee spans and mentioned spans; supported references to a previous recipient.</dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Conflicting payee/mentioned roles trigger Q_NAME_ROLE. Missing payees trigger a question; code does
+                  not invent a recipient.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s5-spans.ts"
+                >src/pipeline/s5-spans.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-6" aria-labelledby="stage-heading-6" hidden>
+              <div class="stage-topline">
+                <span class="tag">Code + user + ENS</span><span class="mono muted">§8.7 · §9</span>
+              </div>
+              <h3 id="stage-heading-6"><span class="stage-number">S6</span> Resolve recipients</h3>
+              <p class="stage-description">Turn a name, address, ENS name or group into confirmed recipient records.</p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Payee spans, DB2 contacts, ENS resolution and the configured subname indexer.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    Checksummed addresses, chain constraints and selected group members; user-approved address-book
+                    writes.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Ask about unknown or ambiguous contacts. Confirm new addresses and changed ENS records. Untrusted
+                  recipients retain their provenance and chain restrictions.
+                </p>
+              </div>
+              <a class="source-link" href="src/recipients/resolve.ts"
+                >src/recipients/resolve.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-7" aria-labelledby="stage-heading-7" hidden>
+              <div class="stage-topline">
+                <span class="tag">Code</span><span class="mono muted">§8.8 · SQ-R-01</span>
+              </div>
+              <h3 id="stage-heading-7"><span class="stage-number">S7</span> Mask recipients</h3>
+              <p class="stage-description">Prepare the final model input using amount and recipient placeholders.</p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Resolved recipients, tagged spans, amount-masked text and permitted follow-up context.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>DB3 address/group placeholder mappings and masked_text_s8. Mentioned names become [person].</dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Sweep exact whole-word repeats of tagged names, case-insensitively. Do not create extra payees for
+                  repeated mentions. A span mismatch stops the request.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s7-mask.ts"
+                >src/pipeline/s7-mask.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-8" aria-labelledby="stage-heading-8">
+              <div class="stage-topline">
+                <span class="tag">P-LLM #4 + code</span><span class="mono muted">§8.9 · P1–P10</span>
+              </div>
+              <h3 id="stage-heading-8"><span class="stage-number">S8</span> Pair payments</h3>
+              <p class="stage-description">
+                The model pairs known amount and recipient placeholders. Code checks that the pairing agrees with the
+                instruction.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>
+                    Masked text and per-request schema enums containing only the permitted placeholders and supported
+                    fields.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    Checked payment descriptions for i / k / l, still using placeholders. No bridge is created by this
+                    call.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  P1–P10 and explicit chain-binding checks reject missing, duplicated, cross-clause or unsupported
+                  pairings and schedule fields. Ask Q_PAIR_AMOUNT when needed; a failed correction ends in
+                  PAIRING_FAILED.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s8-pair.ts"
+                >src/pipeline/s8-pair.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-9" aria-labelledby="stage-heading-9" hidden>
+              <div class="stage-topline"><span class="tag">Code</span><span class="mono muted">§8.11 · §10</span></div>
+              <h3 id="stage-heading-9"><span class="stage-number">S9</span> Build the funding plan</h3>
+              <p class="stage-description">
+                Choose allowed chains, calculate funding, expand groups and build schedules with exact arithmetic.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Checked payments, DB4 balances, DB5 limits, DB6 spending/reservations and DB7 autopays.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    Ordered internal intents i / j / k / l with dependencies; derived amount placeholders; complete
+                    autopay schedule and caps.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Code alone inserts bridges when a payment requires them. Reserve gas, include bridge padding and ask
+                  for missing schedule details. This stage plans an autopay; it does not run a scheduler.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s9-plan.ts"
+                >src/pipeline/s9-plan.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-10" aria-labelledby="stage-heading-10" hidden>
+              <div class="stage-topline"><span class="tag">Code</span><span class="mono muted">§8.12 · §11</span></div>
+              <h3 id="stage-heading-10"><span class="stage-number">S10</span> Validate the plan</h3>
+              <p class="stage-description">Check the entire plan before it is presented for confirmation.</p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>
+                    Internal intent structure, amounts, recipients, balances, spend accounting, provenance and
+                    configured limits.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    A validated plan, a specific question, or an error. Approved limit exceptions apply only to the
+                    limits named.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Validate structure, funding and limits. Untrusted amounts or recipients cannot fund an autopay.
+                  One-time limit consent is available only when the amounts have eligible typed provenance.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s10-validate.ts"
+                >src/pipeline/s10-validate.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-11" aria-labelledby="stage-heading-11" hidden>
+              <div class="stage-topline">
+                <span class="tag">Code + user</span><span class="mono muted">§8.13 · §13.1</span>
+              </div>
+              <h3 id="stage-heading-11"><span class="stage-number">S11</span> Show the summary</h3>
+              <p class="stage-description">
+                Explain the resolved payment plan in user-facing language and wait for an explicit decision.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>
+                    The validated plan and source mappings, plus notes about funding, address reuse and any relevant
+                    constraints.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>A UI summary and the AWAITING_CONFIRMATION state. A “no” discards the request.</dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  The summary is never sent to the executor. A “yes” first triggers fresh funding/settings checks; a
+                  changed plan or summary needs a new confirmation.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s11-summary.ts"
+                >src/pipeline/s11-summary.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="stage-panel" id="stage-12" aria-labelledby="stage-heading-12" hidden>
+              <div class="stage-topline">
+                <span class="tag">Code + executor</span><span class="mono muted">§8.14 · §12.5 · §14.2</span>
+              </div>
+              <h3 id="stage-heading-12"><span class="stage-number">S12</span> Hand off the confirmed plan</h3>
+              <p class="stage-description">
+                Restore real values, validate a closed envelope, persist its submission identity and deliver it to the
+                separate execution layer.
+              </p>
+              <dl class="stage-io">
+                <div>
+                  <dt>Input</dt>
+                  <dd>Explicit user confirmation, the checked internal plan and the DB1 / DB3 value mappings.</dd>
+                </div>
+                <div>
+                  <dt>Output</dt>
+                  <dd>
+                    POST /v1/intents, with request_id as Idempotency-Key. The journal and DB6 / DB7 reservations are
+                    committed before submission.
+                  </dd>
+                </div>
+              </dl>
+              <div class="stage-guard">
+                <span class="small-label">Control / stop condition</span>
+                <p>
+                  Retries preserve the original envelope and key. A 2xx acknowledges hand-off; it does not mean the
+                  transaction executed. Authenticated execution reports reconcile the durable records.
+                </p>
+              </div>
+              <a class="source-link" href="src/pipeline/s12-handoff.ts"
+                >src/pipeline/s12-handoff.ts <span aria-hidden="true">↗</span></a
+              >
+            </article>
+          </div>
+          <div class="inspector-controls">
+            <span id="stage-counter" class="mono" aria-live="polite" aria-atomic="true">09 / 13 · Pair payments</span>
+            <div class="control-buttons">
+              <button type="button" id="previous-stage" aria-label="Previous pipeline stage">←</button
+              ><button type="button" id="next-stage" aria-label="Next pipeline stage">→</button>
+            </div>
+          </div>
+        </div>
+        <div class="branch-note">
+          <span>S4 ↗</span>
+          <p>
+            A balance-only request returns an answer directly from DB4. An unsupported request returns a refusal.
+            Neither continues toward a payment hand-off.
+          </p>
+        </div>
+        <p class="inline-note">
+          <strong>Resume contract:</strong> a step returning <code>continue</code> advances to the next stage. An answer
+          handler returning <code>continue</code> reruns <em>the same stage</em>, using <code>req.step_state</code>.
+          Question state lives in <code>req.paused_at</code>.
+        </p>
+
+        <div class="example">
+          <div class="example-heading">
+            <h3>Follow a request through the system</h3>
+            <span>Illustrative traces · no live wallet connection</span>
+          </div>
+          <div class="example-tabs" role="group" aria-label="Choose an example request">
+            <button type="button" data-scenario="payment" aria-pressed="true" aria-controls="example-trace">
+              One-time payment</button
+            ><button type="button" data-scenario="autopay" aria-pressed="false" aria-controls="example-trace">
+              Autopay</button
+            ><button type="button" data-scenario="balance" aria-pressed="false" aria-controls="example-trace">
+              Balance</button
+            ><button type="button" data-scenario="untrusted" aria-pressed="false" aria-controls="example-trace">
+              Attached invoice
+            </button>
+          </div>
+          <div class="trace" id="example-trace" aria-live="polite" aria-atomic="true">
+            <div class="trace-prompt">
+              <span class="small-label">User’s typed request</span>
+              <blockquote id="trace-prompt">“send 40 usdc to Aradhya on base”</blockquote>
+              <p class="trace-assumption" id="trace-assumption">
+                Assume Aradhya is a confirmed contact and Base Sepolia has sufficient spendable funds. Placeholder IDs
+                below are illustrative.
+              </p>
+            </div>
+            <ol class="trace-steps" id="trace-steps">
+              <li>
+                <b>S3 · Amounts</b
+                ><span>Code verifies 40 USDC and stores it as <code>amount_3f4a9c20</code> in DB1.</span>
+              </li>
+              <li>
+                <b>S6–S7 · Payee</b><span>Resolve the saved contact and mask it as <code>address_7b8c1d02</code>.</span>
+              </li>
+              <li>
+                <b>S8 · Pair</b
+                ><span><code>send amount_3f4a9c20 to address_7b8c1d02 on base</code> → one checked i payment.</span>
+              </li>
+              <li>
+                <b>S9–S12 · Plan</b
+                ><span
+                  >Choose Base Sepolia, validate, show the summary and wait for “yes”. Then restore 40 USDC,
+                  <code>40000000</code> base units and the resolved address.</span
+                >
+              </li>
+            </ol>
+            <p class="trace-result" id="trace-result">
+              Result: one i intent is handed off after confirmation. No bridge is needed under these assumptions.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="boundaries" aria-labelledby="boundaries-title">
+        <div class="section-heading">
+          <span class="section-index">03</span>
+          <h2 id="boundaries-title">Trust is explicit</h2>
+        </div>
+        <p class="section-intro">
+          The model can suggest an interpretation. Code validates it and preserves each value’s origin.
+          <strong>Untrusted content cannot grant itself authority.</strong>
+        </p>
+        <div class="trust-grid">
+          <div class="trust-row">
+            <div class="trust-name">
+              <h3>Privileged calls</h3>
+              <span>S3 · S4 · S5 · S8</span>
+            </div>
+            <div class="can">
+              <span class="small-label">Allowed context</span>
+              <p>
+                The user’s typed words, progressively masked. S3 sees the typed amount text; S8 pairs verified
+                placeholders with code-built metadata.
+              </p>
+            </div>
+            <div class="cannot">
+              <span class="small-label">Excluded authority</span>
+              <p>
+                No tools, database access or network access. Raw pasted content, files and web pages never enter these
+                prompts.
+              </p>
+            </div>
+          </div>
+          <div class="trust-row">
+            <div class="trust-name">
+              <h3>Quarantined call</h3>
+              <span>S1 · per content item</span>
+            </div>
+            <div class="can">
+              <span class="small-label">Allowed context</span>
+              <p>
+                One untrusted content item, a separate prompt and a typed extraction schema. Code tags every extracted
+                candidate as untrusted.
+              </p>
+            </div>
+            <div class="cannot">
+              <span class="small-label">Excluded authority</span>
+              <p>
+                No user instruction, shared context, memory or tools. Extracted values require user confirmation and can
+                never fund an autopay.
+              </p>
+            </div>
+          </div>
+          <div class="trust-row">
+            <div class="trust-name">
+              <h3>Deterministic code</h3>
+              <span>The control plane</span>
+            </div>
+            <div class="can">
+              <span class="small-label">Owns</span>
+              <p>
+                Parsing, checks, questions, placeholder mappings, chain reads, writes, schedules, bridge arithmetic and
+                the allowed hand-off fields.
+              </p>
+            </div>
+            <div class="cannot">
+              <span class="small-label">Must stop or ask</span>
+              <p>
+                Missing or ambiguous transaction details. An uncovered state returns UNSUPPORTED_REQUEST and logs an
+                unsupported_state event with a rule_id.
+              </p>
+            </div>
+          </div>
+          <div class="trust-row">
+            <div class="trust-name">
+              <h3>Execution layer</h3>
+              <span>Separate service</span>
+            </div>
+            <div class="can">
+              <span class="small-label">Receives</span>
+              <p>
+                A validated, confirmed envelope with concrete amounts, addresses, chains, dependencies and schedule
+                data. Reports return through an authenticated API.
+              </p>
+            </div>
+            <div class="cannot">
+              <span class="small-label">Never receives</span>
+              <p>
+                Prompt text, story context, contact/ENS names, model placeholders or the UI summary. It has no direct
+                access to the agent’s database.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="principles">
+          <div class="principle">
+            <span class="principle-number">01</span>
+            <div>
+              <h3>Amounts stay exact</h3>
+              <p>
+                Decimal strings and bigint base units throughout. No floating-point arithmetic touches a monetary
+                amount.
+              </p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-number">02</span>
+            <div>
+              <h3>Logs carry metadata only</h3>
+              <p>
+                The allowlist logger restricts fields and their shapes. No amounts, addresses, names, prompt text or raw
+                HTTP request logging.
+              </p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-number">03</span>
+            <div>
+              <h3>Secrets are screened first</h3>
+              <p>
+                Typed input, pasted blocks, attachment text, answer text and supplied/redirect URLs are checked before
+                their relevant persistence or processing paths.
+              </p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-number">04</span>
+            <div>
+              <h3>Limits remain user-controlled</h3>
+              <p>
+                Persistent limits change only through the authenticated settings API. Eligible one-time consent cannot
+                silently rewrite DB5.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="source-row">
+          <a class="source-link" href="src/quarantine/qllm.ts"
+            >src/quarantine/qllm.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="src/guard/secrets.ts">src/guard/secrets.ts <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="src/util/logger.ts">src/util/logger.ts <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="section" id="storage" aria-labelledby="storage-title">
+        <div class="section-heading">
+          <span class="section-index">04</span>
+          <h2 id="storage-title">Data at rest. State in memory.</h2>
+        </div>
+        <p class="section-intro">
+          DB1–DB8 are logical stores inside <strong>one encrypted SQLite file</strong>, not separate databases. A
+          version-2 migration adds the durable submission journal.
+        </p>
+        <div class="storage-header">
+          <div>
+            <h3><code>agent.db</code> / SQLCipher</h3>
+            <p><code>better-sqlite3-multiple-ciphers</code> · repository interfaces control access</p>
+          </div>
+          <div class="keychain">32-byte random database key<br />OS keychain: agent-layer / db-key</div>
+        </div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Encrypted storage table">
+          <table class="storage-table">
+            <thead>
+              <tr>
+                <th scope="col">Store</th>
+                <th scope="col">Responsibility</th>
+                <th scope="col">Lifetime</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><span class="db-id">DB1</span></th>
+                <td>
+                  <a href="src/db/repos/db1.ts">Amount placeholders</a
+                  ><span class="table-detail">Exact decimal amounts, token, source and confirmation flag.</span>
+                </td>
+                <td><span class="retention session">Session</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB2</span></th>
+                <td>
+                  <a href="src/db/repos/db2.ts">Address book</a
+                  ><span class="table-detail"
+                    >User-confirmed name → address mappings, with chain and ENS metadata.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB3</span></th>
+                <td>
+                  <a href="src/db/repos/db3.ts">Recipient placeholders</a
+                  ><span class="table-detail">Single addresses, groups, members and recipient provenance.</span>
+                </td>
+                <td><span class="retention session">Session</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB4</span></th>
+                <td>
+                  <a href="src/db/repos/db4.ts">Balance snapshots</a
+                  ><span class="table-detail"
+                    >Per-chain/token decimal and base-unit balances; availability status.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB5</span></th>
+                <td>
+                  <a href="src/db/repos/db5.ts">Limits & settings</a
+                  ><span class="table-detail"
+                    >Payment, daily and autopay caps; chains, gas reserves and bridge buffer.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB6</span></th>
+                <td>
+                  <a href="src/db/repos/db6.ts">Spend log</a
+                  ><span class="table-detail"
+                    >Pending reservations, executed/failed intents and actual autopay payments.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB7</span></th>
+                <td>
+                  <a href="src/db/repos/db7.ts">Autopay registry</a
+                  ><span class="table-detail"
+                    >Schedule, amount, recipient and lifecycle status; executor job identifiers.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">DB8</span></th>
+                <td>
+                  <a href="src/db/repos/db8.ts">Session store</a
+                  ><span class="table-detail"
+                    >Session timezone, accepted prompt/answer text and handed-off payment history.</span
+                  >
+                </td>
+                <td><span class="retention session">Session</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="db-id">v2</span></th>
+                <td>
+                  <a href="src/db/repos/handoffs.ts">Submission journal</a
+                  ><span class="table-detail"
+                    >Confirmed envelope, submitted/accepted/rejected status and temporary history.</span
+                  >
+                </td>
+                <td><span class="retention">Persistent¹</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="storage-notes">
+          <div class="storage-note">
+            <h3>Session close clears working context</h3>
+            <p>
+              DB1, DB3 and DB8 are cleared together. The database uses secure_delete and VACUUM. Persistent contacts,
+              limits, spend records and autopays survive session close.
+            </p>
+          </div>
+          <div class="storage-note">
+            <h3>¹ The journal survives, its history does not</h3>
+            <p>
+              The confirmed envelope and delivery status remain for report correlation. Session history temporarily held
+              by the journal is cleared when the session closes.
+            </p>
+          </div>
+        </div>
+        <div class="memory-note">
+          <strong>In-memory request:</strong> the current scan, model outputs, plan, question and
+          <code>step_state</code> live in an <code>AgentRequest</code>. The durable journal records submissions; it is
+          not a checkpoint for restarting an unfinished conversation.
+        </div>
+        <p class="inline-note">
+          <strong>Follow-up context:</strong> DB8 history supports follow-ups to handed-off payments. The current
+          working tree also retains one narrowly eligible insufficient-funds payment in memory for an immediate amount
+          correction (SQ-S-01). That correction gets a fresh request and confirmation; failed payments are not appended
+          to DB8 history.
+        </p>
+        <div class="source-row">
+          <a class="source-link" href="src/db/schema.sql">src/db/schema.sql <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="src/db/migrate.ts">src/db/migrate.ts <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="src/db/repos/index.ts"
+            >src/db/repos/index.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="src/session/request.ts"
+            >src/session/request.ts <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </section>
+
+      <section class="section" id="handoff" aria-labelledby="handoff-title">
+        <div class="section-heading">
+          <span class="section-index">05</span>
+          <h2 id="handoff-title">“Yes” is a boundary</h2>
+        </div>
+        <p class="section-intro">
+          Confirmation authorizes a specific resolved plan. Before its first submission, the agent checks that the
+          assumptions still hold. <strong>An accepted hand-off and an executed payment are separate events.</strong>
+        </p>
+        <div class="flow-row" aria-label="Simplified request lifecycle">
+          <span class="state">RECEIVED</span><span class="flow-arrow" aria-hidden="true">→</span
+          ><span class="state">S0 … S10</span><span class="flow-arrow" aria-hidden="true">→</span
+          ><span class="state orange">AWAITING_CONFIRMATION</span
+          ><span class="flow-arrow" aria-hidden="true">→ yes →</span><span class="state green">HANDED_OFF</span>
+        </div>
+        <div class="handoff-grid">
+          <ol class="sequence">
+            <li>
+              <h3>Pause, answer, resume</h3>
+              <p>
+                A question keeps the request at its current step. The answer handler validates the reply; continue
+                re-enters that step. Invalid answers have a bounded retry count. Only one call runs per session at a
+                time.
+              </p>
+            </li>
+            <li>
+              <h3>Refresh before the first submission</h3>
+              <p>
+                Reload limits and refresh balances. Revalidate funding and spending. Changed settings trigger
+                replanning; a changed summary requires another “yes”.
+              </p>
+            </li>
+            <li>
+              <h3>Recheck time-sensitive autopays</h3>
+              <p>
+                If the planned first occurrence has passed before any submission, ask for a new start, replan and
+                confirm again. An ambiguous prior submission is retried with its original schedule.
+              </p>
+            </li>
+            <li>
+              <h3>Restore values and persist identity</h3>
+              <p>
+                <code>swapBack</code> resolves DB1 / DB3 placeholders, constructs an allowlisted envelope and validates
+                its closed schema. Commit that envelope and DB6 / DB7 reservations before the outbound call.
+              </p>
+            </li>
+            <li>
+              <h3>Submit, then reconcile reports</h3>
+              <p>
+                POST the envelope with <code>request_id</code> as the idempotency key. The authenticated reports
+                endpoint checks request, step, intent and autopay identity before updating the journal, spending or
+                autopay state.
+              </p>
+            </li>
+          </ol>
+          <aside class="contract-box" aria-label="Execution contract">
+            <span class="small-label">Agent → executor</span>
+            <h3><code>POST /v1/intents</code></h3>
+            <div class="contract-field">
+              <code>Authorization: Bearer …</code><span>Dedicated outbound token from a local token file.</span>
+            </div>
+            <div class="contract-field">
+              <code>Idempotency-Key: request_id</code><span>The same key and envelope are reused on a retry.</span>
+            </div>
+            <div class="contract-field">
+              Ordered, fully resolved intents<span
+                >Concrete chains, token addresses, amounts, recipients, dependencies and applicable schedules.</span
+              >
+            </div>
+            <div class="contract-field">
+              Closed JSON schema<span>Unknown fields and unresolved values fail validation.</span>
+            </div>
+            <p class="contract-footnote">
+              A retry preserves submission identity; the executor must honor the idempotency contract. The agent does
+              not claim exactly-once blockchain execution.
+            </p>
+          </aside>
+        </div>
+        <div class="outcomes">
+          <div>
+            <p class="outcome-label">2xx / valid callback</p>
+            <h3>Accepted</h3>
+            <p>
+              Record acceptance and handed-off history. Execution results arrive separately. A later rejection cannot
+              undo confirmed acceptance.
+            </p>
+          </div>
+          <div>
+            <p class="outcome-label">4xx / definite rejection</p>
+            <h3>Rejected</h3>
+            <p>
+              Mark reservations failed and return EXECUTION_REJECTED. A confirmed execution callback takes precedence
+              over a late rejection.
+            </p>
+          </div>
+          <div>
+            <p class="outcome-label">Timeout / 5xx</p>
+            <h3>Delivery uncertain</h3>
+            <p>
+              Keep the reservations. A fresh user confirmation retries the same envelope, up to three attempts total. A
+              local cancel after a timeout cannot recall a delivered request.
+            </p>
+          </div>
+        </div>
+        <div class="intent-table">
+          <span class="small-label" style="margin-bottom: 12px">The four output intent types</span>
+          <div
+            class="table-wrap"
+            tabindex="0"
+            role="region"
+            aria-label="Output intent types"
+            style="border-top: 1px solid var(--line); border-radius: 4px"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">ID</th>
+                  <th scope="col">Meaning</th>
+                  <th scope="col">Agent’s responsibility</th>
+                  <th scope="col">Executor’s responsibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row" class="intent-id">i</th>
+                  <td>One-time payment</td>
+                  <td>Resolve recipient, amount, token and chain.</td>
+                  <td>Sign and broadcast the transfer.</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="intent-id">j</th>
+                  <td>Bridge for funding</td>
+                  <td>Calculate amount, padding and dependent payment steps.</td>
+                  <td>Execute the cross-chain transfer.</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="intent-id">k</th>
+                  <td>Autopay</td>
+                  <td>Build schedule, caps, prefunding and job parameters.</td>
+                  <td>Set up and operate the recurring execution.</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="intent-id">l</th>
+                  <td>Cancel autopay</td>
+                  <td>Identify the registered autopay to cancel.</td>
+                  <td>Cancel the scheduled execution.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="inline-note">
+          A local request cancellation discards a pending plan. Cancelling an already active autopay is a separate
+          <code>l</code> intent that follows the normal summary and confirmation path.
+        </p>
+        <div class="source-row">
+          <a class="source-link" href="src/session/manager.ts"
+            >src/session/manager.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="src/handoff/swap-back.ts"
+            >src/handoff/swap-back.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="src/handoff/journal.ts"
+            >src/handoff/journal.ts <span aria-hidden="true">↗</span></a
+          >
+          <a class="source-link" href="src/server/reports.ts"
+            >src/server/reports.ts <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </section>
+
+      <section class="section" id="interfaces" aria-labelledby="interfaces-title">
+        <div class="section-heading">
+          <span class="section-index">06</span>
+          <h2 id="interfaces-title">Small, explicit interfaces</h2>
+        </div>
+        <p class="section-intro">
+          Fastify binds to <code>127.0.0.1</code>. The example configuration uses port <code>8787</code>; Ollama uses
+          <code>11434</code> and the executor uses <code>8788</code>.
+          <strong>Every API route requires authentication.</strong>
+        </p>
+        <div
+          class="table-wrap api-table"
+          tabindex="0"
+          role="region"
+          aria-label="Agent HTTP API routes"
+          style="border-top: 1px solid var(--line); border-radius: 4px"
+        >
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col">Route</th>
+                <th scope="col">Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/sessions</code></td>
+                <td>Open the single session with an IANA timezone; close the previous session.</td>
+              </tr>
+              <tr>
+                <td class="method">DELETE</td>
+                <td><code>/v1/sessions/:id</code></td>
+                <td>Close the session and clear its working context.</td>
+              </tr>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/sessions/:id/messages</code></td>
+                <td>Start a request; route eligible conversational answers and confirmations.</td>
+              </tr>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/sessions/:id/answers</code></td>
+                <td>Answer the pending question.</td>
+              </tr>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/sessions/:id/confirm</code></td>
+                <td>Confirm or discard a summary; explicitly retry a failed hand-off.</td>
+              </tr>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/sessions/:id/cancel</code></td>
+                <td>Cancel the current eligible request.</td>
+              </tr>
+              <tr>
+                <td class="method">GET / PUT</td>
+                <td><code>/v1/settings/limits</code></td>
+                <td>Read or update persistent agent limits. PUT is the sole DB5 settings-write path.</td>
+              </tr>
+              <tr>
+                <td class="method">GET</td>
+                <td><code>/v1/health</code></td>
+                <td>Return database and local-model availability.</td>
+              </tr>
+              <tr>
+                <td class="method">POST</td>
+                <td><code>/v1/execution/reports</code></td>
+                <td>Accept correlated intent results, autopay payments and autopay-status updates.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="token-strip">
+          <div>
+            <strong>UI token</strong>
+            <p>Authenticates session, message, answer, confirm, cancel, settings and health calls.</p>
+          </div>
+          <div>
+            <strong>Report token</strong>
+            <p>Authenticates executor callbacks. It must differ from the UI token.</p>
+          </div>
+          <div>
+            <strong>Outbound token</strong>
+            <p>Authenticates agent submissions to the configured execution service. Redirects are refused.</p>
+          </div>
+        </div>
+        <p class="inline-note">
+          Valid agent-level outcomes use HTTP 200 with a structured response. Invalid HTTP input, authorization failures
+          and state conflicts use HTTP errors. Reports return 204 on success. The request body limit is 20 MB.
+        </p>
+        <div class="source-row">
+          <a class="source-link" href="src/server/app.ts">src/server/app.ts <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="src/server/bodies.ts">src/server/bodies.ts <span aria-hidden="true">↗</span></a>
+          <a class="source-link" href="config.example.json">config.example.json <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="section" id="sources" aria-labelledby="sources-title">
+        <div class="section-heading">
+          <span class="section-index">07</span>
+          <h2 id="sources-title">Find it in the code</h2>
+        </div>
+        <p class="section-intro">
+          This document describes the source and human rulings in the current working tree on 6 November 2026. Source
+          links resolve relative to this HTML file when it is kept at the repository root.
+        </p>
+        <div class="source-grid">
+          <div class="source-item">
+            <h3>Startup & wiring</h3>
+            <p>
+              Load config, tokens and keychain key; open/migrate the database; construct real clients and bind the
+              server.
+            </p>
+            <a class="source-link" href="src/index.ts">src/index.ts <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="src/config/load.ts"
+              >src/config/load.ts <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="source-item">
+            <h3>Runner & contracts</h3>
+            <p>Step result semantics, one active request, question handling and first-submission checks.</p>
+            <a class="source-link" href="src/contracts/step.ts"
+              >src/contracts/step.ts <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="src/session/manager.ts"
+              >src/session/manager.ts <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="source-item">
+            <h3>Pipeline & model prompts</h3>
+            <p>Registered S0–S12 stages, five prompt types, schema validation and the Ollama client.</p>
+            <a class="source-link" href="src/pipeline/registry.ts"
+              >src/pipeline/registry.ts <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="src/llm/ollama.ts"
+              >src/llm/ollama.ts <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="source-item">
+            <h3>Planning & money</h3>
+            <p>
+              Pairing checks, chain binding, spendable funds, bridge arithmetic, schedules and exact unit conversion.
+            </p>
+            <a class="source-link" href="src/plan/pairing-checks.ts"
+              >src/plan/pairing-checks.ts <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="src/contracts/money.ts"
+              >src/contracts/money.ts <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="source-item">
+            <h3>Data & outbound hand-off</h3>
+            <p>SQLCipher repositories, versioned migrations, field-allowlisted swap-back and execution reports.</p>
+            <a class="source-link" href="src/db/migrate.ts">src/db/migrate.ts <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="src/handoff/swap-back.ts"
+              >src/handoff/swap-back.ts <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="source-item">
+            <h3>Specification & human rulings</h3>
+            <p>
+              The implementation spec remains the reference; documented human decisions and later remediation qualify
+              it.
+            </p>
+            <a class="source-link" href="README.md">README.md <span aria-hidden="true">↗</span></a
+            ><br /><a class="source-link" href="SPEC_QUESTIONS.md"
+              >SPEC_QUESTIONS.md <span aria-hidden="true">↗</span></a
+            >
+          </div>
+        </div>
+        <div class="verification-note">
+          <strong>Verification structure:</strong> unit tests fake RPC, ENS, indexer, execution and model clients; HTTP
+          acceptance tests use recorded LLM fixtures. Privacy/security audits run separately. Live evaluation uses local
+          Ollama and measures wrong hand-offs, safe stops and latency. The documented NFR-03 latency target remains
+          unmet; see <a href="LIVE_EVALUATION_REPORT.md">the live evaluation report</a> for the measured limitations.
+        </div>
+      </section>
+      <footer>
+        <span>FLEX / AGENT LAYER ARCHITECTURE</span
+        ><span>06 NOV 2026 · Offline HTML · Print includes every pipeline stage</span>
+      </footer>
+    </main>
+    <script>
+      // Documentation interactions only. No API calls, wallet access, storage or telemetry.
+      (() => {
+        const stageNames = [
+          'Refresh balances',
+          'Guard the input',
+          'Scan the language',
+          'Extract and verify amounts',
+          'Classify the request',
+          'Find the intended payees',
+          'Resolve recipients',
+          'Mask recipients',
+          'Pair payments',
+          'Build the funding plan',
+          'Validate the plan',
+          'Show the summary',
+          'Hand off the confirmed plan',
+        ];
+        let selected = 8;
+        const stageButtons = Array.from(document.querySelectorAll('[data-stage]'));
+        const panels = Array.from(document.querySelectorAll('.stage-panel'));
+        const previous = document.getElementById('previous-stage');
+        const next = document.getElementById('next-stage');
+        function selectStage(index) {
+          selected = Math.max(0, Math.min(stageNames.length - 1, index));
+          stageButtons.forEach((button) =>
+            button.setAttribute('aria-pressed', String(Number(button.dataset.stage) === selected)),
+          );
+          panels.forEach((panel, index) => (panel.hidden = index !== selected));
+          document.getElementById('stage-counter').textContent =
+            `${String(selected + 1).padStart(2, '0')} / 13 · ${stageNames[selected]}`;
+          previous.disabled = selected === 0;
+          next.disabled = selected === stageNames.length - 1;
+        }
+        stageButtons.forEach((button) =>
+          button.addEventListener('click', () => selectStage(Number(button.dataset.stage))),
+        );
+        previous.addEventListener('click', () => selectStage(selected - 1));
+        next.addEventListener('click', () => selectStage(selected + 1));
+        document.getElementById('print-button').addEventListener('click', () => window.print());
+        selectStage(selected);
+
+        const scenarios = {
+          payment: {
+            prompt: '“send 40 usdc to Aradhya on base”',
+            assumption:
+              'Assume Aradhya is a confirmed contact and Base Sepolia has sufficient spendable funds. Placeholder IDs below are illustrative.',
+            rows: [
+              ['S3 · Amounts', 'Code verifies 40 USDC and stores it as amount_3f4a9c20 in DB1.'],
+              ['S6–S7 · Payee', 'Resolve the saved contact and mask it as address_7b8c1d02.'],
+              ['S8 · Pair', '“send amount_3f4a9c20 to address_7b8c1d02 on base” → one checked i payment.'],
+              [
+                'S9–S12 · Plan',
+                'Choose Base Sepolia, validate, show the summary and wait for “yes”. Then restore 40 USDC, 40000000 base units and the resolved address.',
+              ],
+            ],
+            result:
+              'Result: one i intent is handed off after confirmation. No bridge is needed under these assumptions.',
+          },
+          autopay: {
+            prompt: '“pay mihir 10 usdc every friday for 8 weeks”',
+            assumption:
+              'Assume the contact is resolved and all remaining schedule, chain and funding questions are answered. The agent prepares the schedule; the executor runs it.',
+            rows: [
+              [
+                'S3–S5 · Intent',
+                'Verify the 10 USDC amount, identify a repeating payment (k) and tag Mihir as the payee.',
+              ],
+              [
+                'S8 · Recurrence',
+                'Pair the placeholders and check the recurrence evidence. “For 8 weeks” is a duration; it does not mean “every 8 weeks”.',
+              ],
+              [
+                'S9–S10 · Plan',
+                'Resolve the start/end and timezone, calculate occurrences, caps and prefunding, then validate structure, provenance, limits and funds.',
+              ],
+              [
+                'S11–S12 · Yes',
+                'Present the schedule and funding summary. On confirmation, recheck its first occurrence and current funding, then journal and submit the resolved envelope.',
+              ],
+            ],
+            result:
+              'Result: a k intent, plus funding bridges only if required. No recurring job runs inside the agent process.',
+          },
+          balance: {
+            prompt: '“what’s my balance?”',
+            assumption: 'Assume the local model is ready and at least one allowed chain can be read.',
+            rows: [
+              [
+                'S0 · Refresh',
+                'Read ETH and USDC balances for the configured wallet on the allowed chains; save the results in DB4.',
+              ],
+              [
+                'S1–S3 · Inspect',
+                'Run the guard, lexical scan and amount interpretation. No payment amount is required for a balance answer.',
+              ],
+              ['S4 · Answer', 'Classify the request as balance-only and format the DB4 results for the UI.'],
+              [
+                'Done',
+                'Finish in ANSWERED. Recipient resolution, pairing, planning and the execution hand-off do not run.',
+              ],
+            ],
+            result: 'Result: a balance answer. No transaction summary or execution confirmation is needed.',
+          },
+          untrusted: {
+            prompt: '“pay the invoice in this attachment”',
+            assumption:
+              'Assume a supported attachment contains one usable amount and payee. Its contents are untrusted data, even when they look like instructions.',
+            rows: [
+              [
+                'S1 · Isolate',
+                'Extract attachment text and scan it. A quarantined local call returns typed candidate fields without seeing the user’s instruction.',
+              ],
+              [
+                'S3 / S6 · Ask',
+                'If attached values are needed, ask for explicit amount/payee confirmation. Preserve untrusted provenance; raw document text never enters privileged prompts.',
+              ],
+              [
+                'S7–S10 · Check',
+                'Use placeholders for approved values and run the normal pairing, funding and validation checks. Untrusted values cannot fund an autopay or qualify for the typed-amount limit override.',
+              ],
+              [
+                'S11–S12 · Yes',
+                'Show the resolved one-time payment summary. Only the user’s final confirmation can authorize the normal hand-off.',
+              ],
+            ],
+            result:
+              'Result: a confirmed one-time plan if every required check passes; otherwise a question or stop. Document text has no execution authority.',
+          },
+        };
+        document.querySelectorAll('[data-scenario]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const scenario = scenarios[button.dataset.scenario];
+            document
+              .querySelectorAll('[data-scenario]')
+              .forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+            document.getElementById('trace-prompt').textContent = scenario.prompt;
+            document.getElementById('trace-assumption').textContent = scenario.assumption;
+            const list = document.getElementById('trace-steps');
+            list.replaceChildren(
+              ...scenario.rows.map(([label, text]) => {
+                const row = document.createElement('li');
+                const title = document.createElement('b');
+                const body = document.createElement('span');
+                title.textContent = label;
+                body.textContent = text;
+                row.append(title, body);
+                return row;
+              }),
+            );
+            document.getElementById('trace-result').textContent = scenario.result;
+          });
+        });
+
+        const sections = Array.from(document.querySelectorAll('section[id]'));
+        const links = Array.from(document.querySelectorAll('.nav-list a'));
+        let queued = false;
+        function updateNavigation() {
+          const offset = window.innerWidth <= 850 ? 160 : 100;
+          let current = sections[0].id;
+          sections.forEach((section) => {
+            if (section.getBoundingClientRect().top <= offset) current = section.id;
+          });
+          if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8)
+            current = sections[sections.length - 1].id;
+          links.forEach((link) => {
+            if (link.hash === `#${current}`) link.setAttribute('aria-current', 'location');
+            else link.removeAttribute('aria-current');
+          });
+          queued = false;
+        }
+        window.addEventListener(
+          'scroll',
+          () => {
+            if (!queued) {
+              queued = true;
+              window.requestAnimationFrame(updateNavigation);
+            }
+          },
+          { passive: true },
+        );
+        window.addEventListener('resize', updateNavigation);
+        updateNavigation();
+      })();
+    </script>
+  </body>
+</html>
