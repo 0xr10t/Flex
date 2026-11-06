@@ -59,7 +59,7 @@ export interface SimBlock {
   calls: SimCall[];
   /** Simulate at this time, for a run that's due later. */
   time?: number;
-  stateOverrides?: Record<string, { code?: Hex }>;
+  stateOverrides?: Record<string, { code?: Hex; balance?: Hex }>;
   /** May fail without failing the check. */
   probe?: boolean;
 }
