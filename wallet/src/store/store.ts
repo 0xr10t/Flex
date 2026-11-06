@@ -10,6 +10,7 @@ import type { Database } from 'better-sqlite3';
 import type { HandoffEnvelope, Hex } from '@flex/protocol/schemas/envelope';
 import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
 import type { ChainId, Token, ExecutionReport, IntentResultReport } from '@flex/protocol';
+import { ACCOUNT_UPGRADE_REQUIRED } from '../browser/upgrade.js';
 
 export type StepStatus = 'pending' | 'approved' | 'signed' | 'waiting' | 'executed' | 'failed';
 export type ReportStatus = 'pending' | 'delivered' | 'abandoned';
@@ -333,6 +334,34 @@ export class Store {
     this.db
       .prepare(`UPDATE steps SET status = 'approved' WHERE request_id = ? AND step = ? AND status = 'pending'`)
       .run(requestId, step);
+  }
+
+  /** Pause before dispatch; preserve the envelope and leave the agent's payment reservation pending. */
+  awaitAccountUpgrade(requestId: string, step: number): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE steps SET error_code = ?
+      WHERE request_id = ? AND step = ? AND status IN ('pending','approved')
+      AND raw_tx IS NULL AND tx_hash IS NULL AND error_code IS NULL
+      AND NOT EXISTS (SELECT 1 FROM wallet_batches b WHERE b.request_id=steps.request_id AND b.step=steps.step)`,
+        )
+        .run(ACCOUNT_UPGRADE_REQUIRED, requestId, step).changes === 1
+    );
+  }
+
+  /** Compare-and-set prevents concurrent recheck/cancel, stale UI or terminal requests from resuming a payment. */
+  resolveAccountUpgrade(requestId: string, step: number, decision: 'resume' | 'cancel'): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE steps SET error_code = ?
+      WHERE request_id = ? AND step = ? AND status IN ('pending','approved') AND error_code = ?
+      AND raw_tx IS NULL AND tx_hash IS NULL
+      AND NOT EXISTS (SELECT 1 FROM wallet_batches b WHERE b.request_id=steps.request_id AND b.step=steps.step)`,
+        )
+        .run(decision === 'cancel' ? 'USER_REJECTED' : null, requestId, step, ACCOUNT_UPGRADE_REQUIRED).changes === 1
+    );
   }
 
   /** Saved before the transaction is sent, so a crash can never lead to signing a second one. */

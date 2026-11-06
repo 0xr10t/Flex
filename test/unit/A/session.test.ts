@@ -728,14 +728,15 @@ describe('§17.3 confirmation, answers and cancellation', () => {
     expect((await h.manager.handleConfirm(sid, rid, 'yes')).kind).toBe('conflict');
   });
 
-  it('SQ-CV-02: an edit cannot inherit fields when the stub summary has no validated draft rows', async () => {
+  it('SQ-CV-02: without validated draft rows the entire input enters the normal pipeline without inherited fields', async () => {
     const h = makeHarness();
     const { sid, rid } = await toConfirmation(h);
     const response = body(await h.manager.handleMessage(sid, msg('actually send 20 to mihir')));
-    expect(response.request_id).toBe(rid);
+    expect(response.request_id).not.toBe(rid);
     expect(response.state).toBe('awaiting_confirmation');
     expect(response.summary).toEqual(SUMMARY);
-    expect(finals(h)).toEqual([]);
+    expect(h.contexts.at(-1)?.req.input?.text).toBe('actually send 20 to mihir');
+    expect(finals(h)).toEqual(['DISCARDED']);
     expect(h.calls.some((call) => call.step === 's12')).toBe(false);
   });
 

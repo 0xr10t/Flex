@@ -9,6 +9,17 @@ const call = (name: FixtureCall['name'], output: unknown): FixtureCall => ({ nam
 const route = (intent: 'wallet' | 'chat') => call('chat_route', { intent });
 const chat = (reply = 'An explanation, with no wallet action.') => call('chat', { reply });
 const failure = (name: FixtureCall['name']): FixtureCall[] => [call(name, null), { ...call(name, null), attempt: 2 }];
+const draftChat = (): FixtureCall[] => [
+  call('draft_values', { recipients: [] }),
+  call('draft_edit', {
+    session_id: '$session_id',
+    draft_revision: '$draft_revision',
+    turn_id: '$turn_id',
+    action: 'chat',
+    changes: { amount_ref: null, recipient_ref: null, token: null, chain_id: null },
+    reason: null,
+  }),
+];
 function payment(name = 'mihir'): FixtureCall[] {
   const calls = structuredClone(loadFixture('A-55').calls);
   calls.forEach((item) => {
@@ -135,6 +146,7 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
       route('wallet'),
       call('conversation', { intent: 'recipient', value: 'mihir' }),
       native[3]!,
+      ...draftChat(),
       route('chat'),
       chat('The current recipient is Mihir.'),
     ]);
@@ -415,6 +427,7 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     const h = make('invalid-confirmation-reply', [
       route('wallet'),
       ...payment(),
+      ...draftChat(),
       route('chat'),
       call('chat', invalid),
       { ...call('chat', invalid), attempt: 2 },

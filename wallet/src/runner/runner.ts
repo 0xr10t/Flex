@@ -15,6 +15,7 @@ import { cancelHandler } from '../autopay/cancel-l.js';
 import { bridgeHandler } from '../bridge/bridge-j.js';
 import { accountProblem, ensureUpgraded } from '../chain/account.js';
 import { UPGRADED_CODE } from '../chain/addresses.js';
+import { awaitingAccountUpgrade } from '../browser/upgrade.js';
 import {
   ChainUnavailableError,
   SimulationUnavailableError,
@@ -129,7 +130,8 @@ export class Runner {
   private async runStep(envelope: HandoffEnvelope, intent: EnvelopeIntent): Promise<void> {
     const { store } = this.deps;
     const id = envelope.request_id;
-    const status = store.step(id, intent.step).status;
+    const row = store.step(id, intent.step);
+    const status = row.status;
     if (status === 'executed' || status === 'failed') return;
 
     const dependsOn = 'depends_on' in intent ? intent.depends_on : [];
@@ -138,6 +140,14 @@ export class Runner {
       return;
     }
     if (dependsOn.some((d) => store.step(id, d).status !== 'executed')) return;
+    if (this.deps.browserWallet && ['pending', 'approved'].includes(status)) {
+      if (row.error_code === 'USER_REJECTED') {
+        this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
+        return;
+      }
+      // The browser rechecks the account explicitly. Polling/restarting cannot sign, submit or discard this plan.
+      if (awaitingAccountUpgrade(row)) return;
+    }
     const handler = HANDLERS[intent.intent_id];
     const ctx = this.contextFor(envelope, handler.chainOf(intent));
 
@@ -234,6 +244,14 @@ export class Runner {
         this.finish(id, intent, { status: 'failed', error_code: problem });
         return false;
       }
+      if (
+        this.deps.browserWallet &&
+        (intent.intent_id === 'k' || (intent.intent_id === 'i' && intent.recipients.length === 1)) &&
+        (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
+      ) {
+        this.deps.store.awaitAccountUpgrade(id, intent.step);
+        return false;
+      }
       const planned = await handler.plan(ctx, intent);
       if (planned.kind === 'finished') {
         this.finish(id, intent, planned.outcome);
@@ -275,7 +293,7 @@ export class Runner {
         intent.intent_id === 'k' &&
         (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
       ) {
-        this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' });
+        this.deps.store.awaitAccountUpgrade(id, intent.step);
         return false;
       }
       const prepared = await handler.prepare(ctx, intent);
@@ -299,7 +317,7 @@ export class Runner {
           calls.length === 1 &&
           (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
         ) {
-          this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' });
+          this.deps.store.awaitAccountUpgrade(id, intent.step);
           return false;
         }
         const walletCalls =

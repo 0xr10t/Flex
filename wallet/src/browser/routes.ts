@@ -50,6 +50,10 @@ export function registerBrowserWallet(app: FastifyInstance, controller: BrowserW
       return reply.code(403).send({ error: 'LOCAL_SESSION_REQUIRED' });
     try {
       if (req.params.action === 'bridge') return { requestId: controller.createBridge(req.body) };
+      if (req.params.action === 'account-upgrade') {
+        await controller.accountUpgrade(req.body);
+        return { ok: true };
+      }
       const id = req.body?.id;
       if (typeof id !== 'string' || !/^0x[0-9a-f]{64}$/.test(id))
         return reply.code(400).send({ error: 'INVALID_BATCH' });

@@ -16,6 +16,12 @@ const errors = {
   WALLET_RESULT_UNVERIFIED: 'The wallet result could not be verified. No new transfer will be started.',
   VERIFICATION_UNAVAILABLE: 'Chain verification is temporarily unavailable. The saved transfer remains pending.',
   BATCH_ALREADY_DISPATCHED: 'This batch already reached the wallet. Check its status; do not create a replacement.',
+  BROWSER_ACCOUNT_UPGRADE_REQUIRED:
+    'The account upgrade is not visible on this network yet. Complete it in MetaMask, wait for confirmation, then check again. Your payment is still saved.',
+  ACCOUNT_DELEGATED_ELSEWHERE:
+    'This account points to a different smart-account implementation. Flex has kept the payment paused.',
+  UPGRADE_NOT_PENDING: 'This setup step has already changed. Refresh the wallet page to see its current state.',
+  INVALID_UPGRADE_REQUEST: 'This setup request is invalid. Refresh the wallet page.',
 };
 const notify = (message) => {
   $('notice').textContent = message;
@@ -159,6 +165,71 @@ async function signDelegation(request) {
     await refresh();
   }
 }
+async function checkAccountUpgrade(request) {
+  if (sending) return;
+  sending = true;
+  render();
+  try {
+    await accountCheck(request.chainId);
+    await api('/browser/account-upgrade', { requestId: request.requestId, step: request.step, decision: 'check' });
+    notify('Account upgrade verified. Rechecking the saved payment; review it in MetaMask when it is ready.');
+  } finally {
+    sending = false;
+    await refresh();
+  }
+}
+function accountSetup(request) {
+  const chain = names[request.chainId] || `chain ${request.chainId}`;
+  const card = el('article', undefined, 'card');
+  card.append(el('h3', `Enable your smart account on ${chain}`));
+  const intent = request.intent;
+  if (intent?.recipients)
+    for (const recipient of intent.recipients)
+      card.append(
+        el(
+          'p',
+          `${recipient.amount.value} ${intent.token} to ${recipient.recipient}${intent.intent_id === 'k' ? ' per run' : ''}`,
+        ),
+      );
+  card.append(el('p', 'Your payment is saved and waiting for account setup.'));
+  const steps = el('ol');
+  for (const instruction of [
+    `In MetaMask, select this account: ${state.wallet}.`,
+    `Open the account menu (three dots), then Account details → Smart account. Enable ${chain}.`,
+    'Review and approve the account upgrade in MetaMask. It costs test ETH for network gas.',
+    'After it confirms, return here and check the upgrade. Your payment still needs its own MetaMask approval.',
+  ])
+    steps.append(el('li', instruction));
+  const help = el('a', 'MetaMask account setup guide');
+  help.href = 'https://support.metamask.io/configure/accounts/switch-to-or-revert-from-a-smart-account/';
+  help.target = '_blank';
+  help.rel = 'noopener noreferrer';
+  card.append(steps, help);
+  const actions = el('div', undefined, 'actions');
+  actions.append(
+    action(
+      `Select ${chain} in MetaMask`,
+      async () => {
+        await accountCheck(request.chainId);
+        notify(`Open MetaMask → account menu → Account details → Smart account, and enable ${chain}.`);
+      },
+      true,
+    ),
+    action('Check upgrade and continue', () => checkAccountUpgrade(request)),
+    action(
+      'Cancel payment',
+      () =>
+        api('/browser/account-upgrade', {
+          requestId: request.requestId,
+          step: request.step,
+          decision: 'cancel',
+        }),
+      true,
+    ),
+  );
+  card.append(actions);
+  return card;
+}
 function render() {
   if (!state) return;
   $('prepare').disabled = !connected || sending;
@@ -168,6 +239,7 @@ function render() {
   if (container.querySelector('input:focus')) return;
   const expanded = new Set([...container.querySelectorAll('details[open]')].map((d) => d.dataset.batchId));
   container.replaceChildren();
+  for (const request of state.upgrades ?? []) container.append(accountSetup(request));
   for (const request of state.delegations ?? []) {
     const card = el('article', undefined, 'card');
     const intent = request.intent;
@@ -199,19 +271,28 @@ function render() {
     container.append(card);
   }
   const queued = state.requests.filter((r) => !state.batches.some((b) => b.requestId === r.id));
-  const pending = queued.filter((r) => r.steps.some((s) => !['executed', 'failed'].includes(s.status)));
+  const pending = queued.filter((r) =>
+    r.steps.some((s) => !['executed', 'failed'].includes(s.status) && s.error !== 'BROWSER_ACCOUNT_UPGRADE_REQUIRED'),
+  );
   const stopped = queued.filter((r) => r.steps.some((s) => s.status === 'failed'));
   $('requests').replaceChildren();
   if (pending.length)
     $('requests').append(el('p', `${pending.length} request(s) checking route, fee and simulation agreement…`));
+  const stopReasons = {
+    BROWSER_ACCOUNT_UPGRADE_REQUIRED:
+      'This account needs the MetaMask smart-account upgrade on this testnet before Flex can prepare the transfer. Upgrade the account in MetaMask, then submit a new plan.',
+    SIMULATION_UNAVAILABLE:
+      'The configured testnet RPC could not simulate this transfer. Check the executor RPC configuration, then submit a new plan.',
+  };
   for (const request of stopped)
     $('requests').append(
       el(
         'p',
-        `Transfer checks stopped: ${request.steps.find((s) => s.status === 'failed').error || 'unavailable'}. No wallet approval was requested.`,
+        `${stopReasons[request.steps.find((s) => s.status === 'failed').error] || `Transfer checks stopped: ${request.steps.find((s) => s.status === 'failed').error || 'unavailable'}.`} No wallet approval was requested.`,
       ),
     );
-  if (!state.batches.length) container.append(el('p', 'Your prepared transfers will appear here.', 'muted'));
+  if (!state.batches.length && !state.upgrades?.length && !state.delegations?.length)
+    container.append(el('p', 'Your prepared transfers will appear here.', 'muted'));
   for (const batch of state.batches) {
     const card = el('article', undefined, 'card');
     const intent = batch.intent;

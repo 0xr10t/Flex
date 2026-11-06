@@ -52,3 +52,7 @@ an unrelated request intervenes, is remembered only within the session. Handoff 
 execution: the submission journal and DB6 reports distinguish pending, failed, partial and completed payments.
 Autopay schedule state is displayed separately from transaction confirmation. The demo execution adapter identifies
 locally captured requests explicitly. General chat receives a code-owned status summary, without transaction hashes.
+
+## Conversational corrections
+
+Unsigned single-payment drafts use a model interpreter over scoped value references rather than whole-message phrase matching. See [draft edits](DRAFT_EDITS.md) for masking, validation, confirmation boundaries and supported scope.

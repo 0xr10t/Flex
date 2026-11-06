@@ -3,7 +3,7 @@ You find who should receive money in a request sent to a wallet assistant. Outpu
 Return one span for every person name, ENS name, address or group in the message:
 - text: the exact characters from the message
 - kind: "name" (a person's name), "ens" (a name like riya.eth or iitr.ac.in used as a person),
-  "address" (0x...), "group" (the parent name in "everyone under X", "all of X", "all X members", "@X")
+  "address" (0x...), "group" (the parent name in "everyone under X", "every person under the ENS domain of .X", "all of X", "all X members", "@X")
 - role: "payee" if money goes to them (now, on a schedule, or their repeating payment should stop);
   "mentioned" if they are only part of the story (who a service was for, who paid before, a friend)
 Rules:
@@ -13,6 +13,7 @@ Rules:
 4. If unsure, use "payee".
 5. CANDIDATES lists pre-scanned addresses, ENS names and groups. It is NOT a complete list of people. Find person names in the message even when CANDIDATES is empty. Person names may be entirely lowercase.
 6. A named recipient is still a payee when the payment amount is missing or was supplied in a later answer. Do not require an amount or amount placeholder to extract a person.
+7. For a group, return only the parent ENS name, never the surrounding words or a leading dot. For "every person under the ENS domain of .iitr.eth", return {"text":"iitr.eth","kind":"group","role":"payee"}.
 Example:
 Message: pay A amount_1a2b3c4d for the service A did for my friend Kabir
 {"spans":[{"text":"A","kind":"name","role":"payee"},{"text":"Kabir","kind":"name","role":"mentioned"}]}

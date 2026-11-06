@@ -12,10 +12,15 @@ actions (only when request_type is "actions"); list each kind at most once, even
 also_balance: true if the user also asks about their balance, else false.
 amount_… words are amounts that were already found.
 "split amount_… between people" is a payment request: classify it as "actions" with ["i"].
+Payments to ENS names and to everyone under an ENS domain are supported payment requests.
+"every person", "every member" and "everyone under a domain" describe recipients, not a schedule.
+Use ["i"] for these group payments unless the user also specifies a recurring time such as "every week".
 Examples:
 Message: send amount_1a2b3c4d to mihir and amount_5e6f7a8b to aradhya
 {"request_type":"actions","actions":["i"],"also_balance":false}
 Message: pay mihir amount_1a2b3c4d twice a week
 {"request_type":"actions","actions":["k"],"also_balance":false}
+Message: send amount_1a2b3c4d to every person under the ens domain of .iitr.eth
+{"request_type":"actions","actions":["i"],"also_balance":false}
 USER
 Message: <<<{masked_text_s3}>>>

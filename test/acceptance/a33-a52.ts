@@ -342,7 +342,23 @@ export function registerA33toA52(): void {
       const h = new Harness(
         'A-50',
         {
-          calls: [...loadFixture('A-50').calls.slice(0, 4), ...loadFixture('A-18').calls],
+          calls: [
+            ...loadFixture('A-50').calls.slice(0, 4),
+            { name: 'draft_values', match: '', output: { recipients: [] } },
+            {
+              name: 'draft_edit',
+              match: '',
+              output: {
+                session_id: '$session_id',
+                draft_revision: '$draft_revision',
+                turn_id: '$turn_id',
+                action: 'new_request',
+                changes: { amount_ref: null, recipient_ref: null, token: null, chain_id: null },
+                reason: null,
+              },
+            },
+            ...loadFixture('A-18').calls,
+          ],
         },
         {},
       );

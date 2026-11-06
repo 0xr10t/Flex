@@ -1,0 +1,15 @@
+# Conversational draft edits
+
+An unsigned, single-recipient, absolute payment at `AWAITING_CONFIRMATION` can be edited conversationally. For example, “Naah, I think 0.01 is less. I want you to send 0.02 instead of 0.01” updates only its amount. This replaces the whole-message phrase grammar previously used in `src/session/draft-correction.ts`.
+
+`prepareDraftCorrection` checks that the active draft has confirmed, session-bound DB1/DB3 rows, no untrusted items and no attempted handoff. `collectDraftValues` then creates a registry for this message. The current amount and recipient keep their DB1/DB3 references; new candidates get fresh references held only in memory. Amounts use the existing string/bigint parser. The registry is discarded after the turn; rejected interpretations do not create DB rows.
+
+Addresses, ENS names, numeric/number-word amounts and mentioned saved contacts are masked locally. `draft_values` extracts additional recipient names from the remaining text. Each name must match an exact, bounded original span. `draft_edit` receives the masked message, current field references and candidate metadata, with no raw amount/address values or contact book. Both calls use the configured extraction model with thinking disabled, independently of optional general chat.
+
+The interpreter selects one of `edit_draft`, `chat`, `new_request` or `clarify`. Its schema allows only current-turn references and explicitly mentioned tokens/networks (plus the current field values), and binds its output to session, request revision and turn IDs. No signing, approval, submission or contact-mutation operation exists in this schema. Code validates injected clients too, checks precision and currency compatibility, and copies omitted fields from the validated draft.
+
+A successful edit starts a fresh request through S0–S11, including current balance, recipient and spending-limit checks. Prior limit overrides and confirmation IDs do not transfer. Native confirmation remains a separate action; a stale confirmation returns 409. An invalid output or exhausted model retry leaves the current draft and summary intact.
+
+Scope: this editor does not perform arithmetic, modify schedules, expand groups or edit multiple payments. Those require clarification or a complete request through the existing pipeline. If no eligible trusted draft exists, the normal request handlers remain responsible for the full input; they do not inherit fields through this editor. Structured output constrains permissible edits, but intent interpretation still depends on the model; the revised summary is always presented for review.
+
+Offline regressions: `test/unit/A/draft-correction.test.ts`, `test/acceptance/draft-correction.test.ts`, and the general-chat confirmation tests. They verify exact values, scope/type checks, hallucinated spans, invalid precision, model failure, stale confirmation, fresh limits/balances, and no submission before confirmation. Fixture tests establish these boundaries; they do not establish model accuracy on arbitrary wording.

@@ -284,15 +284,13 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
     expect(ctx.req.resolved[0]).toMatchObject({ source: 'user', ens_name: null });
   });
 
-  it('C-175 SQ-C-01: ENS RPC failure while resolving a payee → UNSUPPORTED_REQUEST with the state logged', async () => {
+  it('ENS RPC failure reports lookup unavailability instead of an unsupported payment', async () => {
     const ctx = makeCtx(ensSpan('riya.eth'));
     ctx.ens.unavailable.add('riya.eth');
     const d = new Driver(ctx);
     await d.start();
-    expectError(d, 'UNSUPPORTED_REQUEST');
-    expect(ctx.log.lines).toContainEqual(
-      expect.objectContaining({ event: 'unsupported_state', rule_id: 'ens_lookup_unavailable' }),
-    );
+    expectError(d, 'ENS_LOOKUP_UNAVAILABLE');
+    expect(d.last).toMatchObject({ params: { ens: 'riya.eth' } });
     expectCleanLogs(ctx, ['riya']);
   });
 });

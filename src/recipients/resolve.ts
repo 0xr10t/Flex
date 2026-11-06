@@ -235,8 +235,8 @@ async function ensLookup(ctx: StepContext, name: string, origin: Origin, attempt
   try {
     found = await resolveOnChains(ctx.ens, ctx.config, name, chains);
   } catch (e) {
-    // SQ-C-01: the spec gives no outcome for a failed ENS lookup in §9.3.
-    if (e instanceof EnsUnavailable) return unsupported(ctx, 'ens_lookup_unavailable');
+    if (e instanceof EnsUnavailable)
+      return stop({ kind: 'error', code: 'ENS_LOOKUP_UNAVAILABLE', params: { ens: name } });
     throw e;
   }
   // §9.3 step 4.

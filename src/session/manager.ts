@@ -283,13 +283,24 @@ export class SessionManager {
       // A fresh request identity prevents a confirmation for the old summary from approving its revision.
       const pending = s.active;
       if (pending?.req.state === 'AWAITING_CONFIRMATION' && classifyConfirmationText(input.text) === 'other') {
-        const correction = prepareDraftCorrection(this.context(s, pending), input);
+        const correction = await prepareDraftCorrection(this.context(s, pending), input);
+        this.assertOpen(s);
         if (correction?.kind === 'clarify') return ok(this.chatReply(s, pending, correction.message));
+        if (correction?.kind === 'chat') {
+          const chat = await this.generalChat(s, input);
+          return ok(
+            chat ?? this.chatReply(s, pending, 'Your draft is still open. Review its summary before confirming.'),
+          );
+        }
         if (correction?.kind === 'replace') {
           this.markDiscarded(pending.req);
           return ok(
             await this.newRequest(s, correction.input, ['I updated your draft. Please review the revised summary.']),
           );
+        }
+        if (correction?.kind === 'new_request') {
+          this.markDiscarded(pending.req);
+          return ok(await this.newRequest(s, input, [REPLY.PENDING_REPLACED()]));
         }
       }
       if (this.deps.config.chat?.enabled) {

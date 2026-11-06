@@ -33,6 +33,18 @@ ESLint and Prettier run from the repo root: `npm run lint`.
 | Executor | `chains[].executor`, once `IntentExecutorV3` is deployed. Autopay and cancel are refused on a chain without one |
 | Approval | The testnet setup generates MetaMask mode. The generic default remains `reject_all`; `auto_approve_testnets` is reserved for local contract tests |
 
+## MetaMask account setup
+
+The single-call payment path sends the checked batch to the user's own account. That account must already point to the supported MetaMask EIP-7702 implementation on the payment's network. Autopay registration has the same prerequisite. Multi-call browser batches retain their existing MetaMask upgrade flow.
+
+When account setup is needed, the wallet now keeps the request pending with `BROWSER_ACCOUNT_UPGRADE_REQUIRED`. It does not send a failed report, release the agent's reservation, or discard the envelope. Open wallet approvals and connect the configured MetaMask account. The setup card shows the saved payment, the correct network, a network-selection button, and the [official MetaMask account setup guide](https://support.metamask.io/configure/accounts/switch-to-or-revert-from-a-smart-account/). Complete the upgrade in MetaMask; the upgrade costs testnet gas and requires its own approval.
+
+Then choose **Check upgrade and continue**. The authenticated `POST /browser/account-upgrade` endpoint accepts `{ requestId, step, decision: "check" | "cancel" }`. A check reads the configured account on the stored intent's chain; client assertions about account code are never trusted. Only the expected delegation code can resume that exact pending step. The runner rechecks the payment, including simulation, before preparing a separate MetaMask payment approval.
+
+**Cancel payment** works without chain access and produces one failure report to release the pending reservation. Paused setup survives a restart; retries and stale or concurrent actions cannot dispatch a second payment. Previously terminal failures remain terminal: enter a new request for a payment rejected by an older build. The app never signs an account upgrade on the user's behalf.
+
+Verification: `test/unit/browser-wallet.test.ts` covers the durable transition and API boundaries; `test/unit/browser-ui.test.ts` exercises the served UI with a fake MetaMask provider. These tests do not claim that a real extension upgrade or testnet payment has occurred.
+
 ## Layout
 
 | Path | Holds |

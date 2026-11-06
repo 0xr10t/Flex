@@ -48,6 +48,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ],
   ['PAIRING_FAILED', {}, "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?"],
   ['SELF_PAYMENT', {}, "That's your own address. Moving funds between your own chains isn't a payment I can make."],
+  [
+    'ENS_LOOKUP_UNAVAILABLE',
+    { ens: 'riya.eth' },
+    "I can't look up the address for riya.eth right now. Try again in a moment.",
+  ],
   ['ENS_INDEXER_UNAVAILABLE', { parent: 'acme.eth' }, "I can't list the members of acme.eth right now."],
   [
     'GROUP_SENDS_OFF',
@@ -115,10 +120,10 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
 ];
 
 describe('C-395 §15 error messages', () => {
-  it('C-395 §15: the catalogue has exactly 42 codes, each with a message', () => {
-    // Includes v2 planning errors, privacy controls and two extra EXECUTION_UNAVAILABLE variants.
+  it('C-395 §15: the catalogue has exactly 43 codes, each with a message', () => {
+    // Includes ENS lookup outages, v2 planning errors, privacy controls and execution-unavailable variants.
     const codes = [...new Set(CASES.map(([c]) => c))].sort();
-    expect(codes).toHaveLength(42);
+    expect(codes).toHaveLength(43);
     expect([...ERROR_CODES].sort()).toEqual(codes);
     expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });

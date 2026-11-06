@@ -170,13 +170,20 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
   const urlMatches = matches(URL_SCAN_RE, text);
   const linkMarkers = matches(LINK_MARKER_RE, text);
   const ensRaw = matches(ENS_SCAN_RE, text);
+  // A leading dot in ".team.eth" must not split the amount and recipient into different clauses.
+  // Protect that dot while keeping the actual ENS candidate and its offsets on team.eth.
+  const ensProtected = ensRaw.map((m) =>
+    text[m.start - 1] === '.' && (m.start === 1 || /\s/.test(text[m.start - 2] ?? ''))
+      ? { ...m, start: m.start - 1 }
+      : m,
+  );
   const numbersRaw = matches(PLAIN_NUMBER_RE, text);
   const numberWords = numberWordPhrases(text);
   const clauses = splitClauses(text, [
     ...addressMatches,
     ...urlMatches,
     ...linkMarkers,
-    ...ensRaw,
+    ...ensProtected,
     ...numbersRaw,
     ...numberWords,
   ]);

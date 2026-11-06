@@ -3,7 +3,16 @@
 // tests use FixtureLlmClient (test/fakes/llm.ts).
 
 export type LlmCallName =
-  'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine' | 'conversation' | 'chat_route' | 'chat';
+  | 'amounts'
+  | 'request_type'
+  | 'spans'
+  | 'payments'
+  | 'quarantine'
+  | 'conversation'
+  | 'draft_values'
+  | 'draft_edit'
+  | 'chat_route'
+  | 'chat';
 
 export interface LlmCallArgs {
   name: LlmCallName;

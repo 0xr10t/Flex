@@ -5,6 +5,8 @@ import { autoApprove } from '../../src/approval.js';
 import { BrowserWalletController } from '../../src/browser/controller.js';
 import { registerBrowserWallet } from '../../src/browser/routes.js';
 import type { WalletBatchPayload } from '../../src/browser/types.js';
+import { ACCOUNT_UPGRADE_REQUIRED } from '../../src/browser/upgrade.js';
+import { UPGRADED_CODE } from '../../src/chain/addresses.js';
 import { silentLogger } from '../../src/log.js';
 import { Runner } from '../../src/runner/runner.js';
 import { Store } from '../../src/store/store.js';
@@ -70,19 +72,156 @@ function harness() {
 }
 
 describe('durable browser wallet batches', () => {
-  it('stops a first-time single-recipient self-call before prompting when the account is not upgraded', async () => {
+  it('preserves a first-time payment as a setup step without signing or reporting a failure', async () => {
     const h = harness();
-    const original = h.chain.getCode.bind(h.chain);
-    vi.spyOn(h.chain, 'getCode').mockImplementation(async (address) =>
-      address.toLowerCase() === WALLET.toLowerCase() ? '0x' : original(address),
-    );
+    h.chain.code = '0x';
     const e = envelope([payEth(0, [[ALEX, '0.01']])]);
     h.store.insertRequest(e, e.created_at);
     void h.runner.kick();
-    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).error_code).toBe('BROWSER_ACCOUNT_UPGRADE_REQUIRED'));
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).error_code).toBe(ACCOUNT_UPGRADE_REQUIRED));
+    expect(h.store.step(e.request_id, 0).status).toBe('pending');
+    expect(h.store.envelope(e.request_id)).toEqual(e);
+    expect(h.store.dueReports(Date.now())).toEqual([]);
+    expect(h.controller.state().upgrades).toEqual([
+      { requestId: e.request_id, step: 0, chainId: BASE, intent: e.intents[0] },
+    ]);
     expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
+    expect(h.chain.simulated).toBe(0);
+    await expect(h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' })).rejects.toThrow(
+      ACCOUNT_UPGRADE_REQUIRED,
+    );
     expect(h.chain.signed).toHaveLength(0);
     expect(h.chain.broadcasts).toHaveLength(0);
+    expect(h.chain.upgrades).toBe(0);
+  });
+  it('rechecks the actual account, then prepares the same payment with fresh simulation and separate approval', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    h.chain.code = UPGRADED_CODE as Hex;
+    await h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' });
+    await vi.waitFor(() => expect(h.store.walletBatch(e.request_id, 0)).not.toBeNull());
+    expect(h.store.envelope(e.request_id)).toEqual(e);
+    expect(h.controller.state().upgrades).toEqual([]);
+    expect(h.store.step(e.request_id, 0)).toMatchObject({ status: 'approved', error_code: null });
+    expect(h.chain.simulated).toBe(1);
+    expect(h.store.dueReports(Date.now())).toEqual([]);
+    expect(h.store.walletBatch(e.request_id, 0)?.status).toBe('draft');
+    expect(h.chain.signed).toEqual([]);
+    expect(h.chain.broadcasts).toEqual([]);
+    expect(h.chain.upgrades).toBe(0);
+  });
+  it('keeps setup pending across restart and fails closed if fresh payment simulation disagrees after upgrade', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    await h.runner.stop();
+    const restarted = h.start();
+    void restarted.kick();
+    expect(h.store.step(e.request_id, 0).error_code).toBe(ACCOUNT_UPGRADE_REQUIRED);
+    expect(h.chain.simulated).toBe(0);
+    h.chain.code = UPGRADED_CODE as Hex;
+    h.chain.simulation = 'moves-nothing';
+    // The running service normally wires the controller to the restarted runner; its durable CAS is the boundary here.
+    await h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' });
+    void restarted.kick();
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('failed'));
+    expect(h.store.step(e.request_id, 0).error_code).toBe('SIMULATION_MISMATCH');
+    expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
+    expect(h.chain.signed).toEqual([]);
+    expect(h.chain.broadcasts).toEqual([]);
+  });
+  it('can cancel setup without an RPC or signature and reports the cancellation exactly once', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    h.chain.unavailable.getCode = true;
+    await h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'cancel' });
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('failed'));
+    expect(h.store.step(e.request_id, 0).error_code).toBe('USER_REJECTED');
+    expect(h.store.dueReports(Date.now())).toHaveLength(1);
+    await expect(h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' })).rejects.toThrow(
+      'UPGRADE_NOT_PENDING',
+    );
+    expect(h.store.dueReports(Date.now())).toHaveLength(1);
+    expect(h.chain.signed).toEqual([]);
+    expect(h.chain.upgrades).toBe(0);
+  });
+  it('does not trust a claimed upgrade, another implementation, malformed input or an unavailable chain', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    const request = { requestId: e.request_id, step: 0, decision: 'check' };
+    for (const input of [
+      null,
+      {},
+      { ...request, step: -1 },
+      { ...request, step: 0.5 },
+      { ...request, upgraded: true },
+      { ...request, account: ALEX },
+      { ...request, decision: 'sign' },
+    ])
+      await expect(h.controller.accountUpgrade(input)).rejects.toThrow('INVALID_UPGRADE_REQUEST');
+    await expect(h.controller.accountUpgrade({ ...request, step: 1 })).rejects.toThrow('UPGRADE_NOT_PENDING');
+    h.chain.code = '0x1234';
+    await expect(h.controller.accountUpgrade(request)).rejects.toThrow('ACCOUNT_DELEGATED_ELSEWHERE');
+    h.chain.unavailable.getCode = true;
+    await expect(h.controller.accountUpgrade(request)).rejects.toThrow('chain unavailable');
+    expect(h.store.step(e.request_id, 0).error_code).toBe(ACCOUNT_UPGRADE_REQUIRED);
+    expect(h.store.dueReports(Date.now())).toEqual([]);
+  });
+  it('a late upgrade check cannot resume a payment cancelled while the RPC was pending', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    let answer!: (value: Hex) => void;
+    vi.spyOn(h.chain, 'getCode').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const checking = h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' });
+    const refused = expect(checking).rejects.toThrow('UPGRADE_NOT_PENDING');
+    await h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'cancel' });
+    answer(UPGRADED_CODE as Hex);
+    await refused;
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('failed'));
+    expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
+    expect(h.chain.signed).toEqual([]);
+  });
+  it('never revives a terminal upgrade failure from the old executor', async () => {
+    const h = harness();
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    h.store.finishStep(
+      e.request_id,
+      0,
+      { status: 'failed', error_code: ACCOUNT_UPGRADE_REQUIRED },
+      e.created_at,
+      Date.now(),
+    );
+    expect(h.controller.state().upgrades).toEqual([]);
+    await expect(h.controller.accountUpgrade({ requestId: e.request_id, step: 0, decision: 'check' })).rejects.toThrow(
+      'UPGRADE_NOT_PENDING',
+    );
+    expect(h.store.step(e.request_id, 0).status).toBe('failed');
+    expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
   });
   it('prepares an atomic request without signing, broadcasting or upgrading, and rejects a second dispatch', async () => {
     const h = harness();
@@ -230,6 +369,48 @@ describe('durable browser wallet batches', () => {
 });
 
 describe('local browser access', () => {
+  it('authenticates setup actions and only resumes after a server-side account check', async () => {
+    const h = harness();
+    h.chain.code = '0x';
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.controller.state().upgrades).toHaveLength(1));
+    const app = Fastify();
+    registerBrowserWallet(app, h.controller);
+    const host = '127.0.0.1:8788';
+    try {
+      const home = await app.inject({ url: '/', headers: { host } });
+      const cookie = String(home.headers['set-cookie']).split(';')[0]!;
+      const headers = { host, cookie, 'x-flex-wallet': '1', origin: `http://${host}` };
+      const payload = { requestId: e.request_id, step: 0, decision: 'check' };
+      for (const bad of [
+        { ...headers, cookie: '' },
+        { ...headers, origin: '' },
+        { ...headers, origin: 'https://other.example' },
+        { ...headers, host: 'other.example' },
+      ]) {
+        const response = await app.inject({ method: 'POST', url: '/browser/account-upgrade', headers: bad, payload });
+        expect(response.statusCode).toBe(403);
+      }
+      const waiting = await app.inject({ method: 'POST', url: '/browser/account-upgrade', headers, payload });
+      expect(waiting.statusCode).toBe(409);
+      expect(waiting.json()).toEqual({ error: ACCOUNT_UPGRADE_REQUIRED });
+      expect(h.store.step(e.request_id, 0).status).toBe('pending');
+      h.chain.code = UPGRADED_CODE as Hex;
+      const ready = await app.inject({ method: 'POST', url: '/browser/account-upgrade', headers, payload });
+      expect(ready.statusCode).toBe(200);
+      await vi.waitFor(() => expect(h.store.walletBatch(e.request_id, 0)).not.toBeNull());
+      expect((await app.inject({ method: 'POST', url: '/browser/account-upgrade', headers, payload })).statusCode).toBe(
+        409,
+      );
+      expect(h.store.walletBatch(e.request_id, 0)?.status).toBe('draft');
+      expect(h.chain.signed).toEqual([]);
+      expect(h.chain.broadcasts).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
   it('requires a same-origin browser session and blocks cross-origin or rebound hosts', async () => {
     const h = harness();
     const app = Fastify();

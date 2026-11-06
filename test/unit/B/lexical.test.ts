@@ -24,6 +24,46 @@ function err(text: string): string {
 const ADDR = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E';
 
 describe('lexical (§8.3, C-443)', () => {
+  it.each([
+    'every person under the ens domain of .iitr.eth',
+    'every member under iitr.eth',
+    'everyone under the ENS domain iitr.eth',
+    'all members of .iitr.eth',
+    'all people in the domain of iitr.eth',
+    'every recipient under the name iitr.eth',
+  ])('recognizes the group in "%s" without inventing a schedule or splitting the clause', (recipient) => {
+    const typed = 'send 0.001 eth to ' + recipient + ' on base';
+    const s = scan(typed);
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0]).toMatchObject({ text: 'iitr.eth', parent: 'iitr.eth', clause_index: 0 });
+    expect(typed.slice(s.groups[0]!.start, s.groups[0]!.end)).toBe('iitr.eth');
+    expect(s.ens).toEqual([]);
+    expect(s.recurrence).toEqual([]);
+    expect(s.clauses).toHaveLength(1);
+    expect(s.numeric_candidates.map((span) => span.text)).toEqual(['0.001']);
+    expect(s.chains.map((chain) => chain.chain_id)).toEqual([84532]);
+  });
+
+  it('keeps a real schedule when the request also says every person', () => {
+    const typed = 'send 0.001 eth to every person under .iitr.eth every week';
+    const s = scan(typed);
+    expect(s.groups.map((group) => group.parent)).toEqual(['iitr.eth']);
+    expect(s.recurrence).toHaveLength(1);
+    expect(s.recurrence[0]?.start).toBe(typed.lastIndexOf('every'));
+  });
+
+  it('recognizes a dot-prefixed single ENS recipient without creating a group', () => {
+    const s = scan('send 0.001 eth to .riya.eth on base');
+    expect(s.ens.map((ens) => ens.normalized)).toEqual(['riya.eth']);
+    expect(s.groups).toEqual([]);
+    expect(s.clauses).toHaveLength(1);
+  });
+
+  it('does not turn a URL, email, or undotted group description into an ENS group', () => {
+    for (const target of ['https://iitr.eth', 'alice@iitr.eth', 'the team'])
+      expect(scan('send 1 eth to every person under ' + target).groups).toEqual([]);
+  });
+
   it('LIVE-P084/P085: all iitr.eth members is a group, with the parent span preserved', () => {
     const typed = 'send 5 usdc to all iitr.eth members';
     const s = scan(typed);

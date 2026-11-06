@@ -9,6 +9,7 @@ import { USDC } from '@flex/protocol/schemas/intent.v2';
 import type { Store } from '../store/store.js';
 import type { WalletBatchPayload } from './types.js';
 import { approveDelegation, pendingDelegations } from './delegation.js';
+import { ACCOUNT_UPGRADE_REQUIRED, awaitingAccountUpgrade } from './upgrade.js';
 
 export class BrowserWalletError extends Error {
   constructor(readonly code: string) {
@@ -37,6 +38,24 @@ export class BrowserWalletController {
       wallet: this.deps.walletAddress,
       chainIds: this.deps.chainIds,
       feeMaxEth: this.deps.feeMaxEth,
+      upgrades: this.deps.store.unfinishedRequests().flatMap((envelope) =>
+        this.deps.store
+          .stepsOf(envelope.request_id)
+          .filter(awaitingAccountUpgrade)
+          .flatMap((step) => {
+            const intent = envelope.intents.find((i) => i.step === step.step);
+            return intent
+              ? [
+                  {
+                    requestId: envelope.request_id,
+                    step: step.step,
+                    chainId: intent.intent_id === 'j' ? intent.source_chain_id : intent.chain_id,
+                    intent,
+                  },
+                ]
+              : [];
+          }),
+      ),
       delegations: pendingDelegations(this.deps.store).map((request) => ({
         ...request,
         intent: this.deps.store.envelope(request.requestId)?.intents.find((i) => i.step === request.step),
@@ -128,6 +147,34 @@ export class BrowserWalletController {
     } catch {
       throw new BrowserWalletError('DELEGATION_APPROVAL_INVALID');
     }
+    this.deps.kick();
+  }
+
+  /** The extension owns the upgrade transaction. This endpoint can only recheck code or cancel an unsubmitted step. */
+  async accountUpgrade(input: unknown) {
+    if (!input || typeof input !== 'object') throw new BrowserWalletError('INVALID_UPGRADE_REQUEST');
+    const { requestId, step, decision } = input as Record<string, unknown>;
+    if (
+      typeof requestId !== 'string' ||
+      !/^req_[0-9a-f]{12}$/.test(requestId) ||
+      typeof step !== 'number' ||
+      !Number.isSafeInteger(step) ||
+      step < 0 ||
+      (decision !== 'check' && decision !== 'cancel') ||
+      Object.keys(input).some((key) => !['requestId', 'step', 'decision'].includes(key))
+    )
+      throw new BrowserWalletError('INVALID_UPGRADE_REQUEST');
+    const row = this.deps.store.stepsOf(requestId).find((r) => r.step === step);
+    const intent = this.deps.store.envelope(requestId)?.intents.find((i) => i.step === step);
+    if (!row || !intent || !awaitingAccountUpgrade(row)) throw new BrowserWalletError('UPGRADE_NOT_PENDING');
+    if (decision === 'check') {
+      const chainId = intent.intent_id === 'j' ? intent.source_chain_id : intent.chain_id;
+      const code = await this.deps.gatewayFor(chainId).getCode(this.deps.walletAddress);
+      if (code?.toLowerCase() !== UPGRADED_CODE)
+        throw new BrowserWalletError(code && code !== '0x' ? 'ACCOUNT_DELEGATED_ELSEWHERE' : ACCOUNT_UPGRADE_REQUIRED);
+    }
+    if (!this.deps.store.resolveAccountUpgrade(requestId, step, decision === 'check' ? 'resume' : 'cancel'))
+      throw new BrowserWalletError('UPGRADE_NOT_PENDING');
     this.deps.kick();
   }
 

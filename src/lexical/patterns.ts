@@ -35,12 +35,12 @@ export const PLACEHOLDER_TOKEN_RE = /(?:amount|address|group)_[0-9a-f]{8}|\[amou
 const DOTTED = '[a-z0-9-]+(?:\\.[a-z0-9-]+)+';
 
 /**
- * §8.3 rule 4 / §6.2 group markers. Word markers ("everyone under X", "everyone in X", "all of X",
- * "all members of X") take the following dotted name as the parent; "everyone with @X", "everyone at @X" and a
- * bare "@X" (not part of an email) take the domain after "@". See SQB-05.
+ * Group markers take the following dotted name as the parent, including "every person under the ENS domain of
+ * .X". A leading dot is presentation, not part of the parent name. A bare "@X" (not part of an email) also
+ * identifies a group. Keep the captured parent separate so offsets stay in the original text.
  */
 export const GROUP_WORD_MARKER_RE = new RegExp(
-  `(?<![A-Za-z0-9_])(?:everyone\\s+under|everyone\\s+in|all\\s+members\\s+of|all\\s+of)\\s+(${DOTTED})`,
+  `(?<![A-Za-z0-9_])(?:(?:everyone|every\\s+(?:person|member|recipient|user|wallet|address)|all\\s+(?:people|members|recipients|users|wallets|addresses))\\s+(?:under|in|of)|all\\s+of)\\s+(?:the\\s+)?(?:(?:ens\\s+)?(?:domain|name)(?:\\s+of)?\\s+)?\\.?(${DOTTED})`,
   'gi',
 );
 export const GROUP_AT_MARKER_RE = new RegExp(`(?<![A-Za-z0-9._%+-])@(${DOTTED})`, 'gi');
@@ -85,12 +85,12 @@ export const UNSUPPORTED_TOKEN_RE = new RegExp(
 /**
  * §6.2 recurrence words: `every`, `each (day|week|month|monday…)`, `daily`, `weekly`, `monthly`,
  * `per (day|week|month)`, `(\d+|one|two|three…) times a (week|day|month)`, `fortnightly`.
- * "every one" is a distributive word (§6.2), not a recurrence.
+ * "every one" and "every person/member/recipient/user/wallet/address" describe recipients, not a recurrence.
  */
 const WEEKDAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
 const SMALL_NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve';
 export const RECURRENCE_RES: readonly RegExp[] = [
-  /(?<![A-Za-z0-9_])every(?!\s+one(?![A-Za-z0-9_]))(?![A-Za-z0-9_])/gi,
+  /(?<![A-Za-z0-9_])every(?!\s+(?:one|person|member|recipient|user|wallet|address)(?![A-Za-z0-9_]))(?![A-Za-z0-9_])/gi,
   new RegExp(`(?<![A-Za-z0-9_])each\\s+(?:day|week|month|${WEEKDAYS})s?(?![A-Za-z0-9_])`, 'gi'),
   /(?<![A-Za-z0-9_])(?:daily|weekly|monthly|fortnightly)(?![A-Za-z0-9_])/gi,
   /(?<![A-Za-z0-9_])(?:once|twice)\s+(?:a|per)\s+(?:week|day|month)(?![A-Za-z0-9_])/gi,

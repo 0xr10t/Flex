@@ -78,7 +78,7 @@ export interface LogFields {
   error_code?: string;
   question_code?: string;
   attempt?: number;
-  llm_call?: 'amounts' | 'request_type' | 'spans' | 'payments' | 'quarantine' | 'conversation' | 'chat_route' | 'chat';
+  llm_call?: import('./llm.js').LlmCallName;
   llm_retry?: boolean;
   duration_ms?: number;
   n_amounts?: number;

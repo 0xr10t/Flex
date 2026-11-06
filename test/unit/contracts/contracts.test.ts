@@ -86,7 +86,7 @@ describe('contracts-v1', () => {
     }
     for (const c of ERROR_CODES) expect(ERROR_MESSAGE[c]).toBeTypeOf('function');
     expect(QUESTION_CODES).toHaveLength(29); // Includes the v2 monthly-schedule clarification.
-    expect(ERROR_CODES).toHaveLength(42); // Includes v2 planning, legacy cancellation and privacy errors.
+    expect(ERROR_CODES).toHaveLength(43); // Includes ENS lookup outages, v2 planning, cancellation and privacy errors.
   });
 
   it('§3.3 registry wires a real step for S0–S12 in fixed order (Phase 2)', async () => {

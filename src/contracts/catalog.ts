@@ -360,6 +360,7 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
     `${req(p, 'name')} can only be paid on ${req(p, 'chain')}, but you asked for ${req(p, 'other')}.`,
   PAIRING_FAILED: () => "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?",
   SELF_PAYMENT: () => "That's your own address. Moving funds between your own chains isn't a payment I can make.",
+  ENS_LOOKUP_UNAVAILABLE: (p) => `I can't look up the address for ${req(p, 'ens')} right now. Try again in a moment.`,
   ENS_INDEXER_UNAVAILABLE: (p) => `I can't list the members of ${req(p, 'parent')} right now.`,
   // Privacy fix 6: the ENS indexer can't be reached through anon-rpc, so group sends are off unless `ens.indexer_url` is set.
   GROUP_SENDS_OFF: (p) =>

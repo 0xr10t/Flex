@@ -1,131 +1,19 @@
-// SQ-CV-02: resolve a bounded edit against the current unsubmitted payment, never generic chat history.
-// Code copies unchanged fields from validated draft rows; the complete revised request reruns S0–S11.
-import { amountCurrencyKinds, parseAmountText } from '../amounts/parse.js';
+// SQ-CV-02: model interpretation selects scoped references; only code can apply and validate the edit.
+import { parseAmountText } from '../amounts/parse.js';
+import { LlmFailed } from '../contracts/llm.js';
 import type { StepContext } from '../contracts/step.js';
-import type { ChainConfig, ChainId, MessageInput, Token } from '../contracts/types.js';
+import type { ChainId, MessageInput, Token } from '../contracts/types.js';
 import { detectSecret } from '../guard/secrets.js';
 import { extractUrls } from '../guard/urls.js';
-import { simpleRecipient } from './conversation.js';
+import { fillSlots, loadPromptTemplate } from '../llm/prompt-builder/amounts.js';
+import { compileEphemeral } from '../schemas/index.js';
+import { collectDraftValues, type DraftValues } from './draft-values.js';
 
 export interface PaymentDraft {
   amount: string;
   token: Token;
   recipient: string;
   chain_id: ChainId;
-}
-
-export type DraftEdit = { kind: 'edit'; draft: PaymentDraft } | { kind: 'clarify' } | { kind: 'new_request' };
-const CLARIFY = { kind: 'clarify' } as const;
-const NEW_REQUEST = { kind: 'new_request' } as const;
-const SAME_AMOUNT = /^(?:the\s+)?same(?:\s+amount)?$/i;
-const EDIT_CUE =
-  /\b(?:instead|same|change|switch|replace|correction|rather\s+than|make\s+it|not)\b|^(?:no|actually|wait|sorry)[,\s]/i;
-const NAME_INSTRUCTION =
-  /\b(?:and|or|but|except|each|everyone|all|half|max|under|same|it|this|that|him|her|them|someone|anyone|on|via|every|after|before|if|unless|only|also|token|usdc|eth|usd)\b/i;
-
-function chainFor(text: string, chains: readonly ChainConfig[]): ChainId | null {
-  const normalized = text.trim().toLowerCase();
-  const matches = chains.filter((chain) =>
-    [chain.name, ...chain.aliases].some((alias) => alias.toLowerCase() === normalized),
-  );
-  return matches.length === 1 ? matches[0]!.chain_id : null;
-}
-
-function recipientValue(text: string): string | null {
-  const value = text.trim();
-  if (
-    !simpleRecipient(value) ||
-    NAME_INSTRUCTION.test(value) ||
-    /^[\d\s.,+-]+$/.test(value) ||
-    parseAmountText(value, null).ok
-  )
-    return null;
-  return value;
-}
-
-function amountValue(text: string, fallback: Token): { amount: string; token: Token } | null {
-  if (/\bmore\b/i.test(text)) return null;
-  const kinds = [...amountCurrencyKinds(text)];
-  if (kinds.length > 1 || kinds.includes('FIAT_OTHER')) return null;
-  const kind = kinds[0];
-  const token = kind === 'FIAT_USD' ? 'USDC' : (kind ?? fallback);
-  if (token !== 'USDC' && token !== 'ETH') return null;
-  const parsed = parseAmountText(text, token);
-  return parsed.ok ? { amount: parsed.value, token } : null;
-}
-
-/** Whole-message grammar: no convenient substring may discard another instruction, target or condition. */
-export function editPaymentDraft(original: PaymentDraft, text: string, chains: readonly ChainConfig[]): DraftEdit {
-  if (!text.trim() || text.length > 4000) return CLARIFY;
-  let body = text
-    .trim()
-    .replace(/[.!]+$/, '')
-    .trim();
-  body = body.replace(/^(?:(?:no|actually|please|okay|ok|wait|sorry)[,:]?\s+)+/i, '');
-  body = body.replace(/(?:\s+(?:instead|please))+$/i, '').trim();
-  const draft = { ...original };
-  let changedChain = false;
-  const chainSuffix = /\s+(?:on|via)\s+(.+)$/i.exec(body);
-  if (chainSuffix) {
-    const chain = chainFor(chainSuffix[1]!, chains);
-    if (chain === null) return EDIT_CUE.test(text) || /^(?:send|pay|transfer)\b/i.test(body) ? CLARIFY : NEW_REQUEST;
-    draft.chain_id = chain;
-    changedChain = true;
-    body = body.slice(0, chainSuffix.index).trim();
-  }
-
-  const network = /^(?:(?:change|switch)(?:\s+the)?\s+(?:network|chain)\s+to|(?:use|on|via))\s+(.+)$/i.exec(body);
-  if (network) {
-    const chain = chainFor(network[1]!, chains);
-    if (chain !== null) return { kind: 'edit', draft: { ...draft, chain_id: chain } };
-  }
-
-  const token = /^(?:(?:change|switch)(?:\s+the)?\s+(?:token|currency)\s+to|use)\s+(USDC|USD|ETH)$/i.exec(body);
-  if (token) {
-    const value: Token = token[1]!.toUpperCase() === 'ETH' ? 'ETH' : 'USDC';
-    if (!parseAmountText(draft.amount, value).ok) return CLARIFY;
-    return { kind: 'edit', draft: { ...draft, token: value } };
-  }
-
-  const recipient =
-    /^(?:(?:change|switch|replace)(?:\s+the)?\s+(?:recipient|payee)\s+(?:to|with)|send\s+(?:it|that|this)\s+to|(?:pay|send|transfer)\s+to|use)\s+(.+)$/i.exec(
-      body,
-    );
-  if (recipient) {
-    const value = recipientValue(recipient[1]!);
-    return value === null ? CLARIFY : { kind: 'edit', draft: { ...draft, recipient: value } };
-  }
-
-  const command = /^(?:send|pay|transfer|make(?:\s+it)?|(?:change|set)(?:\s+the)?\s+amount\s+to)\s+(.+)$/i.exec(body);
-  if (command) body = command[1]!.trim();
-  else if (!amountValue(body, draft.token)) return EDIT_CUE.test(text) ? CLARIFY : NEW_REQUEST;
-
-  const target = /\s+to\s+(.+)$/i.exec(body);
-  if (target) {
-    const value = recipientValue(target[1]!);
-    if (value === null) return CLARIFY;
-    draft.recipient = value;
-    body = body.slice(0, target.index).trim();
-  }
-
-  if (SAME_AMOUNT.test(body)) {
-    return target || changedChain ? { kind: 'edit', draft } : CLARIFY;
-  }
-  const comparison = /^(.+?)(?:,\s*|\s+)(?:not|instead\s+of|rather\s+than)\s+(.+)$/i.exec(body);
-  if (comparison) {
-    const desired = amountValue(comparison[1]!, draft.token);
-    const excluded = amountValue(comparison[2]!, draft.token);
-    if (!desired || !excluded || desired.token !== excluded.token || desired.amount === excluded.amount) return CLARIFY;
-    return { kind: 'edit', draft: { ...draft, ...desired } };
-  }
-  const amount = amountValue(body, draft.token);
-  if (amount) return { kind: 'edit', draft: { ...draft, ...amount } };
-  // "pay Riya instead" is recipient-only; "send it" or a compound command must not become a name.
-  if (command && /^pay\s/i.test(text.trim().replace(/^(?:(?:no|actually|please|okay|ok|wait|sorry)[,:]?\s+)+/i, ''))) {
-    const value = target ? null : recipientValue(body);
-    if (value !== null) return { kind: 'edit', draft: { ...draft, recipient: value } };
-  }
-  return command || EDIT_CUE.test(text) ? CLARIFY : NEW_REQUEST;
 }
 
 /** Only a single trusted, absolute, unsubmitted payment can supply omitted fields automatically. */
@@ -173,10 +61,153 @@ export function currentPaymentDraft(ctx: StepContext): PaymentDraft | null {
   };
 }
 
-export type DraftCorrection = { kind: 'replace'; input: MessageInput } | { kind: 'clarify'; message: string };
+export type DraftCorrection =
+  | { kind: 'replace'; input: MessageInput }
+  | { kind: 'clarify'; message: string }
+  | { kind: 'chat' }
+  | { kind: 'new_request' };
 
-/** No model-authored rewrite, inferred consent, contact mutation or transaction submission happens here. */
-export function prepareDraftCorrection(ctx: StepContext, input: MessageInput): DraftCorrection | null {
+interface Decision {
+  session_id: string;
+  draft_revision: string;
+  turn_id: string;
+  action: 'edit_draft' | 'chat' | 'new_request' | 'clarify';
+  changes: { amount_ref: string | null; recipient_ref: string | null; token: Token | null; chain_id: ChainId | null };
+  reason: 'amount' | 'recipient' | 'token' | 'chain' | 'ambiguous' | 'unsupported' | null;
+}
+
+const TEMPLATE = loadPromptTemplate('draft-edit.txt');
+const CLARIFICATION = {
+  amount: 'What exact amount should replace the current amount? Your draft is unchanged.',
+  recipient: 'Who should receive this payment? Your draft is unchanged.',
+  token: 'Should this payment use ETH or USDC? Your draft is unchanged.',
+  chain: 'Which testnet should this payment use? Your draft is unchanged.',
+  ambiguous: 'Which change should I make to this payment? Your draft is unchanged.',
+  unsupported:
+    'I can edit the amount, recipient, token or network of this single payment. For a different payment type, cancel this draft and give the full request.',
+};
+const clarify = (reason: keyof typeof CLARIFICATION = 'ambiguous'): DraftCorrection => ({
+  kind: 'clarify',
+  message: CLARIFICATION[reason],
+});
+
+function decisionSchema(values: DraftValues) {
+  const ref = (items: readonly { placeholder: string; valid: boolean }[]) => ({
+    type: ['string', 'null'],
+    enum: [null, ...items.filter((v) => v.valid).map((v) => v.placeholder)],
+  });
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['session_id', 'draft_revision', 'turn_id', 'action', 'changes', 'reason'],
+    properties: {
+      session_id: { type: 'string', const: values.session_id },
+      draft_revision: { type: 'string', const: values.draft_revision },
+      turn_id: { type: 'string', const: values.turn_id },
+      action: { type: 'string', enum: ['edit_draft', 'chat', 'new_request', 'clarify'] },
+      changes: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['amount_ref', 'recipient_ref', 'token', 'chain_id'],
+        properties: {
+          amount_ref: ref(values.amounts),
+          recipient_ref: ref(values.recipients),
+          token: { type: ['string', 'null'], enum: [null, ...values.tokens] },
+          chain_id: { type: ['integer', 'null'], enum: [null, ...values.chains] },
+        },
+      },
+      reason: { type: ['string', 'null'], enum: [null, ...Object.keys(CLARIFICATION)] },
+    },
+  };
+}
+
+/** No raw amount/address, full contact book, previous turns or DB rows enter this prompt. */
+function interpreterContext(current: PaymentDraft, values: DraftValues) {
+  const metadata = (items: DraftValues['amounts']) =>
+    items.map((v, index) => ({
+      placeholder: v.placeholder,
+      valid: v.valid,
+      same_as_current: index === 0,
+      ...(v.explicit_token === undefined ? {} : { explicit_token: v.explicit_token }),
+    }));
+  return {
+    session_id: values.session_id,
+    draft_revision: values.draft_revision,
+    turn_id: values.turn_id,
+    current_draft: {
+      amount_ref: values.amounts[0]!.placeholder,
+      recipient_ref: values.recipients[0]!.placeholder,
+      token: current.token,
+      chain_id: current.chain_id,
+    },
+    latest_message: values.masked,
+    amounts: metadata(values.amounts),
+    recipients: metadata(values.recipients),
+    available_tokens: values.tokens,
+    available_chains: values.chains,
+    contains_group_schedule_or_split: values.complex,
+  };
+}
+
+/** Separate from eligibility so reference/precision tests can exercise untrusted injected model clients. */
+export async function interpretDraftEdit(
+  ctx: StepContext,
+  current: PaymentDraft,
+  text: string,
+): Promise<DraftCorrection> {
+  const values = await collectDraftValues(ctx, current, text);
+  if (!values) return clarify();
+  const schema = decisionSchema(values);
+  const decision = await ctx.llm.call<Decision>({
+    name: 'draft_edit',
+    system: TEMPLATE.system,
+    user: fillSlots(TEMPLATE.user, { context_json: JSON.stringify(interpreterContext(current, values)) }),
+    schema,
+    think: false,
+  });
+  // Real Ollama validates too; injected clients and later adapters receive the same enforcement.
+  if (!compileEphemeral(schema)(decision)) return clarify();
+  if (decision.action !== 'edit_draft') {
+    if (Object.values(decision.changes).some((v) => v !== null)) return clarify();
+    if (decision.action === 'clarify') return clarify(decision.reason ?? 'ambiguous');
+    if (decision.reason !== null) return clarify();
+    return { kind: decision.action };
+  }
+  if (decision.reason !== null || values.complex) return clarify('unsupported');
+  const patch = decision.changes;
+  const amount =
+    patch.amount_ref === null ? values.amounts[0]! : values.amounts.find((v) => v.placeholder === patch.amount_ref)!;
+  const recipient =
+    patch.recipient_ref === null
+      ? values.recipients[0]!
+      : values.recipients.find((v) => v.placeholder === patch.recipient_ref)!;
+  const token = patch.token ?? (patch.amount_ref !== null ? amount.explicit_token : undefined) ?? current.token;
+  if (patch.amount_ref !== null && amount.explicit_token !== undefined && amount.explicit_token !== token)
+    return clarify('token');
+  const parsed = parseAmountText(amount.value, token);
+  if (!parsed.ok) return clarify('amount');
+  const draft: PaymentDraft = {
+    amount: parsed.value,
+    token,
+    recipient: recipient.value,
+    chain_id: patch.chain_id ?? current.chain_id,
+  };
+  if (Object.entries(draft).every(([key, value]) => current[key as keyof PaymentDraft] === value)) return clarify();
+  const chain = ctx.config.chains.find((c) => c.chain_id === draft.chain_id);
+  if (!chain) return clarify('chain');
+  return {
+    kind: 'replace',
+    input: {
+      text: `send ${draft.amount} ${draft.token.toLowerCase()} to ${draft.recipient} on ${chain.name}`,
+      attachments: [],
+      pasted_blocks: [],
+      urls: [],
+    },
+  };
+}
+
+/** Native confirmation/cancellation is handled before this entry point and never delegated to the model. */
+export async function prepareDraftCorrection(ctx: StepContext, input: MessageInput): Promise<DraftCorrection | null> {
   if (
     input.attachments.length ||
     input.pasted_blocks.length ||
@@ -185,37 +216,13 @@ export function prepareDraftCorrection(ctx: StepContext, input: MessageInput): D
     extractUrls(input.text, []).links.length
   )
     return null;
-  // Explanations about a draft are still read-only chat, even when they mention changes or negation.
-  if (/^(?:what|why|how|who|where|when|which|explain|tell me|(?:can|could) you explain)\b/i.test(input.text.trim()))
-    return null;
   const current = currentPaymentDraft(ctx);
-  if (!current) {
-    return EDIT_CUE.test(input.text)
-      ? {
-          kind: 'clarify',
-          message:
-            'Your draft is still open. Please give the full updated request for a group, recurring or multi-payment change.',
-        }
-      : null;
+  // Other draft kinds still require a complete new request through the normal pipeline.
+  if (!current) return null;
+  try {
+    return await interpretDraftEdit(ctx, current, input.text);
+  } catch (error) {
+    if (!(error instanceof LlmFailed)) throw error;
+    return { kind: 'clarify', message: "I couldn't interpret that change. Your draft is unchanged; please try again." };
   }
-  const edit = editPaymentDraft(current, input.text, ctx.config.chains);
-  if (edit.kind === 'new_request') return null;
-  if (edit.kind === 'clarify')
-    return {
-      kind: 'clarify',
-      message:
-        'Your draft is still open. Tell me the new amount, recipient, token or network. For a different kind of payment, cancel this draft and start a new request.',
-    };
-  const chain = ctx.config.chains.find((item) => item.chain_id === edit.draft.chain_id);
-  if (!chain) return null;
-  const { amount, token, recipient } = edit.draft;
-  return {
-    kind: 'replace',
-    input: {
-      text: `send ${amount} ${token.toLowerCase()} to ${recipient} on ${chain.name}`,
-      pasted_blocks: [],
-      attachments: [],
-      urls: [],
-    },
-  };
 }

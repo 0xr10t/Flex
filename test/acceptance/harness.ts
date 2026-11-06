@@ -154,9 +154,14 @@ export class AcceptanceLlm implements LlmClient {
     return this.recorded.map((r) => r.name);
   }
   private resolve(value: unknown, user: string): unknown {
+    const contextLine = /^CONTEXT: (.*)$/m.exec(user)?.[1];
+    const context = contextLine ? (JSON.parse(contextLine) as Record<string, unknown>) : {};
     const list = (label: string): string[] => {
       const m = new RegExp(`^${label}: (\\[.*\\])`, 'm').exec(user);
-      if (!m?.[1]) return [];
+      if (!m?.[1]) {
+        const field = context[label.toLowerCase()];
+        return Array.isArray(field) ? field.map((v: { placeholder: string }) => v.placeholder) : [];
+      }
       return (JSON.parse(m[1]) as Array<{ placeholder: string }>).map((x) => x.placeholder);
     };
     const amounts = list('AMOUNTS');
@@ -164,6 +169,7 @@ export class AcceptanceLlm implements LlmClient {
     const sessionRefs = list('SESSION');
     const walk = (v: unknown): unknown => {
       if (typeof v === 'string') {
+        if (['$session_id', '$draft_revision', '$turn_id'].includes(v)) return context[v.slice(1)];
         const m = /^\$(amount|recipient|session):(\d+)$/.exec(v);
         if (m) {
           const pick = (m[1] === 'amount' ? amounts : m[1] === 'session' ? sessionRefs : recipients)[Number(m[2])];
