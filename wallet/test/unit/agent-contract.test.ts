@@ -53,6 +53,7 @@ beforeEach(async () => {
     auth: { inbound_token_file: 'unused', report_token_file: 'unused' },
     db: { path: join(dir, 'wallet.db') },
     approval: { mode: 'reject_all' },
+    network: { socks_proxy: null },
     chains: [{ chain_id: BASE, rpc_url: 'http://127.0.0.1:9' }],
   };
   service = createService(

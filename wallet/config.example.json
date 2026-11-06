@@ -16,10 +16,13 @@
   "approval": {
     "mode": "reject_all"
   },
+  "network": {
+    "socks_proxy": "socks5h://127.0.0.1:9050"
+  },
   "chains": [
     {
       "chain_id": 11155111,
-      "rpc_url": "https://<rpc>/sepolia",
+      "rpc_url": "https://<anon-rpc>/sepolia",
       "simulation": {
         "rpc_urls": [
           "https://simulator-a.example/rpc",
@@ -31,7 +34,7 @@
     },
     {
       "chain_id": 84532,
-      "rpc_url": "https://<rpc>/base-sepolia",
+      "rpc_url": "https://<anon-rpc>/base-sepolia",
       "simulation": {
         "rpc_urls": [
           "https://simulator-a.example/rpc",
@@ -43,7 +46,7 @@
     },
     {
       "chain_id": 421614,
-      "rpc_url": "https://<rpc>/arbitrum-sepolia",
+      "rpc_url": "https://<anon-rpc>/arbitrum-sepolia",
       "simulation": {
         "rpc_urls": [
           "https://simulator-a.example/rpc",

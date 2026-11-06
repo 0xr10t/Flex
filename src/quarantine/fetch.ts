@@ -4,17 +4,20 @@
 // through), accepted types text/html (→ html-to-text), text/plain, application/pdf (→ pdf-parse). Any failure →
 // { ok: false } (S1 maps it to URL_FETCH_FAILED). URLs inside fetched content are never fetched (this module
 // fetches exactly the URL it is given). §16.4: user-supplied HTTPS URLs are the only hosts it contacts.
+// anon-rpc over Tor: with `network.socks_proxy` set, links go through Tor on their own circuit; nothing is resolved here,
+// literal IPs are still checked, `localhost` is refused, and Tor's exits refuse private addresses.
 // SQ-O-06: every URL about to be requested (the given URL and each redirect target) is secret-scanned first; a hit
 // returns `secretRefusal()` without a request.
 // Owner: Lane B.
 
 import { lookup as dnsLookup } from 'node:dns/promises';
-import { request } from 'node:https';
+import { request, type Agent } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import type { ContentFetcher, FetchResult } from '../contracts/io.js';
 import type { Config } from '../contracts/types.js';
 import { secretRefusal, urlHasSecret } from '../guard/urls.js';
 import { decodeUtf8, htmlToText, pdfToText } from './extract.js';
+import { proxyAgent } from '../util/isolated-fetch.js';
 import { isBlockedIp } from './ssrf.js';
 
 export interface HttpResponse {
@@ -57,14 +60,15 @@ function pinnedLookup(resolve: ResolveHost): LookupFunction {
   }) as unknown as LookupFunction;
 }
 
-function nodeHttpsGet(resolve: ResolveHost): HttpGet {
+/** Direct: DNS here, pinned to the checked address. Through Tor: the SOCKS agent, and Tor resolves the hostname. */
+function nodeHttpsGet(route: { lookup: LookupFunction } | { agent: Agent }): HttpGet {
   return (url, signal) =>
     new Promise<HttpResponse>((resolvePromise, reject) => {
       const req = request(
         url,
         {
           method: 'GET',
-          lookup: pinnedLookup(resolve),
+          ...route,
           signal,
           headers: { accept: 'text/html, text/plain, application/pdf' },
         },
@@ -89,6 +93,21 @@ async function hostAllowed(url: URL, resolve: ResolveHost): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Through Tor nothing is resolved here (that would leak the hostname to the local DNS resolver): a literal IP is checked
+ * against the refused ranges, `localhost` names are refused, and Tor's exits refuse private addresses
+ * (ExitPolicyRejectPrivate) for any other name.
+ */
+export function hostAllowedViaProxy(url: URL): boolean {
+  const host = url.hostname
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase()
+    .replace(/\.$/, '');
+  if (host.length === 0) return false;
+  if (isIP(host) !== 0) return !isBlockedIp(host);
+  return host !== 'localhost' && !host.endsWith('.localhost');
 }
 
 async function readCapped(
@@ -118,7 +137,13 @@ async function readCapped(
 /** Production fetcher (§8.2 step 3). `deps` lets unit tests replace the network and DNS. */
 export function createContentFetcher(config: Config, deps: FetcherDeps = {}): ContentFetcher {
   const resolve = deps.resolve ?? defaultResolve;
-  const httpGet = deps.httpGet ?? nodeHttpsGet(resolve);
+  // anon-rpc over Tor: links go through Tor on their own circuit, with no DNS lookup here.
+  const proxy = config.network.socks_proxy;
+  const httpGet =
+    deps.httpGet ??
+    nodeHttpsGet(proxy !== null ? { agent: proxyAgent(proxy, 'links') } : { lookup: pinnedLookup(resolve) });
+  const allowed = async (url: URL): Promise<boolean> =>
+    proxy !== null ? hostAllowedViaProxy(url) : hostAllowed(url, resolve);
   const { max_bytes, timeout_ms, max_redirects } = config.fetch;
 
   async function run(raw: string, signal: AbortSignal): Promise<FetchResult> {
@@ -132,7 +157,7 @@ export function createContentFetcher(config: Config, deps: FetcherDeps = {}): Co
       if (urlHasSecret(url.href)) return secretRefusal();
       if (url.protocol !== 'https:') return { ok: false };
       if (url.username !== '' || url.password !== '') return { ok: false };
-      if (!(await hostAllowed(url, resolve))) return { ok: false };
+      if (!(await allowed(url))) return { ok: false };
       const res = await httpGet(url, signal);
       if (REDIRECTS.has(res.status)) {
         res.destroy();

@@ -15,6 +15,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
     "I can only read text and PDF files. photo.png wasn't read, so nothing was done.",
   ],
   ['URL_FETCH_FAILED', { n: '2' }, "I couldn't open link 2, so nothing was done."],
+  [
+    'LINKS_OFF',
+    { n: '2' },
+    "Opening links is turned off for privacy, so link 2 wasn't read and nothing was done. Paste its text instead.",
+  ],
   ['DOCUMENT_TOO_LARGE', { item: 'pasted text 1' }, 'pasted text 1 is too long for me to read safely.'],
   [
     'BALANCES_UNAVAILABLE',
@@ -45,6 +50,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ['PAIRING_FAILED', {}, "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?"],
   ['SELF_PAYMENT', {}, "That's your own address. Moving funds between your own chains isn't a payment I can make."],
   ['ENS_INDEXER_UNAVAILABLE', { parent: 'acme.eth' }, "I can't list the members of acme.eth right now."],
+  [
+    'GROUP_SENDS_OFF',
+    { parent: 'iitr.eth' },
+    'Paying everyone under iitr.eth is turned off for privacy: listing its members needs a direct connection to an ENS indexer. Name each person instead.',
+  ],
   ['GROUP_EMPTY', { parent: 'acme.eth', chain: 'Base Sepolia' }, 'acme.eth has no members I can pay on Base Sepolia.'],
   ['NO_ACTIVE_AUTOPAY', { name: 'Mihir' }, "There's no active repeating payment to Mihir."],
   ['AUTOPAY_NOT_READY', {}, 'That repeating payment is still being set up. Try again shortly.'],
@@ -92,10 +102,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
 ];
 
 describe('C-395 §15 error messages', () => {
-  it('C-395 §15: the catalogue has exactly 35 codes, each with a message', () => {
-    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 37 cases over 35 codes.
+  it('C-395 §15: the catalogue has exactly 37 codes, each with a message', () => {
+    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 39 cases over 37 codes.
+    // Privacy fixes 5 and 6 add LINKS_OFF and GROUP_SENDS_OFF.
     const codes = [...new Set(CASES.map(([c]) => c))].sort();
-    expect(codes).toHaveLength(35);
+    expect(codes).toHaveLength(37);
     expect([...ERROR_CODES].sort()).toEqual(codes);
     expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });

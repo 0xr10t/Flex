@@ -212,7 +212,8 @@ run decides it. If it arrives short, `bridge_buffer_pct` goes up; no schema chan
    simulate step. Proposal: the agent calls the execution layer's `/v1/simulate` before the summary. That needs state overrides
    for the 7702 code and for bridged balances, and a forwarder-as-sender plus time override for an autopay's first run.
 2. **Open the executor to any keeper**, so CRE isn't the only trigger.
-3. **Who runs the RPC and the ENS indexer** (for "no required provider").
+3. **Who runs the RPC and the ENS indexer** (for "no required provider"). Partly decided (6 Nov 2026): every
+   request to them goes through Tor (`network.socks_proxy`, spec §16.5); which endpoints to use is still open.
 4. **Monthly schedules** (needs a signed list of dates).
 5. **Autopay groups**, and autopays above 50 recipients.
 6. **ETH between chains:** keep saying no, or add a second bridge.

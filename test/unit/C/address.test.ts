@@ -368,6 +368,10 @@ describe('§9.2 step 5 / §16.1 untrusted (document) addresses', () => {
     ctx.ens.set('evil.eth', COIN.DEFAULT, EVIL_A);
     const d = new Driver(ctx);
     await d.start();
+    // Privacy fix 4: the name from the content is looked up only after "Look it up".
+    expectQuestion(d, 'Q_WHO_IS');
+    expect(ctx.ens.calls).toEqual([]);
+    await d.chip('ens_lookup');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
     expect(q.text).toBe(
       `You have not paid this recipient before. Do you want to proceed?\nevil.eth → ${EVIL_A} on Sepolia, Base Sepolia and Arbitrum Sepolia. This address comes from the attached content, not from you.`,

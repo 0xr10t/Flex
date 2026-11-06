@@ -324,7 +324,8 @@ describe('G03 independent confirmation freshness', () => {
     h.setBalances({ [BASE]: { USDC: '0' }, [ARB]: { USDC: '0' }, [SEPOLIA]: { USDC: '0' } });
     const response = await h.confirm(summary, 'yes');
     expect(response.body.error?.code).toBe('INSUFFICIENT_FUNDS');
-    expect(h.rpc.calls.length).toBeGreaterThan(calls);
+    // Privacy fix 8: the "yes" reads DB4 (kept fresh in the background); it sends nothing to the RPC.
+    expect(h.rpc.calls.length).toBe(calls);
     expect(h.exec.submissions).toHaveLength(0);
     expect(h.count('handoff_journal')).toBe(0);
   });

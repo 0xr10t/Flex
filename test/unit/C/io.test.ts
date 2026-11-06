@@ -1,6 +1,6 @@
 // Lane C — §14.5 ENS client (Universal Resolver on ens.rpc_chain_id) and §9.6 step 3 / §14.5 indexer SubnameSource.
 // No network: viem's getEnsAddress is mocked, and the SubnameSource gets an injected fetch.
-import type { PublicClient } from 'viem';
+import { custom } from 'viem';
 import { namehash } from 'viem/ens';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EnsUnavailable, IndexerUnavailable } from '../../../src/contracts/io.js';
@@ -17,7 +17,7 @@ import { RIYA } from './helpers.js';
 const getEnsAddress = vi.fn();
 vi.mock('viem/actions', () => ({ getEnsAddress: (...args: unknown[]) => getEnsAddress(...args) }));
 
-const fakeClient = {} as PublicClient;
+const fakeTransport = custom({ request: async () => null });
 
 describe('§14.5 ENS client', () => {
   beforeEach(() => getEnsAddress.mockReset());
@@ -25,9 +25,9 @@ describe('§14.5 ENS client', () => {
   it('C-358 §14.5: getEnsAddress({ name, coinType, universalResolverAddress }) on the configured client', async () => {
     getEnsAddress.mockResolvedValue(RIYA);
     const cfg = testConfig();
-    const ens = createEnsClient(cfg, fakeClient);
+    const ens = createEnsClient(cfg, fakeTransport);
     expect(await ens.getAddress('riya.eth', 60n)).toBe(RIYA);
-    expect(getEnsAddress).toHaveBeenCalledWith(fakeClient, {
+    expect(getEnsAddress).toHaveBeenCalledWith(expect.objectContaining({ ccipRead: false }), {
       name: 'riya.eth',
       coinType: 60n,
       universalResolverAddress: cfg.ens.universal_resolver_address,
@@ -35,7 +35,7 @@ describe('§14.5 ENS client', () => {
   });
 
   it('C-358 §14.5: a lowercase record is returned EIP-55 checksummed; no record → null', async () => {
-    const ens = createEnsClient(testConfig(), fakeClient);
+    const ens = createEnsClient(testConfig(), fakeTransport);
     getEnsAddress.mockResolvedValueOnce(RIYA.toLowerCase());
     expect(await ens.getAddress('riya.eth', 60n)).toBe(RIYA);
     getEnsAddress.mockResolvedValueOnce(null);
@@ -43,7 +43,7 @@ describe('§14.5 ENS client', () => {
   });
 
   it('C-358 §14.5: an RPC failure or timeout → EnsUnavailable (distinct from "no address")', async () => {
-    const ens = createEnsClient(testConfig(), fakeClient);
+    const ens = createEnsClient(testConfig(), fakeTransport);
     getEnsAddress.mockRejectedValueOnce(new Error('timeout'));
     await expect(ens.getAddress('riya.eth', 60n)).rejects.toBeInstanceOf(EnsUnavailable);
   });

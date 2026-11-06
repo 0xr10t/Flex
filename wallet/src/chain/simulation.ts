@@ -8,6 +8,7 @@ import {
   type SimulationAnchor,
 } from '@flex/protocol/simulation';
 import type { SimBlock, SimCallResult } from './gateway.js';
+import { torFetch } from './tor-fetch.js';
 
 export interface SimulationConfig {
   rpc_urls: string[];
@@ -30,12 +31,17 @@ export function validateSimulationConfig(config: SimulationConfig): void {
   if (new Set(urls).size !== urls.length) throw new Error('simulation RPC endpoints must be distinct');
 }
 
-/** Read RPC selects the anchor; independently configured simulators must agree with it and each other. */
-export function createSimulator(chainId: number, config: SimulationConfig) {
+/**
+ * Read RPC selects the anchor; independently configured simulators must agree with it and each other.
+ * anon-rpc over Tor: with `proxy` set, each simulator is reached through Tor on its own circuit, so the providers can't
+ * line their requests up by exit address. No redirects are followed (the Tor fetch never follows one).
+ */
+export function createSimulator(chainId: number, config: SimulationConfig, proxy: string | null = null) {
   validateSimulationConfig(config);
-  const clients = config.rpc_urls.map((url) =>
+  const clients = config.rpc_urls.map((url, i) =>
     createPublicClient({
-      transport: http(url, { timeout: 10_000, retryCount: 0, fetchOptions: { redirect: 'error' } }),
+      transport: http(url, { timeout: 10_000, retryCount: 0, fetchFn: torFetch(proxy, `wallet-sim-${chainId}-${i}`) }),
+      ccipRead: false,
     }),
   );
   return async (blocks: SimBlock[], anchor: SimulationAnchor): Promise<SimCallResult[][]> => {

@@ -25,6 +25,7 @@
     "ajv-formats": "3.0.1",
     "better-sqlite3-multiple-ciphers": "13.0.3",
     "fastify": "5.12.8",
+    "socks-proxy-agent": "8.0.5",
     "viem": "2.57.16",
     "zod": "4.6.7",
     "@flex/protocol": "file:../packages/protocol"

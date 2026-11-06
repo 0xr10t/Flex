@@ -68,11 +68,18 @@ export interface Config {
   ens: {
     rpc_chain_id: ChainId;
     universal_resolver_address: Address;
-    indexer_url: string;
+    /** Null turns group sends off (privacy fix 6). Through Tor when `network.socks_proxy` is set. */
+    indexer_url: string | null;
     indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
-  fetch: { max_bytes: number; timeout_ms: number; max_redirects: number };
+  /**
+   * anon-rpc over Tor: `socks5h://127.0.0.1:<port>` sends every request to a host that isn't this machine through Tor, one
+   * circuit per kind of query; null means direct connections.
+   */
+  network: { socks_proxy: string | null };
+  /** `enabled: false` turns link reading off (privacy fix 5). Through Tor when `network.socks_proxy` is set. */
+  fetch: { enabled: boolean; max_bytes: number; timeout_ms: number; max_redirects: number };
   defaults: { timezone: string; autopay_time_of_day: string };
 }
 
@@ -523,6 +530,7 @@ export type ErrorCode =
   | 'SECRET_DETECTED'
   | 'ATTACHMENT_UNSUPPORTED'
   | 'URL_FETCH_FAILED'
+  | 'LINKS_OFF'
   | 'DOCUMENT_TOO_LARGE'
   | 'BALANCES_UNAVAILABLE'
   | 'MAINNET_NOT_SUPPORTED'
@@ -537,6 +545,7 @@ export type ErrorCode =
   | 'PAIRING_FAILED'
   | 'SELF_PAYMENT'
   | 'ENS_INDEXER_UNAVAILABLE'
+  | 'GROUP_SENDS_OFF'
   | 'GROUP_EMPTY'
   | 'NO_ACTIVE_AUTOPAY'
   | 'AUTOPAY_NOT_READY'
@@ -560,6 +569,7 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'SECRET_DETECTED',
   'ATTACHMENT_UNSUPPORTED',
   'URL_FETCH_FAILED',
+  'LINKS_OFF',
   'DOCUMENT_TOO_LARGE',
   'BALANCES_UNAVAILABLE',
   'MAINNET_NOT_SUPPORTED',
@@ -574,6 +584,7 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'PAIRING_FAILED',
   'SELF_PAYMENT',
   'ENS_INDEXER_UNAVAILABLE',
+  'GROUP_SENDS_OFF',
   'GROUP_EMPTY',
   'NO_ACTIVE_AUTOPAY',
   'AUTOPAY_NOT_READY',

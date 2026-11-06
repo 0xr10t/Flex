@@ -66,7 +66,8 @@ export function testConfig(): Config {
       outbound_token_file: '/tmp/execution_outbound_token',
       timeout_ms: 15000,
     },
-    fetch: { max_bytes: 1048576, timeout_ms: 10000, max_redirects: 3 },
+    network: { socks_proxy: null },
+    fetch: { enabled: true, max_bytes: 1048576, timeout_ms: 10000, max_redirects: 3 },
     defaults: { timezone: 'Asia/Kolkata', autopay_time_of_day: '10:00' },
   };
 }

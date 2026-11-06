@@ -171,7 +171,7 @@ describe('the check in the lifecycle', () => {
     ['moves-nothing', 'SIMULATION_MISMATCH'],
     ['pays-someone-else', 'SIMULATION_MISMATCH'],
   ] as const)(
-    'simulation %s: stops with %s. Never asks the user, never signs, never upgrades',
+    'simulation %s: stops with %s after the approval (privacy fix 2). Never signs, never upgrades',
     async (simulation, code) => {
       const chain = new FakeChain();
       chain.code = undefined;
@@ -180,11 +180,23 @@ describe('the check in the lifecycle', () => {
       const step = await run(chain, { approve });
       expect(step?.status).toBe('failed');
       expect(step?.error_code).toBe(code);
-      expect(approve).not.toHaveBeenCalled();
+      expect(approve).toHaveBeenCalledTimes(1);
+      expect(chain.simulated).toBeGreaterThan(0);
       expect(chain.signed).toHaveLength(0);
       expect(chain.upgrades).toBe(0);
+      expect(chain.broadcasts).toHaveLength(0);
     },
   );
+
+  it('privacy fix 2: a refused request is never simulated (the RPC never sees the batch)', async () => {
+    for (const intents of [[payUsdc(0, [[ALEX, '10']])], [payEth(0, [[ALEX, '0.01']])]]) {
+      const chain = new FakeChain();
+      const step = await run(chain, { approve: async () => false }, intents);
+      expect(step?.error_code).toBe('USER_REJECTED');
+      expect(chain.simulated).toBe(0);
+      expect(chain.signed).toHaveLength(0);
+    }
+  });
 
   it('has no fallback: no simulation, no payment, even when everything else works', async () => {
     const chain = new FakeChain();
@@ -194,7 +206,7 @@ describe('the check in the lifecycle', () => {
     expect(chain.broadcasts).toHaveLength(0);
   });
 
-  it('runs before the approval, and the approval shows what was decoded', async () => {
+  it('privacy fix 2: runs after the approval, and the approval shows what was decoded', async () => {
     const chain = new FakeChain();
     const simulatedAtApproval: number[] = [];
     const summaries: string[][] = [];
@@ -211,7 +223,8 @@ describe('the check in the lifecycle', () => {
         [BOB, '20.5'],
       ]),
     ]);
-    expect(simulatedAtApproval).toEqual([1]);
+    expect(simulatedAtApproval).toEqual([0]);
+    expect(chain.simulated).toBe(1);
     expect(summaries[0]).toEqual(['Send 10 USDC to 0x15d3…6A65', 'Send 20.5 USDC to 0x9965…A4dc']);
   });
 });

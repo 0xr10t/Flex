@@ -15,7 +15,7 @@ import { expect } from 'vitest';
 import { LOG_ALLOWED_FIELDS } from '../../src/contracts/io.js';
 import type { LlmCallArgs, LlmClient } from '../../src/contracts/llm.js';
 import type { Repos } from '../../src/contracts/repos.js';
-import { toBaseUnits } from '../../src/contracts/money.js';
+import { fromBaseUnits, toBaseUnits } from '../../src/contracts/money.js';
 import type {
   AgentResponse,
   Chip,
@@ -32,6 +32,7 @@ import type { Database } from '../../src/db/database.js';
 import { openDatabase } from '../../src/db/open.js';
 import { createRepos } from '../../src/db/repos/index.js';
 import { registry } from '../../src/pipeline/registry.js';
+import { refreshBalances } from '../../src/pipeline/s0-balances.js';
 import { createApp } from '../../src/server/app.js';
 import { createLogger, type Logger } from '../../src/util/logger.js';
 import { testConfig, TEST_WALLET } from '../fakes/context.js';
@@ -293,13 +294,31 @@ export class Harness {
     if (o.contacts !== false) this.seedContacts();
   }
 
-  /** Sets the balances the mocked RPC returns (decimal strings). Unlisted values stay as they were. */
+  /**
+   * Sets the balances the mocked RPC returns (decimal strings; unlisted values stay as they were) and records the listed
+   * chains in DB4, as the next background read would (privacy fix 8: messages don't read balances).
+   */
   setBalances(b: Balances): void {
     for (const [cid, toks] of Object.entries(b)) {
       const c = Number(cid) as ChainId;
       if (toks?.USDC !== undefined) this.rpc.usdc.set(c, toBaseUnits(toks.USDC, 6));
       if (toks?.ETH !== undefined) this.rpc.eth.set(c, toBaseUnits(toks.ETH, 18));
+      const chain = chainNames(this.config)[c] ?? String(c);
+      for (const [token, units, decimals] of [
+        ['ETH', this.rpc.eth.get(c) ?? 0n, 18],
+        ['USDC', this.rpc.usdc.get(c) ?? 0n, 6],
+      ] as const) {
+        this.repos.db4.upsertOk(
+          { chain_id: c, chain, token, balance: fromBaseUnits(units, decimals), base_units: units.toString() },
+          this.nowIso,
+        );
+      }
     }
+  }
+
+  /** One background balance read (privacy fix 8), e.g. after changing `rpc.down`. */
+  async refreshBalances(): Promise<void> {
+    await refreshBalances(this, this.repos.db5.getAll().allowed_chain_ids, this.nowIso);
   }
 
   /** §19 setup: Aradhya on Base+Arbitrum, Mihir on all three chains. */

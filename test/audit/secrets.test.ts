@@ -207,7 +207,8 @@ describe('S1 hit writes nothing (§8.2 step 2, A-16)', () => {
 
   it('http:// link or unsupported attachment stop before any write too', async () => {
     const h = new Harness('audit-secret2', { calls: [] }, {});
-    const r = await h.say('read http://example.com/x');
+    // Privacy fix 5: a typed link is never opened, so the http:// link has to come in urls[] to be refused.
+    const r = await h.say('read this', { urls: ['http://example.com/x'] });
     expect(r.body.error?.code).toBe('URL_FETCH_FAILED');
     for (const t of SESSION) expect(h.count(t), t).toBe(0);
     await h.finish();
