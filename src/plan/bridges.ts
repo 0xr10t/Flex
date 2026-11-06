@@ -35,12 +35,36 @@ export function neededWithPadding(
   bufferPct: string,
 ): bigint {
   const { num, den } = bufferFraction(bufferPct);
-  let total = 0n;
-  for (const c of chains) {
-    const n = need.get(c) ?? 0n;
-    total += n;
-    const short = n - (spendable.get(c) ?? 0n);
-    if (short > 0n) total += mulDivCeil(short, num, den) - short;
+  let total = chains.reduce((sum, c) => sum + (need.get(c) ?? 0n), 0n);
+  const surplus = new Map(chains.map((c) => [c, (spendable.get(c) ?? 0n) - (need.get(c) ?? 0n)]));
+  const short = chains
+    .filter((c) => (surplus.get(c) ?? 0n) < 0n)
+    .sort((a, b) => {
+      const x = surplus.get(a) ?? 0n;
+      const y = surplus.get(b) ?? 0n;
+      return x === y ? chains.indexOf(a) - chains.indexOf(b) : x < y ? -1 : 1;
+    });
+  for (const dest of short) {
+    let remaining = -(surplus.get(dest) ?? 0n);
+    while (remaining > 0n) {
+      const donors = chains
+        .filter((c) => c !== dest && mulDivFloor(surplus.get(c) ?? 0n, den, num) > 0n)
+        .sort((a, b) => {
+          const x = surplus.get(a) ?? 0n;
+          const y = surplus.get(b) ?? 0n;
+          return x === y ? chains.indexOf(a) - chains.indexOf(b) : x > y ? -1 : 1;
+        });
+      const source = donors[0];
+      const available = source === undefined ? 0n : (surplus.get(source) ?? 0n);
+      const deliverable = mulDivFloor(available, den, num);
+      // The final source would need to supply the rest. Round that actual bridge, instead of pooling
+      // all sources' buffers or adding another synthetic bridge for the missing few base units.
+      const x = donors.length <= 1 || remaining < deliverable ? remaining : deliverable;
+      const padded = mulDivCeil(x, num, den);
+      total += padded - x;
+      if (source !== undefined) surplus.set(source, available > padded ? available - padded : 0n);
+      remaining -= x;
+    }
   }
   return total;
 }
