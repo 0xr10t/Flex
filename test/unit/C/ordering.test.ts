@@ -37,7 +37,9 @@ describe('§9.7 ordering and counting', () => {
     await d.chip('yes');
     await d.text('Riya');
     // Mihir (known) is resolved silently; the next question is for the third payee.
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 1).text).toBe(`Is ${NEWADDR} correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 1).text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`,
+    );
     expect(ctx.req.resolved.map((r) => r.display_name)).toEqual(['Riya', 'Mihir']);
     await d.chip('yes');
     await d.text('Third');

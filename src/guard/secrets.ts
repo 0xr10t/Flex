@@ -1,6 +1,7 @@
 // Implements: §8.2 step 2 secret scan — every detector of the table (raw private key, extended key, WIF key,
 // Solana-style secret, seed phrase, keystore JSON), I-13 (12+ consecutive BIP-39 words block, checksum or not),
 // I-14 (any 64-hex string blocks, tx hashes included). §5: @scure/bip39 English wordlist, @scure/base base58check.
+// SQ-SG-01: extended private-key shapes block despite framing, casing, alphabet or checksum mistakes.
 // Pure functions: they never log, store or return the matched text.
 
 import { createHash } from 'node:crypto';
@@ -28,12 +29,14 @@ function base58checkDecodes(s: string): Uint8Array | null {
   }
 }
 
-/** Extended key: `\b[xyzt]prv[1-9A-HJ-NP-Za-km-z]{100,112}\b`, then base58check decode succeeds. */
+/**
+ * Extended private keys (SQ-SG-01): protect the key-shaped text, not just importable keys.
+ * BIP-32 / SLIP-132 private prefixes, case-insensitive, with at least 100 ASCII alphanumerics.
+ * No word boundaries: adjoining text such as a mistaken `0x` prefix must not hide the key.
+ * No checksum gate or strict base58 alphabet: a mistyped key can still disclose private material.
+ */
 export function hasExtendedKey(text: string): boolean {
-  for (const m of text.matchAll(/\b[xyzt]prv[1-9A-HJ-NP-Za-km-z]{100,112}\b/g)) {
-    if (base58checkDecodes(m[0]) !== null) return true;
-  }
-  return false;
+  return /[xyztuv]prv[a-z0-9]{100}/i.test(text);
 }
 
 /** WIF key: `\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b`, base58check decode succeeds, first byte 0x80. */

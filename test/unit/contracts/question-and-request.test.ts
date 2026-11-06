@@ -131,7 +131,7 @@ describe('C-306 §13.4 question shape and chip matching', () => {
     expect(question).toEqual({
       question_id: 'q_0123456789ab',
       code: 'Q_ADDRESS_CORRECT',
-      text: 'Is 0xabc correct?',
+      text: 'You have not paid this recipient before. Do you want to proceed?\nWallet address: 0xabc',
       input: 'chips',
       chips: [CHIPS.YES, CHIPS.NO_REENTER],
       attempt: 1,

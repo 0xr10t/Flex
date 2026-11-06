@@ -1,4 +1,5 @@
 // Phase 3 audit (§3.2): S1 secret detectors (every row of the §8.2 table, plus negatives) and "nothing is written".
+// Extended-key privacy hardening: generated synthetic keys only, across every user-input channel and answers.
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createBase58check, base58 } from '@scure/base';
@@ -7,12 +8,42 @@ import { detectSecret } from '../../src/guard/secrets.js';
 import { isSecretRefusal, secretRefusal } from '../../src/guard/urls.js';
 import { createContentFetcher } from '../../src/quarantine/fetch.js';
 import { testConfig } from '../fakes/context.js';
-import { Harness } from '../acceptance/harness.js';
+import { Harness, loadFixture } from '../acceptance/harness.js';
 
 const sha256 = (d: Uint8Array): Uint8Array => new Uint8Array(createHash('sha256').update(d).digest());
 const b58c = createBase58check(sha256);
 const rnd = (n: number): Uint8Array => new Uint8Array(randomBytes(n));
 const cat = (...p: Uint8Array[]): Uint8Array => Uint8Array.from(p.flatMap((x) => [...x]));
+
+function extendedKey(version: number, publicKey = false): string {
+  const payload = new Uint8Array(78);
+  new DataView(payload.buffer).setUint32(0, version);
+  payload.fill(0x42, 13, 45);
+  payload[45] = publicKey ? 0x02 : 0x00;
+  payload[77] = 0x01;
+  return b58c.encode(payload);
+}
+
+const PRIVATE_VERSIONS = [
+  ['xprv', 0x0488ade4],
+  ['yprv', 0x049d7878],
+  ['zprv', 0x04b2430c],
+  ['tprv', 0x04358394],
+  ['uprv', 0x044a4e28],
+  ['vprv', 0x045f18bc],
+  ['Yprv', 0x0295b005],
+  ['Zprv', 0x02aa7a99],
+  ['Uprv', 0x024285b5],
+  ['Vprv', 0x02575048],
+] as const;
+const PUBLIC_VERSIONS = [
+  ['xpub', 0x0488b21e],
+  ['ypub', 0x049d7cb2],
+  ['zpub', 0x04b24746],
+  ['tpub', 0x043587cf],
+  ['upub', 0x044a5262],
+  ['vpub', 0x045f1cf6],
+] as const;
 
 function until<T>(make: () => T, ok: (v: T) => boolean): T {
   for (let i = 0; i < 500; i++) {
@@ -23,7 +54,12 @@ function until<T>(make: () => T, ok: (v: T) => boolean): T {
 }
 
 const HEX64 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
-const XPRV = b58c.encode(cat(Uint8Array.of(0x04, 0x88, 0xad, 0xe4), rnd(74)));
+const XPRV = extendedKey(0x0488ade4);
+const WRAPPED_XPRV = `0x${XPRV}`;
+const BAD_XPRV = XPRV.slice(0, -1) + (XPRV.endsWith('1') ? '2' : '1');
+const MALFORMED_XPRV = XPRV.slice(0, 30) + '0' + XPRV.slice(31);
+const percentEncode = (text: string): string =>
+  [...Buffer.from(text)].map((byte) => `%${byte.toString(16).padStart(2, '0')}`).join('');
 const WIF = until(
   () => b58c.encode(cat(Uint8Array.of(0x80), rnd(32))),
   (s) => /^[5KL]/.test(s) && s.length >= 51,
@@ -45,6 +81,11 @@ describe('S1 secret detectors — positives (§8.2 table, I-13, I-14)', () => {
     ['raw key 0x', `0x${HEX64}`, 'raw_private_key'],
     ['tx hash (I-14)', `0x${'ef'.repeat(32)}`, 'raw_private_key'],
     ['xprv', `use ${XPRV} now`, 'extended_key'],
+    ['0x-prefixed xprv', WRAPPED_XPRV, 'extended_key'],
+    ['xprv with bad checksum', `0x${BAD_XPRV}`, 'extended_key'],
+    ['xprv with invalid base58 alphabet', MALFORMED_XPRV, 'extended_key'],
+    ['uppercase extended private key', XPRV.toUpperCase(), 'extended_key'],
+    ['extended key with adjacent framing', `backup_${XPRV}_end`, 'extended_key'],
     ['WIF 51', `k ${WIF}`, 'wif_key'],
     ['WIF compressed 52', `k ${WIF_COMPRESSED}`, 'wif_key'],
     ['solana secret', `s ${SOL} end`, 'solana_secret'],
@@ -57,10 +98,19 @@ describe('S1 secret detectors — positives (§8.2 table, I-13, I-14)', () => {
   it.each(cases)('%s', (_n, text, kind) => {
     expect(detectSecret(text)).toBe(kind);
   });
+
+  it.each(PRIVATE_VERSIONS)(
+    'synthetic valid %s stays private with a directly adjacent 0x prefix',
+    (prefix, version) => {
+      const key = extendedKey(version);
+      expect(key.startsWith(prefix)).toBe(true);
+      expect(b58c.decode(key)).toHaveLength(78);
+      expect(detectSecret(`0x${key}`)).toBe('extended_key');
+    },
+  );
 });
 
 describe('S1 secret detectors — negatives', () => {
-  const badXprv = XPRV.slice(0, -1) + (XPRV.endsWith('1') ? '2' : '1');
   const badWif = WIF.slice(0, -1) + (WIF.endsWith('1') ? '2' : '1');
   const wif81 = until(
     () => b58c.encode(cat(Uint8Array.of(0x81), rnd(32))),
@@ -75,7 +125,8 @@ describe('S1 secret detectors — negatives', () => {
     ['63 hex', HEX64.slice(1)],
     ['65 hex', HEX64 + 'a'],
     ['40-hex address', '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E'],
-    ['xprv with bad checksum', badXprv],
+    ['short extended-key mention', 'Please explain xprv, yprv, zprv, tprv, uprv and vprv.'],
+    ['short extended-key example', `xprv${'a'.repeat(20)}`],
     ['WIF with bad checksum', badWif],
     ['WIF-shaped, first byte 0x81', wif81],
     ['86-88 char base58 decoding to 63 bytes', sol63],
@@ -91,6 +142,13 @@ describe('S1 secret detectors — negatives', () => {
   ];
   it.each(cases)('%s', (_n, text) => {
     expect(detectSecret(text)).toBeNull();
+  });
+
+  it.each(PUBLIC_VERSIONS)('synthetic valid extended public key %s remains allowed', (prefix, version) => {
+    const key = extendedKey(version, true);
+    expect(key.startsWith(prefix)).toBe(true);
+    expect(b58c.decode(key)).toHaveLength(78);
+    expect(detectSecret(`0x${key}`)).toBeNull();
   });
 
   it('OBS (spec-conformant): a 64-hex key split by a space or hyphen is not detected', () => {
@@ -115,6 +173,16 @@ describe('S1 hit writes nothing (§8.2 step 2, A-16)', () => {
     ],
     ['pasted keystore', 'pay this', { pasted_blocks: [KEYSTORE] }, 'scrypt'],
     ['pasted xprv', 'pay this', { pasted_blocks: [XPRV] }, XPRV],
+    ['typed 0x-prefixed xprv', `use ${WRAPPED_XPRV}`, {}, XPRV],
+    ['pasted 0x-prefixed xprv', 'pay this', { pasted_blocks: [WRAPPED_XPRV] }, XPRV],
+    ['typed extended key with bad checksum', `use 0x${BAD_XPRV}`, {}, BAD_XPRV],
+    ['pasted extended key with invalid alphabet', 'pay this', { pasted_blocks: [MALFORMED_XPRV] }, MALFORMED_XPRV],
+    [
+      'attachment with 0x-prefixed xprv',
+      'pay this',
+      { attachments: [{ filename: 'synthetic.txt', mime: 'text/plain', base64: b64(WRAPPED_XPRV) }] },
+      XPRV,
+    ],
     ['pasted solana secret', 'pay this', { pasted_blocks: [SOL] }, SOL],
   ];
 
@@ -126,6 +194,7 @@ describe('S1 hit writes nothing (§8.2 step 2, A-16)', () => {
       expect(r.body.state).toBe('error');
       expect(r.body.error?.code).toBe('SECRET_DETECTED');
       for (const t of SESSION) expect(h.count(t), t).toBe(0);
+      expect(h.fetcher.calls).toEqual([]);
       expect(h.llm.recorded).toEqual([]);
       expect(h.exec.submissions).toEqual([]);
       expect(JSON.stringify(r.body)).not.toContain(needle);
@@ -202,5 +271,87 @@ describe('S1 URL channel', () => {
     expect(r.body.error?.code).toBe('SECRET_DETECTED');
     expect(h.fetcher.calls).toEqual([]);
     await h.finish();
+  });
+
+  it.each([
+    { channel: 'inline', encoded: false },
+    { channel: 'explicit', encoded: false },
+    { channel: 'inline', encoded: true },
+    { channel: 'explicit', encoded: true },
+  ])(
+    '0x-prefixed extended key in $channel URL, encoded=$encoded, is blocked before IO or storage',
+    async ({ channel, encoded }) => {
+      const value = encoded ? percentEncode(WRAPPED_XPRV) : WRAPPED_XPRV;
+      const url = `https://example.com/collect?key=${value}`;
+      const h = new Harness('audit-extended-url', { calls: [] }, {});
+      try {
+        const response = channel === 'inline' ? await h.say(`read ${url}`) : await h.say('read this', { urls: [url] });
+        expect(response.body.error?.code).toBe('SECRET_DETECTED');
+        expect(h.fetcher.calls).toEqual([]);
+        expect(h.llm.recorded).toEqual([]);
+        expect(h.exec.submissions).toEqual([]);
+        for (const table of [
+          'db1_amount_placeholders',
+          'db3_address_placeholders',
+          'db8_prompts',
+          'db8_history',
+          'db6_spend_log',
+          'db7_autopays',
+          'handoff_journal',
+        ]) {
+          expect(h.count(table), table).toBe(0);
+        }
+        for (const output of [JSON.stringify(response.body), readFileSync(h.logFile, 'utf8')]) {
+          expect(output).not.toContain(XPRV);
+          expect(output).not.toContain(value);
+          expect(output).not.toContain('example.com');
+        }
+      } finally {
+        await h.finish();
+      }
+    },
+  );
+});
+
+describe('Extended private keys in answers are blocked before answer persistence or downstream IO', () => {
+  it.each([
+    { channel: 'answers', encoding: 'raw' },
+    { channel: 'messages', encoding: 'raw' },
+    { channel: 'answers', encoding: 'encoded-url' },
+    { channel: 'messages', encoding: 'encoded-url' },
+  ])('$channel endpoint, $encoding input', async ({ channel, encoding }) => {
+    const h = new Harness(
+      'audit-extended-answer',
+      { calls: loadFixture('A-01').calls.slice(0, 3) },
+      { contacts: false },
+    );
+    try {
+      const initial = await h.say('Send 50 USDc to ARADHYA');
+      expect(initial.body.question?.code).toBe('Q_WHO_IS');
+      const tables = [
+        'db1_amount_placeholders',
+        'db3_address_placeholders',
+        'db8_prompts',
+        'db8_history',
+        'db6_spend_log',
+        'db7_autopays',
+        'handoff_journal',
+      ];
+      const before = h.snapshot(tables);
+      const calls = structuredClone(h.llm.recorded);
+      const text = encoding === 'raw' ? WRAPPED_XPRV : `https://example.com/?key=${percentEncode(WRAPPED_XPRV)}`;
+      const response = channel === 'answers' ? await h.answer(initial, { text }) : await h.say(text);
+      expect(response.body.error?.code).toBe('SECRET_DETECTED');
+      expect(h.snapshot(tables)).toBe(before);
+      expect(h.llm.recorded).toEqual(calls);
+      expect(h.fetcher.calls).toEqual([]);
+      expect(h.exec.submissions).toEqual([]);
+      for (const output of [JSON.stringify(response.body), readFileSync(h.logFile, 'utf8'), h.snapshot(tables)]) {
+        expect(output).not.toContain(XPRV);
+        expect(output).not.toContain(percentEncode(WRAPPED_XPRV));
+      }
+    } finally {
+      await h.finish();
+    }
   });
 });

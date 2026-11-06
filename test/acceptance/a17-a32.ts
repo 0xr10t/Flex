@@ -150,7 +150,9 @@ export function registerA17toA32(): void {
       const r1 = await h.say('send 10 usdc to riya.eth');
       expect(r1.body.question?.code).toBe('Q_ADDRESS_CORRECT');
       // SQ-06 (OPEN): chains joined "A, B and C"; address shown in full, no emphasis markup.
-      expect(r1.body.question?.text).toBe(`riya.eth → ${ENS1} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+      expect(r1.body.question?.text).toBe(
+        `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${ENS1} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+      );
       const r2 = await h.answer(r1, { chipLabel: 'Yes' });
       expect(r2.body.question?.code).toBe('Q_NAME_FOR_ADDRESS');
       expect(r2.body.question?.prefill).toBe('riya'); // SQ-03: prefilled with the first label
@@ -176,7 +178,9 @@ export function registerA17toA32(): void {
       ]);
       const r2 = await h.answer(r1, { chipLabel: 'Arbitrum Sepolia' });
       expect(r2.body.question?.code).toBe('Q_ADDRESS_CORRECT');
-      expect(r2.body.question?.text).toBe(`riya.eth → ${ENS2} on Arbitrum Sepolia. Correct?`);
+      expect(r2.body.question?.text).toBe(
+        `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${ENS2} on Arbitrum Sepolia.`,
+      );
       const r3 = await h.answer(r2, { chipLabel: 'Yes' });
       const r4 = await h.answer(r3, { text: 'Riya' });
       expect(h.asked).toEqual(['Q_ENS_CHAIN', 'Q_ADDRESS_CORRECT', 'Q_NAME_FOR_ADDRESS']);

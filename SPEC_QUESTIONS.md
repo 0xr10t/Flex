@@ -342,3 +342,25 @@ it needs an address. `Q_WHO_IS` now asks “What is the wallet address for \"{na
 invalid-ENS variant says “That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.”
 These wording changes override the corresponding §9 / §13.4 texts; accepted inputs, saved-contact chips, validation
 and confirmation requirements are unchanged. `README.md` remains unchanged.
+
+**SQ-UI-02 — requested by the human in chat.** Replace the new-recipient `Q_ADDRESS_CORRECT` wording with
+“You have not paid this recipient before. Do you want to proceed?” (using “paid”). The full checksummed wallet address
+remains visible on the next line; the ENS variant retains its ENS name, full address and chain names below the same
+question. The attached-content provenance suffix and the existing Yes / No, re-enter / Don't pay this one choices
+remain. This is a wording change to the existing §9.2 / §9.3 address-confirmation step; its trigger, validation,
+contact-saving flow and later final payment confirmation are unchanged.
+
+## Extended private-key protection (2026-11-06)
+
+**SQ-SG-01 — requested bug fix from the human in chat.** An extended private-key string prefixed with `0x`
+escaped S1 and reached amount parsing. It must instead produce `SECRET_DETECTED` before model calls, URL fetches
+or persistence of the message. The pasted value is deliberately not recorded here.
+
+Implementation decision under this request: recognize `xprv`, `yprv`, `zprv`, `tprv`, `uprv` and `vprv`, ignoring
+case, followed by at least 100 ASCII alphanumeric characters. Adjoining characters do not suppress detection;
+checksum failures and mistyped non-base58 alphanumerics do not make private material safe to retain. This overrides
+the §8.2 extended-key detector's word boundaries, strict base58 alphabet and checksum gate. The prefix family covers
+the Bitcoin mainnet/testnet private variants in [SLIP-132](https://github.com/satoshilabs/slips/blob/master/slip-0132.md).
+Short prefix mentions and extended public keys do not match this detector. The shared scan applies to message text,
+pasted blocks, decoded attachments, URLs (including percent decoding), and question answers. Existing secret-error,
+buffer-clearing and no-storage/no-model-call behavior remains in force; other secret detectors are unchanged.

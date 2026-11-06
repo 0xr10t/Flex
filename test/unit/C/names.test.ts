@@ -57,7 +57,9 @@ describe('C-446 §9.1 names', () => {
     const d = new Driver(ctx);
     await d.start();
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`riya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
     expect(ctx.ens.calls.length).toBeGreaterThan(0);
   });
 
@@ -120,7 +122,7 @@ describe('C-446 §9.1 names', () => {
     const { ctx, d } = await start({ text: 'pay riya', spans: [{ text: 'riya', kind: 'name' }] });
     await d.text(NEWADDR.toLowerCase());
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${NEWADDR} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`);
     await d.chip('yes');
     const n = expectQuestion(d, 'Q_NAME_FOR_ADDRESS', 1);
     expect(n.prefill).toBe('riya');
@@ -143,7 +145,9 @@ describe('C-446 §9.1 names', () => {
     await d.start();
     await d.text('Riya.eth');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
-    expect(q.text).toBe(`riya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
   });
 
   it('C-164 §9.1 step 4d / §9.7: anything else → re-ask (attempt+1); the 4th failure → TOO_MANY_RETRIES', async () => {

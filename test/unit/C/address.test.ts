@@ -134,10 +134,10 @@ describe('C-446 §9.2 address flow (S6)', () => {
     });
   });
 
-  it('C-169 C-318 §9.2 step 5: new address → Q_ADDRESS_CORRECT "Is {full address} correct?" chips Yes / No, re-enter', async () => {
+  it('C-169 C-318 §9.2 step 5: new address → proceed question with full address; chips Yes / No, re-enter', async () => {
     const { d } = await start(addrSpan(NEWADDR));
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${NEWADDR} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`);
     expect(q.input).toBe('chips');
     expect(q.chips.map((c) => [c.id, c.label])).toEqual([
       ['yes', 'Yes'],
@@ -148,7 +148,9 @@ describe('C-446 §9.2 address flow (S6)', () => {
   it('C-318 §13.4: free text "yes" matches the Yes chip; other text re-asks Q_ADDRESS_CORRECT', async () => {
     const { d } = await start(addrSpan(NEWADDR));
     await d.text('maybe');
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(`Is ${NEWADDR} correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`,
+    );
     await d.text('YES');
     expectQuestion(d, 'Q_NAME_FOR_ADDRESS', 1);
   });
@@ -159,7 +161,9 @@ describe('C-446 §9.2 address flow (S6)', () => {
     const r = expectQuestion(d, 'Q_ADDRESS_REENTER', 2);
     expect(r.text).toBe('Paste the address.');
     await d.text(OTHER.toLowerCase());
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(`Is ${OTHER} correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${OTHER}`,
+    );
   });
 
   it('C-170 §9.2 step 5a: re-entered address that is a saved contact → known contact, no question', async () => {
@@ -199,7 +203,9 @@ describe('C-446 §9.2 address flow (S6)', () => {
     await d.chip('no_reenter');
     await d.text('Riya.eth');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 2);
-    expect(q.text).toBe(`riya.eth → ${OTHER} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${OTHER} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
   });
 
   it('C-334 §9.3 step 4 via Q_ADDRESS_REENTER: ENS name without an address → re-ask in the ENS wording', async () => {
@@ -281,7 +287,9 @@ describe('§9.2 step 5 / §16.1 untrusted (document) addresses', () => {
   it('C-169 C-400 §9.2 step 5: content address → content wording + third chip "Don\'t pay this one"', async () => {
     const { d } = await start(docSpan(EVIL_A));
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${EVIL_A} correct? This address comes from the attached content, not from you.`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${EVIL_A} This address comes from the attached content, not from you.`,
+    );
     expect(q.chips.map((c) => c.label)).toEqual(['Yes', 'No, re-enter', "Don't pay this one"]);
   });
 
@@ -345,7 +353,7 @@ describe('§9.2 step 5 / §16.1 untrusted (document) addresses', () => {
     await d.chip('no_reenter');
     await d.text(NEWADDR);
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 2);
-    expect(q.text).toBe(`Is ${NEWADDR} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`);
     expect(q.chips.map((c) => c.id)).toEqual(['yes', 'no_reenter']);
     await d.chip('yes');
     await d.text('Fixed');
@@ -362,7 +370,7 @@ describe('§9.2 step 5 / §16.1 untrusted (document) addresses', () => {
     await d.start();
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
     expect(q.text).toBe(
-      `evil.eth → ${EVIL_A} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct? This address comes from the attached content, not from you.`,
+      `You have not paid this recipient before. Do you want to proceed?\nevil.eth → ${EVIL_A} on Sepolia, Base Sepolia and Arbitrum Sepolia. This address comes from the attached content, not from you.`,
     );
     expect(q.chips.map((c) => c.id)).toEqual(['yes', 'no_reenter', 'dont_pay']);
   });
@@ -403,6 +411,6 @@ describe('§9.7 attempt counting in the "No, re-enter" loop', () => {
     await d.chip('yes');
     await d.text('First');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${OTHER} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${OTHER}`);
   });
 });

@@ -1,4 +1,5 @@
 // Tests: §8.2 step 2 secret detectors (C-061 … C-066, C-442 §20.1 guard/secrets), I-13, I-14.
+// Extended-key privacy hardening: synthetic keys only; framing and damaged serialization must not expose a key.
 import { createHash, randomBytes } from 'node:crypto';
 import { base58, createBase58check } from '@scure/base';
 import { describe, expect, it } from 'vitest';
@@ -14,10 +15,13 @@ import {
 
 const b58check = createBase58check((d: Uint8Array) => new Uint8Array(createHash('sha256').update(d).digest()));
 
-function xprv(): string {
+function extendedKey(version = 0x0488ade4, publicKey = false): string {
+  // A synthetic master serialization: fixed chain code and test-only key material, never a user-provided key.
   const payload = new Uint8Array(78);
-  payload.set([0x04, 0x88, 0xad, 0xe4], 0);
-  payload.set(randomBytes(74), 4);
+  new DataView(payload.buffer).setUint32(0, version);
+  payload.fill(0x42, 13, 45);
+  payload[45] = publicKey ? 0x02 : 0x00;
+  payload[77] = 0x01;
   return b58check.encode(payload);
 }
 function wif(first = 0x80): string {
@@ -44,17 +48,81 @@ describe('guard/secrets (§8.2 step 2, C-442)', () => {
     expect(hasRawPrivateKey('send to 0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E')).toBe(false);
   });
 
-  it('C-062 extended key: xprv regex + base58check decode', () => {
-    const k = xprv();
-    expect(k.startsWith('xprv')).toBe(true);
-    expect(hasExtendedKey(`my key ${k}`)).toBe(true);
-    expect(detectSecret(k)).toBe('extended_key');
+  it.each([
+    ['xprv', 0x0488ade4],
+    ['yprv', 0x049d7878],
+    ['zprv', 0x04b2430c],
+    ['tprv', 0x04358394],
+    ['uprv', 0x044a4e28],
+    ['vprv', 0x045f18bc],
+    ['Yprv', 0x0295b005],
+    ['Zprv', 0x02aa7a99],
+    ['Uprv', 0x024285b5],
+    ['Vprv', 0x02575048],
+  ] as const)('C-062 extended key: synthetic valid %s serialization is blocked', (prefix, version) => {
+    const key = extendedKey(version);
+    expect(key.startsWith(prefix)).toBe(true);
+    expect(b58check.decode(key)).toHaveLength(78);
+    expect(hasExtendedKey(key)).toBe(true);
+    expect(detectSecret(key)).toBe('extended_key');
   });
 
-  it('C-062 extended key negative: right shape but bad checksum', () => {
-    const k = xprv();
+  it.each([
+    ['plain', '', ''],
+    ['0x-prefixed', '0x', ''],
+    ['word-wrapped', 'wallet_', '_backup'],
+    ['quoted', '"', '"'],
+    ['bracketed', '[', ']'],
+    ['JSON value', '{"key":"', '"}'],
+    ['long adjacent text', 'prefix', 'suffix'.repeat(30)],
+  ])('C-062 extended key: %s framing cannot defeat detection', (_label, before, after) => {
+    expect(detectSecret(`${before}${extendedKey()}${after}`)).toBe('extended_key');
+  });
+
+  it('C-062 extended key: a corrupted checksum remains private', () => {
+    const k = extendedKey();
     const broken = k.slice(0, -1) + (k.endsWith('1') ? '2' : '1');
-    expect(hasExtendedKey(broken)).toBe(false);
+    expect(() => b58check.decode(broken)).toThrow();
+    expect(hasExtendedKey(broken)).toBe(true);
+    expect(detectSecret(`0x${broken}`)).toBe('extended_key');
+  });
+
+  it.each(['0', 'O', 'I', 'l'])(
+    'C-062 extended key: a non-base58 ASCII character %s does not bypass privacy',
+    (char) => {
+      const key = extendedKey();
+      const damaged = key.slice(0, 30) + char + key.slice(31);
+      expect(() => b58check.decode(damaged)).toThrow();
+      expect(detectSecret(damaged)).toBe('extended_key');
+    },
+  );
+
+  it('C-062 extended key: casing changes and extra pasted characters remain private', () => {
+    expect(detectSecret(extendedKey().toUpperCase())).toBe('extended_key');
+    expect(detectSecret(`xPrV${extendedKey().slice(4)}extra`)).toBe('extended_key');
+  });
+
+  it.each([
+    ['xpub', 0x0488b21e],
+    ['ypub', 0x049d7cb2],
+    ['zpub', 0x04b24746],
+    ['tpub', 0x043587cf],
+    ['upub', 0x044a5262],
+    ['vpub', 0x045f1cf6],
+  ] as const)('C-062 extended public key %s remains allowed', (prefix, version) => {
+    const key = extendedKey(version, true);
+    expect(key.startsWith(prefix)).toBe(true);
+    expect(b58check.decode(key)).toHaveLength(78);
+    expect(detectSecret(`0x${key}`)).toBeNull();
+  });
+
+  it.each([
+    'Explain the xprv and xpub formats.',
+    'Do not paste xprv, yprv, zprv, tprv, uprv or vprv secrets.',
+    'send 50 usdc to aradhya on base',
+    `xprv${'a'.repeat(20)}`,
+  ])('C-062 ordinary prose and short prefix mentions remain allowed (%#)', (text) => {
+    expect(detectSecret(text)).toBeNull();
   });
 
   it('C-063 WIF key: base58check decodes and first byte is 0x80', () => {
