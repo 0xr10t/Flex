@@ -97,7 +97,7 @@
           {
             "kind": "i",
             "amount": "$amount:0",
-            "recipient": "$recipient:0",
+            "recipient": "$session:0",
             "chain": "unstated",
             "frequency": null,
             "interval": null,

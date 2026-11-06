@@ -90,9 +90,15 @@ export function registerSensitive(kind: SensitiveKind, ...values: string[]): voi
 export const sensitiveValues = (): Array<[string, SensitiveKind]> => [...sensitive.entries()];
 /** Prompt fragments: the whole text and every window of three words. */
 function registerPrompt(text: string): void {
-  registerSensitive('prompt', text);
+  // Fragments shorter than 12 characters ("4", "Yes", "Sam") are not prompt text: they would match numeric log
+  // fields. Short numeric answers are registered as amounts (whole-token match on string fields) instead.
+  const keep = (t: string): void => {
+    if (t.trim().length >= 12) registerSensitive('prompt', t);
+  };
+  keep(text);
   const words = text.split(/\s+/).filter(Boolean);
-  for (let i = 0; i + 3 <= words.length; i++) registerSensitive('prompt', words.slice(i, i + 3).join(' '));
+  for (let i = 0; i + 3 <= words.length; i++) keep(words.slice(i, i + 3).join(' '));
+  for (const m of text.matchAll(/\d+(?:\.\d+)?/g)) registerSensitive('amount', m[0]);
 }
 
 export interface LogHit {
@@ -169,11 +175,12 @@ export class AcceptanceLlm implements LlmClient {
     };
     const amounts = list('AMOUNTS');
     const recipients = list('RECIPIENTS');
+    const sessionRefs = list('SESSION');
     const walk = (v: unknown): unknown => {
       if (typeof v === 'string') {
-        const m = /^\$(amount|recipient):(\d+)$/.exec(v);
+        const m = /^\$(amount|recipient|session):(\d+)$/.exec(v);
         if (m) {
-          const pick = (m[1] === 'amount' ? amounts : recipients)[Number(m[2])];
+          const pick = (m[1] === 'amount' ? amounts : m[1] === 'session' ? sessionRefs : recipients)[Number(m[2])];
           if (pick === undefined) throw new Error(`fixture reference ${v} not present in the prompt`);
           return pick;
         }
@@ -361,7 +368,6 @@ export class Harness {
   ): Promise<Resp> {
     if (this.sessionId === '') await this.open();
     registerPrompt(text);
-    for (const m of text.matchAll(/\d+(?:\.\d+)?/g)) registerSensitive('amount', m[0]);
     for (const p of extra.pasted_blocks ?? []) registerPrompt(p);
     const r = await this.http('POST', `/v1/sessions/${this.sessionId}/messages`, { body: { text, ...extra } });
     return this.track({ http: r.status, body: r.json as unknown as AgentResponse });
