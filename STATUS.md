@@ -29,7 +29,7 @@ Rule (see `Standing decisions and gotchas` below): code writers = Opus 5.5 (`mod
 | Lane B agent #1 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | stopped by the human @ `538613c` (contracts-v3 merged only) |
 | Lane B agent #2 | Lane B — Understanding (code) | opus | `lane/b-understanding` | 2026-11-06 | done @ `fcbfc77`; verified 297/297; merged |
 | Docs clean-up agent | delete obsolete docs | sonnet | `agentic_layer` | 2026-11-06 | done @ `8d7556d` |
-| Acceptance Tester | §3.1 harness + A-01…A-60 | sonnet | `phase2/acceptance` (from `186e548`) | 2026-11-06 | suite done @ `d4f0c9b`, merged; now triaging run 1 |
+| Acceptance Tester | §3.1 harness + A-01…A-60 | sonnet | `phase2/acceptance` (from `186e548`) | 2026-11-06 | done @ `9c9cc6f`; 70/70; merged |
 | Lane C agent #2 | Lane C — Recipients (code) | opus | `lane/c-recipients` | 2026-11-06 | done @ `06d7efa`; Orchestrator re-ran typecheck ✅ lint ✅ test 220/220 ✅ |
 | Lane C Tester | Lane C tests | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; 47 tests, no production bugs |
 | Lane C Reviewer | Lane C review | sonnet (per report) | `lane/c-recipients` | 2026-11-06 | done; R-1…R-4 fixed |
@@ -73,12 +73,18 @@ Lane follow-ups after rebasing onto `contracts-v3`: A — `newAgentRequest()` (`
 | `e7a4b20` | D — Planning & output (`lane/d-planning` @ `71607d0`) | 2026-11-06 | ✅ 1346/1346 |
 | `1823dff` | Orchestrator wiring: registry, prompt-builder index, production factories, entry point | 2026-11-06 | ✅ 1346/1346, build ✅ |
 | `7c8db03` | Acceptance suite (`phase2/acceptance` @ `d4f0c9b`) | 2026-11-06 | unit 1346/1346; acceptance 46/70 |
+| `311a409` | Acceptance triage (`phase2/acceptance` @ `9c9cc6f`) | 2026-11-06 | ✅ 1416/1416 (unit 1346 + acceptance 70) |
 
 ## Acceptance results (A-01 … A-60)
 
 Run 1 (2026-11-06, `7c8db03`): 46 pass, 24 fail: A-01, 02, 03, 04, 06, 08, 10, 11, 12, 14, 15, 22, 24, 26, 30, 36, 38, 40, 44, 47, 51, 57, 60.
 Most envelope diffs are non-EIP-55 example addresses in the expectations; A-60's 1,141 hits are all the bare value "4".
-Triage with the Acceptance Tester (sonnet).
+Triage by the Acceptance Tester (sonnet): 20 test-side fixes (non-EIP-55 example addresses, fixture trims, A-60 scanner
+matching bare digits in numeric fields), 0 lane defects, 3 spec conflicts asserted at interim behaviour.
+
+Run 2 (2026-11-06, `311a409`): **70 / 70 green**. Caveats: A-57 is `it.fails` (SQ-O-03, P4 rejects the row's pairing);
+A-08 asserts the §10.6 `expires_at` (SQ-D-15); A-30 asserts the §15 template (SQ-08); A-44 "me" gives `Q_NO_PAYEE` (SQ-O-05).
+A-60: 0 hits for registered addresses, names, ENS names, amounts and prompt fragments ≥ 12 characters.
 
 ## Standing decisions and gotchas
 
