@@ -426,3 +426,20 @@ describe('content fetcher (§8.2 step 3, C-069, C-071, C-072)', () => {
     expect(requested).toEqual(['https://a.example/']);
   });
 });
+
+describe('R6-2 SSRF 64:ff9b:1::/48 and IPv4-translated ::ffff:0:0:0/96', () => {
+  it.each([
+    '64:ff9b:1::a00:1',
+    '64:ff9b:1::1',
+    '64:ff9b:1:ffff::8.8.8.8',
+    '::ffff:0:7f00:1',
+    '::ffff:0:127.0.0.1',
+    '::ffff:0:a00:1',
+  ])('R6-2: refuses %s', (ip) => {
+    expect(isBlockedIp(ip)).toBe(true);
+  });
+
+  it('R6-2: IPv4-translated public address (8.8.8.8) is allowed', () => {
+    expect(isBlockedIp('::ffff:0:808:808')).toBe(false);
+  });
+});

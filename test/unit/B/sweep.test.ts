@@ -100,4 +100,22 @@ describe('sweepRepeats (SQ-O-01, SQB-23)', () => {
     expect(tagged).toEqual(copy);
     expect(sweepRepeats(src, [])).toEqual([]);
   });
+
+  it('R3-3: a name whose lowercase form changes length (İrem) is swept', () => {
+    const src = 'send 10 usdc to İrem. İrem is my flatmate';
+    const out = full(src, [tag(src, 'İrem', ADDR)]);
+    expect(out).not.toContain('İrem');
+    expect(out).toBe(`send 10 usdc to ${ADDR}. ${ADDR} is my flatmate`);
+  });
+
+  it('R3-3 / SQ-R-01: only exact case-insensitive whole-word repeats are swept', () => {
+    const swept = (src: string, name: string): boolean => sweepRepeats(src, [tag(src, name, ADDR)]).length > 0;
+    expect(swept('pay Mihir and Mihirs', 'Mihir')).toBe(false);
+    expect(swept('pay Mihir and Mihir2', 'Mihir')).toBe(false);
+    expect(swept('pay İrem and İrems', 'İrem')).toBe(false);
+    expect(swept('pay Riya Shah and Riya', 'Riya Shah')).toBe(false);
+    expect(swept('pay Mihir and MIHIR', 'Mihir')).toBe(true);
+    expect(swept("pay Mihir and Mihir's", 'Mihir')).toBe(true);
+    expect(swept('pay Mihir and (mihir)', 'Mihir')).toBe(true);
+  });
 });

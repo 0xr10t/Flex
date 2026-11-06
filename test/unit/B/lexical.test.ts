@@ -184,4 +184,37 @@ describe('lexical (§8.3, C-443)', () => {
     // §18: logs carry no text
     expect(JSON.stringify(ok.log.lines)).not.toContain('mihir');
   });
+
+  describe('review fixes R2', () => {
+    const clauses = (t: string) => scan(t).clauses.map((c) => c.text);
+
+    it('R2-1: comma after a number separates clauses', () => {
+      expect(clauses('pay riya 10, mihir 20 usdc')).toEqual(['pay riya 10', 'mihir 20 usdc']);
+      expect(clauses('send riya 1,000, mihir 2,000 usdc')).toEqual(['send riya 1,000', 'mihir 2,000 usdc']);
+    });
+
+    it('R2-1: separators inside a number stay protected (SQB-04)', () => {
+      expect(scan('pay riya 1,000 usdc').clauses).toHaveLength(1);
+      expect(scan('pay riya 0.5 eth').clauses).toHaveLength(1);
+      expect(scan('pay riya 10,00,000 usdc').clauses).toHaveLength(1);
+    });
+
+    it('R2-2: "and" inside a parseable English number phrase is not a separator', () => {
+      expect(clauses('send two hundred and five usdc to riya and 10 eth to mihir')).toEqual([
+        'send two hundred and five usdc to riya',
+        '10 eth to mihir',
+      ]);
+    });
+
+    it('R2-2: "and" between two separate numbers still splits', () => {
+      expect(scan('pay riya five and mihir two').clauses).toHaveLength(2);
+      expect(scan('pay riya five and two to mihir').clauses).toHaveLength(2);
+    });
+
+    it('R2-2: only the first "and" of "one hundred and fifty and twenty" is protected', () => {
+      const c = clauses('pay riya one hundred and fifty and twenty to mihir');
+      expect(c).toHaveLength(2);
+      expect(c[0]).toBe('pay riya one hundred and fifty');
+    });
+  });
 });
