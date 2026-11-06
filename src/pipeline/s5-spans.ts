@@ -235,9 +235,20 @@ async function tagSpans(ctx: StepContext): Promise<Tagged[] | null> {
   ].sort((a, b) => a.s.start - b.s.start);
   for (const c of all) add(c.text, c.kind);
 
+  // Ollama aborts a reply that repeats one token more than 30 times, so the model can never copy an address such as
+  // 0x000…dEaD back. Such an address is shown in an ASCII short form (the model rewrites "…" as "...") and the
+  // model's spans are mapped back below.
+  const short = new Map<string, string>();
+  for (const c of candidates) {
+    const s = `${c.text.slice(0, 6)}...${c.text.slice(-4)}`;
+    if (c.kind !== 'address' || !/(.)\1{15}/.test(c.text) || masked.includes(s)) continue;
+    if (![...short.values()].includes(s)) short.set(c.text, s);
+  }
+  let shown = masked;
+  for (const [full, s] of short) shown = shown.replaceAll(full, s);
   const p = buildSpansPrompt(
-    masked,
-    candidates.map((c) => c.text),
+    shown,
+    candidates.map((c) => short.get(c.text) ?? c.text),
   );
   let out: { spans: LlmSpan[] };
   try {
@@ -246,7 +257,9 @@ async function tagSpans(ctx: StepContext): Promise<Tagged[] | null> {
     if (e instanceof LlmFailed) return null;
     throw e;
   }
-  return filterSpans(ctx, masked, out.spans, candidates);
+  const full = new Map([...short].map(([f, s]) => [s, f]));
+  const spans = out.spans.map((s) => ({ ...s, text: full.get(s.text) ?? s.text }));
+  return filterSpans(ctx, masked, spans, candidates);
 }
 
 async function s5Step(ctx: StepContext): Promise<StepResult> {

@@ -123,6 +123,27 @@ describe('S5 rules 1-3 (filtering)', () => {
     expect(call?.user).not.toContain('5 usdc');
   });
 
+  it('shows an address with a long repeated run in short form, so Ollama never aborts copying it', async () => {
+    const dead = '0x000000000000000000000000000000000000dEaD';
+    const ctx = await setup(`send 5 usdc to bob and 2 usdc to ${dead}`, {
+      amounts: [
+        { phrase: '5 usdc', number: '5' },
+        { phrase: '2 usdc', number: '2' },
+      ],
+      spans: [
+        { text: 'bob', kind: 'name' },
+        { text: '0x0000...dEaD', kind: 'address', role: 'mentioned' },
+      ],
+    });
+    await run(ctx);
+    const call = ctx.llm.recorded.find((c) => c.name === 'spans');
+    expect(call?.user).not.toContain(dead);
+    expect(call?.user).toContain(`CANDIDATES: ${JSON.stringify(['0x0000...dEaD'])}`);
+    expect(payees(ctx)).toEqual([['bob', 'name']]);
+    expect(ctx.req.mentioned_spans.map((s) => s.text)).toEqual([dead]);
+    expectOffsetContract(ctx);
+  });
+
   it('rule 1 (C-109): a span whose text is not verbatim in masked_text_s3 is dropped (case-sensitive)', async () => {
     const ctx = await setup('send 5 usdc to riya', {
       amounts: [{ phrase: '5 usdc', number: '5' }],
