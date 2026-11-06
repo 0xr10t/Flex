@@ -1,14 +1,26 @@
 {
   "parent": "iitr.eth",
+  "payer": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
   "members": [
     {
-      "name": "0x89ce79730f8a1f4b05b4ef9334ef4f53e237de20.iitr.eth",
+      "name": "alpha.iitr.eth",
       "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
       "eth": "0.001"
     },
-    { "name": "alpha.iitr.eth", "owner": "0x357C0C44d2c5191c857255a3fC583D26FeA0FF85", "eth": "0.002" },
-    { "name": "delta.iitr.eth", "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20", "eth": "0.003" },
-    { "name": "gamma.iitr.eth", "owner": "0xF550632F465b46dAAC2AC49D9e30850D998c9A6f", "eth": "0.004" },
-    { "name": "mihir.iitr.eth", "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20", "eth": "0.005" }
+    {
+      "name": "beta.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.002"
+    },
+    {
+      "name": "delta.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.003"
+    },
+    {
+      "name": "gamma.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.004"
+    }
   ]
 }
