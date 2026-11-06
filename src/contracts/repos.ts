@@ -14,6 +14,7 @@ import type {
   ChainId,
   DecimalString,
   GroupPh,
+  HandoffEnvelope,
   Limits,
   RecipientPh,
   RecipientSource,
@@ -162,6 +163,7 @@ export type Db6Insert = Omit<Db6Row, 'id'>;
 export interface Db6SpendLog {
   insertMany(rows: Db6Insert[]): void;
   hasRequest(request_id: string): boolean;
+  listByRequest(request_id: string): Db6Row[];
   /** §14.3 intent_result: update rows with this request_id and step. Returns rows changed. */
   applyIntentResult(args: {
     request_id: string;
@@ -255,6 +257,21 @@ export interface Db8Session {
 
 // ───────────────────────────── Aggregate ─────────────────────────────
 
+/** Confirmed submissions survive session clearing and ambiguous transport failures. */
+export interface HandoffJournalRow {
+  request_id: string;
+  envelope: HandoffEnvelope;
+  status: 'submitted' | 'accepted' | 'rejected';
+  /** Session-only follow-up data: cleared on acceptance or session close. */
+  history: Omit<Db8HistoryRow, 'id'> | null;
+}
+
+export interface HandoffJournal {
+  insert(row: HandoffJournalRow): void;
+  get(request_id: string): HandoffJournalRow | undefined;
+  update(request_id: string, patch: Partial<Pick<HandoffJournalRow, 'status' | 'history'>>): void;
+}
+
 export interface Repos {
   db1: Db1AmountPlaceholders;
   db2: Db2AddressBook;
@@ -264,6 +281,7 @@ export interface Repos {
   db6: Db6SpendLog;
   db7: Db7Autopays;
   db8: Db8Session;
+  handoffs: HandoffJournal;
   /**
    * §7.4: in one transaction delete every row of DB1, DB3, db8_prompts, db8_history, db8_sessions; then VACUUM.
    * DB2, DB4–DB7 untouched.
