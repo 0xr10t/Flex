@@ -1,1419 +1,1228 @@
 [
- {
-  "id": "P-051",
-  "source": "paraphrase",
-  "prompt": "send 250 usdc to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "250",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-051",
+    "source": "paraphrase",
+    "prompt": "send 250 usdc to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "250",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 14153,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 14396,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 250 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 250 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3568, 2028, 2203, 6309],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 14153,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 14396,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 250 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 250 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3568,
-   2028,
-   2203,
-   6309
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-052",
-  "source": "paraphrase",
-  "prompt": "send 200 usdc to aradhya",
-  "expected": {
-   "outcome": {
-    "kind": "stop"
-   }
+  {
+    "id": "P-052",
+    "source": "paraphrase",
+    "prompt": "send 200 usdc to aradhya",
+    "expected": {
+      "outcome": {
+        "kind": "stop"
+      }
+    },
+    "first_latency_ms": 6916,
+    "questions": ["Q_NO_PAYEE"],
+    "total_ms": 7105,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_NO_PAYEE",
+    "outcome": "exact",
+    "expected_outcome": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 3,
+    "llm_ms": [4001, 1942, 933],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 6916,
-  "questions": [
-   "Q_NO_PAYEE"
-  ],
-  "total_ms": 7105,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_NO_PAYEE",
-  "outcome": "exact",
-  "expected_outcome": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 3,
-  "llm_ms": [
-   4001,
-   1942,
-   933
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-053",
-  "source": "paraphrase",
-  "prompt": "send 1.5 lakh usdc to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "150000",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-053",
+    "source": "paraphrase",
+    "prompt": "send 1.5 lakh usdc to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "150000",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 15677,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 15899,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 150000 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 150000 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4168, 2332, 2402, 6744],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 15677,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 15899,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 150000 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 150000 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4168,
-   2332,
-   2402,
-   6744
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-054",
-  "source": "paraphrase",
-  "prompt": "send 2 lakh usdc to aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "200000",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-054",
+    "source": "paraphrase",
+    "prompt": "send 2 lakh usdc to aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "200000",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 14062,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 14250,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 200000 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 200000 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3735, 1962, 2255, 6101],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 14062,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 14250,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 200000 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 200000 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3735,
-   1962,
-   2255,
-   6101
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-055",
-  "source": "paraphrase",
-  "prompt": "send 1k usdc to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "1000",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-055",
+    "source": "paraphrase",
+    "prompt": "send 1k usdc to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "1000",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 13774,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 13956,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 1000 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 1000 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3321, 2165, 2130, 6151],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 13774,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 13956,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 1000 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 1000 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3321,
-   2165,
-   2130,
-   6151
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-056",
-  "source": "paraphrase",
-  "prompt": "send 0.5 lakh usdc to aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "50000",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-056",
+    "source": "paraphrase",
+    "prompt": "send 0.5 lakh usdc to aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "50000",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 16170,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 16372,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 50000 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 50000 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3752, 2098, 2471, 7808],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 16170,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 16372,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 50000 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- A limit was lifted once for this request.\nSpent today after this: 50000 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3752,
-   2098,
-   2471,
-   7808
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-057",
-  "source": "paraphrase",
-  "prompt": "send 5 more",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "5",
-     "to": "Mihir",
-     "chain": "base"
-    }
-   ]
+  {
+    "id": "P-057",
+    "source": "paraphrase",
+    "prompt": "send 5 more",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "5",
+          "to": "Mihir",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 16344,
+    "questions": [],
+    "total_ms": 33428,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- Recipient and chain from your last payment.\n- You wrote '5 more' → 5 USDC.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 8,
+    "llm_ms": [4112, 2322, 2493, 7644, 4045, 2648, 1304, 8237],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 16344,
-  "questions": [],
-  "total_ms": 33428,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- Recipient and chain from your last payment.\n- You wrote '5 more' → 5 USDC.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 8,
-  "llm_ms": [
-   4112,
-   2322,
-   2493,
-   7644,
-   4045,
-   2648,
-   1304,
-   8237
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-058",
-  "source": "paraphrase",
-  "prompt": "send him 10 more",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "chain": "base"
-    }
-   ]
+  {
+    "id": "P-058",
+    "source": "paraphrase",
+    "prompt": "send him 10 more",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 18359,
+    "questions": [],
+    "total_ms": 36122,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- Recipient and chain from your last payment.\n- You wrote '10 more' → 10 USDC.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 8,
+    "llm_ms": [4268, 2511, 2737, 7797, 3745, 2616, 2923, 8997],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 18359,
-  "questions": [],
-  "total_ms": 36122,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- Recipient and chain from your last payment.\n- You wrote '10 more' → 10 USDC.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 8,
-  "llm_ms": [
-   4268,
-   2511,
-   2737,
-   7797,
-   3745,
-   2616,
-   2923,
-   8997
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-059",
-  "source": "paraphrase",
-  "prompt": "and 5 usdc to aradhya too",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "5",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-059",
+    "source": "paraphrase",
+    "prompt": "and 5 usdc to aradhya too",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "5",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 15152,
+    "questions": [],
+    "total_ms": 33196,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 5 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 8,
+    "llm_ms": [4379, 2335, 2358, 6727, 3384, 2373, 2440, 6896],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 15152,
-  "questions": [],
-  "total_ms": 33196,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 5 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 8,
-  "llm_ms": [
-   4379,
-   2335,
-   2358,
-   6727,
-   3384,
-   2373,
-   2440,
-   6896
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-060",
-  "source": "paraphrase",
-  "prompt": "same again",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "20",
-     "to": "Mihir",
-     "chain": "base"
-    }
-   ]
-  },
-  "first_latency_ms": 5376,
-  "questions": [],
-  "total_ms": 24189,
-  "final_state": "error",
-  "final_code": "UNSUPPORTED_REQUEST",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 6,
-  "llm_ms": [
-   4708,
-   2391,
-   2437,
-   6766,
-   3272,
-   2095
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 4708,
-    "user": "Message: <<<Send 20 usdc to Mihir on base>>>",
-    "output": {
-     "amounts": [
+  {
+    "id": "P-060",
+    "source": "paraphrase",
+    "prompt": "same again",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "20",
+          "to": "Mihir",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 5376,
+    "questions": [],
+    "total_ms": 24189,
+    "final_state": "error",
+    "final_code": "UNSUPPORTED_REQUEST",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 6,
+    "llm_ms": [4708, 2391, 2437, 6766, 3272, 2095],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "phrase": "20 usdc",
-       "number": "20",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2391,
-    "user": "Message: <<<Send amount_e72b67f6 to Mihir on base>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "i"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 2437,
-    "user": "Message: <<<Send amount_e72b67f6 to Mihir on base>>>\nCANDIDATES: []",
-    "output": {
-     "spans": [
+        "name": "amounts",
+        "ms": 4708,
+        "user": "Message: <<<Send 20 usdc to Mihir on base>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "20 usdc",
+              "number": "20",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
       {
-       "text": "Mihir",
-       "kind": "name",
-       "role": "payee"
-      }
-     ]
-    }
-   },
-   {
-    "name": "payments",
-    "ms": 6766,
-    "user": "Message: <<<Send amount_e72b67f6 to address_20ece9d0 on base>>>\nAMOUNTS: [{\"placeholder\":\"amount_e72b67f6\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_20ece9d0\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: [{\"word\":\"base\",\"chain_id\":84532}]\nACTION KINDS: [\"i\"]\nSESSION: none",
-    "output": {
-     "payments": [
+        "name": "request_type",
+        "ms": 2391,
+        "user": "Message: <<<Send amount_e72b67f6 to Mihir on base>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["i"],
+          "also_balance": false
+        }
+      },
       {
-       "kind": "i",
-       "amount": "amount_e72b67f6",
-       "recipient": "address_20ece9d0",
-       "chain": 84532,
-       "frequency": null,
-       "interval": null,
-       "times_per_week": null,
-       "days_of_week": null,
-       "day_of_month": null
-      }
-     ]
-    }
-   },
-   {
-    "name": "amounts",
-    "ms": 3272,
-    "user": "Message: <<<same again>>>",
-    "output": {
-     "amounts": [
+        "name": "spans",
+        "ms": 2437,
+        "user": "Message: <<<Send amount_e72b67f6 to Mihir on base>>>\nCANDIDATES: []",
+        "output": {
+          "spans": [
+            {
+              "text": "Mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        }
+      },
       {
-       "phrase": "same again",
-       "number": null,
-       "relative": null,
-       "token": null,
-       "fiat": null,
-       "role": "context"
+        "name": "payments",
+        "ms": 6766,
+        "user": "Message: <<<Send amount_e72b67f6 to address_20ece9d0 on base>>>\nAMOUNTS: [{\"placeholder\":\"amount_e72b67f6\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_20ece9d0\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: [{\"word\":\"base\",\"chain_id\":84532}]\nACTION KINDS: [\"i\"]\nSESSION: none",
+        "output": {
+          "payments": [
+            {
+              "kind": "i",
+              "amount": "amount_e72b67f6",
+              "recipient": "address_20ece9d0",
+              "chain": 84532,
+              "frequency": null,
+              "interval": null,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "amounts",
+        "ms": 3272,
+        "user": "Message: <<<same again>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "same again",
+              "number": null,
+              "relative": null,
+              "token": null,
+              "fiat": null,
+              "role": "context"
+            }
+          ]
+        }
+      },
+      {
+        "name": "request_type",
+        "ms": 2095,
+        "user": "Message: <<<[amount]>>>",
+        "output": {
+          "request_type": "unsupported",
+          "actions": [],
+          "also_balance": false
+        }
       }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2095,
-    "user": "Message: <<<[amount]>>>",
-    "output": {
-     "request_type": "unsupported",
-     "actions": [],
-     "also_balance": false
-    }
-   }
-  ]
- },
- {
-  "id": "P-061",
-  "source": "paraphrase",
-  "prompt": "pay mihir 5 usdc every monday for 4 weeks",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "5",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "MON"
-      ],
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
+    ]
   },
-  "first_latency_ms": 16297,
-  "questions": [],
-  "total_ms": 16605,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 5 USDC every 4 weeks on Mon at 10:00 (Asia/Kolkata) on Base Sepolia, first on 9 Nov 2026, until 6 Dec 2026. Sets aside 5 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "wrong_handoff",
-  "diff": [
-   "missing {\"t\":\"k\",\"tok\":\"USDC\",\"amt\":\"5\",\"to\":\"Mihir\",\"sched\":{\"freq\":\"weekly\",\"interval\":1,\"days\":[\"MON\"],\"end\":{\"type\":\"on_date\"}}}",
-   "unexpected {\"i\":\"k\",\"tok\":\"USDC\",\"to\":\"0x91Ab2C3d4E5f60718293A4B5c6D7e8f9012377d0\",\"chain\":84532,\"amt\":\"5\"}"
-  ],
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3808,
-   2627,
-   2476,
-   7312
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3808,
-    "user": "Message: <<<pay mihir 5 usdc every monday for 4 weeks>>>",
-    "output": {
-     "amounts": [
+  {
+    "id": "P-061",
+    "source": "paraphrase",
+    "prompt": "pay mihir 5 usdc every monday for 4 weeks",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "5",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["MON"],
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 16297,
+    "questions": [],
+    "total_ms": 16605,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 5 USDC every 4 weeks on Mon at 10:00 (Asia/Kolkata) on Base Sepolia, first on 9 Nov 2026, until 6 Dec 2026. Sets aside 5 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "wrong_handoff",
+    "diff": [
+      "missing {\"t\":\"k\",\"tok\":\"USDC\",\"amt\":\"5\",\"to\":\"Mihir\",\"sched\":{\"freq\":\"weekly\",\"interval\":1,\"days\":[\"MON\"],\"end\":{\"type\":\"on_date\"}}}",
+      "unexpected {\"i\":\"k\",\"tok\":\"USDC\",\"to\":\"0x91Ab2C3d4E5f60718293A4B5c6D7e8f9012377d0\",\"chain\":84532,\"amt\":\"5\"}"
+    ],
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3808, 2627, 2476, 7312],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "phrase": "5 usdc",
-       "number": "5",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2627,
-    "user": "Message: <<<pay mihir amount_56b2575c every monday for 4 weeks>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "i",
-      "k"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 2476,
-    "user": "Message: <<<pay mihir amount_56b2575c every monday for 4 weeks>>>\nCANDIDATES: []",
-    "output": {
-     "spans": [
+        "name": "amounts",
+        "ms": 3808,
+        "user": "Message: <<<pay mihir 5 usdc every monday for 4 weeks>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "5 usdc",
+              "number": "5",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
       {
-       "text": "mihir",
-       "kind": "name",
-       "role": "payee"
-      }
-     ]
-    }
-   },
-   {
-    "name": "payments",
-    "ms": 7312,
-    "user": "Message: <<<pay address_e8117a65 amount_56b2575c every monday for 4 weeks>>>\nAMOUNTS: [{\"placeholder\":\"amount_56b2575c\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_e8117a65\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"i\",\"k\"]\nSESSION: none",
-    "output": {
-     "payments": [
+        "name": "request_type",
+        "ms": 2627,
+        "user": "Message: <<<pay mihir amount_56b2575c every monday for 4 weeks>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["i", "k"],
+          "also_balance": false
+        }
+      },
       {
-       "kind": "k",
-       "amount": "amount_56b2575c",
-       "recipient": "address_e8117a65",
-       "chain": "unstated",
-       "frequency": "weekly",
-       "interval": 4,
-       "times_per_week": null,
-       "days_of_week": [
-        "MON"
-       ],
-       "day_of_month": null
-      }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-062",
-  "source": "paraphrase",
-  "prompt": "send aradhya 10 usdc daily for 10 days",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "daily",
-      "interval": 1,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 16173,
-  "questions": [],
-  "total_ms": 16495,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 10 USDC every day at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 15 Nov 2026. Sets aside 100 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4117,
-   2616,
-   2474,
-   6920
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-063",
-  "source": "paraphrase",
-  "prompt": "pay mihir 20 usdc every month on the 5th for 6 months",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "20",
-     "to": "Mihir",
-     "sched": {
-      "freq": "monthly",
-      "interval": 1,
-      "dom": 5,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 18481,
-  "questions": [],
-  "total_ms": 19373,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 20 USDC on the 5th of every month at 10:00 (Asia/Kolkata) on Base Sepolia, first on 5 Dec 2026, until 4 Jun 2027. Sets aside 120 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4147,
-   2273,
-   2330,
-   9679
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-064",
-  "source": "paraphrase",
-  "prompt": "every wednesday pay aradhya 15 usdc until I cancel",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "15",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "WED"
-      ],
-      "end": {
-       "type": "until_cancelled"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 10049,
-  "questions": [
-   "Q_NO_PAYEE"
-  ],
-  "total_ms": 10273,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_NO_PAYEE",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 3,
-  "llm_ms": [
-   3760,
-   2526,
-   2954
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3760,
-    "user": "Message: <<<every wednesday pay aradhya 15 usdc until I cancel>>>",
-    "output": {
-     "amounts": [
+        "name": "spans",
+        "ms": 2476,
+        "user": "Message: <<<pay mihir amount_56b2575c every monday for 4 weeks>>>\nCANDIDATES: []",
+        "output": {
+          "spans": [
+            {
+              "text": "mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        }
+      },
       {
-       "phrase": "15 usdc",
-       "number": "15",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
+        "name": "payments",
+        "ms": 7312,
+        "user": "Message: <<<pay address_e8117a65 amount_56b2575c every monday for 4 weeks>>>\nAMOUNTS: [{\"placeholder\":\"amount_56b2575c\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_e8117a65\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"i\",\"k\"]\nSESSION: none",
+        "output": {
+          "payments": [
+            {
+              "kind": "k",
+              "amount": "amount_56b2575c",
+              "recipient": "address_e8117a65",
+              "chain": "unstated",
+              "frequency": "weekly",
+              "interval": 4,
+              "times_per_week": null,
+              "days_of_week": ["MON"],
+              "day_of_month": null
+            }
+          ]
+        }
       }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2526,
-    "user": "Message: <<<every wednesday pay aradhya amount_9cc0828b until I cancel>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "k"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 2954,
-    "user": "Message: <<<every wednesday pay aradhya amount_9cc0828b until I cancel>>>\nCANDIDATES: []",
-    "output": {
-     "spans": [
+    ]
+  },
+  {
+    "id": "P-062",
+    "source": "paraphrase",
+    "prompt": "send aradhya 10 usdc daily for 10 days",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "daily",
+            "interval": 1,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 16173,
+    "questions": [],
+    "total_ms": 16495,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 10 USDC every day at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 15 Nov 2026. Sets aside 100 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4117, 2616, 2474, 6920],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-063",
+    "source": "paraphrase",
+    "prompt": "pay mihir 20 usdc every month on the 5th for 6 months",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "20",
+          "to": "Mihir",
+          "sched": {
+            "freq": "monthly",
+            "interval": 1,
+            "dom": 5,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 18481,
+    "questions": [],
+    "total_ms": 19373,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 20 USDC on the 5th of every month at 10:00 (Asia/Kolkata) on Base Sepolia, first on 5 Dec 2026, until 4 Jun 2027. Sets aside 120 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4147, 2273, 2330, 9679],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-064",
+    "source": "paraphrase",
+    "prompt": "every wednesday pay aradhya 15 usdc until I cancel",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "15",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["WED"],
+            "end": {
+              "type": "until_cancelled"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 10049,
+    "questions": ["Q_NO_PAYEE"],
+    "total_ms": 10273,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_NO_PAYEE",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 3,
+    "llm_ms": [3760, 2526, 2954],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "text": "every wednesday",
-       "kind": "group",
-       "role": "payee"
-      }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-065",
-  "source": "paraphrase",
-  "prompt": "pay mihir 10 usdc twice a week for 5 weeks",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "MON",
-       "THU"
-      ],
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 6194,
-  "questions": [
-   "Q_RECURRING"
-  ],
-  "total_ms": 6527,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_RECURRING",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 2,
-  "llm_ms": [
-   3771,
-   2407
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3771,
-    "user": "Message: <<<pay mihir 10 usdc twice a week for 5 weeks>>>",
-    "output": {
-     "amounts": [
+        "name": "amounts",
+        "ms": 3760,
+        "user": "Message: <<<every wednesday pay aradhya 15 usdc until I cancel>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "15 usdc",
+              "number": "15",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
       {
-       "phrase": "10 usdc",
-       "number": "10",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2407,
-    "user": "Message: <<<pay mihir amount_a8b2816a twice a week for 5 weeks>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "k"
-     ],
-     "also_balance": false
-    }
-   }
-  ]
- },
- {
-  "id": "P-066",
-  "source": "paraphrase",
-  "prompt": "set up autopay of 25 usdc to aradhya every friday for 3 payments",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "25",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "FRI"
-      ],
-      "end": {
-       "type": "after_count",
-       "count": 3
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 19068,
-  "questions": [],
-  "total_ms": 19355,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 25 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 3 payments. Sets aside 75 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3794,
-   2413,
-   2718,
-   10099
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-067",
-  "source": "paraphrase",
-  "prompt": "pay mihir 10 usdc every 2 weeks for 4 payments",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 2,
-      "end": {
-       "type": "after_count",
-       "count": 4
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 19290,
-  "questions": [],
-  "total_ms": 19562,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every 2 weeks on Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, for 4 payments. Sets aside 40 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3966,
-   2328,
-   2579,
-   10358
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-068",
-  "source": "paraphrase",
-  "prompt": "pay mihir 10 usdc every day at 9am until I cancel",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "daily",
-      "interval": 1,
-      "end": {
-       "type": "until_cancelled"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 19003,
-  "questions": [],
-  "total_ms": 19245,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every day at 09:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until you cancel (at most 52 weeks). Sets aside 3640 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3477,
-   2184,
-   2485,
-   10752
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-069",
-  "source": "paraphrase",
-  "prompt": "aradhya 8 usdc monthly for 12 months",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "8",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "monthly",
-      "interval": 1,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 19850,
-  "questions": [],
-  "total_ms": 20945,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 8 USDC on the 5th of every month at 10:00 (Asia/Kolkata) on Base Sepolia, first on 5 Dec 2026, until 4 Dec 2027. Sets aside 96 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4075,
-   2598,
-   2431,
-   10716
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-070",
-  "source": "paraphrase",
-  "prompt": "pay mihir 10 usdc every friday",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "FRI"
-      ],
-      "end": {
-       "type": "until_cancelled"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 17423,
-  "questions": [
-   "Q_AUTOPAY_END"
-  ],
-  "total_ms": 17690,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until you cancel (at most 52 weeks). Sets aside 520 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4116,
-   3503,
-   3118,
-   6661
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-071",
-  "source": "paraphrase",
-  "prompt": "pay aradhya 5 usdc weekly for 8 weeks",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "5",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 20441,
-  "questions": [],
-  "total_ms": 20796,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 5 USDC every Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, until 6 Jan 2027. Sets aside 40 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3918,
-   2546,
-   2572,
-   11265
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-072",
-  "source": "paraphrase",
-  "prompt": "autopay mihir 10 usdc every tuesday and thursday for 4 weeks",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "days": [
-       "TUE",
-       "THU"
-      ],
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
-  },
-  "first_latency_ms": 20450,
-  "questions": [
-   "Q_AUTOPAY_END"
-  ],
-  "total_ms": 20772,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_AUTOPAY_END",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4203,
-   2503,
-   2517,
-   11181
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 4203,
-    "user": "Message: <<<autopay mihir 10 usdc every tuesday and thursday for 4 weeks>>>",
-    "output": {
-     "amounts": [
+        "name": "request_type",
+        "ms": 2526,
+        "user": "Message: <<<every wednesday pay aradhya amount_9cc0828b until I cancel>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["k"],
+          "also_balance": false
+        }
+      },
       {
-       "phrase": "10 usdc",
-       "number": "10",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
+        "name": "spans",
+        "ms": 2954,
+        "user": "Message: <<<every wednesday pay aradhya amount_9cc0828b until I cancel>>>\nCANDIDATES: []",
+        "output": {
+          "spans": [
+            {
+              "text": "every wednesday",
+              "kind": "group",
+              "role": "payee"
+            }
+          ]
+        }
       }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2503,
-    "user": "Message: <<<autopay mihir amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "k"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 2517,
-    "user": "Message: <<<autopay mihir amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>\nCANDIDATES: []",
-    "output": {
-     "spans": [
-      {
-       "text": "mihir",
-       "kind": "name",
-       "role": "payee"
-      }
-     ]
-    }
-   },
-   {
-    "name": "payments",
-    "ms": 11181,
-    "user": "Message: <<<autopay address_dd9b82b5 amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>\nAMOUNTS: [{\"placeholder\":\"amount_ec8ac9ef\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_dd9b82b5\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"k\"]\nSESSION: none",
-    "output": {
-     "payments": [
-      {
-       "kind": "k",
-       "amount": "amount_ec8ac9ef",
-       "recipient": "address_dd9b82b5",
-       "chain": "unstated",
-       "frequency": "weekly",
-       "interval": 2,
-       "times_per_week": 4,
-       "days_of_week": [
-        "TUE",
-        "THU"
-       ],
-       "day_of_month": null
-      }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-073",
-  "source": "paraphrase",
-  "prompt": "pay aradhya 10 usdc every month on the 31st for 4 months",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Aradhya",
-     "sched": {
-      "freq": "monthly",
-      "interval": 1,
-      "dom": 28,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
+    ]
   },
-  "first_latency_ms": 18909,
-  "questions": [],
-  "total_ms": 19234,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 10 USDC every 4 months on the 28th at 10:00 (Asia/Kolkata) on Base Sepolia, first on 28 Nov 2026, until 27 Mar 2027. Sets aside 10 USDC now; anything unused is refunded if you cancel.\n- Paid on the 28th, since months differ in length.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "wrong_handoff",
-  "diff": [
-   "missing {\"t\":\"k\",\"tok\":\"USDC\",\"amt\":\"10\",\"to\":\"Aradhya\",\"sched\":{\"freq\":\"monthly\",\"interval\":1,\"dom\":28,\"end\":{\"type\":\"on_date\"}}}",
-   "unexpected {\"i\":\"k\",\"tok\":\"USDC\",\"to\":\"0x3fA94b8E2d1C7a6F5e4D3C2b1a0f9e8d7C6bc21E\",\"chain\":84532,\"amt\":\"10\"}"
-  ],
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3864,
-   2242,
-   2434,
-   10337
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3864,
-    "user": "Message: <<<pay aradhya 10 usdc every month on the 31st for 4 months>>>",
-    "output": {
-     "amounts": [
+  {
+    "id": "P-065",
+    "source": "paraphrase",
+    "prompt": "pay mihir 10 usdc twice a week for 5 weeks",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["MON", "THU"],
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 6194,
+    "questions": ["Q_RECURRING"],
+    "total_ms": 6527,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_RECURRING",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 2,
+    "llm_ms": [3771, 2407],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "phrase": "10 usdc",
-       "number": "10",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2242,
-    "user": "Message: <<<pay aradhya amount_f1483e1c every month on the 31st for 4 months>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "k"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 2434,
-    "user": "Message: <<<pay aradhya amount_f1483e1c every month on the 31st for 4 months>>>\nCANDIDATES: []",
-    "output": {
-     "spans": [
+        "name": "amounts",
+        "ms": 3771,
+        "user": "Message: <<<pay mihir 10 usdc twice a week for 5 weeks>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 usdc",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
       {
-       "text": "aradhya",
-       "kind": "name",
-       "role": "payee"
+        "name": "request_type",
+        "ms": 2407,
+        "user": "Message: <<<pay mihir amount_a8b2816a twice a week for 5 weeks>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["k"],
+          "also_balance": false
+        }
       }
-     ]
-    }
-   },
-   {
-    "name": "payments",
-    "ms": 10337,
-    "user": "Message: <<<pay address_6cbba85b amount_f1483e1c every month on the 31st for 4 months>>>\nAMOUNTS: [{\"placeholder\":\"amount_f1483e1c\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_6cbba85b\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"k\"]\nSESSION: none",
-    "output": {
-     "payments": [
-      {
-       "kind": "k",
-       "amount": "amount_f1483e1c",
-       "recipient": "address_6cbba85b",
-       "chain": "unstated",
-       "frequency": "monthly",
-       "interval": 4,
-       "times_per_week": null,
-       "days_of_week": null,
-       "day_of_month": 31
-      }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-074",
-  "source": "paraphrase",
-  "prompt": "pay mihir 50 usdc every day for 3 days",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "50",
-     "to": "Mihir",
-     "sched": {
-      "freq": "daily",
-      "interval": 1,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
+    ]
   },
-  "first_latency_ms": 6360,
-  "questions": [
-   "Q_RECURRING"
-  ],
-  "total_ms": 6636,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_RECURRING",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 2,
-  "llm_ms": [
-   3956,
-   2398
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3956,
-    "user": "Message: <<<pay mihir 50 usdc every day for 3 days>>>",
-    "output": {
-     "amounts": [
-      {
-       "phrase": "50 usdc",
-       "number": "50",
-       "relative": null,
-       "token": "USDC",
-       "fiat": "USD",
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 2398,
-    "user": "Message: <<<pay mihir amount_e0c41ab4 every day for 3 days>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "i"
-     ],
-     "also_balance": false
-    }
-   }
-  ]
- },
- {
-  "id": "P-075",
-  "source": "paraphrase",
-  "prompt": "pay mihir 10 usdc every week for 80 weeks",
-  "expected": {
-   "plan": [
-    {
-     "t": "k",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir",
-     "sched": {
-      "freq": "weekly",
-      "interval": 1,
-      "end": {
-       "type": "on_date"
-      }
-     }
-    }
-   ]
+  {
+    "id": "P-066",
+    "source": "paraphrase",
+    "prompt": "set up autopay of 25 usdc to aradhya every friday for 3 payments",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "25",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["FRI"],
+            "end": {
+              "type": "after_count",
+              "count": 3
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 19068,
+    "questions": [],
+    "total_ms": 19355,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 25 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 3 payments. Sets aside 75 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3794, 2413, 2718, 10099],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 20355,
-  "questions": [
-   "Q_LIMIT_OVERRIDE"
-  ],
-  "total_ms": 21059,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, until 24 May 2028. Sets aside 800 USDC now; anything unused is refunded if you cancel.\n- A limit was lifted once for this request.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4029,
-   2566,
-   2415,
-   11248
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- }
+  {
+    "id": "P-067",
+    "source": "paraphrase",
+    "prompt": "pay mihir 10 usdc every 2 weeks for 4 payments",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 2,
+            "end": {
+              "type": "after_count",
+              "count": 4
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 19290,
+    "questions": [],
+    "total_ms": 19562,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every 2 weeks on Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, for 4 payments. Sets aside 40 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3966, 2328, 2579, 10358],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-068",
+    "source": "paraphrase",
+    "prompt": "pay mihir 10 usdc every day at 9am until I cancel",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "daily",
+            "interval": 1,
+            "end": {
+              "type": "until_cancelled"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 19003,
+    "questions": [],
+    "total_ms": 19245,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every day at 09:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until you cancel (at most 52 weeks). Sets aside 3640 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3477, 2184, 2485, 10752],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-069",
+    "source": "paraphrase",
+    "prompt": "aradhya 8 usdc monthly for 12 months",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "8",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "monthly",
+            "interval": 1,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 19850,
+    "questions": [],
+    "total_ms": 20945,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 8 USDC on the 5th of every month at 10:00 (Asia/Kolkata) on Base Sepolia, first on 5 Dec 2026, until 4 Dec 2027. Sets aside 96 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4075, 2598, 2431, 10716],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-070",
+    "source": "paraphrase",
+    "prompt": "pay mihir 10 usdc every friday",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["FRI"],
+            "end": {
+              "type": "until_cancelled"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 17423,
+    "questions": ["Q_AUTOPAY_END"],
+    "total_ms": 17690,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until you cancel (at most 52 weeks). Sets aside 520 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4116, 3503, 3118, 6661],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-071",
+    "source": "paraphrase",
+    "prompt": "pay aradhya 5 usdc weekly for 8 weeks",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "5",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 20441,
+    "questions": [],
+    "total_ms": 20796,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 5 USDC every Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, until 6 Jan 2027. Sets aside 40 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3918, 2546, 2572, 11265],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-072",
+    "source": "paraphrase",
+    "prompt": "autopay mihir 10 usdc every tuesday and thursday for 4 weeks",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "days": ["TUE", "THU"],
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 20450,
+    "questions": ["Q_AUTOPAY_END"],
+    "total_ms": 20772,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_AUTOPAY_END",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4203, 2503, 2517, 11181],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 4203,
+        "user": "Message: <<<autopay mihir 10 usdc every tuesday and thursday for 4 weeks>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 usdc",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
+      {
+        "name": "request_type",
+        "ms": 2503,
+        "user": "Message: <<<autopay mihir amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["k"],
+          "also_balance": false
+        }
+      },
+      {
+        "name": "spans",
+        "ms": 2517,
+        "user": "Message: <<<autopay mihir amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>\nCANDIDATES: []",
+        "output": {
+          "spans": [
+            {
+              "text": "mihir",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        }
+      },
+      {
+        "name": "payments",
+        "ms": 11181,
+        "user": "Message: <<<autopay address_dd9b82b5 amount_ec8ac9ef every tuesday and thursday for 4 weeks>>>\nAMOUNTS: [{\"placeholder\":\"amount_ec8ac9ef\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_dd9b82b5\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"k\"]\nSESSION: none",
+        "output": {
+          "payments": [
+            {
+              "kind": "k",
+              "amount": "amount_ec8ac9ef",
+              "recipient": "address_dd9b82b5",
+              "chain": "unstated",
+              "frequency": "weekly",
+              "interval": 2,
+              "times_per_week": 4,
+              "days_of_week": ["TUE", "THU"],
+              "day_of_month": null
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "P-073",
+    "source": "paraphrase",
+    "prompt": "pay aradhya 10 usdc every month on the 31st for 4 months",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Aradhya",
+          "sched": {
+            "freq": "monthly",
+            "interval": 1,
+            "dom": 28,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 18909,
+    "questions": [],
+    "total_ms": 19234,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Aradhya (0x3fA9…c21E) 10 USDC every 4 months on the 28th at 10:00 (Asia/Kolkata) on Base Sepolia, first on 28 Nov 2026, until 27 Mar 2027. Sets aside 10 USDC now; anything unused is refunded if you cancel.\n- Paid on the 28th, since months differ in length.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "wrong_handoff",
+    "diff": [
+      "missing {\"t\":\"k\",\"tok\":\"USDC\",\"amt\":\"10\",\"to\":\"Aradhya\",\"sched\":{\"freq\":\"monthly\",\"interval\":1,\"dom\":28,\"end\":{\"type\":\"on_date\"}}}",
+      "unexpected {\"i\":\"k\",\"tok\":\"USDC\",\"to\":\"0x3fA94b8E2d1C7a6F5e4D3C2b1a0f9e8d7C6bc21E\",\"chain\":84532,\"amt\":\"10\"}"
+    ],
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3864, 2242, 2434, 10337],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 3864,
+        "user": "Message: <<<pay aradhya 10 usdc every month on the 31st for 4 months>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "10 usdc",
+              "number": "10",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
+      {
+        "name": "request_type",
+        "ms": 2242,
+        "user": "Message: <<<pay aradhya amount_f1483e1c every month on the 31st for 4 months>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["k"],
+          "also_balance": false
+        }
+      },
+      {
+        "name": "spans",
+        "ms": 2434,
+        "user": "Message: <<<pay aradhya amount_f1483e1c every month on the 31st for 4 months>>>\nCANDIDATES: []",
+        "output": {
+          "spans": [
+            {
+              "text": "aradhya",
+              "kind": "name",
+              "role": "payee"
+            }
+          ]
+        }
+      },
+      {
+        "name": "payments",
+        "ms": 10337,
+        "user": "Message: <<<pay address_6cbba85b amount_f1483e1c every month on the 31st for 4 months>>>\nAMOUNTS: [{\"placeholder\":\"amount_f1483e1c\",\"token\":\"USDC\",\"from_attached_content\":false}]\nRECIPIENTS: [{\"placeholder\":\"address_6cbba85b\",\"type\":\"person\"}]\nDOCUMENT ITEMS: none\nCHAINS MENTIONED: []\nACTION KINDS: [\"k\"]\nSESSION: none",
+        "output": {
+          "payments": [
+            {
+              "kind": "k",
+              "amount": "amount_f1483e1c",
+              "recipient": "address_6cbba85b",
+              "chain": "unstated",
+              "frequency": "monthly",
+              "interval": 4,
+              "times_per_week": null,
+              "days_of_week": null,
+              "day_of_month": 31
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "P-074",
+    "source": "paraphrase",
+    "prompt": "pay mihir 50 usdc every day for 3 days",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "50",
+          "to": "Mihir",
+          "sched": {
+            "freq": "daily",
+            "interval": 1,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 6360,
+    "questions": ["Q_RECURRING"],
+    "total_ms": 6636,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_RECURRING",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 2,
+    "llm_ms": [3956, 2398],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 3956,
+        "user": "Message: <<<pay mihir 50 usdc every day for 3 days>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "50 usdc",
+              "number": "50",
+              "relative": null,
+              "token": "USDC",
+              "fiat": "USD",
+              "role": "pay"
+            }
+          ]
+        }
+      },
+      {
+        "name": "request_type",
+        "ms": 2398,
+        "user": "Message: <<<pay mihir amount_e0c41ab4 every day for 3 days>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["i"],
+          "also_balance": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "P-075",
+    "source": "paraphrase",
+    "prompt": "pay mihir 10 usdc every week for 80 weeks",
+    "expected": {
+      "plan": [
+        {
+          "t": "k",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir",
+          "sched": {
+            "freq": "weekly",
+            "interval": 1,
+            "end": {
+              "type": "on_date"
+            }
+          }
+        }
+      ]
+    },
+    "first_latency_ms": 20355,
+    "questions": ["Q_LIMIT_OVERRIDE"],
+    "total_ms": 21059,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, until 24 May 2028. Sets aside 800 USDC now; anything unused is refunded if you cancel.\n- A limit was lifted once for this request.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4029, 2566, 2415, 11248],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  }
 ]

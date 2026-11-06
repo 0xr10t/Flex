@@ -14,29 +14,29 @@ import type { LlmCallArgs } from '../../src/contracts/llm.js';
 import { LlmFailed } from '../../src/contracts/llm.js';
 import type { ChainId, HandoffEnvelope, Question } from '../../src/contracts/types.js';
 import { createOllamaClient } from '../../src/llm/ollama.js';
-import {
-  ARB,
-  BASE,
-  Harness,
-  SEPOLIA,
-  WALLET,
-  addr,
-  coinType,
-  lines,
-  short,
-  type Resp,
-} from '../acceptance/harness.js';
+import { ARB, BASE, Harness, SEPOLIA, WALLET, addr, coinType, lines, short, type Resp } from '../acceptance/harness.js';
 import { seedAutopay, seedSpend, weeklySchedule } from '../acceptance/seed.js';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const CHAIN: Record<string, ChainId> = { sepolia: SEPOLIA, base: BASE, arb: ARB };
 const CHAIN_NAME: Record<number, string> = { [SEPOLIA]: 'Sepolia', [BASE]: 'Base Sepolia', [ARB]: 'Arbitrum Sepolia' };
-const DAY: Record<string, string> = { MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun' };
+const DAY: Record<string, string> = {
+  MON: 'Mon',
+  TUE: 'Tue',
+  WED: 'Wed',
+  THU: 'Thu',
+  FRI: 'Fri',
+  SAT: 'Sat',
+  SUN: 'Sun',
+};
 
 const SET = process.env.LIVE_SET ?? 'all';
 const ALL = JSON.parse(readFileSync(join(import.meta.dirname, 'prompts.json'), 'utf8')) as Json[];
 let entries = ALL.filter((e) => SET === 'all' || e.source === SET);
-entries = entries.slice(Number(process.env.LIVE_FROM ?? 0), process.env.LIVE_TO ? Number(process.env.LIVE_TO) : undefined);
+entries = entries.slice(
+  Number(process.env.LIVE_FROM ?? 0),
+  process.env.LIVE_TO ? Number(process.env.LIVE_TO) : undefined,
+);
 const TAG = process.env.LIVE_TAG ?? `${SET}-${process.env.LIVE_FROM ?? 0}`;
 const RESULTS = join(import.meta.dirname, 'results');
 mkdirSync(RESULTS, { recursive: true });
@@ -67,7 +67,10 @@ function summaryOk(ls: string[], plan: Json[], setup: Json): { ok: boolean; why:
     if (!m || body.length !== 1) return { ok: false, why: `group line ${group}` };
     const names = items.map((p) => ensName.get(resolveAddr(p.to, setup)) ?? '?');
     const ok =
-      sameAmt(m[1]!, items[0]!.amt) && m[2] === items[0]!.tok && Number(m[3]) === items.length && names.every((n) => group.includes(n));
+      sameAmt(m[1]!, items[0]!.amt) &&
+      m[2] === items[0]!.tok &&
+      Number(m[3]) === items.length &&
+      names.every((n) => group.includes(n));
     return { ok, why: ok ? '' : `group mismatch: ${group}` };
   }
   if (body.length !== plan.length) return { ok: false, why: `line count ${body.length} != ${plan.length}` };
@@ -78,10 +81,17 @@ function summaryOk(ls: string[], plan: Json[], setup: Json): { ok: boolean; why:
       if (used.has(n)) return false;
       if (p.t === 'i') {
         const m = /^Send ([\d.]+) (USDC|ETH) to .*\((0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4})\) on (.+?)\./.exec(l);
-        return !!m && sameAmt(m[1]!, p.amt) && m[2] === p.tok && m[3] === s && (!p.chain || m[4] === CHAIN_NAME[CHAIN[p.chain]!]);
+        return (
+          !!m &&
+          sameAmt(m[1]!, p.amt) &&
+          m[2] === p.tok &&
+          m[3] === s &&
+          (!p.chain || m[4] === CHAIN_NAME[CHAIN[p.chain]!])
+        );
       }
       if (p.t === 'k') {
-        const m = /^Pay .*\((0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4})\) ([\d.]+) (USDC|ETH) (.*) on ([A-Za-z ]+?), first on/.exec(l);
+        const m =
+          /^Pay .*\((0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4})\) ([\d.]+) (USDC|ETH) (.*) on ([A-Za-z ]+?), first on/.exec(l);
         if (!m || m[1] !== s || !sameAmt(m[2]!, p.amt) || m[3] !== p.tok) return false;
         if (p.chain && m[5] !== CHAIN_NAME[CHAIN[p.chain]!]) return false;
         const sc = p.sched;
@@ -110,12 +120,18 @@ function envelopeDiff(env: HandoffEnvelope, plan: Json[], setup: Json): string[]
     const rec = resolveAddr(p.to, setup).toLowerCase();
     const idx = acts.findIndex((a, n) => {
       if (used.has(n) || a.intent_id !== p.t || String(a.recipient).toLowerCase() !== rec) return false;
-      if (p.t !== 'l' && (a.token !== p.tok || !sameAmt(p.t === 'i' ? a.amount.value : a.amount_per_payment.value, p.amt))) return false;
+      if (
+        p.t !== 'l' &&
+        (a.token !== p.tok || !sameAmt(p.t === 'i' ? a.amount.value : a.amount_per_payment.value, p.amt))
+      )
+        return false;
       if (p.chain && a.chain_id !== CHAIN[p.chain]) return false;
       if (p.t === 'k') {
-        const sc = p.sched, s = a.schedule;
+        const sc = p.sched,
+          s = a.schedule;
         if (s.frequency !== sc.freq || s.interval !== sc.interval) return false;
-        if (sc.days && JSON.stringify([...(s.days_of_week ?? [])].sort()) !== JSON.stringify([...sc.days].sort())) return false;
+        if (sc.days && JSON.stringify([...(s.days_of_week ?? [])].sort()) !== JSON.stringify([...sc.days].sort()))
+          return false;
         if (sc.dom !== undefined && s.day_of_month !== sc.dom) return false;
         if (s.end.type !== sc.end.type) return false;
         if (sc.end.count !== undefined && s.end.count !== sc.end.count) return false;
@@ -127,12 +143,21 @@ function envelopeDiff(env: HandoffEnvelope, plan: Json[], setup: Json): string[]
     else used.add(idx);
   }
   acts.forEach((a, n) => {
-    if (!used.has(n)) diffs.push(`unexpected ${JSON.stringify({ i: a.intent_id, tok: a.token, to: a.recipient, chain: a.chain_id, amt: a.amount?.value ?? a.amount_per_payment?.value })}`);
+    if (!used.has(n))
+      diffs.push(
+        `unexpected ${JSON.stringify({ i: a.intent_id, tok: a.token, to: a.recipient, chain: a.chain_id, amt: a.amount?.value ?? a.amount_per_payment?.value })}`,
+      );
   });
   return diffs;
 }
 
-interface Rec { name: string; ms: number; user: string; output?: unknown; error?: string }
+interface Rec {
+  name: string;
+  ms: number;
+  user: string;
+  output?: unknown;
+  error?: string;
+}
 
 async function runEntry(e: Json): Promise<Json> {
   const setup: Json = e.setup ?? {};
@@ -154,7 +179,12 @@ async function runEntry(e: Json): Promise<Json> {
       recs.push({ name: args.name, ms: Date.now() - t0, user: args.user, output: out });
       return out;
     } catch (err) {
-      recs.push({ name: args.name, ms: Date.now() - t0, user: args.user, error: err instanceof LlmFailed ? 'LlmFailed' : String(err) });
+      recs.push({
+        name: args.name,
+        ms: Date.now() - t0,
+        user: args.user,
+        error: err instanceof LlmFailed ? 'LlmFailed' : String(err),
+      });
       throw err;
     }
   };
@@ -163,7 +193,13 @@ async function runEntry(e: Json): Promise<Json> {
   let r: Resp | undefined;
   try {
     // setup
-    for (const c of setup.contacts ?? []) h.addContact(c.name, addr(c.addr), c.chains.map((x: string) => CHAIN[x]!), c.ens ?? null);
+    for (const c of setup.contacts ?? [])
+      h.addContact(
+        c.name,
+        addr(c.addr),
+        c.chains.map((x: string) => CHAIN[x]!),
+        c.ens ?? null,
+      );
     for (const x of setup.ens ?? []) {
       if ((setup.noEnsFor ?? []).includes(x.name)) continue;
       for (const c of x.chains) h.ens.set(x.name, coinType(CHAIN[c]!), addr(x.addr));
@@ -172,12 +208,17 @@ async function runEntry(e: Json): Promise<Json> {
     for (const s of setup.spend ?? []) {
       const pend = s.status === 'pending';
       if (s.minAgo) h.advance(-s.minAgo);
-      seedSpend(h, pend ? { amount: s.amount, status: 'pending', executed_at: null, tx_hash: null } : { amount: s.amount });
+      seedSpend(
+        h,
+        pend ? { amount: s.amount, status: 'pending', executed_at: null, tx_hash: null } : { amount: s.amount },
+      );
       if (s.minAgo) h.advance(s.minAgo);
     }
     for (const a of setup.autopays ?? []) {
       const first = a.first ?? '2026-11-06T04:30:00Z';
-      const sch = a.daily ? { ...weeklySchedule(['MON'], first), frequency: 'daily', days_of_week: null } : weeklySchedule(a.days ?? ['FRI'], first);
+      const sch = a.daily
+        ? { ...weeklySchedule(['MON'], first), frequency: 'daily', days_of_week: null }
+        : weeklySchedule(a.days ?? ['FRI'], first);
       seedAutopay(h, { ...(a.id ? { id: a.id } : {}), amount: a.amount, chain: CHAIN[a.chain]!, schedule: sch });
     }
     for (const c of setup.rpcDown ?? []) h.rpc.down.add(CHAIN[c]!);
@@ -188,7 +229,8 @@ async function runEntry(e: Json): Promise<Json> {
     }
     for (const pr of setup.prior ?? []) {
       const pr1 = await h.say(pr.prompt);
-      if (pr1.body.state !== 'awaiting_confirmation') throw new Error(`prior prompt did not reach a summary: ${pr1.body.state}`);
+      if (pr1.body.state !== 'awaiting_confirmation')
+        throw new Error(`prior prompt did not reach a summary: ${pr1.body.state}`);
       await h.confirm(pr1, 'yes');
       const d = envelopeDiff(h.envelope, pr.expected.plan, setup);
       if (d.length) {
@@ -218,7 +260,14 @@ async function runEntry(e: Json): Promise<Json> {
       if (idx < 0) break;
       const a = queue.splice(idx, 1)[0]!;
       try {
-        r = await h.answer(r, a.chip !== undefined ? { chipLabel: a.chip } : a.text !== undefined ? { text: a.text } : { selectedLabels: a.selected });
+        r = await h.answer(
+          r,
+          a.chip !== undefined
+            ? { chipLabel: a.chip }
+            : a.text !== undefined
+              ? { text: a.text }
+              : { selectedLabels: a.selected },
+        );
       } catch (err) {
         stopNote = `scripted answer unusable: ${String(err).slice(0, 200)}`;
         break;
@@ -233,7 +282,8 @@ async function runEntry(e: Json): Promise<Json> {
       const o = exp.outcome;
       if (!o) return false;
       if (o.kind === 'stop') return h.exec.submissions.length === submittedBefore;
-      if (o.kind === 'balance') return r!.body.state === 'done' && /^Your balances:/.test(r!.body.messages[0]?.text ?? '');
+      if (o.kind === 'balance')
+        return r!.body.state === 'done' && /^Your balances:/.test(r!.body.messages[0]?.text ?? '');
       return code !== undefined && (o.codes ?? [o.code]).includes(code);
     };
     res.final_state = r.body.state;
@@ -276,7 +326,8 @@ async function runEntry(e: Json): Promise<Json> {
     res.model_failed = res.final_code === 'MODEL_FAILED';
     res.total_ms ??= Date.now() - t00;
     const bad = res.outcome !== 'exact' || (res.pairing_reached && !res.pairing_exact) || res.llm_retries > 0;
-    if (bad || res.unexpected_stop) res.llm_trace = recs.map((x) => ({ name: x.name, ms: x.ms, user: x.user, output: x.output, error: x.error }));
+    if (bad || res.unexpected_stop)
+      res.llm_trace = recs.map((x) => ({ name: x.name, ms: x.ms, user: x.user, output: x.output, error: x.error }));
     await h.finish({ allowUnused: true }).catch(() => undefined);
   }
   return res;
