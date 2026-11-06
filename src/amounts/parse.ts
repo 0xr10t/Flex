@@ -72,7 +72,7 @@ function escapeRe(s: string): string {
 }
 
 const CURRENCY_WORD_RE = new RegExp(
-  `(^|[^a-z0-9])(?:${CURRENCY_WORDS.filter((w) => !CURRENCY_SYMBOLS.has(w))
+  `(^|[^a-z])(?:${CURRENCY_WORDS.filter((w) => !CURRENCY_SYMBOLS.has(w))
     .map(escapeRe)
     .join('|')})(?=$|[^a-z0-9])`,
   'g',

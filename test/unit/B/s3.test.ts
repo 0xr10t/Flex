@@ -301,6 +301,15 @@ describe('S3 rule 3 (number, parse, mismatch)', () => {
       expect(choosePositive.ctx.req.amounts[0]).toMatchObject({ amount: '5', code_verified: false });
     },
   );
+
+  it('B01: zero glued to a supported token still requires mismatch clarification', async () => {
+    const r = await run('send 0usdc to Mihir', [{ phrase: '0usdc', number: '5', token: 'USDC' }]);
+    expect(q(r)?.code).toBe('Q_AMOUNT_MISMATCH');
+    expect(r.ctx.repos.tables.db1.size).toBe(0);
+    const valid = await run('send 50usdc to Mihir', [{ phrase: '50usdc', number: '50', token: 'USDC' }]);
+    expect(valid.result).toEqual({ kind: 'continue' });
+    expect(valid.ctx.req.amounts[0]).toMatchObject({ amount: '50', code_verified: true });
+  });
 });
 
 describe('S3 token inference (§8.4 step 3 (a)–(e), C-093, C-311, C-416)', () => {
