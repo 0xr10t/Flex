@@ -1,6 +1,7 @@
 // Independent grading of currency retention, summary provenance, and document replacement validation.
 // HTTP cases use the real session manager and SQLCipher with fixture-only external services.
 import { describe, expect, it } from 'vitest';
+import { isAbsoluteAmountPhrase, parseAmountText } from '../../src/amounts/parse.js';
 import type { Token } from '../../src/contracts/types.js';
 import { buildSummary } from '../../src/messages/summary.js';
 import { s3 } from '../../src/pipeline/s3-amounts.js';
@@ -8,7 +9,7 @@ import { s4 } from '../../src/pipeline/s4-type.js';
 import type { FixtureFile } from '../fakes/llm.js';
 import { chip, drive, fx, scannedCtx, text } from '../unit/B/helpers.js';
 import { addMihir, BASE, planI } from '../unit/D/helpers.js';
-import { Harness, loadFixture, MIHIR } from './harness.js';
+import { ARADHYA, ARB, Harness, loadFixture, MIHIR, SEPOLIA } from './harness.js';
 
 function missingFixture(): FixtureFile {
   const calls = structuredClone(loadFixture('A-55').calls);
@@ -93,6 +94,178 @@ describe('amount answer currencies through HTTP', () => {
       }
     },
   );
+});
+
+describe('real-model follow-up amount shapes', () => {
+  it('A-06: 5 more reuses the prior handed-off recipient, token and chain without adding to the prior amount', async () => {
+    const fixture = structuredClone(loadFixture('A-06'));
+    fixture.calls[4]!.output = {
+      amounts: [{ phrase: '5 more', number: '5', relative: null, token: null, fiat: null, role: 'pay' }],
+    };
+    fixture.calls[5]!.match = 'Send';
+    fixture.calls[6]!.match = 'Message:';
+    const h = new Harness('amount-followup-real-shape', fixture, {
+      balances: {
+        [SEPOLIA]: { USDC: '0', ETH: '0.1' },
+        [BASE]: { USDC: '30', ETH: '0.1' },
+        [ARB]: { USDC: '60', ETH: '0.1' },
+      },
+    });
+    try {
+      const first = await h.say('Send 50 usdc to ARADHYA on base');
+      expect(first.body.state).toBe('awaiting_confirmation');
+      expect((await h.confirm(first, 'yes')).body.state).toBe('done');
+      const original = structuredClone(h.envelope);
+      const history = h.repos.db8.recentHistory(h.sessionId, 5);
+      expect(history).toHaveLength(1);
+      expect(original.intents.at(-1)).toMatchObject({
+        intent_id: 'i',
+        recipient: ARADHYA,
+        token: 'USDC',
+        chain_id: BASE,
+        amount: { value: '50' },
+      });
+      h.advance(11);
+      h.setBalances({ [BASE]: { USDC: '60' }, [ARB]: { USDC: '39' } });
+      const summary = await h.say('Send 5 more');
+      expect(summary.body.state, JSON.stringify(summary.body)).toBe('awaiting_confirmation');
+      expect(summary.body.summary?.text).toContain('Send 5 USDC to Aradhya');
+      expect(summary.body.summary?.notes).toContain('Recipient and chain from your last payment.');
+      expect(h.asked).toEqual([]);
+      expect(h.exec.submissions).toHaveLength(1);
+      expect(h.repos.db8.recentHistory(h.sessionId, 5)).toEqual(history);
+      expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+      expect(h.exec.submissions).toHaveLength(2);
+      expect(h.exec.submissions[0]!.envelope).toEqual(original);
+      expect(h.envelope.intents).toMatchObject([
+        {
+          intent_id: 'i',
+          recipient: ARADHYA,
+          token: 'USDC',
+          chain_id: BASE,
+          amount: { value: '5', base_units: '5000000', decimals: 6 },
+        },
+      ]);
+      expect(h.repos.db8.recentHistory(h.sessionId, 5)).toHaveLength(2);
+      expect(h.repos.db8.recentHistory(h.sessionId, 5).find((row) => row.request_id === first.body.request_id)).toEqual(
+        history[0],
+      );
+      expect(h.count('db3_address_placeholders')).toBe(1);
+      expect(h.llm.remaining()).toEqual([]);
+    } finally {
+      await h.finish({ allowUnused: true });
+    }
+  });
+
+  it('A-07: 5 more without history asks for both token and recipient instead of inventing either', async () => {
+    const fixture = structuredClone(loadFixture('A-07'));
+    fixture.calls[0]!.output = {
+      amounts: [{ phrase: '5 more', number: '5', relative: null, token: null, fiat: null, role: 'pay' }],
+    };
+    fixture.calls[1]!.match = 'send';
+    fixture.calls[2]!.match = 'Message:';
+    const h = new Harness('amount-followup-without-history', fixture, {});
+    try {
+      const token = await h.say('send 5 more');
+      expect(token.body.question?.code).toBe('Q_TOKEN');
+      const recipient = await h.answer(token, { chipLabel: 'USDC' });
+      expect(recipient.body.question?.code).toBe('Q_NO_PAYEE');
+      expect(h.asked).toEqual(['Q_TOKEN', 'Q_NO_PAYEE']);
+      expect(h.rows('SELECT amount, token FROM db1_amount_placeholders')).toEqual([{ amount: '5', token: 'USDC' }]);
+      expect(h.count('db3_address_placeholders')).toBe(0);
+      expect(h.repos.db8.recentHistory(h.sessionId, 5)).toEqual([]);
+      expect(h.exec.submissions).toHaveLength(0);
+      expect(h.llm.remaining()).toEqual([]);
+    } finally {
+      await h.finish({ allowUnused: true });
+    }
+  });
+
+  it('a fractional more answer preserves ETH and the prior recipient instead of defaulting to USDC', async () => {
+    const initial = structuredClone(loadFixture('A-55').calls);
+    initial[0] = {
+      name: 'amounts',
+      match: 'send 0.01 ETH',
+      output: {
+        amounts: [{ phrase: '0.01 ETH', number: '0.01', relative: null, token: 'ETH', fiat: null, role: 'pay' }],
+      },
+    };
+    (initial[3]!.output as { payments: Array<{ chain: number | string }> }).payments[0]!.chain = ARB;
+    const followup = structuredClone(loadFixture('A-06').calls.slice(4));
+    followup[0] = {
+      name: 'amounts',
+      match: 'send 0.005 more',
+      output: {
+        amounts: [{ phrase: '0.005 more', number: '0.005', relative: null, token: null, fiat: null, role: 'pay' }],
+      },
+    };
+    followup[1]!.match = 'send';
+    followup[2]!.match = 'Message:';
+    const h = new Harness('amount-followup-eth', { calls: [...initial, ...followup] }, {});
+    try {
+      const first = await h.say('send 0.01 ETH to mihir on arbitrum');
+      expect(first.body.state).toBe('awaiting_confirmation');
+      expect((await h.confirm(first, 'yes')).body.state).toBe('done');
+      const summary = await h.say('send 0.005 more');
+      expect(summary.body.state, JSON.stringify(summary.body)).toBe('awaiting_confirmation');
+      expect(summary.body.summary?.text).toContain('Send 0.005 ETH to Mihir');
+      expect(h.asked).toEqual([]);
+      expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+      expect(h.exec.submissions[0]!.envelope.intents[0]).toMatchObject({ token: 'ETH', amount: { value: '0.01' } });
+      expect(h.envelope.intents).toMatchObject([
+        {
+          intent_id: 'i',
+          recipient: MIHIR,
+          chain_id: ARB,
+          token: 'ETH',
+          amount: { value: '0.005', base_units: '5000000000000000', decimals: 18 },
+        },
+      ]);
+      expect(h.llm.remaining()).toEqual([]);
+    } finally {
+      await h.finish({ allowUnused: true });
+    }
+  });
+
+  it('5 more with an incorrect model value of 50 still requires numeric mismatch confirmation', async () => {
+    const ctx = await scannedCtx('send 5 more', {
+      fixture: fx({
+        name: 'amounts',
+        match: '',
+        output: {
+          amounts: [{ phrase: '5 more', number: '50', relative: null, token: null, fiat: null, role: 'pay' }],
+        },
+      }),
+    });
+    const result = await drive(s3, ctx);
+    expect(result.questions[0]).toMatchObject({ code: 'Q_AMOUNT_MISMATCH', text: 'Did you mean 5 or 50?' });
+    expect(ctx.req.amounts).toEqual([]);
+    expect(ctx.repos.tables.db1.size).toBe(0);
+  });
+
+  it.each(['5 more to mihir', '5 more and send 20 usdc to aradhya'])(
+    'the qualifier exemption cannot swallow extra instructions in %j',
+    async (phrase) => {
+      const ctx = await scannedCtx(`send ${phrase}`, {
+        fixture: fx({
+          name: 'amounts',
+          match: '',
+          output: {
+            amounts: [{ phrase, number: '5', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+          },
+        }),
+      });
+      expect((await drive(s3, ctx)).result).toEqual({ kind: 'error', code: 'UNSUPPORTED_REQUEST' });
+      expect(ctx.req.amounts).toEqual([]);
+      expect(ctx.repos.tables.db1.size).toBe(0);
+    },
+  );
+
+  it('the shared parser rejects a conditional reply instead of taking only its leading amount', () => {
+    const phrase = '5 more if mihir agrees';
+    expect(parseAmountText(phrase, 'USDC')).toEqual({ ok: false, reason: 'unparseable' });
+    expect(isAbsoluteAmountPhrase(phrase)).toBe(false);
+  });
 });
 
 async function missingContext() {
