@@ -1,0 +1,85 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "Send 40 usdc to ARADHYA on base, and 20 usdc to mihir on arbitrum",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "40 usdc",
+            "number": "40",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          },
+          {
+            "phrase": "20 usdc",
+            "number": "20",
+            "relative": null,
+            "token": "USDC",
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "ARADHYA on base",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "ARADHYA on base",
+      "output": {
+        "spans": [
+          {
+            "text": "ARADHYA",
+            "kind": "name",
+            "role": "payee"
+          },
+          {
+            "text": "mihir",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payments",
+      "match": "ACTION KINDS:",
+      "output": {
+        "payments": [
+          {
+            "kind": "i",
+            "amount": "$amount:0",
+            "recipient": "$recipient:0",
+            "chain": 84532,
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          },
+          {
+            "kind": "i",
+            "amount": "$amount:1",
+            "recipient": "$recipient:1",
+            "chain": 421614,
+            "frequency": null,
+            "interval": null,
+            "times_per_week": null,
+            "days_of_week": null,
+            "day_of_month": null
+          }
+        ]
+      }
+    }
+  ]
+}

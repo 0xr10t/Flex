@@ -1,0 +1,47 @@
+{
+  "calls": [
+    {
+      "name": "amounts",
+      "match": "split 30 between aradhya and mihir",
+      "output": {
+        "amounts": [
+          {
+            "phrase": "30",
+            "number": "30",
+            "relative": null,
+            "token": null,
+            "fiat": null,
+            "role": "pay"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_type",
+      "match": "between",
+      "output": {
+        "request_type": "actions",
+        "actions": ["i"],
+        "also_balance": false
+      }
+    },
+    {
+      "name": "spans",
+      "match": "between",
+      "output": {
+        "spans": [
+          {
+            "text": "aradhya",
+            "kind": "name",
+            "role": "payee"
+          },
+          {
+            "text": "mihir",
+            "kind": "name",
+            "role": "payee"
+          }
+        ]
+      }
+    }
+  ]
+}
