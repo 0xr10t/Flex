@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { frameLines } from '../../../src/cli/render/frame.js';
-import { paintRow, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
+import { paintRow, SCENE_PALETTE, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
 import { renderScene, renderSceneLayer, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
 import { stageLayout } from '../../../src/cli/render/stage.js';
 import { snap, SNAP_SECONDS } from '../../../src/cli/render/snap.js';
@@ -114,6 +114,8 @@ describe('snap', () => {
   });
 });
 
+const still = { x: 0, y: 0, on: false };
+
 describe('opening', () => {
   // 160 × 50: the 38-row opening starts on row 6, FLEXX on row 7, the objects' first row (scene row 14) on row 19
   const top = 6;
@@ -164,31 +166,51 @@ describe('opening', () => {
     expect(late.join('\n')).not.toContain('╭');
   });
 
-  it('ends with the small cube, FLEXX beside it and the box under them', () => {
+  it('ends with the small cube and FLEXX sitting on the top edge of the box, the input under it', () => {
     const lines = at('box');
-    // the small cube in the bar's first columns, FLEXX from column 17, the tagline after it
-    expect(lines.slice(0, 8).some((l) => /[#+]/.test(l.slice(0, 16)))).toBe(true);
-    expect(lines.slice(0, 8).every((l) => !/[#+:=-]/.test(l.slice(16, 46)))).toBe(true);
-    expect(lines[2]!.slice(17, 46)).toBe('█▀▀▀▀ █     █▀▀▀▀ █   █ █   █');
-    expect(lines[4]!.slice(50)).toBe('the access layer between AI and ethereum');
-    // the box from row 8 across the width, the conversation from its top
-    expect(lines[8]).toMatch(/^ ╭─ flex ─+╮$/);
-    expect(lines[9]).toMatch(/^ │ type help to see the commands +│$/);
-    expect(lines[10]).toMatch(/^ │ flex \$ █ +│$/);
-    expect(lines[47]).toMatch(/^ ╰─+╯$/);
+    // the top edge runs into the logo's left side and out of its right, with no title
+    expect(lines[3]!.slice(0, 3)).toBe(' ╭─');
+    expect(lines[3]!.slice(49)).toMatch(/^─+╮$/);
+    expect(lines[3]).not.toContain('flex');
+    // the small cube on the left of the edge, FLEXX from column 18 straddling it, the tagline inside under FLEXX
+    expect(lines.slice(0, 7).some((l) => /[#+]/.test(l.slice(2, 17)))).toBe(true);
+    expect(lines[1]!.slice(18, 47)).toBe('█▀▀▀▀ █     █▀▀▀▀ █   █ █   █');
+    expect(lines[6]!.slice(18)).toMatch(/^the access layer between AI and ethereum +│$/);
+    // the conversation under the logo, then the box's bottom, then the input between its rules
+    expect(lines[8]).toMatch(/^ │ type help to see the commands +│$/);
+    expect(lines[44]).toMatch(/^ ╰─+╯$/);
+    expect(lines[46]).toMatch(/^ ─+$/);
+    expect(lines[47]).toMatch(/^ {2}❯ █ry "help"$/);
+    expect(lines[48]).toMatch(/^ ─+$/);
     expect(lines[49]).toContain('flex.access');
   });
 
-  it('writes the conversation down from the top of the box', () => {
+  it('marks your messages and the replies like the Claude CLI', () => {
     const repl = new Repl();
     for (const c of 'help') repl.handle({ kind: 'key', key: 'char', char: c });
     repl.handle({ kind: 'key', key: 'enter' });
     for (const c of 'pay') repl.handle({ kind: 'key', key: 'char', char: c });
-    const lines = at('box', { repl });
-    expect(lines[10]).toContain('flex $ help');
-    expect(lines[11]).toMatch(/help +list the commands/);
-    expect(lines[13]).toMatch(/exit +leave flexx/);
-    expect(lines[14]).toContain('flex $ pay█');
+    const layout = stageLayout(160, 50)!;
+    const header = new SplashAnimation();
+    const state = {
+      phase: 'box' as const,
+      sceneT: 6,
+      snapS: 0,
+      shrinkP: 1,
+      nowMs: 6000,
+      pointer: still,
+      starfield: false,
+    };
+    const f = composeOpening(layout, state, header, repl);
+    const lines = frameLines(f).map((l) => l.trimEnd());
+    expect(lines[10]!.slice(3)).toMatch(/^❯ help +│$/);
+    // the whole conversation width of your message is on the bar
+    for (let x = 3; x < 3 + 154; x++) expect(f.tone[10 * 160 + x]).toBe(3);
+    expect(f.tone[10 * 160 + 2]).not.toBe(3);
+    expect(lines[12]!.slice(3)).toMatch(/^● help +list the commands/);
+    expect(lines[13]!.slice(3)).toMatch(/^ {2}clear +clear the conversation/);
+    expect(lines[14]!.slice(3)).toMatch(/^ {2}exit +leave flexx/);
+    expect(lines[47]).toMatch(/^ {2}❯ pay█ *$/);
   });
 });
 
@@ -196,28 +218,39 @@ describe('stage layout', () => {
   it('centres the full opening when it fits', () => {
     expect(stageLayout(120, 38)).toMatchObject({
       scene: { x: 0, y: -1 },
-      final: { box: { x: 1, y: 8, w: 118, h: 28 } },
+      final: {
+        frame: { x: 1, y: 3, w: 118, h: 30 },
+        gap: { from: 3, to: 48 },
+        conversation: { x: 3, y: 8, w: 114, h: 24 },
+        input: { x: 1, y: 35, w: 118 },
+      },
     });
     expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 10 } });
   });
 
-  it('plays FLEXX alone below 120 × 38, then the same bar and box', () => {
+  it('plays FLEXX alone below 120 × 38, then the same box', () => {
     const l = stageLayout(100, 30)!;
     expect(l.scene).toBeNull();
     expect(l.footer).toBeNull();
     expect(l.header).toMatchObject({ objectX: null });
-    expect(l.final.box).toEqual({ x: 1, y: 8, w: 98, h: 20 });
+    expect(l.final.frame).toEqual({ x: 1, y: 3, w: 98, h: 22 });
     expect(l.final.footer).not.toBeNull();
     expect(l.final.logo?.tagline).not.toBeNull();
-    expect(stageLayout(80, 30)!.final.logo?.tagline).toBeNull();
+    expect(stageLayout(55, 30)!.final.logo).toMatchObject({ tagline: null });
   });
 
-  it('shows the box alone when the bar does not fit', () => {
-    const bare = stageLayout(60, 12)!;
+  it('leaves the logo out when the box is too small for it', () => {
+    const bare = stageLayout(60, 14)!;
     expect(bare.header).toBeNull();
-    expect(bare.final).toMatchObject({ logo: null, box: { x: 0, y: 0, w: 60, h: 12 } });
+    expect(bare.final).toMatchObject({
+      logo: null,
+      gap: null,
+      frame: { y: 0 },
+      conversation: { y: 1 },
+      input: { y: 12 },
+    });
     expect(stageLayout(41, 20)).toBeNull();
-    expect(stageLayout(60, 5)).toBeNull();
+    expect(stageLayout(60, 8)).toBeNull();
   });
 });
 
@@ -225,19 +258,49 @@ describe('command box', () => {
   const type = (repl: Repl, s: string): void => {
     for (const ev of parseInput(s)) if (ev.kind === 'key') repl.handle(ev as KeyEvent);
   };
-  const said = (repl: Repl): string[] => repl.output.map((l) => l.map((s) => s.text).join(''));
+  const said = (repl: Repl): string[] =>
+    repl.rows(80).map((l) =>
+      l
+        .map((s) => s.text)
+        .join('')
+        .trimEnd(),
+    );
 
-  it('runs help and echoes the line', () => {
+  it('runs help, marking the message and the reply', () => {
     const repl = new Repl();
     type(repl, 'help\r');
-    expect(said(repl)).toContain('flex $ help');
-    expect(said(repl).some((l) => l.includes('clear') && l.includes('clear the box'))).toBe(true);
+    expect(repl.conversation.at(-2)).toEqual({ kind: 'user', text: 'help' });
+    expect(said(repl)).toContain('❯ help');
+    expect(said(repl).some((l) => /^● help +list the commands$/.test(l))).toBe(true);
+    expect(said(repl).some((l) => /^ {2}clear +clear the conversation$/.test(l))).toBe(true);
   });
 
   it('reports unknown commands', () => {
     const repl = new Repl();
     type(repl, 'pay 5 usdc\r');
-    expect(said(repl).at(-1)).toBe('unknown command: pay · type help');
+    expect(said(repl).slice(-3)).toEqual(['❯ pay 5 usdc', '', '● unknown command: pay · type help']);
+  });
+
+  it('wraps long lines under their mark', () => {
+    const repl = new Repl();
+    type(repl, 'abcdefghij klmnop\r');
+    const rows = repl.rows(10);
+    const at = rows.findIndex((r) => r[0]?.text === '❯ ');
+    expect(rows.slice(at, at + 3)).toEqual([
+      [
+        { text: '❯ ', tone: 3 },
+        { text: 'abcdefgh', tone: 3 },
+      ],
+      [
+        { text: '  ', tone: 3 },
+        { text: 'ij klmno', tone: 3 },
+      ],
+      [
+        { text: '  ', tone: 3 },
+        { text: 'p', tone: 3 },
+        { text: '       ', tone: 3 },
+      ],
+    ]);
   });
 
   it('edits the line with the cursor keys', () => {
@@ -264,7 +327,7 @@ describe('command box', () => {
   it('clears, and leaves on exit or Ctrl-C on an empty line', () => {
     const repl = new Repl();
     type(repl, 'help\rclear\r');
-    expect(repl.output).toHaveLength(0);
+    expect(repl.conversation).toHaveLength(0);
     expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBe('quit');
     type(repl, 'abc');
     expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBeUndefined();
@@ -281,6 +344,22 @@ describe('painting', () => {
     expect(to256('#e1ad66')).toBe(16 + 36 * 4 + 6 * 3 + 1);
   });
 
+  it('paints a marked bar on its own background and returns to the page after it', () => {
+    const s = paintRow(
+      [
+        { text: 'a', ink: 'fg' },
+        { text: '❯ hi ', ink: 'mark' },
+        { text: 'b', ink: 'fg' },
+      ],
+      7,
+      SCENE_PALETTE,
+      'truecolor',
+    );
+    expect(s).toContain(
+      `a${ESC}[48;2;232;230;223m${ESC}[38;2;11;12;10m❯ hi ${ESC}[48;2;11;12;10m${ESC}[38;2;217;214;204mb`,
+    );
+  });
+
   it('paints truecolor rows on the background and resets after', () => {
     const s = paintRow([{ text: 'flex', ink: 'accent' }], 6, SPLASH_PALETTE, 'truecolor');
     expect(s.startsWith(`${ESC}[48;2;27;25;24m${ESC}[38;2;225;173;102mflex`)).toBe(true);
@@ -291,7 +370,7 @@ describe('painting', () => {
     const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
     expect(out).toContain('the access layer between AI');
-    expect(out).toContain('flex $');
+    expect(out).toContain('❯ █ry "help"');
     expect(out).toContain('flex.access');
     expect(out.split('\n')).toHaveLength(43 + 1);
   });

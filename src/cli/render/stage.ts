@@ -3,8 +3,9 @@
 // The opening: across the top FLEXX and its tagline (the header); below it the gateway scene's globe, gateway and
 // Ethereum diamond, with the footer under them.
 //
-// After it (the final layout): FLEXX shrinks into a bar along the top, a small cube appearing to its left, and the
-// command box fills the screen under the bar, the footer under the box. The smallest terminals show the box alone.
+// After it (the final layout): FLEXX shrinks onto the top edge of the box, a small cube growing in to its left and
+// the tagline under it; the conversation fills the box below them and the input line sits under the box between two
+// rules, the footer last. Small terminals leave the logo out.
 //
 // Below 120 × 43 there is no room for the opening's objects, so only the header plays before it shrinks; when even
 // the header does not fit, the CLI starts on the final layout.
@@ -34,16 +35,22 @@ export interface Origin {
   y: number;
 }
 
-/** The small logo: the small cube, FLEXX at half size beside it, and the tagline after them. */
+/** The small logo: the small cube, FLEXX at half size beside it, and the tagline under FLEXX. */
 export interface SmallLogo {
   morph: LogoMorph;
-  tagline: { x: number; y: number; lines: string[] } | null;
+  tagline: { x: number; y: number; text: string } | null;
 }
 
 export interface FinalLayout {
+  /** The bordered box: the small logo sits on its top edge, the conversation inside under it. */
+  frame: Rect;
+  /** Columns of the top edge left open where the logo sits on it; null without the logo. */
+  gap: { from: number; to: number } | null;
   logo: SmallLogo | null;
-  box: Rect;
-  /** The block line under the box; null when there is no room. */
+  conversation: Rect;
+  /** The input line, between a rule on the row above and one on the row below. */
+  input: { x: number; y: number; w: number };
+  /** The block line on the last row; null when there is no room. */
   footer: Origin | null;
 }
 
@@ -66,54 +73,62 @@ const HEADER_TEXT_TOP = 1;
 const OPENING_ROWS = HEADER_ROWS + 1 + (SCENE_OBJECTS_BOTTOM - SCENE_OBJECTS_TOP + 1) + 2 + 1;
 
 const TAGLINE = 'the access layer between AI and ethereum';
-/** The top bar: the small cube on the left, the small FLEXX (five letters of five columns, six apart, four rows of
- * half blocks) beside it, the tagline after that when it fits. */
+/** Inside the box's top: the small cube, the small FLEXX (five letters of five columns, six apart, four rows of half
+ * blocks) to its right, the tagline under FLEXX; offsets from the box's left edge and the screen's top. */
 const SMALL_WORD_WIDTH = (SPLASH_WORD.length - 1) * SMALL_PITCH + 5;
 const SMALL_CUBE_SCALE = 0.35;
-const CUBE_X = 8;
-const CUBE_Y = 3.5;
-const WORD_X = 17;
-const WORD_Y = 2;
-const TAGLINE_X = WORD_X + SMALL_WORD_WIDTH + 4;
-/** Rows the bar takes before the box: the small cube reaches about four rows either side of its centre. */
-const BAR_ROWS = 8;
-const BOX_MIN_ROWS = 6;
+const CUBE_DX = 8;
+/** The box's top edge runs through the logo's middle row. */
+const CUBE_Y = 3;
+const WORD_DX = 17;
+const WORD_Y = 1;
+const TAGLINE_Y = WORD_Y + 5;
+/** The conversation starts under the logo, or right under the border without it. */
+const CONVERSATION_Y = TAGLINE_Y + 2;
+const CONVERSATION_MIN_ROWS = 3;
 const BOX_MIN_COLS = 40;
 /** The footer's line plus a column either side. */
 const FOOTER_MIN_COLS = 58;
+const FOOTER_MIN_ROWS = 20;
 
-/** Smallest terminal that shows anything: the command box. */
+/** Smallest terminal that shows anything: a box with a few rows of conversation, and the input under it. */
 export const MIN_COLS = BOX_MIN_COLS + 2;
-export const MIN_ROWS = BOX_MIN_ROWS;
+export const MIN_ROWS = 2 + CONVERSATION_MIN_ROWS + 1 + 3;
 
-/** The footer centred under a box, on the screen's last row. */
-function footerUnder(box: Rect, rows: number): Origin {
-  return { x: box.x + Math.floor((box.w - SCENE_COLS) / 2), y: rows - 1 - SCENE_FOOTER_ROW };
-}
-
-/** Where everything goes once the opening is over: the bar on top, the box under it, the footer last. */
+/** Where everything goes once the opening is over: the box from the top (logo, then conversation), the input line
+ * between two rules under it, the footer last. */
 export function finalLayout(cols: number, rows: number): FinalLayout {
-  if (cols < WORD_X + SMALL_WORD_WIDTH + 1 || rows < BAR_ROWS + BOX_MIN_ROWS)
-    return { logo: null, box: { x: 0, y: 0, w: cols, h: rows }, footer: null };
-
+  const footer = rows >= FOOTER_MIN_ROWS && cols >= FOOTER_MIN_COLS;
+  const lowerRule = footer ? rows - 2 : rows - 1;
+  const inputY = lowerRule - 1;
+  // a blank row between the box and the input's upper rule
+  const frameBottom = inputY - 3;
   const w = cols - 2;
-  const footer = rows >= BAR_ROWS + BOX_MIN_ROWS + 2 && w >= FOOTER_MIN_COLS;
-  const box = { x: 1, y: BAR_ROWS, w, h: rows - BAR_ROWS - (footer ? 2 : 0) };
+  const withLogo = w >= WORD_DX + SMALL_WORD_WIDTH + 2 && frameBottom - CONVERSATION_Y >= CONVERSATION_MIN_ROWS;
+  const frameTop = withLogo ? CUBE_Y : 0;
+  const frame = { x: 1, y: frameTop, w, h: frameBottom - frameTop + 1 };
+  const top = withLogo ? CONVERSATION_Y : 1;
+  const tagFits = frame.w - 1 - WORD_DX >= TAGLINE.length;
   return {
-    logo: {
-      morph: {
-        cubeX: CUBE_X,
-        cubeY: CUBE_Y,
-        cubeScale: SMALL_CUBE_SCALE,
-        wordX: WORD_X,
-        wordY: WORD_Y,
-        wordScale: 0.5,
-        pitch: SMALL_PITCH,
-      },
-      tagline: cols - TAGLINE_X - 1 >= TAGLINE.length ? { x: TAGLINE_X, y: WORD_Y + 2, lines: [TAGLINE] } : null,
-    },
-    box,
-    footer: footer ? footerUnder(box, rows) : null,
+    frame,
+    gap: withLogo ? { from: frame.x + 2, to: frame.x + WORD_DX + SMALL_WORD_WIDTH + 1 } : null,
+    logo: withLogo
+      ? {
+          morph: {
+            cubeX: frame.x + CUBE_DX,
+            cubeY: CUBE_Y,
+            cubeScale: SMALL_CUBE_SCALE,
+            wordX: frame.x + WORD_DX,
+            wordY: WORD_Y,
+            wordScale: 0.5,
+            pitch: SMALL_PITCH,
+          },
+          tagline: tagFits ? { x: frame.x + WORD_DX, y: TAGLINE_Y, text: TAGLINE } : null,
+        }
+      : null,
+    conversation: { x: frame.x + 2, y: top, w: frame.w - 4, h: frameBottom - top },
+    input: { x: frame.x, y: inputY, w: frame.w },
+    footer: footer ? { x: Math.floor((cols - SCENE_COLS) / 2), y: rows - 1 - SCENE_FOOTER_ROW } : null,
   };
 }
 

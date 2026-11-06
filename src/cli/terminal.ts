@@ -7,7 +7,7 @@
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
 import { parseInput, type KeyEvent } from './input.js';
-import { Repl } from './repl.js';
+import { drawFrame, Repl } from './repl.js';
 import { createFrame, overlay, text, type Frame } from './render/frame.js';
 import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
 import { renderScene, SCENE_COLS, SCENE_ROWS, type SceneOptions } from './render/scene.js';
@@ -114,7 +114,7 @@ function footerAt(layout: StageLayout, s: OpeningState): Origin | null {
 /** Composes one screen of the opening for its current phase. */
 export function composeOpening(layout: StageLayout, s: OpeningState, header: SplashAnimation, repl: Repl): Frame {
   const f = createFrame(layout.cols, layout.rows);
-  const { logo, box } = layout.final;
+  const { frame, gap, logo, conversation, input } = layout.final;
   drawBackdrop(f, s.sceneT, footerAt(layout, s), s.starfield);
 
   if (s.phase === 'intro' || s.phase === 'snap') {
@@ -127,11 +127,13 @@ export function composeOpening(layout: StageLayout, s: OpeningState, header: Spl
     header.drawMorph(f, s.nowMs, s.pointer, blendMorph(headerMorph(layout.header), logo.morph, s.shrinkP));
     return f;
   }
+  drawFrame(f, frame, gap);
   if (logo) {
     header.drawMorph(f, s.nowMs, s.pointer, logo.morph);
-    logo.tagline?.lines.forEach((line, i) => text(f, logo.tagline!.x, logo.tagline!.y + i, line, 1));
+    if (logo.tagline) text(f, logo.tagline.x, logo.tagline.y, logo.tagline.text, 1);
   }
-  repl.draw(f, box, s.nowMs);
+  repl.drawConversation(f, conversation);
+  repl.drawInput(f, input.x, input.y, input.w, s.nowMs);
   return f;
 }
 

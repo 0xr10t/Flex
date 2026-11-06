@@ -5,13 +5,16 @@ import type { Frame } from './frame.js';
 
 export type ColorMode = 'truecolor' | '256' | 'basic' | 'none';
 
-export type Ink = 'fg' | 'dim' | 'accent';
+export type Ink = 'fg' | 'dim' | 'accent' | 'mark';
 
 export interface Palette {
   bg: string;
   fg: string;
   dim: string;
   accent: string;
+  /** The bar behind your messages, and the text on it. */
+  markBg: string;
+  mark: string;
 }
 
 /** "Flex Terminal": window #1b1918, text #f3f2f2, dim #7d7979, accent #e1ad66, title #9b9797. */
@@ -20,6 +23,8 @@ export const SPLASH_PALETTE: Palette = {
   fg: '#f3f2f2',
   dim: '#7d7979',
   accent: '#e1ad66',
+  markBg: '#f3f2f2',
+  mark: '#1b1918',
 };
 
 /** "Flex ASCII": page #0b0c0a, text #d9d6cc, dim #5f6159, accent #f2b45a. */
@@ -28,6 +33,8 @@ export const SCENE_PALETTE: Palette = {
   fg: '#d9d6cc',
   dim: '#5f6159',
   accent: '#f2b45a',
+  markBg: '#e8e6df',
+  mark: '#0b0c0a',
 };
 
 /** Accent swatches each design offers. */
@@ -41,7 +48,7 @@ export interface Run {
 
 export type Row = Run[];
 
-const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent'];
+const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark'];
 const HEX_RE = /^#([0-9a-fA-F]{6})$/;
 const ESC = '\u001b[';
 
@@ -69,7 +76,7 @@ export function to256(hex: string): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33 };
+const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30 };
 
 function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   if (mode === 'none') return '';
@@ -78,13 +85,18 @@ function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   return `${ESC}38;2;${rgb(palette[ink]).join(';')}m`;
 }
 
-function bgCode(mode: ColorMode, palette: Palette): string {
-  if (mode === '256') return `${ESC}48;5;${to256(palette.bg)}m`;
-  if (mode === 'truecolor') return `${ESC}48;2;${rgb(palette.bg).join(';')}m`;
+function bgCode(mode: ColorMode, palette: Palette, marked = false): string {
+  const bg = marked ? palette.markBg : palette.bg;
+  if (mode === '256') return `${ESC}48;5;${to256(bg)}m`;
+  if (mode === 'truecolor') return `${ESC}48;2;${rgb(bg).join(';')}m`;
+  if (mode === 'basic') return marked ? `${ESC}47m` : `${ESC}49m`;
   return '';
 }
 
-/** Splits each frame row into runs of one ink. Spaces keep the current ink, as the designs' painters do. */
+/**
+ * Splits each frame row into runs of one ink. Spaces keep the current ink, as the designs' painters do, except at
+ * the edges of a marked bar, whose background must stop exactly where it does.
+ */
 export function frameRows(f: Frame): Row[] {
   const rows: Row[] = [];
   for (let y = 0; y < f.rows; y++) {
@@ -93,7 +105,8 @@ export function frameRows(f: Frame): Row[] {
     for (let x = 0; x < f.cols; x++) {
       const i = y * f.cols + x;
       const c = f.ch[i]!;
-      const ink = c === ' ' && cur ? cur.ink : TONE_INK[f.tone[i]!]!;
+      const tone = f.tone[i]!;
+      const ink = c === ' ' && cur && cur.ink !== 'mark' && tone !== 3 ? cur.ink : TONE_INK[tone]!;
       if (cur && cur.ink === ink) cur.text += c;
       else {
         cur = { text: c, ink };
@@ -110,7 +123,7 @@ export function rowWidth(row: Row): number {
   return row.reduce((n, r) => n + [...r.text].length, 0);
 }
 
-/** Paints one row on the palette background, padded to `width` cells; ends with an attribute reset. */
+/** Paints one row on the palette background (marked runs on their bar), padded to `width`; ends with a reset. */
 export function paintRow(row: Row, width: number, palette: Palette, mode: ColorMode): string {
   const pad = Math.max(0, width - rowWidth(row));
   if (mode === 'none') return row.map((r) => r.text).join('') + ' '.repeat(pad);
@@ -118,10 +131,12 @@ export function paintRow(row: Row, width: number, palette: Palette, mode: ColorM
   let ink: Ink | undefined;
   for (const r of row) {
     if (r.ink !== ink) {
+      if (r.ink === 'mark' || ink === 'mark') out += bgCode(mode, palette, r.ink === 'mark');
       out += fgCode(mode, palette, r.ink);
       ink = r.ink;
     }
     out += r.text;
   }
+  if (ink === 'mark') out += bgCode(mode, palette);
   return out + ' '.repeat(pad) + `${ESC}0m`;
 }
