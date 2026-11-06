@@ -21,7 +21,21 @@ const START_WORDS = new Set(['starting', 'from', 'beginning']);
 const END_WORDS = new Set(['until', 'till']);
 
 function parts(c: chrono.ParsedComponents, zone: string): { date: string | null; time: string | null } {
-  const dt = DateTime.fromJSDate(c.date(), { zone });
+  // Chrono's numeric reference offset describes now, not the offset on a future date. Without a typed
+  // timezone, its calendar components are session-local fields; converting c.date() would shift them at DST.
+  // An explicit input timezone does describe an instant, so retain its conversion to the session timezone.
+  const dt = c.isCertain('timezoneOffset')
+    ? DateTime.fromJSDate(c.date(), { zone })
+    : DateTime.fromObject(
+        {
+          year: c.get('year') as number,
+          month: c.get('month') as number,
+          day: c.get('day') as number,
+          hour: c.get('hour') ?? 0,
+          minute: c.get('minute') ?? 0,
+        },
+        { zone },
+      );
   const hasTime = c.isCertain('hour');
   const hasDate =
     c.isCertain('day') || c.isCertain('weekday') || c.isCertain('month') || c.isCertain('year') || !hasTime;
