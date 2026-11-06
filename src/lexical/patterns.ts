@@ -72,7 +72,11 @@ export function tokenPatternRe(p: TokenPattern): RegExp {
   return SYMBOLS.has(p.word) ? new RegExp(escapeRe(p.word), 'g') : wordRe([p.word]);
 }
 
-export const UNSUPPORTED_TOKEN_RE = wordRe(UNSUPPORTED_TOKEN_EXAMPLES);
+/** A ticker may follow digits without whitespace ("100usdt"), but cannot cut a letter/underscore identifier. */
+export const UNSUPPORTED_TOKEN_RE = new RegExp(
+  `(?<![\\p{L}\\p{M}_])(?:${UNSUPPORTED_TOKEN_EXAMPLES.map(escapeRe).join('|')})(?![\\p{L}\\p{M}\\p{N}_])`,
+  'giu',
+);
 
 /**
  * §6.2 recurrence words: `every`, `each (day|week|month|monday…)`, `daily`, `weekly`, `monthly`,

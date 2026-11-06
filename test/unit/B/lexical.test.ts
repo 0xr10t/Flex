@@ -125,6 +125,30 @@ describe('lexical (§8.3, C-443)', () => {
     expect(err('I like dai a lot, send 5 usdc')).toBe('ok');
   });
 
+  it.each([
+    '100usdt',
+    '1,000USDT',
+    '0.25weth',
+    'one hundred usdt',
+    'one thousand usdt',
+    'two hundred and five usdt',
+    'twenty-five thousand usdt',
+    'five lakh usdt',
+    'usdt one hundred',
+  ])('B12: unsupported token in %s stops before any model call', async (phrase) => {
+    const ctx = makeTestContext({ req: { typed_text: `send ${phrase} to Mihir` } });
+    expect(await s2.step(ctx)).toEqual({ kind: 'error', code: 'UNSUPPORTED_TOKEN' });
+    expect(ctx.llm.recorded).toEqual([]);
+    expect(ctx.repos.tables.db1.size).toBe(0);
+  });
+
+  it.each(['send 5 usdc to 100usdt.eth', 'send 5 usdc to usdt2', 'ask éusdt 5 questions', 'ask b100usdt about fees'])(
+    'B12: ticker substrings in names do not create unsupported-token errors: %s',
+    (typed) => {
+      expect(err(typed)).toBe('ok');
+    },
+  );
+
   it('§8.3 rule 8 (C-085): chrono spans with kinds and offsets in the session timezone', () => {
     const s = scan('send 10 usdc to aradhya at 5pm');
     expect(s.dates).toHaveLength(1);

@@ -270,7 +270,13 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
   tokens.sort((a, b) => a.start - b.start);
   for (const m of matches(UNSUPPORTED_TOKEN_RE, text)) {
     if (overlapsAny(m, nameRanges)) continue;
-    if (isNumberToken(tokenBefore(text, m.start)) || isNumberToken(tokenAfter(text, m.end))) {
+    // A compound number may end in "hundred" or "thousand", neither of which parses on its own (B12).
+    const adjacentNumberWords = numberWords.some(
+      (n) =>
+        (n.end <= m.start && text.slice(n.end, m.start).trim() === '') ||
+        (n.start >= m.end && text.slice(m.end, n.start).trim() === ''),
+    );
+    if (adjacentNumberWords || isNumberToken(tokenBefore(text, m.start)) || isNumberToken(tokenAfter(text, m.end))) {
       return { ok: false, code: 'UNSUPPORTED_TOKEN' };
     }
   }
