@@ -1,0 +1,26 @@
+{
+  "parent": "iitr.eth",
+  "payer": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+  "members": [
+    {
+      "name": "alpha.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.001"
+    },
+    {
+      "name": "beta.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.002"
+    },
+    {
+      "name": "delta.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.003"
+    },
+    {
+      "name": "gamma.iitr.eth",
+      "owner": "0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20",
+      "eth": "0.004"
+    }
+  ]
+}

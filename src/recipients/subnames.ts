@@ -28,6 +28,30 @@ interface GraphQlResponse<T> {
   errors?: unknown[];
 }
 
+/**
+ * ENSv2 on Sepolia: ENSNode's Omnigraph. The classic subgraph's query shape doesn't apply there, and §9.6 step 3 asks for this
+ * source to be swappable. Pages by cursor. A subname with no canonical name, or with an unknown label (written `[hash]`), can't be
+ * resolved or shown to the user, so it's left out.
+ */
+export const OMNIGRAPH_SUBDOMAINS_QUERY = `query Subdomains($name: InterpretedName!, $after: String) {
+  domain(by: { name: $name }) {
+    id
+    subdomains(first: 1000, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      edges { node { canonical { name { interpreted } } } }
+    }
+  }
+}`;
+
+interface OmnigraphPage {
+  domain: {
+    subdomains: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      edges: Array<{ node: { canonical: { name: { interpreted: string } | null } | null } }>;
+    };
+  } | null;
+}
+
 export function createSubnameSource(config: Config, fetchFn: FetchFn = fetch): SubnameSource {
   const url = config.ens.indexer_url;
 
@@ -51,6 +75,29 @@ export function createSubnameSource(config: Config, fetchFn: FetchFn = fetch): S
       throw new IndexerUnavailable();
     }
     return body.data;
+  }
+
+  if (config.ens.indexer_kind === 'ensnode-omnigraph') {
+    return {
+      async listChildren(parent: string): Promise<string[] | 'not_found'> {
+        const names: string[] = [];
+        let after: string | null = null;
+        for (;;) {
+          const page: OmnigraphPage = await post<OmnigraphPage>(OMNIGRAPH_SUBDOMAINS_QUERY, { name: parent, after });
+          if (!page.domain) return 'not_found';
+          const { edges, pageInfo } = page.domain.subdomains ?? {};
+          if (!Array.isArray(edges) || !pageInfo) throw new IndexerUnavailable();
+          for (const edge of edges) {
+            const name = edge.node?.canonical?.name?.interpreted;
+            if (typeof name === 'string' && !name.includes('[')) names.push(name);
+          }
+          if (!pageInfo.hasNextPage) return names;
+          // A page that claims more but gives no way on would otherwise loop forever.
+          if (typeof pageInfo.endCursor !== 'string' || pageInfo.endCursor === after) throw new IndexerUnavailable();
+          after = pageInfo.endCursor;
+        }
+      },
+    };
   }
 
   return {

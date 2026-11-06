@@ -71,7 +71,7 @@ export interface Config {
     rpc_chain_id: ChainId;
     universal_resolver_address: Address;
     indexer_url: string;
-    indexer_kind: 'ens-subgraph';
+    indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
   fetch: { max_bytes: number; timeout_ms: number; max_redirects: number };

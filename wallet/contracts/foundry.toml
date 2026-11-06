@@ -1,0 +1,10 @@
+# Same settings as the lab that tested these contracts: optimizer 200 runs, cancun.
+[profile.default]
+src = "src"
+out = "out"
+cache_path = "cache"
+libs = ["../node_modules"]
+remappings = ["@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/"]
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200

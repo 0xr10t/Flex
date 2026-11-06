@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-layer/handoff-envelope/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "request_id", "wallet_address", "created_at", "intents"],
+  "properties": {
+    "version": { "const": "2" },
+    "request_id": { "type": "string", "pattern": "^req_[0-9a-f]{12}$" },
+    "wallet_address": { "$ref": "#/$defs/address" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "intents": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/payment_i" },
+          { "$ref": "#/$defs/bridge_j" },
+          { "$ref": "#/$defs/autopay_k" },
+          { "$ref": "#/$defs/cancel_l" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "chainId": { "enum": [11155111, 84532, 421614] },
+    "token": { "enum": ["USDC", "ETH"] },
+    "tokenAddress": { "oneOf": [{ "$ref": "#/$defs/address" }, { "type": "null" }] },
+    "step": { "type": "integer", "minimum": 0 },
+    "stepList": { "type": "array", "items": { "$ref": "#/$defs/step" }, "uniqueItems": true },
+    "uint": { "type": "integer", "minimum": 1 },
+    "unixTime": { "type": "integer", "minimum": 1700000000, "maximum": 4102444800 },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "base_units", "decimals"],
+      "properties": {
+        "value": { "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$" },
+        "base_units": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "decimals": { "enum": [6, 18] }
+      }
+    },
+    "payee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipient", "amount"],
+      "properties": { "recipient": { "$ref": "#/$defs/address" }, "amount": { "$ref": "#/$defs/amount" } }
+    },
+
+    "payment_i": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent_id", "step", "depends_on", "token", "token_address", "chain_id", "recipients"],
+      "properties": {
+        "intent_id": { "const": "i" },
+        "step": { "$ref": "#/$defs/step" },
+        "depends_on": { "$ref": "#/$defs/stepList" },
+        "token": { "$ref": "#/$defs/token" },
+        "token_address": { "$ref": "#/$defs/tokenAddress" },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "recipients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/payee" }
+        }
+      }
+    },
+
+    "bridge_j": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_id",
+        "step",
+        "token",
+        "source_token_address",
+        "dest_token_address",
+        "source_chain_id",
+        "dest_chain_id",
+        "amount",
+        "receiver",
+        "fee_max_eth",
+        "funds_steps"
+      ],
+      "properties": {
+        "intent_id": { "const": "j" },
+        "step": { "$ref": "#/$defs/step" },
+        "token": { "const": "USDC" },
+        "source_token_address": { "$ref": "#/$defs/address" },
+        "dest_token_address": { "$ref": "#/$defs/address" },
+        "source_chain_id": { "$ref": "#/$defs/chainId" },
+        "dest_chain_id": { "$ref": "#/$defs/chainId" },
+        "amount": { "$ref": "#/$defs/amount" },
+        "receiver": { "const": "self" },
+        "fee_max_eth": { "type": "string", "pattern": "^0(\\.[0-9]{1,18})?$" },
+        "funds_steps": { "$ref": "#/$defs/stepList" }
+      }
+    },
+
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_at", "interval_seconds", "max_runs", "late_window_seconds", "end_at"],
+      "properties": {
+        "start_at": { "$ref": "#/$defs/unixTime" },
+        "interval_seconds": { "type": "integer", "minimum": 60 },
+        "max_runs": { "$ref": "#/$defs/uint" },
+        "late_window_seconds": { "type": "integer", "minimum": 60 },
+        "end_at": { "$ref": "#/$defs/unixTime" }
+      }
+    },
+
+    "autopay_k": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_id",
+        "step",
+        "depends_on",
+        "autopay_id",
+        "token",
+        "token_address",
+        "chain_id",
+        "recipients",
+        "fee",
+        "schedule",
+        "limits",
+        "executor"
+      ],
+      "properties": {
+        "intent_id": { "const": "k" },
+        "step": { "$ref": "#/$defs/step" },
+        "depends_on": { "$ref": "#/$defs/stepList" },
+        "autopay_id": { "type": "string", "pattern": "^ap_[0-9a-f]{12}$" },
+        "token": { "$ref": "#/$defs/token" },
+        "token_address": { "$ref": "#/$defs/tokenAddress" },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "recipients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/payee" }
+        },
+        "fee": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["to", "amount"],
+          "properties": { "to": { "$ref": "#/$defs/address" }, "amount": { "$ref": "#/$defs/amount" } }
+        },
+        "schedule": { "$ref": "#/$defs/schedule" },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_per_run", "max_total"],
+          "properties": {
+            "max_per_run": { "$ref": "#/$defs/amount" },
+            "max_total": { "$ref": "#/$defs/amount" }
+          }
+        },
+        "executor": { "const": "chainlink-cre" }
+      }
+    },
+
+    "cancel_l": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent_id", "step", "autopay_id", "chain_id", "plan_id"],
+      "properties": {
+        "intent_id": { "const": "l" },
+        "step": { "$ref": "#/$defs/step" },
+        "autopay_id": { "type": "string", "pattern": "^ap_[0-9a-f]{12}$" },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "plan_id": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

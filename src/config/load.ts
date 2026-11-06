@@ -99,7 +99,7 @@ const CONFIG_SCHEMA = {
         rpc_chain_id: { enum: [...CHAIN_IDS] },
         universal_resolver_address: ADDRESS,
         indexer_url: NON_EMPTY,
-        indexer_kind: { const: 'ens-subgraph' },
+        indexer_kind: { enum: ['ens-subgraph', 'ensnode-omnigraph'] },
       },
     },
     execution: {
