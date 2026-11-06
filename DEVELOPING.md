@@ -4,7 +4,7 @@ This TypeScript service accepts wallet requests over a local HTTP API and hands 
 
 ## Install and check
 
-Use Node.js 22.12.0 or newer; the development toolchain requires that floor. The verified environment is macOS arm64 with Node 25.9.0 and npm 11.12.1, as approved in SQ-11. No separate Node 22 runtime was installed or tested in this remediation run.
+Use Node.js 22.12.0+ on the 22.x line, or Node 24.0.0+; this matches the supported ranges of the development tools. The verified environment is macOS arm64 with Node 25.9.0 and npm 11.12.1, as approved in SQ-11. No separate Node 22 runtime was installed or tested in this remediation run.
 
 ```sh
 cd /Users/phantomxsd/Flex
