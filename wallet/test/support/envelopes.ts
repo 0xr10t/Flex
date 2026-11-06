@@ -6,7 +6,6 @@ import type { AutopayK, BridgeJ, CancelL, HandoffEnvelope, PaymentI } from '@fle
 export const WALLET: Hex = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 export const ALEX: Hex = '0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65';
 export const BOB: Hex = '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc';
-export const CARA: Hex = '0x976EA74026E726554dB657fA54763abd0C3a0aa9';
 export const BASE = 84532 as const;
 export const ARBITRUM = 421614 as const;
 

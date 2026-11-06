@@ -1,7 +1,6 @@
 // Lane D test helpers: scenario builders that fill an AgentRequest the way Lanes B/C would (S3–S7 outputs),
 // plus hand-built internal plans for S10–S12. Spec refs: §8.0, §8.9, §12.3, §19 setup.
 
-import { DateTime } from 'luxon';
 import { getAddress } from 'viem';
 import { expect } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
@@ -715,12 +714,4 @@ export function expectQuestion(
 /** Log line assertion for INTERNAL_ERROR rule IDs (§11.1). */
 export function expectRuleLogged(ctx: TestContext, rule_id: string): void {
   expect(ctx.log.lines.some((l) => l.rule_id === rule_id)).toBe(true);
-}
-
-export function instant(iso: string): number {
-  return DateTime.fromISO(iso, { setZone: true }).toMillis();
-}
-
-export function db1Amount(ctx: TestContext, ph: string): string | undefined {
-  return ctx.repos.db1.get(ph as AmountPh)?.amount;
 }

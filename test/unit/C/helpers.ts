@@ -40,9 +40,6 @@ export const NEWADDR = cs('0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed');
 export const OTHER = cs('0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359');
 export const EVIL_A = cs('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111');
 export const EVIL_B = cs('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222');
-/** Checksummed versions of the §19 contacts (the fixture constants are not valid EIP-55). */
-export const ARADHYA_CS = cs('0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E');
-export const MIHIR_CS = cs('0x91aB2c3D4e5F60718293a4B5c6D7e8F9012377d0');
 export const WALLET_CS = cs(TEST_WALLET);
 export const ZERO = '0x0000000000000000000000000000000000000000';
 

@@ -110,9 +110,6 @@ export const noSubmission = (h: Harness): void => {
   expect(h.exec.submissions).toEqual([]);
 };
 
-/** Question codes asked, in order (cumulative for the harness). */
-export const codes = (h: Harness): string[] => [...h.asked];
-
 export const usdcIntent = (o: {
   step: number;
   chain: number;
