@@ -139,7 +139,8 @@ describe('§6.3 DB5 defaults inserted on first run', () => {
       max_bridges_per_request: 3,
       allowed_chain_ids: [11155111, 84532, 421614],
       eth_gas_reserve: { '11155111': '0.01', '84532': '0.002', '421614': '0.002' },
-      bridge_buffer_pct: '2',
+      bridge_buffer_pct: '0',
+      max_group_size: 100,
     });
     expect(raw.find((r) => r.key === 'per_tx_max')?.value).toBe('{"USDC":"100","ETH":"0.05"}');
   });

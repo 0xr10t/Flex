@@ -74,6 +74,16 @@ describe('plan cases (TEST_MAP §4.2, 5)', () => {
   });
   it.each<[string, unknown, boolean]>([
     [
+      '[j] standalone transfer to the same wallet',
+      plan([{ step: 0, kind: 'bridge', funds: [], intent: bridge() }]),
+      true,
+    ],
+    [
+      '[j] standalone transfer cannot name a missing payment',
+      plan([{ step: 0, kind: 'bridge', funds: [1], intent: bridge() }]),
+      false,
+    ],
+    [
       'README worked example [j, i, i]',
       plan([
         { step: 0, kind: 'bridge', funds: [1], intent: bridge() },

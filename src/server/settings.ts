@@ -61,6 +61,7 @@ export function validateLimits(body: unknown, config: Config): LimitsValidation 
   }
 
   if ('autopay_max_weeks' in body) err('autopay_max_weeks', intInRange(body.autopay_max_weeks, 1, 520));
+  if ('max_group_size' in body) err('max_group_size', intInRange(body.max_group_size, 1, 100));
   if ('max_bridges_per_request' in body) {
     err('max_bridges_per_request', intInRange(body.max_bridges_per_request, 0, 10));
   }

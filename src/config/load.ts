@@ -1,11 +1,16 @@
 // Implements: §6.1 config.json (path from env AGENT_CONFIG, default ~/.agent-layer/config.json; validated at
 // startup), §16.4 server bound to 127.0.0.1 only, NFR-01 Ollama on 127.0.0.1 only, §5 stack (Ajv draft 2020-12 shared instance).
+// Privacy fix 10: the execution layer on 127.0.0.1 only; RPC URLs https (anon-rpc) or http to 127.0.0.1; the indexer https
+// or null (off, fix 6); `fetch.enabled` switches link reading (fix 5). anon-rpc over Tor: `network.socks_proxy` is
+// socks5h://127.0.0.1:<port> or null (direct).
 // Owner: Lane A.
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { IANAZone } from 'luxon';
+import { isAddress, zeroAddress } from 'viem';
+import { toBaseUnits } from '../contracts/money.js';
 import { ajv } from '../schemas/index.js';
 import { CHAIN_IDS, type ChainId, type Config } from '../contracts/types.js';
 
@@ -33,7 +38,7 @@ const POS_INT = { type: 'integer', minimum: 1 } as const;
 const CONFIG_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['wallet', 'server', 'auth', 'db', 'llm', 'chains', 'ens', 'execution', 'fetch', 'defaults'],
+  required: ['wallet', 'server', 'auth', 'db', 'llm', 'chains', 'ens', 'execution', 'network', 'fetch', 'defaults'],
   properties: {
     wallet: {
       type: 'object',
@@ -74,6 +79,16 @@ const CONFIG_SCHEMA = {
         think: { type: 'boolean' },
       },
     },
+    chat: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['enabled', 'think'],
+      properties: {
+        enabled: { type: 'boolean' },
+        think: { type: 'boolean' },
+        model: { ...NON_EMPTY, pattern: '\\S' },
+      },
+    },
     chains: {
       type: 'array',
       minItems: 1,
@@ -98,7 +113,7 @@ const CONFIG_SCHEMA = {
       properties: {
         rpc_chain_id: { enum: [...CHAIN_IDS] },
         universal_resolver_address: ADDRESS,
-        indexer_url: NON_EMPTY,
+        indexer_url: { oneOf: [NON_EMPTY, { type: 'null' }] },
         indexer_kind: { enum: ['ens-subgraph', 'ensnode-omnigraph'] },
       },
     },
@@ -108,11 +123,39 @@ const CONFIG_SCHEMA = {
       required: ['url', 'outbound_token_file', 'timeout_ms'],
       properties: { url: NON_EMPTY, outbound_token_file: NON_EMPTY, timeout_ms: POS_INT },
     },
+    network: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['socks_proxy'],
+      properties: { socks_proxy: { oneOf: [NON_EMPTY, { type: 'null' }] } },
+    },
+    autopay: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['late_window_seconds', 'fee', 'fee_collector'],
+      properties: {
+        late_window_seconds: { type: 'integer', minimum: 60 },
+        fee_collector: ADDRESS,
+        fee: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['USDC', 'ETH'],
+          properties: { USDC: NON_EMPTY, ETH: NON_EMPTY },
+        },
+      },
+    },
+    bridge: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['ccip_fee_max_eth'],
+      properties: { ccip_fee_max_eth: NON_EMPTY },
+    },
     fetch: {
       type: 'object',
       additionalProperties: false,
-      required: ['max_bytes', 'timeout_ms', 'max_redirects'],
+      required: ['enabled', 'max_bytes', 'timeout_ms', 'max_redirects'],
       properties: {
+        enabled: { type: 'boolean' },
         max_bytes: POS_INT,
         timeout_ms: POS_INT,
         max_redirects: { type: 'integer', minimum: 0 },
@@ -154,20 +197,86 @@ export function validateConfig(raw: unknown): Config {
   if (new Set(ids).size !== ids.length) errors.push('/chains duplicate chain_id');
   if (!ids.includes(cfg.ens.rpc_chain_id)) errors.push('/ens/rpc_chain_id not a configured chain');
   if (!IANAZone.isValidZone(cfg.defaults.timezone)) errors.push('/defaults/timezone not an IANA timezone');
+  if (cfg.autopay) {
+    if (!isAddress(cfg.autopay.fee_collector) || cfg.autopay.fee_collector.toLowerCase() === zeroAddress)
+      errors.push('/autopay/fee_collector must be a nonzero address');
+    for (const token of ['USDC', 'ETH'] as const) {
+      try {
+        if (toBaseUnits(cfg.autopay.fee[token], token === 'USDC' ? 6 : 18) <= 0n) throw new Error();
+      } catch {
+        errors.push(`/autopay/fee/${token} must be a positive token amount`);
+      }
+    }
+  }
+  if (cfg.bridge) {
+    try {
+      const fee = toBaseUnits(cfg.bridge.ccip_fee_max_eth, 18);
+      if (fee <= 0n || fee > toBaseUnits('0.01', 18)) throw new Error();
+    } catch {
+      errors.push('/bridge/ccip_fee_max_eth must be positive and at most 0.01 ETH');
+    }
+  }
   const urls: Array<[string, string]> = [
     ['/llm/ollama_url', cfg.llm.ollama_url],
     ['/execution/url', cfg.execution.url],
-    ['/ens/indexer_url', cfg.ens.indexer_url],
+    ...(cfg.ens.indexer_url === null ? [] : [['/ens/indexer_url', cfg.ens.indexer_url] as [string, string]]),
     ...cfg.chains.map((c, i): [string, string] => [`/chains/${i}/rpc_url`, c.rpc_url]),
   ];
   for (const [field, url] of urls) if (!URL.canParse(url)) errors.push(`${field} not a parsable URL`);
   // NFR-01 / ADR-004 / §16.4: Ollama is reached on 127.0.0.1 only, over plain http (§6.1 example).
-  if (URL.canParse(cfg.llm.ollama_url)) {
-    const u = new URL(cfg.llm.ollama_url);
-    if (u.protocol !== 'http:' || u.hostname !== '127.0.0.1') errors.push('/llm/ollama_url must be http://127.0.0.1');
+  if (URL.canParse(cfg.llm.ollama_url) && !isLoopbackHttp(cfg.llm.ollama_url)) {
+    errors.push('/llm/ollama_url must be http://127.0.0.1');
+  }
+  // Privacy fix 10: the hand-off carries real amounts and addresses, so it never leaves this machine.
+  if (URL.canParse(cfg.execution.url) && !isLoopbackHttp(cfg.execution.url)) {
+    errors.push('/execution/url must be http://127.0.0.1');
+  }
+  // Privacy fix 10: chain reads go over TLS (anon-rpc), or in plain http only to a node on this machine.
+  cfg.chains.forEach((c, i) => {
+    if (URL.canParse(c.rpc_url) && !isHttpsOrLoopback(c.rpc_url)) {
+      errors.push(`/chains/${i}/rpc_url must be https, or http://127.0.0.1`);
+    }
+  });
+  // anon-rpc over Tor: the proxy is Tor's SOCKS port on this machine, and hostnames are resolved by Tor (socks5h).
+  if (cfg.network.socks_proxy !== null && !isTorSocks(cfg.network.socks_proxy)) {
+    errors.push('/network/socks_proxy must be socks5h://127.0.0.1:<port> or null');
+  }
+  if (
+    cfg.ens.indexer_url !== null &&
+    URL.canParse(cfg.ens.indexer_url) &&
+    new URL(cfg.ens.indexer_url).protocol !== 'https:'
+  ) {
+    errors.push('/ens/indexer_url must be https');
   }
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
+}
+
+/** http on 127.0.0.1, no credentials in the URL. */
+export function isLoopbackHttp(url: string): boolean {
+  const u = new URL(url);
+  return u.protocol === 'http:' && u.hostname === '127.0.0.1' && u.username === '' && u.password === '';
+}
+
+/** `socks5h://127.0.0.1:<port>`, nothing else: no credentials (one is set per circuit), no path. */
+export function isTorSocks(url: string): boolean {
+  if (!URL.canParse(url)) return false;
+  const u = new URL(url);
+  return (
+    u.protocol === 'socks5h:' &&
+    u.hostname === '127.0.0.1' &&
+    u.port !== '' &&
+    u.username === '' &&
+    u.password === '' &&
+    (u.pathname === '' || u.pathname === '/') &&
+    u.search === '' &&
+    u.hash === ''
+  );
+}
+
+/** https anywhere, or plain http to 127.0.0.1 (your own node). */
+export function isHttpsOrLoopback(url: string): boolean {
+  return new URL(url).protocol === 'https:' || isLoopbackHttp(url);
 }
 
 /** Reads and validates config.json (§6.1). */

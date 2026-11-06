@@ -18,6 +18,88 @@ function missingFixture(): FixtureFile {
 }
 
 describe('amount answer currencies through HTTP', () => {
+  it.each(
+    [
+      { label: 'recorded empty recipient output stays safe', spans: [], askRecipient: true },
+      {
+        label: 'an invented example recipient stays safe',
+        spans: [{ text: 'neha', kind: 'name', role: 'payee' }],
+        askRecipient: true,
+      },
+      {
+        label: 'a mentioned-only recipient stays safe',
+        spans: [{ text: 'mihir', kind: 'name', role: 'mentioned' }],
+        askRecipient: true,
+      },
+      {
+        label: 'corrected extraction preserves Mihir',
+        spans: [{ text: 'mihir', kind: 'name', role: 'payee' }],
+        askRecipient: false,
+      },
+      {
+        label: 'the model-returned pronoun is not invented as a recipient',
+        typed: 'pay her',
+        spans: [{ text: 'her', kind: 'name', role: 'payee' }],
+        askRecipient: true,
+      },
+    ].map((test) => ({ typed: 'pay mihir', ...test })),
+  )('SQ-M-01: Qwen3 $label through thanks and a natural USD answer', async ({ typed, spans, askRecipient }) => {
+    const fixture: FixtureFile = {
+      calls: [
+        { name: 'amounts', match: typed, output: { amounts: [] } },
+        {
+          name: 'request_type',
+          match: typed,
+          output: { request_type: 'actions', actions: ['i'], also_balance: false },
+        },
+        { name: 'conversation', match: 'thanks', output: { intent: 'clarify', value: null } },
+        { name: 'conversation', match: 'please send 10 usd', output: { intent: 'answer', value: '10 usd' } },
+        { name: 'spans', match: typed, output: { spans } },
+        ...(askRecipient ? [] : [structuredClone(loadFixture('A-55').calls[3]!)]),
+      ],
+    };
+    const h = new Harness('qwen3-empty-amount-and-recipient', fixture, {});
+    try {
+      const pending = await h.say(typed);
+      expect(pending.body.question?.code).toBe('Q_AMOUNT_MISSING');
+      const thanked = await h.answer(pending, { text: 'thanks' });
+      expect(thanked.body.question).toEqual(pending.body.question);
+      expect(thanked.body.request_id).toBe(pending.body.request_id);
+      const summary = await h.answer(thanked, { text: 'please send 10 usd' });
+      const recipientCall = h.llm.recorded.find((call) => call.name === 'spans');
+      expect(recipientCall?.user).toContain(`Message: <<<${typed}>>>`);
+      expect(recipientCall?.user).toContain('CANDIDATES: []');
+      expect(recipientCall?.user).not.toContain('10 usd');
+      expect(h.exec.submissions).toHaveLength(0);
+      expect(summary.body.request_id).toBe(pending.body.request_id);
+      expect(h.rows('SELECT amount, token, source, confirmed FROM db1_amount_placeholders')).toEqual([
+        { amount: '10', token: 'USDC', source: 'user', confirmed: 1 },
+      ]);
+      if (askRecipient) {
+        expect(summary.body.state).toBe('awaiting_answer');
+        expect(summary.body.question?.code).toBe('Q_NO_PAYEE');
+        expect(h.rows('SELECT * FROM db3_address_placeholders')).toEqual([]);
+        expect(h.llm.names()).toEqual(['amounts', 'request_type', 'conversation', 'conversation', 'spans']);
+        expect(h.llm.remaining()).toEqual([]);
+        return;
+      }
+      expect(summary.body.state, JSON.stringify(summary.body)).toBe('awaiting_confirmation');
+      expect(summary.body.summary?.text).toContain('Send 10 USDC to Mihir');
+      expect(summary.body.summary?.notes).toContain("You wrote '10 usd' → 10 USDC.");
+      expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+      expect(h.exec.submissions).toHaveLength(1);
+      expect(h.envelope.intents).toHaveLength(1);
+      expect(h.envelope.intents[0]).toMatchObject({
+intent_id: 'i',
+token: 'USDC',
+recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }]
+});
+      expect(h.llm.remaining()).toEqual([]);
+    } finally {
+      await h.finish({ allowUnused: true });
+    }
+  });
+
   it.each([
     { number: null, relative: null, token: null, fiat: null },
     { number: '10', relative: null, token: 'ETH', fiat: 'OTHER' },
@@ -49,11 +131,10 @@ describe('amount answer currencies through HTTP', () => {
         expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
         expect(h.envelope.intents).toHaveLength(1);
         expect(h.envelope.intents[0]).toMatchObject({
-          intent_id: 'i',
-          token: 'USDC',
-          recipient: MIHIR,
-          amount: { value: '10', base_units: '10000000', decimals: 6 },
-        });
+intent_id: 'i',
+token: 'USDC',
+recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }]
+});
         expect(h.llm.names()).toEqual(['amounts', 'request_type', 'spans', 'payments']);
         expect(h.llm.remaining()).toEqual([]);
       } finally {
@@ -83,11 +164,10 @@ describe('amount answer currencies through HTTP', () => {
         expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
         expect(h.envelope.intents).toHaveLength(1);
         expect(h.envelope.intents[0]).toMatchObject({
-          intent_id: 'i',
-          token,
-          amount: { value: amount, base_units: units, decimals: token === 'USDC' ? 6 : 18 },
-          recipient: MIHIR,
-        });
+intent_id: 'i',
+token,
+recipients: [{ amount: { value: amount, base_units: units, decimals: token === 'USDC' ? 6 : 18 }, recipient: MIHIR }]
+});
         expect(h.llm.names()).toEqual(['amounts', 'request_type', 'spans', 'payments']);
       } finally {
         await h.finish({ allowUnused: true });
@@ -119,12 +199,11 @@ describe('real-model follow-up amount shapes', () => {
       const history = h.repos.db8.recentHistory(h.sessionId, 5);
       expect(history).toHaveLength(1);
       expect(original.intents.at(-1)).toMatchObject({
-        intent_id: 'i',
-        recipient: ARADHYA,
-        token: 'USDC',
-        chain_id: BASE,
-        amount: { value: '50' },
-      });
+intent_id: 'i',
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ recipient: ARADHYA, amount: { value: '50' } }]
+});
       h.advance(11);
       h.setBalances({ [BASE]: { USDC: '60' }, [ARB]: { USDC: '39' } });
       const summary = await h.say('Send 5 more');
@@ -139,12 +218,11 @@ describe('real-model follow-up amount shapes', () => {
       expect(h.exec.submissions[0]!.envelope).toEqual(original);
       expect(h.envelope.intents).toMatchObject([
         {
-          intent_id: 'i',
-          recipient: ARADHYA,
-          token: 'USDC',
-          chain_id: BASE,
-          amount: { value: '5', base_units: '5000000', decimals: 6 },
-        },
+intent_id: 'i',
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ recipient: ARADHYA, amount: { value: '5', base_units: '5000000', decimals: 6 } }]
+},
       ]);
       expect(h.repos.db8.recentHistory(h.sessionId, 5)).toHaveLength(2);
       expect(h.repos.db8.recentHistory(h.sessionId, 5).find((row) => row.request_id === first.body.request_id)).toEqual(
@@ -211,15 +289,14 @@ describe('real-model follow-up amount shapes', () => {
       expect(summary.body.summary?.text).toContain('Send 0.005 ETH to Mihir');
       expect(h.asked).toEqual([]);
       expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
-      expect(h.exec.submissions[0]!.envelope.intents[0]).toMatchObject({ token: 'ETH', amount: { value: '0.01' } });
+      expect(h.exec.submissions[0]!.envelope.intents[0]).toMatchObject({ token: 'ETH', recipients: [{ amount: { value: '0.01' } }] });
       expect(h.envelope.intents).toMatchObject([
         {
-          intent_id: 'i',
-          recipient: MIHIR,
-          chain_id: ARB,
-          token: 'ETH',
-          amount: { value: '0.005', base_units: '5000000000000000', decimals: 18 },
-        },
+intent_id: 'i',
+chain_id: ARB,
+token: 'ETH',
+recipients: [{ recipient: MIHIR, amount: { value: '0.005', base_units: '5000000000000000', decimals: 18 } }]
+},
       ]);
       expect(h.llm.remaining()).toEqual([]);
     } finally {

@@ -2,6 +2,10 @@
   "$ref": "#/$defs/InternalPlan",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "Address": {
+      "description": "Hex address string. Stored/handed off EIP-55 checksummed (§7, §12.5).",
+      "type": "string"
+    },
     "AddressPh": {
       "description": "§7.3 `address_` + 8 lowercase hex.",
       "type": "string",
@@ -12,282 +16,7 @@
       "type": "string",
       "pattern": "^amount_[0-9a-f]{8}$"
     },
-    "ChainId": {
-      "enum": [
-        11155111,
-        84532,
-        421614
-      ],
-      "type": "number"
-    },
-    "CreJob": {
-      "additionalProperties": false,
-      "properties": {
-        "cron": {
-          "type": "string"
-        },
-        "interval": {
-          "type": "number"
-        },
-        "timezone": {
-          "type": "string"
-        },
-        "trigger": {
-          "const": "cron",
-          "type": "string"
-        }
-      },
-      "required": [
-        "trigger",
-        "cron",
-        "timezone",
-        "interval"
-      ],
-      "type": "object"
-    },
-    "Frequency": {
-      "enum": [
-        "daily",
-        "weekly",
-        "monthly"
-      ],
-      "type": "string"
-    },
-    "InternalIntent": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/PlanI"
-        },
-        {
-          "$ref": "#/$defs/PlanJ"
-        },
-        {
-          "$ref": "#/$defs/PlanK"
-        },
-        {
-          "$ref": "#/$defs/PlanL"
-        }
-      ]
-    },
-    "InternalPlan": {
-      "description": "The S9 output validated by V-01 against src/schemas/internal-plan.schema.json.",
-      "items": {
-        "$ref": "#/$defs/InternalIntent"
-      },
-      "type": "array"
-    },
-    "PlanI": {
-      "additionalProperties": false,
-      "properties": {
-        "amount": {
-          "$ref": "#/$defs/AmountPh"
-        },
-        "chain_id": {
-          "$ref": "#/$defs/ChainId"
-        },
-        "depends_on": {
-          "items": {
-            "type": "number"
-          },
-          "type": "array"
-        },
-        "intent_id": {
-          "const": "i",
-          "type": "string"
-        },
-        "recipient": {
-          "$ref": "#/$defs/AddressPh"
-        },
-        "reused_from_chain_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ChainId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "step": {
-          "type": "number"
-        },
-        "token": {
-          "$ref": "#/$defs/Token"
-        }
-      },
-      "required": [
-        "intent_id",
-        "step",
-        "depends_on",
-        "token",
-        "chain_id",
-        "amount",
-        "recipient",
-        "reused_from_chain_id"
-      ],
-      "type": "object"
-    },
-    "PlanJ": {
-      "additionalProperties": false,
-      "properties": {
-        "amount": {
-          "$ref": "#/$defs/AmountPh"
-        },
-        "deliverable_base_units": {
-          "type": "string"
-        },
-        "dest_chain_id": {
-          "$ref": "#/$defs/ChainId"
-        },
-        "funds_steps": {
-          "items": {
-            "type": "number"
-          },
-          "type": "array"
-        },
-        "intent_id": {
-          "const": "j",
-          "type": "string"
-        },
-        "receiver": {
-          "const": "self",
-          "type": "string"
-        },
-        "source_chain_id": {
-          "$ref": "#/$defs/ChainId"
-        },
-        "step": {
-          "type": "number"
-        },
-        "token": {
-          "$ref": "#/$defs/Token"
-        }
-      },
-      "required": [
-        "intent_id",
-        "step",
-        "token",
-        "source_chain_id",
-        "dest_chain_id",
-        "amount",
-        "deliverable_base_units",
-        "receiver",
-        "funds_steps"
-      ],
-      "type": "object"
-    },
-    "PlanK": {
-      "additionalProperties": false,
-      "properties": {
-        "amount_per_payment": {
-          "$ref": "#/$defs/AmountPh"
-        },
-        "autopay_id": {
-          "type": "string"
-        },
-        "chain_id": {
-          "$ref": "#/$defs/ChainId"
-        },
-        "cre_job": {
-          "$ref": "#/$defs/CreJob"
-        },
-        "depends_on": {
-          "items": {
-            "type": "number"
-          },
-          "type": "array"
-        },
-        "intent_id": {
-          "const": "k",
-          "type": "string"
-        },
-        "limits": {
-          "additionalProperties": false,
-          "properties": {
-            "expires_at": {
-              "type": "string"
-            },
-            "per_period_cap": {
-              "$ref": "#/$defs/AmountPh"
-            },
-            "total_cap": {
-              "$ref": "#/$defs/AmountPh"
-            }
-          },
-          "required": [
-            "per_period_cap",
-            "total_cap",
-            "expires_at"
-          ],
-          "type": "object"
-        },
-        "recipient": {
-          "$ref": "#/$defs/AddressPh"
-        },
-        "schedule": {
-          "$ref": "#/$defs/Schedule"
-        },
-        "step": {
-          "type": "number"
-        },
-        "token": {
-          "$ref": "#/$defs/Token"
-        }
-      },
-      "required": [
-        "intent_id",
-        "step",
-        "depends_on",
-        "autopay_id",
-        "token",
-        "chain_id",
-        "recipient",
-        "amount_per_payment",
-        "schedule",
-        "limits",
-        "cre_job"
-      ],
-      "type": "object"
-    },
-    "PlanL": {
-      "additionalProperties": false,
-      "properties": {
-        "autopay_id": {
-          "type": "string"
-        },
-        "chain_id": {
-          "$ref": "#/$defs/ChainId"
-        },
-        "delegate_address": {
-          "type": "string"
-        },
-        "intent_id": {
-          "const": "l",
-          "type": "string"
-        },
-        "recipient": {
-          "$ref": "#/$defs/AddressPh"
-        },
-        "refund_remaining": {
-          "const": true,
-          "type": "boolean"
-        },
-        "step": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "intent_id",
-        "step",
-        "autopay_id",
-        "chain_id",
-        "delegate_address",
-        "recipient",
-        "refund_remaining"
-      ],
-      "type": "object"
-    },
-    "Schedule": {
+    "CalendarSchedule": {
       "additionalProperties": false,
       "properties": {
         "day_of_month": {
@@ -344,6 +73,339 @@
         "start_date",
         "first_occurrence",
         "end"
+      ],
+      "type": "object"
+    },
+    "ChainId": {
+      "enum": [
+        11155111,
+        84532,
+        421614
+      ],
+      "type": "number"
+    },
+    "Frequency": {
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly"
+      ],
+      "type": "string"
+    },
+    "Hex": {
+      "type": "string"
+    },
+    "InternalIntent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanI"
+        },
+        {
+          "$ref": "#/$defs/PlanJ"
+        },
+        {
+          "$ref": "#/$defs/PlanK"
+        },
+        {
+          "$ref": "#/$defs/PlanL"
+        }
+      ]
+    },
+    "InternalPlan": {
+      "description": "The S9 output validated by V-01 against src/schemas/internal-plan.schema.json.",
+      "items": {
+        "$ref": "#/$defs/InternalIntent"
+      },
+      "type": "array"
+    },
+    "PlanI": {
+      "additionalProperties": false,
+      "properties": {
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "depends_on": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intent_id": {
+          "const": "i",
+          "type": "string"
+        },
+        "recipients": {
+          "items": {
+            "$ref": "#/$defs/PlanPayee"
+          },
+          "type": "array"
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "required": [
+        "chain_id",
+        "depends_on",
+        "intent_id",
+        "recipients",
+        "step",
+        "token"
+      ],
+      "type": "object"
+    },
+    "PlanJ": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/AmountPh"
+        },
+        "deliverable_base_units": {
+          "type": "string"
+        },
+        "dest_chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "fee_max_eth": {
+          "type": "string"
+        },
+        "funds_steps": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intent_id": {
+          "const": "j",
+          "type": "string"
+        },
+        "receiver": {
+          "const": "self",
+          "type": "string"
+        },
+        "source_chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "const": "USDC",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "deliverable_base_units",
+        "dest_chain_id",
+        "fee_max_eth",
+        "funds_steps",
+        "intent_id",
+        "receiver",
+        "source_chain_id",
+        "step",
+        "token"
+      ],
+      "type": "object"
+    },
+    "PlanK": {
+      "additionalProperties": false,
+      "properties": {
+        "autopay_id": {
+          "type": "string"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "depends_on": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Never handed off. Calendar wording, aggregate weekly limit and source S8 payment for replanning.",
+          "properties": {
+            "payment_index": {
+              "type": "number"
+            },
+            "per_period_cap": {
+              "$ref": "#/$defs/AmountPh"
+            },
+            "schedule": {
+              "$ref": "#/$defs/CalendarSchedule"
+            }
+          },
+          "required": [
+            "schedule",
+            "per_period_cap",
+            "payment_index"
+          ],
+          "type": "object"
+        },
+        "executor": {
+          "const": "chainlink-cre",
+          "type": "string"
+        },
+        "fee": {
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "$ref": "#/$defs/AmountPh"
+            },
+            "to": {
+              "$ref": "#/$defs/Address"
+            }
+          },
+          "required": [
+            "to",
+            "amount"
+          ],
+          "type": "object"
+        },
+        "intent_id": {
+          "const": "k",
+          "type": "string"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "properties": {
+            "max_per_run": {
+              "$ref": "#/$defs/AmountPh"
+            },
+            "max_total": {
+              "$ref": "#/$defs/AmountPh"
+            }
+          },
+          "required": [
+            "max_per_run",
+            "max_total"
+          ],
+          "type": "object"
+        },
+        "recipients": {
+          "items": {
+            "$ref": "#/$defs/PlanPayee"
+          },
+          "type": "array"
+        },
+        "schedule": {
+          "$ref": "#/$defs/Schedule"
+        },
+        "step": {
+          "type": "number"
+        },
+        "token": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "required": [
+        "autopay_id",
+        "chain_id",
+        "depends_on",
+        "display",
+        "executor",
+        "fee",
+        "intent_id",
+        "limits",
+        "recipients",
+        "schedule",
+        "step",
+        "token"
+      ],
+      "type": "object"
+    },
+    "PlanL": {
+      "additionalProperties": false,
+      "properties": {
+        "autopay_id": {
+          "type": "string"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/ChainId"
+        },
+        "intent_id": {
+          "const": "l",
+          "type": "string"
+        },
+        "plan_id": {
+          "$ref": "#/$defs/Hex"
+        },
+        "recipient": {
+          "$ref": "#/$defs/AddressPh",
+          "description": "Private reference used to describe the cancellation to the user."
+        },
+        "step": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "autopay_id",
+        "chain_id",
+        "intent_id",
+        "plan_id",
+        "recipient",
+        "step"
+      ],
+      "type": "object"
+    },
+    "PlanPayee": {
+      "additionalProperties": false,
+      "description": "Only the agent's private references differ from the shared execution intent.",
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/AmountPh"
+        },
+        "recipient": {
+          "$ref": "#/$defs/AddressPh"
+        },
+        "reused_from_chain_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChainId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "amount",
+        "recipient",
+        "reused_from_chain_id"
+      ],
+      "type": "object"
+    },
+    "Schedule": {
+      "additionalProperties": false,
+      "properties": {
+        "end_at": {
+          "type": "number"
+        },
+        "interval_seconds": {
+          "type": "number"
+        },
+        "late_window_seconds": {
+          "type": "number"
+        },
+        "max_runs": {
+          "type": "number"
+        },
+        "start_at": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_at",
+        "interval_seconds",
+        "max_runs",
+        "late_window_seconds",
+        "end_at"
       ],
       "type": "object"
     },

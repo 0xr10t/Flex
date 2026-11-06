@@ -1,7 +1,7 @@
 // Regression coverage for B16/B17 through the real HTTP registry and SQLCipher repositories.
 // LLM and execution are fixtures; no network or signing.
 import { describe, expect, it } from 'vitest';
-import { enumerateOccurrences } from '../../src/plan/schedule.js';
+import { DateTime } from 'luxon';
 import { BASE, Harness, type Resp } from './harness.js';
 import type { FixtureCall, FixtureFile } from '../fakes/llm.js';
 
@@ -109,35 +109,36 @@ describe('schedule dates through HTTP', () => {
     },
   ])(
     'B16: confirms and hands off the requested local start $start',
-    async ({ clock, start, date, time, first, cron }) => {
+    async ({ clock, start, time, first }) => {
       await withDailySchedule(`starting ${start} for 8 payments`, clock, 'America/New_York', async (h, response) => {
         const intent = await confirmSchedule(h, response);
-        expect(intent.schedule).toMatchObject({
-          timezone: 'America/New_York',
-          start_date: date,
-          time_of_day: time,
-          first_occurrence: first,
+        const startAt = Date.parse(first) / 1000;
+        expect(intent.schedule).toEqual({
+          start_at: startAt, interval_seconds: 86400, max_runs: 8,
+          late_window_seconds: 3600, end_at: startAt + 7 * 86400 + 3600,
         });
-        expect(intent.cre_job).toMatchObject({ cron, timezone: 'America/New_York' });
+        expect(intent.executor).toBe('chainlink-cre');
         expect(JSON.stringify(response.body.summary)).toContain(`at ${time} (America/New_York)`);
       });
     },
   );
 
-  it('B16: recurrence retains its wall time as the IANA zone crosses DST end', async () => {
+  it('B16: recurrence uses fixed UTC intervals and discloses the local-time change across DST end', async () => {
     await withDailySchedule(
       'starting October 31 2026 at 10am for 8 payments',
       '2026-10-30T14:00:00Z',
       'America/New_York',
       async (h, response) => {
         const intent = await confirmSchedule(h, response);
-        const occurrences = enumerateOccurrences(intent.schedule, 52).occurrences;
+        const occurrences = Array.from({ length: intent.schedule.max_runs }, (_, i) =>
+          DateTime.fromSeconds(intent.schedule.start_at + i * intent.schedule.interval_seconds, { zone: 'America/New_York' }));
         expect(occurrences).toHaveLength(8);
         expect(occurrences.slice(0, 2).map((d) => d.toISO())).toEqual([
           '2026-10-31T10:00:00.000-04:00',
-          '2026-11-01T10:00:00.000-05:00',
+          '2026-11-01T09:00:00.000-05:00',
         ]);
-        expect(intent.cre_job.cron).toBe('0 10 * * *');
+        expect(intent.schedule.interval_seconds).toBe(86400);
+        expect(response.body.summary?.notes.join(' ')).toContain('daylight saving');
       },
     );
   });
@@ -164,15 +165,13 @@ describe('schedule dates through HTTP', () => {
     async (range) => {
       await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {
         const intent = await confirmSchedule(h, response);
-        expect(intent.schedule).toMatchObject({
-          start_date: '2026-11-10',
-          first_occurrence: '2026-11-10T10:00:00+05:30',
-          end: { type: 'on_date', date: '2026-11-20' },
+        const startAt = Date.parse('2026-11-10T10:00:00+05:30') / 1000;
+        expect(intent.schedule).toEqual({
+          start_at: startAt, interval_seconds: 86400, max_runs: 11,
+          late_window_seconds: 3600, end_at: startAt + 10 * 86400 + 3600,
         });
-        expect(intent.prefund.value).toBe('11');
-        const occurrences = enumerateOccurrences(intent.schedule, 52).occurrences;
-        expect(occurrences).toHaveLength(11);
-        expect(occurrences.at(-1)?.toISODate()).toBe('2026-11-20');
+        expect(intent.limits.max_total.value).toBe('11.55');
+        expect(intent).not.toHaveProperty('prefund');
       });
     },
   );

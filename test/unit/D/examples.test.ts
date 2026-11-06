@@ -39,6 +39,7 @@ import {
   addRecipient,
   addWord,
   ctxD,
+  planIdFor,
   db6Row,
   expectError,
   expectQuestion,
@@ -102,15 +103,13 @@ describe('§19 worked examples end to end', () => {
     expect(ctx.req.payments).toEqual([{ ...llmItem('i', a, r), token: 'USDC' }]);
     expect(plan(ctx)).toEqual([
       {
-        intent_id: 'i',
-        step: 0,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: BASE,
-        amount: a,
-        recipient: r,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ amount: a, recipient: r, reused_from_chain_id: null }]
+},
     ]);
     expect(summaryText(run)).toBe(
       [
@@ -124,22 +123,20 @@ describe('§19 worked examples end to end', () => {
     const h = await s12.step(ctx);
     expect(h).toEqual({ kind: 'answer', messages: ['Sent to your wallet for signing.'] });
     expect(ctx.exec.submissions[0]?.envelope).toEqual({
-      version: '1',
+      version: '2',
       request_id: 'req_5d1c0a9b8e7f',
       wallet_address: WALLET_CS,
       created_at: '2026-11-05T17:30:00Z',
       intents: [
         {
-          intent_id: 'i',
-          step: 0,
-          depends_on: [],
-          token: 'USDC',
-          token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-          chain_id: 84532,
-          amount: { value: '50', base_units: '50000000', decimals: 6 },
-          // §19 prints 0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E, not a valid EIP-55 checksum; the envelope carries the real one.
-          recipient: ARADHYA_CS,
-        },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+chain_id: 84532,
+recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, recipient: ARADHYA_CS }]
+},
       ],
     });
     expect(ctx.exec.submissions[0]?.idempotencyKey).toBe('req_5d1c0a9b8e7f');
@@ -151,7 +148,7 @@ describe('§19 worked examples end to end', () => {
     expect(hist).toEqual([{ ...llmItem('i', a, r), token: 'USDC', chain_id: BASE }]);
   });
 
-  it('C-433 A-02 E2: "Send 50 usdc to ARADHYA on base" (Base 30 / Arbitrum 60) → [j 20.4, i 50]; counted 50.4; DB6 bridge rows', async () => {
+  it('C-433 A-02 E2: "Send 50 usdc to ARADHYA on base" (Base 30 / Arbitrum 60) → [j 20, i 50]; counted 50; DB6 bridge rows', async () => {
     const ctx = ctxD({ balances: usdc('0', '30', '60') });
     const a = addAmount(ctx, '50');
     const r = addAradhya(ctx);
@@ -169,13 +166,20 @@ describe('§19 worked examples end to end', () => {
       deliverable_base_units: '20000000',
       funds_steps: [1],
     });
-    expect(p[1]).toMatchObject({ intent_id: 'i', step: 1, depends_on: [0], chain_id: BASE, amount: a, recipient: r });
+    expect(p[1]).toMatchObject({
+intent_id: 'i',
+step: 1,
+depends_on: [0],
+chain_id: BASE,
+recipients: [{ amount: a, recipient: r }]
+});
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
-        '1. Move 20.4 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+        '1. Move 20 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         `2. Send 50 USDC to Aradhya (${A_ARADHYA}) on Base Sepolia. After step 1.`,
-        'Spent today after this: 50.4 of 300 USDC.',
+        'Spent today after this: 50 of 300 USDC.',
+        'Spent today after this: 0.002 of 0.15 ETH.',
         'Confirm?',
       ].join('\n'),
     );
@@ -183,28 +187,29 @@ describe('§19 worked examples end to end', () => {
     const env = ctx.exec.submissions[0]?.envelope;
     expect(env?.intents.map((x) => x.intent_id)).toEqual(['j', 'i']);
     expect(env?.intents[0]).toMatchObject({
-      amount: { value: '20.4', base_units: '20400000', decimals: 6 },
+      amount: { value: '20', base_units: '20000000', decimals: 6 },
       source_token_address: USDC_ADDR[ARB],
       dest_token_address: USDC_ADDR[BASE],
       funds_steps: [1],
     });
     expect(env?.intents[1]).toMatchObject({
       depends_on: [0],
-      amount: { value: '50', base_units: '50000000', decimals: 6 },
+      recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 } }],
     });
     expect(ctx.repos.tables.db6.map((x) => [x.step, x.kind, x.amount, x.counts_toward_limit, x.chain_id])).toEqual([
-      [0, 'bridge_out', '20.4', false, ARB],
-      [0, 'bridge_buffer', '0.4', true, ARB],
+      [0, 'bridge_out', '20', false, ARB],
+      [0, 'bridge_buffer', '0', true, ARB],
+      [0, 'bridge_fee', '0.002', true, ARB],
       [1, 'payment', '50', true, BASE],
     ]);
     expect(
       ctx.repos.db6
         .spentToday('USDC', 'Asia/Kolkata', '2026-11-05T17:31:00.000Z')
         .reduce((s, x) => s + Number(x.amount), 0),
-    ).toBeCloseTo(50.4, 6);
+    ).toBeCloseTo(50, 6);
   });
 
-  it('C-434 A-03 E3: 40 to Aradhya on base and 20 to Mihir on arbitrum (Arbitrum 50 / Base 30) → [j 10.2, i 40, i 20], spec summary', async () => {
+  it('C-434 A-03 E3: 40 to Aradhya on base and 20 to Mihir on arbitrum (Arbitrum 50 / Base 30) → [j 10, i 40, i 20], spec summary', async () => {
     const ctx = ctxD({ balances: usdc('0', '30', '50') });
     setClauses(ctx, ['Send 40 usdc to ARADHYA on base', 'and 20 usdc to mihir on arbitrum']);
     const a1 = addAmount(ctx, '40', { clause: 0 });
@@ -221,16 +226,17 @@ describe('§19 worked examples end to end', () => {
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
-        '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+        '1. Move 10 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         `2. Send 40 USDC to Aradhya (${A_ARADHYA}) on Base Sepolia. After step 1.`,
         `3. Send 20 USDC to Mihir (${A_MIHIR}) on Arbitrum Sepolia.`,
-        'Spent today after this: 60.2 of 300 USDC.',
+        'Spent today after this: 60 of 300 USDC.',
+        'Spent today after this: 0.002 of 0.15 ETH.',
         'Confirm?',
       ].join('\n'),
     );
     await s12.step(ctx);
     const counted = ctx.repos.tables.db6.filter((x) => x.counts_toward_limit).map((x) => x.amount);
-    expect(counted).toEqual(['0.2', '40', '20']);
+    expect(counted).toEqual(['0', '0.002', '40', '20']);
     const hist = JSON.parse(ctx.repos.tables.db8_history[0]?.payments_json ?? '[]') as Array<{ chain_id: number }>;
     expect(hist.map((x) => x.chain_id)).toEqual([BASE, ARB]);
   });
@@ -269,7 +275,7 @@ describe('§19 worked examples end to end', () => {
     );
     await s12.step(ctx);
     const env = ctx.exec.submissions[0]?.envelope;
-    expect(env?.intents.map((x) => (x.intent_id === 'i' ? x.recipient : null))).toEqual([ALICE_CS, BOB_CS]);
+    expect(env?.intents.flatMap((x) => x.intent_id === 'i' ? x.recipients.map((p) => p.recipient) : [])).toEqual([ALICE_CS, BOB_CS]);
     expect(JSON.stringify(env)).not.toContain('iitr');
     expect(ctx.repos.tables.db6.map((x) => [x.kind, x.amount, x.recipient_address])).toEqual([
       ['payment', '10', ALICE_CS],
@@ -328,22 +334,20 @@ describe('§19 worked examples end to end', () => {
     const run = await toSummary(ctx2);
     expect(plan(ctx2)).toEqual([
       {
-        intent_id: 'i',
-        step: 0,
-        depends_on: [],
-        token: 'USDC',
-        chain_id: BASE,
-        amount: a5,
-        recipient: prev,
-        reused_from_chain_id: null,
-      },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ amount: a5, recipient: prev, reused_from_chain_id: null }]
+},
     ]);
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
         `1. Send 5 USDC to Aradhya (${A_ARADHYA}) on Base Sepolia.`,
         '- Recipient and chain from your last payment.',
-        'Spent today after this: 55.4 of 300 USDC.',
+        'Spent today after this: 55 of 300 USDC.',
         'Confirm?',
       ].join('\n'),
     );
@@ -377,7 +381,7 @@ describe('§19 worked examples end to end', () => {
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
-        `1. Pay Mihir (${A_MIHIR}) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 31 Dec 2026. Sets aside 80 USDC now; anything unused is refunded if you cancel.`,
+        `1. Pay 10 USDC to Mihir (${A_MIHIR}) every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 8 payments. Each run also pays 0.05 USDC to ${ctx.config.autopay!.fee_collector}; at most 10.05 USDC per run and 80.4 USDC overall. Money stays in your wallet until each run. Runs more than 3600 seconds late are skipped.`,
         'Spent today after this: 0 of 300 USDC.',
         'Confirm?',
       ].join('\n'),
@@ -385,22 +389,13 @@ describe('§19 worked examples end to end', () => {
     await s12.step(ctx);
     const k = ctx.exec.submissions[0]?.envelope.intents[0];
     expect(k).toMatchObject({
-      intent_id: 'k',
-      token_address: USDC_ADDR[BASE],
-      chain_id: BASE,
-      recipient: MIHIR_CS,
-      amount_per_payment: { value: '10', base_units: '10000000', decimals: 6 },
-      prefund: { value: '80', base_units: '80000000', decimals: 6 },
-      limits: {
-        per_period_cap: { value: '10', base_units: '10000000', decimals: 6 },
-        total_cap: { value: '80', base_units: '80000000', decimals: 6 },
-        expires_at: '2026-12-25T18:29:59Z',
-      },
-      cre_job: { trigger: 'cron', cron: '0 10 * * 5', timezone: 'Asia/Kolkata', interval: 1 },
+      intent_id: 'k', token_address: USDC_ADDR[BASE], chain_id: BASE,
+      recipients: [{ recipient: MIHIR_CS, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
+      fee: { amount: { value: '0.05', base_units: '50000', decimals: 6 } },
+      limits: { max_per_run: { value: '10.05' }, max_total: { value: '80.4' } },
+      schedule: { interval_seconds: 604800, max_runs: 8 }, executor: 'chainlink-cre',
     });
-    expect(ctx.repos.tables.db6.map((x) => [x.kind, x.amount, x.counts_toward_limit])).toEqual([
-      ['autopay_prefund', '80', false],
-    ]);
+    expect(ctx.repos.tables.db6).toEqual([]);
     const rows = ctx.repos.db7.listByRequest(ctx.req.request_id);
     expect(rows.map((x) => x.status)).toEqual(['pending']);
     expect(rows[0]).toMatchObject({ recipient_name: 'Mihir', amount_per_payment: '10', chain_id: BASE });
@@ -419,7 +414,7 @@ describe('§19 worked examples end to end', () => {
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
-        "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia, and refund what's left in it to you.",
+        "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
         'Confirm?',
       ].join('\n'),
     );
@@ -429,8 +424,7 @@ describe('§19 worked examples end to end', () => {
         intent_id: 'l',
         autopay_id: 'ap_0000000000f7',
         chain_id: BASE,
-        recipient: MIHIR_CS,
-        refund_remaining: true,
+        plan_id: planIdFor('ap_0000000000f7'),
       }),
     ]);
     expect(ctx.repos.tables.db6).toEqual([]);

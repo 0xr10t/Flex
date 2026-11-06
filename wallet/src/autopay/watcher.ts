@@ -8,6 +8,7 @@
 // Skipped runs have no report kind in §14.3, so they aren't reported (OQ-14(b)). A plan ends once its `end_at` has passed.
 
 import { getAbiItem, type Hex } from 'viem';
+import type { AutopayPaymentReport, AutopayStatusReport } from '@flex/protocol';
 import type { ChainGateway } from '../chain/gateway.js';
 import type { Logger } from '../log.js';
 import type { AutopayRow, Store } from '../store/store.js';
@@ -90,13 +91,9 @@ export class RunWatcher {
 
     while (from <= latest.number && !this.stopped) {
       const to = Math.min(from + SCAN_BLOCKS - 1, latest.number);
-      const logs = await gateway.getLogs({
-        address: executor,
-        event: EXECUTED_EVENT,
-        args: { intentId: [...byPlan.keys()] },
-        fromBlock: from,
-        toBlock: to,
-      });
+      // Privacy fix 9: every run on the shared executor, not filtered by this user's plan ids, so the RPC can't tell which
+      // plans are being watched. Other users' runs are dropped below (`byPlan`).
+      const logs = await gateway.getLogs({ address: executor, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
       const ordered = [...logs].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
       const times = new Map<number, number>();
       for (const log of ordered) {
@@ -108,7 +105,7 @@ export class RunWatcher {
           const plan = byPlan.get(log.args.intentId as Hex);
           if (!plan) continue;
           const slot = Number(log.args.slot);
-          const body = {
+          const body: AutopayPaymentReport = {
             kind: 'autopay_payment',
             request_id: plan.request_id,
             status: 'executed',
@@ -130,7 +127,7 @@ export class RunWatcher {
       for (const plan of plans) {
         if (plan.status !== 'active' || latest.timestamp <= plan.end_at) continue;
         store.setAutopayStatus(plan.plan_id, 'ended');
-        const body = {
+        const body: AutopayStatusReport = {
           kind: 'autopay_status',
           request_id: plan.request_id,
           autopay: { ...autopayFields(plan), status: 'ended' },

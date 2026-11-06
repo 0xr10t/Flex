@@ -1,16 +1,21 @@
 // Lane C — §14.5 ENS client with the REAL viem getEnsAddress (C-358). No network: the viem client uses a `custom`
 // transport whose `request` is controlled here. (io.test.ts mocks viem/actions; vi.mock is file-scoped, hence this file.)
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import {
-  createPublicClient,
+  BaseError,
   custom,
+  getAddress,
+  toFunctionSelector,
   decodeFunctionData,
   encodeErrorResult,
   encodeAbiParameters,
-  type PublicClient,
+  type Transport,
 } from 'viem';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EnsUnavailable } from '../../../src/contracts/io.js';
-import { createEnsClient } from '../../../src/recipients/ens-client.js';
+import { OFFCHAIN_LOOKUP_SELECTOR, createEnsClient, isOffchainLookup } from '../../../src/recipients/ens-client.js';
+import { createRpcClients } from '../../../src/pipeline/s0-balances.js';
 import { testConfig } from '../../fakes/context.js';
 import { RIYA } from './helpers.js';
 
@@ -47,19 +52,18 @@ const addressResolverAbi = [
 
 type Req = { method: string; params?: unknown[] };
 
-function clientWith(handler: (req: Req) => unknown): { client: PublicClient; calls: Req[] } {
+/** A transport for the production client (createEnsClient keeps its own client options, e.g. ccipRead: false). */
+function clientWith(handler: (req: Req) => unknown): { client: Transport; calls: Req[] } {
   const calls: Req[] = [];
-  const client = createPublicClient({
-    transport: custom(
-      {
-        async request(req: Req) {
-          calls.push(req);
-          return handler(req);
-        },
+  const client = custom(
+    {
+      async request(req: Req) {
+        calls.push(req);
+        return handler(req);
       },
-      { retryCount: 0 }, // as production's http transport (§14.5: no retries)
-    ),
-  }) as PublicClient;
+    },
+    { retryCount: 0 }, // as production's http transport (§14.5: no retries)
+  );
   return { client, calls };
 }
 
@@ -128,5 +132,138 @@ describe('§14.5 ENS client over the real viem getEnsAddress (custom transport)'
     const inner = encodeAbiParameters([{ type: 'bytes' }], [bytes32]);
     const { client } = clientWith(() => encodeAbiParameters([{ type: 'bytes' }, { type: 'address' }], [inner, RIYA]));
     expect(await createEnsClient(testConfig(), client).getAddress('riya.eth', 0x80000000n | 84532n)).toBeNull();
+  });
+});
+
+const OFFCHAIN_LOOKUP_ABI = [
+  {
+    type: 'error',
+    name: 'OffchainLookup',
+    inputs: [
+      { name: 'sender', type: 'address' },
+      { name: 'urls', type: 'string[]' },
+      { name: 'callData', type: 'bytes' },
+      { name: 'callbackFunction', type: 'bytes4' },
+      { name: 'extraData', type: 'bytes' },
+    ],
+  },
+] as const;
+
+/** What the Universal Resolver reverts with when the name's resolver is offchain (EIP-3668, sender = the resolver). */
+function offchainRevert(sender: `0x${string}`): never {
+  const data = encodeErrorResult({
+    abi: OFFCHAIN_LOOKUP_ABI,
+    errorName: 'OffchainLookup',
+    args: [
+      sender,
+      ['https://gateway.attacker.invalid/{sender}/{data}', 'x-batch-gateway:true'],
+      '0xabcd',
+      '0x12345678',
+      '0x',
+    ],
+  });
+  throw Object.assign(new Error('execution reverted'), { code: 3, data });
+}
+
+describe('privacy fix 3: CCIP-Read is off for ENS', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a name whose resolver answers with an offchain lookup → null (no address), and no gateway URL is fetched', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    const cfg = testConfig();
+    const { client, calls } = clientWith(() => offchainRevert(cfg.ens.universal_resolver_address));
+    expect(await createEnsClient(cfg, client).getAddress('bob.attacker.eth', 60n)).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    // One eth_call only: nothing was followed.
+    expect(calls.map((c) => c.method)).toEqual(['eth_call']);
+  });
+
+  it('the same with a sender other than the resolver (still never fetched)', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    const { client } = clientWith(() => offchainRevert('0x000000000000000000000000000000000000dEaD'));
+    expect(await createEnsClient(testConfig(), client).getAddress('bob.attacker.eth', 60n)).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a different revert is still "unavailable", not "no address"', async () => {
+    const { client } = clientWith(() => {
+      throw Object.assign(new Error('execution reverted'), { code: 3, data: '0xdeadbeef' });
+    });
+    await expect(createEnsClient(testConfig(), client).getAddress('riya.eth', 60n)).rejects.toBeInstanceOf(
+      EnsUnavailable,
+    );
+  });
+
+  it('isOffchainLookup: only viem errors carrying the OffchainLookup selector', () => {
+    expect(isOffchainLookup(new Error('x'))).toBe(false);
+    expect(isOffchainLookup(null)).toBe(false);
+    expect(
+      isOffchainLookup(new BaseError('x', { cause: Object.assign(new Error('y'), { data: '0x556f1830ab' }) })),
+    ).toBe(true);
+    expect(isOffchainLookup(new BaseError('x', { cause: Object.assign(new Error('y'), { data: '0x556F1830' }) }))).toBe(
+      true,
+    );
+    expect(isOffchainLookup(new BaseError('x', { cause: Object.assign(new Error('y'), { data: '0x12345678' }) }))).toBe(
+      false,
+    );
+    expect(
+      isOffchainLookup(
+        new BaseError('x', { cause: Object.assign(new Error('y'), { data: { errorName: 'OffchainLookup' } }) }),
+      ),
+    ).toBe(true);
+    expect(OFFCHAIN_LOOKUP_SELECTOR).toBe(toFunctionSelector('OffchainLookup(address,string[],bytes,bytes4,bytes)'));
+  });
+});
+
+describe('privacy fix 7: the ENS client has its own connections and random ids', () => {
+  it('ENS lookups and balance reads to the same anon-rpc URL never share a connection; ids are random; no global fetch', async () => {
+    const seen: Array<{ kind: 'ens' | 'balance'; id: number; port: number }> = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw) as { id: number; method: string; params: Array<{ to?: string }> };
+        const toResolver =
+          body.method === 'eth_call' &&
+          body.params[0]?.to?.toLowerCase() === testConfig().ens.universal_resolver_address.toLowerCase();
+        seen.push({ kind: toResolver ? 'ens' : 'balance', id: body.id, port: req.socket.remotePort as number });
+        const result =
+          body.method === 'eth_getBalance'
+            ? '0x1'
+            : toResolver
+              ? encodeAbiParameters(
+                  [{ type: 'bytes' }, { type: 'address' }],
+                  [RIYA.toLowerCase() as `0x${string}`, RIYA],
+                )
+              : '0x' + '1'.padStart(64, '0');
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const spy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const cfg = testConfig();
+      cfg.wallet.address = getAddress('0x00000000000000000000000000000000000000aa');
+      cfg.chains = cfg.chains.map((c) => ({ ...c, rpc_url: url }));
+      const rpc = createRpcClients(cfg);
+      const ens = createEnsClient(cfg);
+      for (let i = 0; i < 2; i++) {
+        await rpc.getEthBalance(11155111);
+        expect(await ens.getAddress('riya.eth', 60n)).toBe(RIYA);
+        await rpc.getUsdcBalance(11155111);
+      }
+      expect(spy).not.toHaveBeenCalled();
+      const ports = (k: 'ens' | 'balance') => new Set(seen.filter((s) => s.kind === k).map((s) => s.port));
+      expect(seen.filter((s) => s.kind === 'ens')).toHaveLength(2);
+      expect(seen.filter((s) => s.kind === 'balance')).toHaveLength(4);
+      for (const p of ports('ens')) expect(ports('balance').has(p)).toBe(false);
+      expect(new Set(seen.map((s) => s.id)).size).toBe(seen.length);
+    } finally {
+      spy.mockRestore();
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });

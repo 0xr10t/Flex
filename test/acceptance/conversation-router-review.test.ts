@@ -80,10 +80,9 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
       expect(h.envelope.intents).toHaveLength(1);
       expect(h.envelope.intents[0]).toMatchObject({
         intent_id: 'k',
-        recipient: RIYA,
         chain_id: ARB,
-        amount_per_payment: { value: '10' },
-        schedule: { frequency: 'weekly', interval: 1, days_of_week: ['FRI'] },
+        recipients: [{ recipient: RIYA, amount: { value: '10' } }],
+        schedule: { interval_seconds: 604800, max_runs: 3 },
       });
       expect(h.repos.db2.findByNameKey('yash')).toEqual([]);
       expect(h.llm.remaining()).toEqual([]);
@@ -121,7 +120,10 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
         { amount: '10', token: 'USDC', source: 'user' },
       ]);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents[0]).toMatchObject({ recipient: RIYA, token: 'USDC', amount: { value: '10' } });
+      expect(h.envelope.intents[0]).toMatchObject({
+token: 'USDC',
+recipients: [{ recipient: RIYA, amount: { value: '10' } }]
+});
       expect(h.llm.remaining()).toEqual([]);
     },
   );
@@ -164,7 +166,9 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
     const summary = await h.answer(pending, { text: `her address is ${RIYA}` });
     expect(summary.body.state).toBe('awaiting_confirmation');
     await h.confirm(summary, 'yes');
-    expect(h.envelope.intents[0]).toMatchObject({ recipient: RIYA, amount: { value: '10' } });
+    expect(h.envelope.intents[0]).toMatchObject({
+recipients: [{ recipient: RIYA, amount: { value: '10' } }]
+});
     expect(h.repos.db2.findByNameKey('yash')).toEqual([]);
   });
 
@@ -191,7 +195,9 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
       expect(summary.body.state).toBe('awaiting_confirmation');
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents[0]).toMatchObject({ recipient: address, amount: { value: '10' } });
+      expect(h.envelope.intents[0]).toMatchObject({
+recipients: [{ recipient: address, amount: { value: '10' } }]
+});
     },
   );
 
@@ -254,7 +260,10 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
       expect((await h.confirm(pending, 'yes')).http).toBe(409);
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
-      expect(h.envelope.intents[0]).toMatchObject({ recipient: MIHIR, chain_id: ARB, amount: { value: '20' } });
+      expect(h.envelope.intents[0]).toMatchObject({
+chain_id: ARB,
+recipients: [{ recipient: MIHIR, amount: { value: '20' } }]
+});
     },
   );
 
@@ -397,13 +406,16 @@ describe('SQ-CV-01 conversational reply HTTP review', () => {
     const invoice = await h.say('pay this invoice', { pasted_blocks: ['Pay 120 USDC to unknown.eth.'] });
     expect(invoice.body.question?.code).toBe('Q_UNTRUSTED_AMOUNT');
     const pending = await h.answer(invoice, { chipLabel: 'Use this amount' });
-    expect(pending.body.question?.code).toBe('Q_ADDRESS_REENTER');
+    expect(pending.body.question?.code).toBe('Q_WHO_IS');
+    expect(pending.body.question?.chips.some((chip) => chip.label === 'Look it up')).toBe(true);
+    expect(h.ens.calls).toEqual([]);
     const response = await h.answer(pending, { text: 'pay Riya instead' });
     expect(response.body.error?.code).toBe('LIMIT_PER_TX');
     expect(response.body.question).toBeUndefined();
     expect(h.rows('SELECT amount, source FROM db1_amount_placeholders')).toEqual([
       { amount: '120', source: 'untrusted' },
     ]);
+    expect(h.ens.calls).toEqual([]);
     expect(h.exec.submissions).toHaveLength(0);
   });
 

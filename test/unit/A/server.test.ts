@@ -57,7 +57,7 @@ describe('§14.1 / §16.4 bearer tokens', () => {
   });
 
   it('C-350 §16.4: the reports route refuses the UI token and takes the report token', async () => {
-    const body = { kind: 'autopay_status', autopay: { autopay_id: 'ap_unknown', status: 'active' } };
+    const body = { kind: 'intent_result', request_id: 'req_ffffffffffff', step: 0, status: 'failed' };
     expect((await s.call('POST', REPORTS, { token: UI_TOKEN, body })).status).toBe(401);
     expect((await s.call('POST', REPORTS, { token: REPORT_TOKEN, body })).status).toBe(404);
   });

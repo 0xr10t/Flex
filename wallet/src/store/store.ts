@@ -8,6 +8,8 @@ import { dirname } from 'node:path';
 import BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
 import type { Database } from 'better-sqlite3';
 import type { HandoffEnvelope, Hex } from '../schemas/envelope.js';
+import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
+import type { ChainId, Token, ExecutionReport, IntentResultReport } from '@flex/protocol';
 
 export type StepStatus = 'pending' | 'approved' | 'signed' | 'waiting' | 'executed' | 'failed';
 export type ReportStatus = 'pending' | 'delivered' | 'abandoned';
@@ -32,9 +34,9 @@ export interface AutopayRow {
   request_id: string;
   step: number;
   autopay_id: string;
-  chain_id: number;
+  chain_id: ChainId;
   executor: Hex;
-  token: string;
+  token: Token;
   amount: string;
   fee: string;
   delegation_json: string;
@@ -60,7 +62,7 @@ export interface StepResult {
   executed_at?: string;
   error_code?: string;
   /** Extra §14.3 fields: `autopay`, `bridge_fee_eth`. */
-  report?: Record<string, unknown>;
+  report?: Pick<IntentResultReport, 'autopay' | 'bridge_fee_eth'>;
 }
 
 const SCHEMA = `
@@ -116,6 +118,21 @@ CREATE TABLE watch_cursors (
 );
 `;
 
+const BROWSER_SCHEMA = `
+CREATE TABLE wallet_batches (
+  request_id TEXT NOT NULL,
+  step INTEGER NOT NULL,
+  batch_id TEXT NOT NULL UNIQUE,
+  chain_id INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft','dispatched','received','rejected')),
+  created_ms INTEGER NOT NULL,
+  tx_hash TEXT,
+  PRIMARY KEY (request_id, step),
+  UNIQUE (chain_id, tx_hash),
+  FOREIGN KEY (request_id, step) REFERENCES steps(request_id, step)
+);`;
+
 const canonical = (value: unknown): unknown =>
   Array.isArray(value)
     ? value.map(canonical)
@@ -150,6 +167,12 @@ export function openDatabase(path: string, keyHex: string): Database {
         db.pragma('user_version = 1');
       })();
     }
+    if (db.pragma('user_version', { simple: true }) === 1) {
+      db.transaction(() => {
+        db.exec(BROWSER_SCHEMA);
+        db.pragma('user_version = 2');
+      })();
+    }
   } catch (e) {
     db.close();
     throw e;
@@ -165,6 +188,100 @@ export class Store {
     const row = this.db.prepare('SELECT envelope_hash FROM requests WHERE request_id = ?').get(requestId) as
       { envelope_hash: string } | undefined;
     return row?.envelope_hash ?? null;
+  }
+
+  envelope(requestId: string): HandoffEnvelope | null {
+    const row = this.db.prepare('SELECT envelope_json FROM requests WHERE request_id = ?').get(requestId) as
+      { envelope_json: string } | undefined;
+    return row ? (JSON.parse(row.envelope_json) as HandoffEnvelope) : null;
+  }
+
+  walletBatch(requestId: string, step: number): WalletBatchRow | null {
+    return (
+      (this.db.prepare('SELECT * FROM wallet_batches WHERE request_id = ? AND step = ?').get(requestId, step) as
+        WalletBatchRow | undefined) ?? null
+    );
+  }
+
+  walletBatchById(id: string): WalletBatchRow | null {
+    return (
+      (this.db.prepare('SELECT * FROM wallet_batches WHERE batch_id = ?').get(id) as WalletBatchRow | undefined) ?? null
+    );
+  }
+
+  walletBatches(): WalletBatchRow[] {
+    return this.db.prepare('SELECT * FROM wallet_batches ORDER BY created_ms DESC LIMIT 100').all() as WalletBatchRow[];
+  }
+
+  rememberWalletBatchId(id: string, providerId: string): boolean {
+    return this.db.transaction(() => {
+      const row = this.walletBatchById(id);
+      if (!row || !['dispatched', 'received'].includes(row.status)) return false;
+      const payload = JSON.parse(row.payload_json) as WalletBatchPayload;
+      if (payload.providerBatchId && payload.providerBatchId !== providerId) return false;
+      payload.providerBatchId = providerId;
+      this.db.prepare('UPDATE wallet_batches SET payload_json=? WHERE batch_id=?').run(JSON.stringify(payload), id);
+      return true;
+    })();
+  }
+
+  saveWalletBatch(requestId: string, step: number, chainId: number, payload: WalletBatchPayload, now: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO wallet_batches (request_id, step, batch_id, chain_id, payload_json, status, created_ms)
+      VALUES (?, ?, ?, ?, ?, 'draft', ?)`,
+      )
+      .run(requestId, step, payload.calls.id, chainId, JSON.stringify(payload), now);
+  }
+
+  /** Commit dispatch before returning any executable payload to the browser. A second tab cannot dispatch again. */
+  claimWalletBatch(id: string, now: number): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE wallet_batches SET status = 'dispatched'
+      WHERE batch_id = ? AND status = 'draft' AND created_ms >= ? AND NOT EXISTS (
+        SELECT 1 FROM wallet_batches b JOIN steps s ON s.request_id=b.request_id AND s.step=b.step
+        WHERE b.chain_id=wallet_batches.chain_id AND b.batch_id<>wallet_batches.batch_id
+          AND b.status IN ('dispatched','received') AND s.status='approved')`,
+        )
+        .run(id, now - 60_000).changes === 1
+    );
+  }
+
+  deleteDraftWalletBatch(id: string): boolean {
+    return this.db.prepare("DELETE FROM wallet_batches WHERE batch_id = ? AND status = 'draft'").run(id).changes === 1;
+  }
+
+  rejectWalletBatch(id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE wallet_batches SET status='rejected' WHERE batch_id=? AND status IN ('draft','dispatched') AND tx_hash IS NULL",
+        )
+        .run(id).changes === 1
+    );
+  }
+
+  receiveWalletBatch(id: string, hash: Hex): boolean {
+    return this.db.transaction(() => {
+      const row = this.walletBatchById(id);
+      if (!row || !['dispatched', 'received'].includes(row.status) || (row.tx_hash && row.tx_hash !== hash))
+        return false;
+      this.db.prepare("UPDATE wallet_batches SET status='received', tx_hash=? WHERE batch_id=?").run(hash, id);
+      this.db
+        .prepare("UPDATE steps SET tx_hash=? WHERE request_id=? AND step=? AND status='approved'")
+        .run(hash, row.request_id, row.step);
+      return true;
+    })();
+  }
+
+  markWalletWaiting(requestId: string, step: number, data: unknown): void {
+    this.db
+      .prepare(
+        "UPDATE steps SET status='waiting', data_json=? WHERE request_id=? AND step=? AND status='approved' AND tx_hash IS NOT NULL",
+      )
+      .run(JSON.stringify(data), requestId, step);
   }
 
   insertRequest(envelope: HandoffEnvelope, now: string): void {
@@ -184,6 +301,21 @@ export class Store {
       .prepare('SELECT envelope_json FROM requests WHERE finished_at IS NULL ORDER BY rowid LIMIT 1')
       .get() as { envelope_json: string } | undefined;
     return row ? (JSON.parse(row.envelope_json) as HandoffEnvelope) : null;
+  }
+
+  /** A stable pass through pending requests; a settled bridge must not monopolize execution. */
+  unfinishedRequests(): HandoffEnvelope[] {
+    const rows = this.db
+      .prepare('SELECT envelope_json FROM requests WHERE finished_at IS NULL ORDER BY rowid')
+      .all() as { envelope_json: string }[];
+    return rows.map((row) => JSON.parse(row.envelope_json) as HandoffEnvelope);
+  }
+
+  recentRequests(): HandoffEnvelope[] {
+    const rows = this.db.prepare('SELECT envelope_json FROM requests ORDER BY rowid DESC LIMIT 100').all() as {
+      envelope_json: string;
+    }[];
+    return rows.map((row) => JSON.parse(row.envelope_json) as HandoffEnvelope);
   }
 
   step(requestId: string, step: number): StepRow {
@@ -301,7 +433,7 @@ export class Store {
   }
 
   /** Queues a report unless one with this key exists. So a rescan of the chain can't report a run twice. */
-  queueReport(requestId: string, step: number | null, dedupeKey: string, body: unknown, nowMs: number): boolean {
+  queueReport(requestId: string, step: number | null, dedupeKey: string, body: ExecutionReport, nowMs: number): boolean {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO reports (request_id, step, dedupe_key, body_json, status, next_attempt_at)
@@ -313,7 +445,7 @@ export class Store {
 
   /** Stores a step's outcome and its report together, and closes the request when this was its last open step. */
   finishStep(requestId: string, step: number, outcome: StepResult, now: string, nowMs: number): void {
-    const report = {
+    const report: IntentResultReport = {
       kind: 'intent_result',
       request_id: requestId,
       step,

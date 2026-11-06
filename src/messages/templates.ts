@@ -1,6 +1,7 @@
 // Implements: §13.1 summary line templates, {cadence} and {end text} forms; §13.2 balance answer lines;
 // §10.7 step 3 Q_AUTOPAY_PICK chip label. Verbatim from the spec.
 // Home of these texts per §21 (`src/messages/`: summary, balance answer, question and error texts); CCR D-1 rejected.
+// SQ-CHAT-02: exact, self-labelled wallet facts selected by the conversational model.
 
 type P = Record<string, string>;
 
@@ -13,7 +14,7 @@ function req(p: P, key: string): string {
 /** §13.1 line templates, one per intent. */
 export const SUMMARY_LINE = {
   J: (p: P) =>
-    `Move ${req(p, 'padded')} ${req(p, 'token')} from ${req(p, 'source')} to ${req(p, 'dest')} (your own account; includes a ${req(p, 'b')}% fee buffer, anything left over stays with you).`,
+    `Move ${req(p, 'padded')} ${req(p, 'token')} from ${req(p, 'source')} to ${req(p, 'dest')} (your own account; ${req(p, 'b')}% token buffer). The bridge fee is at most ${req(p, 'fee')} ETH on ${req(p, 'source')}.`,
   I: (p: P) =>
     `Send ${req(p, 'amount')} ${req(p, 'token')} to ${req(p, 'name')} (${req(p, 'addr')}) on ${req(p, 'chain')}.`,
   /** Appended to an `i` line when `depends_on` is non-empty (SQ-D-03: several steps are joined with " and "). */
@@ -22,9 +23,9 @@ export const SUMMARY_LINE = {
   I_GROUP: (p: P) =>
     `Send ${req(p, 'amount')} ${req(p, 'token')} each to ${req(p, 'count')} members of ${req(p, 'parent')} on ${req(p, 'chain')}: ${req(p, 'names')}.`,
   K: (p: P) =>
-    `Pay ${req(p, 'name')} (${req(p, 'addr')}) ${req(p, 'amount')} ${req(p, 'token')} ${req(p, 'cadence')} at ${req(p, 'time')} (${req(p, 'timezone')}) on ${req(p, 'chain')}, first on ${req(p, 'first')}, ${req(p, 'end')}. Sets aside ${req(p, 'total_cap')} ${req(p, 'token')} now; anything unused is refunded if you cancel.`,
+    `Pay ${req(p, 'payments')} ${req(p, 'cadence')} at ${req(p, 'time')} (${req(p, 'timezone')}) on ${req(p, 'chain')}, first on ${req(p, 'first')}, ${req(p, 'end')}. Each run also pays ${req(p, 'fee')} ${req(p, 'token')} to ${req(p, 'collector')}; at most ${req(p, 'max_per_run')} ${req(p, 'token')} per run and ${req(p, 'total_cap')} ${req(p, 'token')} overall. Money stays in your wallet until each run. Runs more than ${req(p, 'late')} seconds late are skipped.`,
   L: (p: P) =>
-    `Stop paying ${req(p, 'name')} ${req(p, 'amount')} ${req(p, 'token')} ${req(p, 'cadence')} on ${req(p, 'chain')}, and refund what's left in it to you.`,
+    `Stop paying ${req(p, 'name')} ${req(p, 'amount')} ${req(p, 'token')} ${req(p, 'cadence')} on ${req(p, 'chain')}. Money stays in your wallet; there is no refund transfer.`,
 } as const;
 
 /** §13.1 {cadence}. `days` already joined ("Mon and Thu"), `d` already an ordinal ("28th", SQ-D-04). */
@@ -58,4 +59,23 @@ export const BALANCE = {
     `- ${req(p, 'chain')}: ${req(p, 'eth')} ETH (${req(p, 'eth_spendable')} spendable), ${req(p, 'usdc')} USDC`,
   CHAIN_UNREADABLE: (p: P) => `- ${req(p, 'chain')}: couldn't be read right now`,
   TOTAL: (p: P) => `Total: ${req(p, 'eth')} ETH, ${req(p, 'usdc')} USDC`,
+} as const;
+
+/** SQ-CHAT-02: model-selected facts keep their verified values and meaning together. */
+export const WALLET_FACT = {
+  ADDRESS: (p: P) => `Your wallet address is ${req(p, 'address')}.`,
+  BALANCE: (p: P) => `${req(p, 'chain')}: ${req(p, 'amount')} ${req(p, 'token')} balance.`,
+  SPENDABLE: (p: P) =>
+    `${req(p, 'chain')}: ${req(p, 'amount')} ${req(p, 'token')} available to send after pending spending and any gas reserve.`,
+  PENDING: (p: P) => `${req(p, 'chain')}: ${req(p, 'amount')} ${req(p, 'token')} reserved for pending spending.`,
+  GAS_RESERVE: (p: P) => `${req(p, 'chain')}: ${req(p, 'amount')} ETH kept for gas.`,
+  UNAVAILABLE: (p: P) => `Balances on ${req(p, 'chain')} could not be read right now.`,
+  ALL_UNAVAILABLE: () => 'Your balances could not be read right now; no current balance is available.',
+  TOTAL: (p: P) => `Total balance across your allowed test networks: ${req(p, 'amount')} ${req(p, 'token')}.`,
+  SUBTOTAL: (p: P) =>
+    `Balance subtotal on readable test networks: ${req(p, 'amount')} ${req(p, 'token')}. Other networks are unavailable, so this is not a complete total.`,
+  TOTAL_SPENDABLE: (p: P) =>
+    `Available to send across your allowed test networks: ${req(p, 'amount')} ${req(p, 'token')}, before any transfer-specific fees or limits.`,
+  SUBTOTAL_SPENDABLE: (p: P) =>
+    `Available to send on readable test networks: ${req(p, 'amount')} ${req(p, 'token')}, before any transfer-specific fees or limits. Other networks are unavailable.`,
 } as const;

@@ -53,12 +53,16 @@ describe('SQ-M-01 independent config review', () => {
     }
   });
 
-  it('keeps the original profile unchanged and changes only model and think in the opt-in example', () => {
+  it('keeps the original profile unchanged and adds the approved model, thinking and general-chat options', () => {
     const original = example('config.example.json');
     const qwen3 = example('config.qwen3.example.json');
     expect(original.llm.model).toBe('qwen2.5:7b-instruct');
     expect(Object.hasOwn(original.llm, 'think')).toBe(false);
-    expect(qwen3).toEqual({ ...original, llm: { ...original.llm, model: 'qwen3:8b', think: false } });
+    expect(qwen3).toEqual({
+      ...original,
+      llm: { ...original.llm, model: 'qwen3:8b', think: false },
+      chat: { enabled: true, think: true },
+    });
     const fixture = testConfig();
     const configured = {
       ...qwen3,

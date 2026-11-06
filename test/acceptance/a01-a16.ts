@@ -28,7 +28,7 @@ import {
   usdc,
   coinType,
 } from './harness.js';
-import { DELEGATE, seedAutopay, weeklySchedule } from './seed.js';
+import { planIdFor, DELEGATE, seedAutopay, weeklySchedule } from './seed.js';
 
 const EXPECT_CALLS = ['amounts', 'request_type', 'spans', 'payments'];
 
@@ -60,7 +60,7 @@ export function registerA01toA16(): void {
       await h.finish();
     });
 
-    it('A-02: E2 "Send 50 usdc to ARADHYA on base" with Base 30 / Arbitrum 60 -> [j 20.4, i 50], dependencies set', async () => {
+    it('A-02: E2 "Send 50 usdc to ARADHYA on base" with Base 30 / Arbitrum 60 -> [j 20, i 50], dependencies set', async () => {
       const h = await harness('A-02', {
         balances: {
           11155111: { USDC: '0', ETH: '0.1' },
@@ -72,10 +72,10 @@ export function registerA01toA16(): void {
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual([
-        'Move 20.4 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+        'Move 20 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         'Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
       ]);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 50.4 of 300 USDC.']);
+      expect(r.body.summary?.footer).toEqual(['Spent today after this: 50 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
         {
@@ -86,8 +86,8 @@ export function registerA01toA16(): void {
           dest_token_address: USDC_ADDR[BASE],
           source_chain_id: ARB,
           dest_chain_id: BASE,
-          amount: usdc('20.4'),
-          receiver: 'self',
+          amount: usdc('20'),
+          receiver: 'self', fee_max_eth: '0.002',
           funds_steps: [1],
         },
         usdcIntent({
@@ -100,14 +100,15 @@ export function registerA01toA16(): void {
         }),
       ]);
       expect(spend(h)).toEqual([
-        pending('bridge_buffer', ARB, '0.4', 0, 'j'),
-        pending('bridge_out', ARB, '20.4', 0, 'j', { counts: false }),
+        pending('bridge_buffer', ARB, '0', 0, 'j'),
+        pending('bridge_fee', ARB, '0.002', 0, 'j', { token: 'ETH' }),
+        pending('bridge_out', ARB, '20', 0, 'j', { counts: false }),
         pending('payment', BASE, '50', 1, 'i', { recipient: ARADHYA }),
       ]);
       await h.finish();
     });
 
-    it('A-03: E3 two clauses with Arbitrum 50 / Base 30 -> [j 10.2, i 40, i 20]', async () => {
+    it('A-03: E3 two clauses with Arbitrum 50 / Base 30 -> [j 10, i 40, i 20]', async () => {
       const h = await harness('A-03', {
         balances: {
           11155111: { USDC: '0', ETH: '0.1' },
@@ -117,18 +118,19 @@ export function registerA01toA16(): void {
       });
       const r = await h.say('Send 40 usdc to ARADHYA on base, and 20 usdc to mihir on arbitrum');
       expect(lines(r)).toEqual([
-        'Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+        'Move 10 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         'Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
         'Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
       ]);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 60.2 of 300 USDC.']);
+      expect(r.body.summary?.footer).toEqual(['Spent today after this: 60 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
       expect(r.body.summary?.text).toBe(
         [
           'Please confirm:',
-          '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+          '1. Move 10 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
           '2. Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
           '3. Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
-          'Spent today after this: 60.2 of 300 USDC.',
+          'Spent today after this: 60 of 300 USDC.',
+          'Spent today after this: 0.002 of 0.15 ETH.',
           'Confirm?',
         ].join('\n'),
       );
@@ -142,8 +144,8 @@ export function registerA01toA16(): void {
           dest_token_address: USDC_ADDR[BASE],
           source_chain_id: ARB,
           dest_chain_id: BASE,
-          amount: usdc('10.2'),
-          receiver: 'self',
+          amount: usdc('10'),
+          receiver: 'self', fee_max_eth: '0.002',
           funds_steps: [1],
         },
         usdcIntent({
@@ -164,8 +166,9 @@ export function registerA01toA16(): void {
         }),
       ]);
       expect(spend(h)).toEqual([
-        pending('bridge_buffer', ARB, '0.2', 0, 'j'),
-        pending('bridge_out', ARB, '10.2', 0, 'j', { counts: false }),
+        pending('bridge_buffer', ARB, '0', 0, 'j'),
+        pending('bridge_fee', ARB, '0.002', 0, 'j', { token: 'ETH' }),
+        pending('bridge_out', ARB, '10', 0, 'j', { counts: false }),
         pending('payment', BASE, '40', 1, 'i', { recipient: ARADHYA }),
         pending('payment', ARB, '20', 2, 'i', { recipient: MIHIR }),
       ]);
@@ -235,8 +238,7 @@ export function registerA01toA16(): void {
       expect(h.count('db2_address_book')).toBe(5);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
-        usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: alice }),
-        usdcIntent({ step: 1, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: bob }),
+        { ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: alice }), recipients: [{ recipient: alice, amount: usdc('10') }, { recipient: bob, amount: usdc('10') }] },
       ]);
       expect(spend(h).map((s) => [s.kind, s.amount, s.recipient])).toEqual([
         ['payment', '10', alice],
@@ -281,7 +283,7 @@ export function registerA01toA16(): void {
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual(['Send 5 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.']);
       expect(r.body.summary?.notes).toEqual(['Recipient and chain from your last payment.']);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 55.4 of 300 USDC.']);
+      expect(r.body.summary?.footer).toEqual(['Spent today after this: 55 of 300 USDC.']);
       // The payee placeholder of E2 is reused: no new DB3 row for this request.
       expect(h.count('db3_address_placeholders')).toBe(1);
       expect(h.llm.recorded.filter((c) => c.name === 'payments').at(-1)?.user).toContain(
@@ -311,76 +313,40 @@ export function registerA01toA16(): void {
     });
 
     // ───────────── autopay ─────────────
-    it('A-08: E6 "pay mihir 10 usdc every friday for 8 weeks" -> k with 8 occurrences, caps 10/80, cron 0 10 * * 5', async () => {
-      const h = await harness('A-08');
+    it('A-08: a funded weekly autopay carries fixed timing, fees and exact caps without a prefund debit', async () => {
+      const h = await harness('A-08', { balances: { [BASE]: { USDC: '100', ETH: '0.1' } } });
       const r = await h.say('pay mihir 10 usdc every friday for 8 weeks');
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(h.asked).toEqual([]);
-      expect(lines(r)).toEqual([
-        'Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 31 Dec 2026. Sets aside 80 USDC now; anything unused is refunded if you cancel.',
-      ]);
-      expect(r.body.summary?.footer).toEqual(['Spent today after this: 0 of 300 USDC.']); // k adds 0 (D-19)
+      expect(lines(r)).toHaveLength(1);
+      expect(lines(r)[0]).toContain('for 8 payments. Each run also pays 0.05 USDC');
+      expect(lines(r)[0]).toContain('80.4 USDC overall. Money stays in your wallet until each run.');
+      expect(r.body.summary?.footer).toEqual(['Spent today after this: 0 of 300 USDC.']);
       expectHandedOff(await h.confirm(r, 'yes'));
-      expectEnvelope(h, r.body.request_id, [
-        {
-          intent_id: 'k',
-          step: 0,
-          depends_on: [],
-          autopay_id: AP,
-          token: 'USDC',
-          token_address: USDC_ADDR[BASE],
-          chain_id: BASE,
-          recipient: MIHIR,
-          amount_per_payment: usdc('10'),
-          prefund: usdc('80'),
-          schedule: {
-            frequency: 'weekly',
-            interval: 1,
-            days_of_week: ['FRI'],
-            day_of_month: null,
-            time_of_day: '10:00',
-            timezone: 'Asia/Kolkata',
-            start_date: '2026-11-05',
-            first_occurrence: '2026-11-06T04:30:00Z',
-            end: { type: 'on_date', date: '2026-12-31' },
-          },
-          limits: {
-            per_period_cap: usdc('10'),
-            total_cap: usdc('80'), // SQ-D-15 (spec conflict): E6 says 2026-12-31T18:29:59Z (the on_date), §10.6 rule 8 says the last occurrence's
-            // date, 2026-12-25T18:29:59Z. The code follows §10.6 rule 8 and so does this test.
-            expires_at: '2026-12-25T18:29:59Z',
-          },
-          cre_job: { trigger: 'cron', cron: '0 10 * * 5', timezone: 'Asia/Kolkata', interval: 1 },
-        },
-      ]);
-      const ap = h.envelope.intents[0] as { autopay_id: string };
-      expect(spend(h)).toEqual([pending('autopay_prefund', BASE, '80', 0, 'k', { counts: false, recipient: MIHIR })]);
-      expect(spend(h)[0]).toMatchObject({ kind: 'autopay_prefund', counts: false });
+      const start = Date.parse('2026-11-06T04:30:00Z') / 1000;
+      expectEnvelope(h, r.body.request_id, [{
+        intent_id: 'k', step: 0, depends_on: [], autopay_id: AP, token: 'USDC', token_address: USDC_ADDR[BASE], chain_id: BASE,
+        recipients: [{ recipient: MIHIR, amount: usdc('10') }],
+        fee: { to: getAddress(h.config.autopay!.fee_collector), amount: usdc('0.05') },
+        schedule: { start_at: start, interval_seconds: 604800, max_runs: 8, late_window_seconds: 3600, end_at: start + 7 * 604800 + 3600 },
+        limits: { max_per_run: usdc('10.05'), max_total: usdc('80.4') }, executor: 'chainlink-cre',
+      }]);
+      const k = h.envelope.intents[0];
+      if (k?.intent_id !== 'k') throw new Error('missing autopay');
+      expect(spend(h)).toEqual([]);
       const dbRows = autopays(h);
       expect(dbRows).toHaveLength(1);
       expect(dbRows[0]).toMatchObject({
-        autopay_id: ap.autopay_id,
-        recipient_name: 'Mihir',
-        recipient_address: MIHIR,
-        chain_id: BASE,
-        token: 'USDC',
-        amount_per_payment: '10',
-        status: 'pending',
-        delegate_address: null,
-        cre_job_id: null,
+        autopay_id: k.autopay_id, recipient_name: 'Mihir', recipient_address: MIHIR, chain_id: BASE,
+        token: 'USDC', amount_per_payment: '10', fee: '0.05', status: 'pending', plan_id: null, executor_address: null,
       });
-      expect(JSON.parse(dbRows[0]!.schedule_json)).toMatchObject({
-        frequency: 'weekly',
-        days_of_week: ['FRI'],
-        end: { type: 'on_date', date: '2026-12-31' },
-      });
-      // Derived caps are minted in DB1 (§10.6 step 7).
-      const caps = h.rows<{ origin: string; amount: string }>(
-        "SELECT origin, amount FROM db1_amount_placeholders WHERE origin LIKE 'autopay_%' ORDER BY origin",
-      );
-      expect(caps).toEqual([
+      expect(JSON.parse(dbRows[0]!.schedule_json)).toEqual(k.schedule);
+      expect(JSON.parse(dbRows[0]!.recipients_json!)).toEqual(k.recipients);
+      expect(h.rows("SELECT origin, amount FROM db1_amount_placeholders WHERE origin LIKE 'autopay_%' ORDER BY origin")).toEqual([
+        { origin: 'autopay_fee', amount: '0.05' },
+        { origin: 'autopay_max_per_run', amount: '10.05' },
+        { origin: 'autopay_max_total', amount: '80.4' },
         { origin: 'autopay_per_period_cap', amount: '10' },
-        { origin: 'autopay_total_cap', amount: '80' },
       ]);
       await h.finish();
     });
@@ -400,13 +366,13 @@ export function registerA01toA16(): void {
       expect(r2.body.question?.input).toBe('number');
       const r3 = await h.answer(r2, { text: '4' });
       expect(h.asked).toEqual(['Q_AUTOPAY_END', 'Q_AUTOPAY_COUNT']);
-      expect(lines(r3)[0]).toBe(
-        'Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 4 payments. Sets aside 40 USDC now; anything unused is refunded if you cancel.',
-      );
+      expect(lines(r3)[0]).toContain('for 4 payments. Each run also pays 0.05 USDC');
+      expect(lines(r3)[0]).toContain('40.2 USDC overall');
       expectHandedOff(await h.confirm(r3, 'yes'));
-      const k = h.envelope.intents[0] as { schedule: { end: unknown }; limits: { total_cap: unknown } };
-      expect(k.schedule.end).toEqual({ type: 'after_count', count: 4 });
-      expect(k.limits.total_cap).toEqual(usdc('40'));
+      const k = h.envelope.intents[0];
+      if (k?.intent_id !== 'k') throw new Error('missing autopay');
+      expect(k.schedule.max_runs).toBe(4);
+      expect(k.limits.max_total).toEqual(usdc('40.2'));
       await h.finish();
     });
 
@@ -416,7 +382,7 @@ export function registerA01toA16(): void {
       expect(h.asked).toEqual([]); // end is stated ("until I cancel")
       expectError(r, 'INSUFFICIENT_FUNDS');
       // R4-F4: total_cap 1560 plus 2% of the 1480 shortfall on Base is 1589.6.
-      expect(r.body.error?.message).toContain('you need 1589.6');
+      expect(r.body.error?.message).toContain('you need 1567.8');
       expect(r.body.error?.message).toContain('USDC');
       // The caps (30 and 1560) are not observable after the error: the code mints the DB1 cap rows only once the
       // plan has passed funding (§10.6 step 7 does not fix the order). The padded need proves the total-cap funding.
@@ -433,7 +399,7 @@ export function registerA01toA16(): void {
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual([
-        "Stop paying Mihir 10 USDC every Fri on Base Sepolia, and refund what's left in it to you.",
+        "Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
       ]);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
@@ -442,9 +408,7 @@ export function registerA01toA16(): void {
           step: 0,
           autopay_id: id,
           chain_id: BASE,
-          delegate_address: DELEGATE,
-          recipient: MIHIR,
-          refund_remaining: true,
+          plan_id: planIdFor(id),
         },
       ]);
       expect(spend(h)).toEqual([]); // l writes no DB6 rows (§11.4)
@@ -477,9 +441,7 @@ export function registerA01toA16(): void {
           step: 0,
           autopay_id: a,
           chain_id: BASE,
-          delegate_address: DELEGATE,
-          recipient: MIHIR,
-          refund_remaining: true,
+          plan_id: planIdFor(a),
         },
       ]);
       await h.finish();

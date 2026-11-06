@@ -1,5 +1,4 @@
-// The agent's real code on the other end of the wallet's real service (Part 2's exit criterion). The agent still sends
-// envelope v1, so these send v2 envelopes through its client, and check what happens on the wire.
+// Real agent client + wallet service + report sender, connected in-process. No sockets, RPC or signing.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,8 +8,8 @@ import type { WalletConfig } from '../../src/config.js';
 import { silentLogger } from '../../src/log.js';
 import { createService, type Service } from '../../src/service.js';
 import { ALEX, BASE, DB_KEY, envelope, payEth, WALLET } from '../support/envelopes.js';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import * as gateway from '../../src/chain/gateway.js';
+import { FakeChain } from '../support/fake-chain.js';
 
 // A public Anvil test key. The agent's modules are outside this package's root, hence the paths built at runtime.
 const TEST_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
@@ -20,7 +19,7 @@ const load = async (path: string) => (await import(/* @vite-ignore */ `${AGENT}/
 let dir: string;
 let service: Service;
 let url: string;
-let agentServer: Server;
+let chain: FakeChain;
 let reports: unknown[];
 let validateReport: (body: unknown) => boolean;
 let createExecutionClient: (
@@ -36,23 +35,32 @@ beforeEach(async () => {
   ({ validateReport } = (await load('server/bodies.ts')) as never);
   ({ createExecutionClient } = (await load('handoff/execution-client.ts')) as never);
 
-  agentServer = createServer((req, res) => {
-    let data = '';
-    req.on('data', (c) => (data += c));
-    req.on('end', () => {
-      reports.push(JSON.parse(data));
-      res.statusCode = 204;
-      res.end();
-    });
-  });
-  await new Promise<void>((r) => agentServer.listen(0, '127.0.0.1', r));
+  chain = new FakeChain();
+  vi.spyOn(gateway, 'createChainGateway').mockReturnValue(chain);
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const request = new Request(input, init);
+    if (request.url === 'http://agent.local/v1/execution/reports') {
+      expect(request.headers.get('authorization')).toBe('Bearer report-token');
+      const body: unknown = await request.json();
+      expect(validateReport(body)).toBe(true);
+      reports.push(body);
+      return new Response(null, { status: 204 });
+    }
+    if (request.url === 'http://wallet.local/v1/intents') {
+      const response = await service.app.inject({ method: 'POST', url: '/v1/intents',
+        headers: Object.fromEntries(request.headers), payload: await request.text() });
+      return new Response(response.body, { status: response.statusCode });
+    }
+    throw new Error('Unexpected transport call');
+  }));
 
   const config: WalletConfig = {
     server: { host: '127.0.0.1', port: 0 as number },
-    agent: { url: `http://127.0.0.1:${(agentServer.address() as AddressInfo).port}` },
+    agent: { url: 'http://agent.local' },
     auth: { inbound_token_file: 'unused', report_token_file: 'unused' },
     db: { path: join(dir, 'wallet.db') },
     approval: { mode: 'reject_all' },
+    network: { socks_proxy: null },
     chains: [{ chain_id: BASE, rpc_url: 'http://127.0.0.1:9' }],
   };
   service = createService(
@@ -66,12 +74,16 @@ beforeEach(async () => {
     silentLogger,
     { pollMs: 1 },
   );
-  url = await service.start();
+  url = 'http://wallet.local';
+  await service.app.ready();
 });
 
 afterEach(async () => {
   await service.stop();
-  await new Promise((r) => agentServer.close(r));
+  expect(chain.signed).toEqual([]);
+  expect(chain.broadcasts).toEqual([]);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -98,7 +110,7 @@ describe("the agent's execution client against the wallet", () => {
     });
   });
 
-  it('the v1 envelope the agent sends today is refused', async () => {
+  it('obsolete v1 envelopes are refused', async () => {
     const v1 = {
       version: '1',
       request_id: 'req_0123456789ab',

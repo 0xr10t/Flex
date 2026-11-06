@@ -7,6 +7,7 @@
 
 import { REPLY } from '../contracts/catalog.js';
 import { fromBaseUnits } from '../contracts/money.js';
+import { checkEnvelope, placeholderHashes } from '@flex/protocol';
 import type { Db6Insert } from '../contracts/repos.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type {
@@ -35,19 +36,17 @@ function db6Rows(ctx: StepContext, it: EnvelopeIntent, deliverable: string, now:
   };
   switch (it.intent_id) {
     case 'i':
-      return [
-        {
+      return it.recipients.map((payee) => ({
           ...base,
           kind: 'payment',
           counts_toward_limit: true,
           chain_id: it.chain_id,
           token: it.token,
-          amount: it.amount.value,
-          recipient_address: it.recipient,
+          amount: payee.amount.value,
+          recipient_address: payee.recipient,
           intent_id: 'i',
           autopay_id: null,
-        },
-      ];
+        }));
     case 'j': {
       const shared = {
         ...base,
@@ -66,22 +65,10 @@ function db6Rows(ctx: StepContext, it: EnvelopeIntent, deliverable: string, now:
           counts_toward_limit: true,
           amount: fromBaseUnits(buffer, decimalsOf(it.token)),
         },
+        { ...shared, kind: 'bridge_fee', counts_toward_limit: true, token: 'ETH', amount: it.fee_max_eth },
       ];
     }
     case 'k':
-      return [
-        {
-          ...base,
-          kind: 'autopay_prefund',
-          counts_toward_limit: false,
-          chain_id: it.chain_id,
-          token: it.token,
-          amount: it.limits.total_cap.value,
-          recipient_address: it.recipient,
-          intent_id: 'k',
-          autopay_id: it.autopay_id as AutopayId,
-        },
-      ];
     case 'l':
       return [];
   }
@@ -91,10 +78,10 @@ function db6Rows(ctx: StepContext, it: EnvelopeIntent, deliverable: string, now:
 function chainOfPayment(ctx: StepContext, plan: InternalIntent[], p: Payment): ChainId | null {
   for (const it of plan) {
     if (it.intent_id === 'j' || it.intent_id !== p.kind) continue;
-    if (it.recipient !== p.recipient && ctx.repos.db3.get(it.recipient)?.group_placeholder !== p.recipient) continue;
-    if (it.intent_id === 'l' || (it.intent_id === 'i' ? it.amount : it.amount_per_payment) === p.amount) {
-      return it.chain_id;
-    }
+    if (it.intent_id === 'l') {
+      if (it.recipient === p.recipient) return it.chain_id;
+    } else if (it.recipients.some((payee) => payee.amount === p.amount &&
+      (payee.recipient === p.recipient || ctx.repos.db3.get(payee.recipient)?.group_placeholder === p.recipient))) return it.chain_id;
   }
   return null;
 }
@@ -115,12 +102,15 @@ function prepareHandoff(ctx: StepContext, plan: InternalIntent[], envelope: Hand
         {
           autopay_id: it.autopay_id as AutopayId,
           request_id: req.request_id,
-          recipient_name: recipientNameOf(ctx, planned.recipient),
-          recipient_address: it.recipient,
+          recipient_name: planned.recipients.map((p) => recipientNameOf(ctx, p.recipient)).join(', '),
+          recipient_address: it.recipients[0]!.recipient,
           chain_id: it.chain_id,
           token: it.token,
-          amount_per_payment: it.amount_per_payment.value,
+          amount_per_payment: fromBaseUnits(it.recipients.reduce((total, p) => total + BigInt(p.amount.base_units), 0n), decimalsOf(it.token)),
           schedule_json: JSON.stringify(it.schedule),
+          fee: it.fee.amount.value,
+          recipients_json: JSON.stringify(it.recipients),
+          display_json: JSON.stringify(planned.display.schedule),
         },
         now,
       );
@@ -147,7 +137,7 @@ function envelopeFor(ctx: StepContext, plan: InternalIntent[]): HandoffEnvelope 
   if (ctx.req.envelope) return ctx.req.envelope;
   try {
     const envelope = swapBack(ctx, plan);
-    if (!validators.handoffEnvelope(envelope)) return null;
+    if (!validators.handoffEnvelope(envelope) || !checkEnvelope(envelope, { nowMs: ctx.now().toMillis(), delegationHashes: placeholderHashes(envelope) }).ok) return null;
     ctx.req.envelope = envelope;
     return envelope;
   } catch {

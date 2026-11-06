@@ -3,7 +3,7 @@
 // Owner: Lane A.
 
 import { ajv } from '../schemas/index.js';
-import { CHAIN_IDS, type ExecutionReport, type MessageInput } from '../contracts/types.js';
+import { type MessageInput } from '../contracts/types.js';
 import type { AnswerBody } from '../session/manager.js';
 
 const STR = { type: 'string' } as const;
@@ -77,37 +77,5 @@ export const validateCancel = ajv.compile<{ request_id: string }>({
   properties: { request_id: STR },
 });
 
-const DECIMAL = { type: 'string', pattern: '^\\d+(\\.\\d+)?$' } as const;
-const ADDRESS = { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' } as const;
-const TX_HASH = { type: 'string', pattern: '^0x[0-9a-fA-F]{64}$' } as const;
-const DATE_TIME = { type: 'string', format: 'date-time' } as const;
-const ID = { type: 'string', pattern: '^[A-Za-z0-9_.:-]{1,128}$' } as const;
-
-/** §14.3 report body (shape check; per-kind required fields are checked in the route). */
-export const validateReport = ajv.compile<ExecutionReport>({
-  type: 'object',
-  additionalProperties: false,
-  required: ['kind'],
-  properties: {
-    kind: { enum: ['intent_result', 'autopay_payment', 'autopay_status'] },
-    request_id: ID,
-    step: { type: 'integer', minimum: 0 },
-    status: { enum: ['executed', 'failed'] },
-    tx_hash: TX_HASH,
-    executed_at: DATE_TIME,
-    autopay: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['autopay_id'],
-      properties: {
-        autopay_id: ID,
-        delegate_address: ADDRESS,
-        cre_job_id: { type: 'string', minLength: 1 },
-        status: { enum: ['active', 'cancelled', 'ended', 'failed'] },
-        amount: DECIMAL,
-        chain_id: { enum: [...CHAIN_IDS] },
-        token: { enum: ['USDC', 'ETH'] },
-      },
-    },
-  },
-});
+// The wallet and agent validate the same report contract.
+export { validateExecutionReport as validateReport } from '@flex/protocol';

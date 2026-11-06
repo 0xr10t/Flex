@@ -2,6 +2,22 @@
 
 Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v4`.
 
+## Wallet-aware conversation — SQ-CHAT-02
+
+The agent now answers read-only wallet address/balance questions from a fresh, exact wallet snapshot while
+preserving pending payment state. General conversation remains model-written. Independent review, 2,312 full-suite
+tests plus the subsequent comparison regression, 205 security checks, four focused real-Qwen3 scenarios and the
+real browser round trip pass. The updated ignored testing frontend is **http://127.0.0.1:8893/** with sample
+Base 30 / Arbitrum 60 USDC balances and local capture only. [WALLET_CHAT_REPORT.md](WALLET_CHAT_REPORT.md) records
+the implementation and the separately observed pre-existing amount-span rejection for one mixed-request phrasing.
+
+## Latest model and chat request — SQ-M-01 / SQ-CHAT-01
+
+The human selected Qwen3 8B and approved general chat with thinking on while wallet extraction stays off.
+[QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) is the current migration and verification record. Independent
+deterministic review is complete; final runtime verification is in progress. The sections below retain the
+earlier completed Qwen2.5 work and its evidence, rather than claiming those results for the new runtime.
+
 ## Later conversational follow-up — SQ-CV-01
 
 The user's additional multi-turn failures are tracked as B20–B23 in

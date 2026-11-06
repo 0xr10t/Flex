@@ -5,6 +5,8 @@ import { BASE, MIHIR, type Harness } from './harness.js';
 
 export const DELEGATE = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as const; // valid EIP-55 test address
 
+export const planIdFor = (id: string): `0x${string}` => `0x${id.slice(3).padStart(64, '0')}`;
+
 export function weeklySchedule(
   days: string[],
   first = '2026-11-06T04:30:00Z',
@@ -41,18 +43,20 @@ export function seedAutopay(
   h.repos.db7.insertPending(
     {
       autopay_id: id as `ap_${string}`,
-      request_id: 'req_00000000aaaa',
+      request_id: o.id ? `req_${id.slice(3)}` : 'req_00000000aaaa',
       recipient_name: o.name ?? 'Mihir',
       recipient_address: o.address ?? MIHIR,
       chain_id: o.chain ?? BASE,
       token: o.token ?? 'USDC',
       amount_per_payment: o.amount ?? '10',
-      schedule_json: JSON.stringify(o.schedule ?? weeklySchedule(['FRI'])),
+      schedule_json: JSON.stringify({ start_at: Date.parse('2026-11-06T04:30:00Z') / 1000, interval_seconds: 604800, max_runs: 52, late_window_seconds: 3600, end_at: Date.parse('2027-10-29T05:30:00Z') / 1000 }),
+      display_json: JSON.stringify(o.schedule ?? weeklySchedule(['FRI'])),
+      fee: (o.token ?? 'USDC') === 'USDC' ? '0.05' : '0.00002',
     },
     h.nowIso,
   );
   if ((o.status ?? 'active') === 'active') {
-    h.repos.db7.update(id, { status: 'active', delegate_address: DELEGATE, cre_job_id: 'cre-job-1' }, h.nowIso);
+    h.repos.db7.update(id, { status: 'active', plan_id: planIdFor(id), executor_address: DELEGATE }, h.nowIso);
   }
   return id;
 }

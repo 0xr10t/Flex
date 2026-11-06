@@ -82,6 +82,7 @@ describe('SQ-C-05 §16.1: an answer typed at Q_WHO_IS is not content-sourced', (
     ctx.ens.set('evil.eth', COIN.DEFAULT, EVIL_A);
     const d = new Driver(ctx);
     await d.start();
+    await d.chip('ens_lookup'); // privacy fix 4
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
     expect(q.text).toMatch(/attached content/);
     expect(q.chips.map((c) => c.id)).toEqual(['yes', 'no_reenter', 'dont_pay']);

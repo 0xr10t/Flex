@@ -1,4 +1,7 @@
 // tsc copies no JSON, and the envelope schema is read at runtime.
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { URL } from 'node:url';
 
-copyFileSync('src/schemas/handoff-envelope.schema.json', 'dist/src/schemas/handoff-envelope.schema.json');
+mkdirSync(new URL('../dist/src/browser', import.meta.url), { recursive: true });
+for (const file of ['ui.html', 'ui.js', 'ui.css'])
+  copyFileSync(new URL(`../src/browser/${file}`, import.meta.url), new URL(`../dist/src/browser/${file}`, import.meta.url));

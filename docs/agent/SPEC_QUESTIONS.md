@@ -401,4 +401,80 @@ the Qwen3 profile sets it to `false` for structured extraction. Omission preserv
 The existing context, seed, schema validation, retry, local-only endpoint and explicit confirmation rules remain.
 `config.qwen3.example.json` records this profile; the original config example, README and deterministic fixtures
 remain the specification/baseline. Live comparisons identify model settings explicitly and retain their original
-outcome assertions. This instruction selects a model; it does not add a general-purpose chat route.
+outcome assertions. This instruction selects a model; the subsequent general-chat approval is recorded below.
+
+**SQ-CHAT-01 — requested and confirmed by the human in chat.** After requesting thinking for generic prompts, the
+human selected “Add general chat/explanations with thinking on; keep wallet extraction off (Recommended)”. Add an
+optional `chat: { enabled: boolean, think: boolean }` configuration, enabled with thinking in the Qwen3 profile.
+Generic text is classified with `think: false`; a conversational reply uses the explicit `chat.think` override.
+Wallet extraction retains the profile's `llm.think: false` and existing schemas, validators and confirmation path.
+Omitting or disabling chat retains the previous wallet-only routing.
+
+Chat is read-only and has no execution or external-data tools. It may explain general topics and the current
+displayed wallet summary while preserving a pending question, attempt count, confirmation or uncertain submission.
+The router forwards wallet inputs unchanged. Native confirmation words, literal answers and chips keep their
+existing handlers. Content and URLs retain S1's guarded handling; secrets never enter the conversational model.
+Only bounded, guarded exchanges are remembered in session memory; closing the session clears them. Older history
+and oversized summaries are explicitly marked as omitted. Routing or reply failures retain the active draft.
+The model's reasoning field is not returned or logged. This approval does not expand the wallet's supported actions.
+
+**SQ-CHAT-02 — requested by the human in chat.** The agent should know its wallet address and wallet balances,
+and respond naturally to ordinary text instead of generic canned responses. This extends SQ-CHAT-01 with a
+read-only `wallet_info` classification for address, balance, spendable-funds and balance-deduction questions.
+Mixed messages that also request a payment or other mutation retain the full native wallet workflow.
+
+Implementation decisions under this request: the configured public wallet address is supplied to general chat.
+Wallet-information questions refresh balances with the same S0 code on a disposable context, including when a
+question or summary is pending. Only DB4 changes; the active draft, attempts, failed-payment context, confirmation
+and immutable submitted envelope are preserved. Generic conversation still has no wallet I/O. No contacts,
+credentials, raw document content or arbitrary database rows are supplied to chat.
+
+Code builds exact balance, spendable, pending-spend and gas-reserve facts using the existing bigint accounting.
+Unavailable chains carry null values and no stale amounts. Totals over a partial snapshot are explicitly labelled
+subtotals; no available chain means no current total. The wallet address remains available even if RPC reads fail.
+The local model chooses relevant fact IDs and their order; code renders each selected fact as a complete sentence
+with its amount, token and network label intact. Unknown fact IDs, duplicate facts and additional prose fields are
+rejected. This avoids model-invented addresses, copied stale balances, swapped amount/network labels and unsupported
+financial claims in wallet-information replies. Ordinary chat remains free-form within its existing guarded schema; model failure messages and precise
+transaction questions, summaries and confirmation controls retain deterministic fallbacks. README stays unchanged.
+
+## Hackathon model selection — Qwen2.5 (2026-11-06)
+
+**SQ-M-02 — requested by the human in chat: “let's keep 2.5 for the hackathon”.** Use local Ollama
+`qwen2.5:7b-instruct` from `config.example.json` for the hackathon. This supersedes SQ-M-01's demo model selection;
+the Qwen3 profile remains available for experiments. The local demo keeps general chat enabled with `think: false`
+for Qwen2.5. Existing wallet-information, validation and explicit confirmation behavior remain in place.
+
+The completed 154-case wallet comparison recorded 129 exact outcomes (83.8%) for the prior Qwen2.5 run and 115
+(74.7%) for Qwen3. These runs include code/prompt differences and disabled optional general chat. The model choice
+does not establish that the current chat-enabled configuration has passed that full benchmark.
+
+## Thinking chat with Qwen2.5 wallet extraction (2026-11-06)
+
+**SQ-M-03 — requested by the human in chat:** “I want the chat to be enabled with thinking on, so that the agent
+can do the basic tasks.” This follows the SQ-M-02 choice to retain Qwen2.5 for the hackathon. A local compatibility
+probe confirmed that Ollama rejects `qwen2.5:7b-instruct` with `think: true` (HTTP 400: does not support thinking).
+
+To satisfy both requests, the implementation adds optional `chat.model` and uses the installed `qwen3:8b` with
+`chat.enabled: true` and `chat.think: true` for chat and read-only wallet-information replies. Intent routing,
+conversation interpretation, quarantine, extraction and payment construction continue using Qwen2.5. An omitted
+chat model preserves existing single-model behavior. This changes reply generation only; thinking does not add
+tools, grant execution permission or bypass confirmation. The local demo records both selected models.
+
+## Editing the current payment draft (2026-11-06)
+
+**SQ-CV-02 — requested by the human in chat: “Yes, implement this fix”.** While a payment summary is awaiting
+confirmation, recipient and amount corrections must retain the other known fields. The reported example changes
+Soham to Riya while retaining 40 USDC on Base Sepolia, then changes 50 back to 40 while retaining Riya, USDC and
+Base Sepolia. This supersedes §17.3's unconditional replacement behavior for recognized draft edits.
+
+The implementation resolves bounded amount, recipient, token and network edits against the current validated,
+trusted, absolute, single-payment draft. Code supplies omitted fields from that draft and reruns the complete
+normal validation pipeline on the revised request. Each revision receives a new request identity and requires a
+new confirmation; an old summary cannot approve it. Limits, balances, recipient resolution and bridge planning
+are checked again, and earlier limit overrides are not inherited. Chat history never supplies payment values.
+
+Ambiguous or unsupported edits preserve the current summary and ask for clarification. Group, recurring,
+multi-payment, relative-amount and document-derived drafts need a complete updated request instead of automatic
+field inheritance. Already submitted requests, submission retries, cancellations and closed sessions cannot be
+used as editable drafts. Recognized edits bypass thinking chat; generic explanations remain read-only chat.

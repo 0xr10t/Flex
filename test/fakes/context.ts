@@ -66,7 +66,14 @@ export function testConfig(): Config {
       outbound_token_file: '/tmp/execution_outbound_token',
       timeout_ms: 15000,
     },
-    fetch: { max_bytes: 1048576, timeout_ms: 10000, max_redirects: 3 },
+    network: { socks_proxy: null },
+    fetch: { enabled: true, max_bytes: 1048576, timeout_ms: 10000, max_redirects: 3 },
+    autopay: {
+      late_window_seconds: 3600,
+      fee: { USDC: '0.05', ETH: '0.00002' },
+      fee_collector: '0x00000000000000000000000000000000000000bb',
+    },
+    bridge: { ccip_fee_max_eth: '0.002' },
     defaults: { timezone: 'Asia/Kolkata', autopay_time_of_day: '10:00' },
   };
 }

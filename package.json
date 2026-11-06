@@ -40,6 +40,7 @@
     "luxon": "3.7.2",
     "pdf-parse": "2.4.5",
     "pino": "10.4.0",
+    "socks-proxy-agent": "8.0.5",
     "viem": "2.57.16",
     "@flex/protocol": "file:packages/protocol"
   },

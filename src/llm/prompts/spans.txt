@@ -11,9 +11,15 @@ Rules:
 2. Never return pronouns (her, him, them, they), "me", "my", "I" or "myself".
 3. amount_… words and [amount] are not people.
 4. If unsure, use "payee".
+5. CANDIDATES lists pre-scanned addresses, ENS names and groups. It is NOT a complete list of people. Find person names in the message even when CANDIDATES is empty. Person names may be entirely lowercase.
+6. A named recipient is still a payee when the payment amount is missing or was supplied in a later answer. Do not require an amount or amount placeholder to extract a person.
 Example:
 Message: pay A amount_1a2b3c4d for the service A did for my friend Kabir
 {"spans":[{"text":"A","kind":"name","role":"payee"},{"text":"Kabir","kind":"name","role":"mentioned"}]}
+Example:
+Message: send to neha
+CANDIDATES: []
+{"spans":[{"text":"neha","kind":"name","role":"payee"}]}
 USER
 Message: <<<{masked_text_s3}>>>
 CANDIDATES: {candidates_json}

@@ -60,6 +60,7 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   // SQ-O-01, F-12: a name labelled both payee and mentioned (NAME_ROLE.text() / NAME_ROLE.chips()).
   Q_NAME_ROLE: (p) => `Should I pay ${req(p, 'name')}?`,
   Q_AUTOPAY_FREQUENCY: () => 'How often should this repeat?',
+  Q_AUTOPAY_MONTHLY: () => 'Repeating payments use a fixed interval. Should this run every 4 weeks or every 30 days?',
   Q_AUTOPAY_START: () => 'When should this start?',
   Q_AUTOPAY_END: () => 'When should these payments stop?',
   Q_AUTOPAY_COUNT: () => 'How many payments?',
@@ -92,6 +93,7 @@ export const QUESTION_INPUT: Record<QuestionCode, QuestionInput> = {
   Q_PAIR_AMOUNT: 'chips',
   Q_NAME_ROLE: 'chips',
   Q_AUTOPAY_FREQUENCY: 'chips',
+  Q_AUTOPAY_MONTHLY: 'chips',
   Q_AUTOPAY_START: 'date',
   Q_AUTOPAY_END: 'chips',
   Q_AUTOPAY_COUNT: 'number',
@@ -112,6 +114,9 @@ export const QUESTION_VARIANT = {
   ADDRESS_CORRECT_UNTRUSTED_SUFFIX: () => 'This address comes from the attached content, not from you.',
   /** §9.4 "No address now" variant of Q_ENS_CHANGED. */
   ENS_CHANGED_NO_ADDRESS: (p: P) => `${req(p, 'ens')} no longer has an address. Keep the saved one?`,
+  /** Privacy fix 4: an ENS name found in attached content is looked up only after the user says so. */
+  WHO_IS_UNTRUSTED_ENS: (p: P) =>
+    `The attached content names ${req(p, 'ens')}. Should I look it up? You can also paste the wallet address.`,
   /** §9.6 step 4: parent unknown to ENS → Q_GROUP_PARENT. */
   GROUP_PARENT_NOT_IN_ENS: (p: P) => `${req(p, 'parent')} isn't in ENS. Which .eth name should I use instead?`,
 } as const;
@@ -148,6 +153,8 @@ export const CHIPS = {
   NO: chip('no', 'No'),
   NO_REENTER: chip('no_reenter', 'No, re-enter'),
   DONT_PAY: chip('dont_pay', "Don't pay this one"),
+  /** Privacy fix 4: look up an ENS name that came from attached content. */
+  ENS_LOOKUP: chip('ens_lookup', 'Look it up'),
   USDC: chip('USDC', 'USDC'),
   ETH: chip('ETH', 'ETH'),
   USE_AMOUNT: chip('use_amount', 'Use this amount'),
@@ -335,6 +342,9 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   ATTACHMENT_UNSUPPORTED: (p) =>
     `I can only read text and PDF files. ${req(p, 'filename')} wasn't read, so nothing was done.`,
   URL_FETCH_FAILED: (p) => `I couldn't open link ${req(p, 'n')}, so nothing was done.`,
+  // Privacy fix 5: links can't be fetched through anon-rpc, so reading them is off unless `fetch.enabled` is set.
+  LINKS_OFF: (p) =>
+    `Opening links is turned off for privacy, so link ${req(p, 'n')} wasn't read and nothing was done. Paste its text instead.`,
   DOCUMENT_TOO_LARGE: (p) => `${req(p, 'item')} is too long for me to read safely.`,
   BALANCES_UNAVAILABLE: (p) => `I can't read your balances on ${req(p, 'chains')} right now. Try again in a moment.`,
   MAINNET_NOT_SUPPORTED: () => 'I only work on test networks for now: Sepolia, Base Sepolia and Arbitrum Sepolia.',
@@ -352,9 +362,17 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   PAIRING_FAILED: () => "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?",
   SELF_PAYMENT: () => "That's your own address. Moving funds between your own chains isn't a payment I can make.",
   ENS_INDEXER_UNAVAILABLE: (p) => `I can't list the members of ${req(p, 'parent')} right now.`,
+  // Privacy fix 6: the ENS indexer can't be reached through anon-rpc, so group sends are off unless `ens.indexer_url` is set.
+  GROUP_SENDS_OFF: (p) =>
+    `Paying everyone under ${req(p, 'parent')} is turned off for privacy: listing its members needs a direct connection to an ENS indexer. Name each person instead.`,
   GROUP_EMPTY: (p) => `${req(p, 'parent')} has no members I can pay on ${req(p, 'chain')}.`,
   NO_ACTIVE_AUTOPAY: (p) => `There's no active repeating payment to ${req(p, 'name')}.`,
   AUTOPAY_NOT_READY: () => 'That repeating payment is still being set up. Try again shortly.',
+  AUTOPAY_NOT_CONFIGURED: () => 'Repeating payments need an operator fee and fee recipient configured first.',
+  ETH_NOT_BRIDGEABLE: () => 'ETH cannot be bridged. Add ETH on the payment network or choose another network.',
+  LIMIT_GROUP_SIZE: () => 'That group has more recipients than a single payment can accept.',
+  LIMIT_INTENTS: () => 'This request needs more than 16 steps. Split it into smaller requests.',
+  EXECUTION_PLAN_INVALID: () => 'This plan does not meet the wallet’s execution rules. Adjust the request and try again.',
   AUTOPAY_NO_OCCURRENCES: () => 'That schedule has no payment dates. Check the start and end.',
   // SQ-08, F-10: `chains` per chain, "Base Sepolia (80) and Arbitrum Sepolia (60)" (insufficientFundsParams);
   // empty or absent → "…, and can use 0." with no "across" part.
@@ -407,6 +425,8 @@ export const NOTES = {
   LIMIT_LIFTED: () => 'A limit was lifted once for this request.',
   CONTENT_AMOUNTS_UNUSED: () => "Amounts in the attached content weren't used.",
   CONTENT_UNREADABLE: (p: P) => `Couldn't read anything usable from ${req(p, 'item')}.`,
+  /** Privacy fix 5: links typed in the message are never opened. */
+  LINKS_NOT_OPENED: () => "Links in your message weren't opened. Paste their text if I should read it.",
 } as const;
 
 /** §9.6 step 7 / E4 skip reasons. SQ-07: duplicate-address reason wording not given by the spec. */
@@ -428,6 +448,9 @@ export const SKIP_REASON = {
 // ───────────────────────────── §13.3 fixed replies, §8.14, §13.1 framing ─────────────────────────────
 
 export const REPLY = {
+  /** SQ-CHAT-01/02: failures only; successful general replies are model-authored. */
+  CHAT_TOO_LONG: () => 'Please shorten your message and try again.',
+  CHAT_UNAVAILABLE: () => "I couldn't answer that right now. Please try again.",
   HANDED_OFF: () => 'Sent to your wallet for signing.',
   USER_SAID_NO: () => "OK, I've dropped that. Tell me what you'd like instead.",
   CANCELLED: () => 'Cancelled. Nothing was sent.',

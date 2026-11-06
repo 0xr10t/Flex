@@ -1,17 +1,16 @@
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { validateExecutionReport } from '@flex/protocol';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { silentLogger } from '../../src/log.js';
 import { ReportSender } from '../../src/runner/reports.js';
 import { Store } from '../../src/store/store.js';
 import { tempDb } from '../support/temp-db.js';
 import { ALEX, envelope, payEth } from '../support/envelopes.js';
 
-const servers: Server[] = [];
+beforeEach(() => vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline'))));
 const senders: ReportSender[] = [];
 afterEach(async () => {
   await Promise.all(senders.splice(0).map((s) => s.stop()));
-  await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
+  vi.unstubAllGlobals();
 });
 
 interface Received {
@@ -22,18 +21,15 @@ interface Received {
 /** A stand-in for the agent's report route. */
 const agent = async (statusFor: (attempt: number) => number) => {
   const received: Received[] = [];
-  const server = createServer((req, res) => {
-    let data = '';
-    req.on('data', (c) => (data += c));
-    req.on('end', () => {
-      received.push({ auth: req.headers.authorization, body: JSON.parse(data) });
-      res.statusCode = statusFor(received.length);
-      res.end();
-    });
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const request = new Request(input, init);
+    expect(request.url).toBe('http://agent.local/v1/execution/reports');
+    const body: unknown = await request.json();
+    expect(validateExecutionReport(body)).toBe(true);
+    received.push({ auth: request.headers.get('authorization') ?? undefined, body });
+    return new Response(null, { status: statusFor(received.length) });
   });
-  servers.push(server);
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { received, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { received, url: 'http://agent.local' };
 };
 
 const storeWithReport = () => {

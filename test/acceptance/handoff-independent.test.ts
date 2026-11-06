@@ -9,13 +9,13 @@ import { createApp } from '../../src/server/app.js';
 import { CapturingLogger } from '../fakes/io.js';
 import type { FixtureCall, FixtureFile } from '../fakes/llm.js';
 import { ARADHYA, ARB, BASE, Harness, loadFixture, REPORT_TOKEN, SEPOLIA, UI_TOKEN } from './harness.js';
-import { DELEGATE, seedAutopay, seedSpend } from './seed.js';
+import { planIdFor, DELEGATE, seedAutopay, seedSpend } from './seed.js';
 
 const live = new Set<Harness>();
 const PAY = 'send 10 usdc to mihir';
 const REPEAT = 'pay mihir 10 usdc every month on the 31st for 3 months';
 const STOP = 'stop paying mihir';
-const TX = `0x${'cd'.repeat(32)}`;
+const TX: `0x${string}` = `0x${'cd'.repeat(32)}`;
 
 function make(fixtures: string[] | FixtureFile = ['A-55'], contacts = true): Harness {
   const fixture = Array.isArray(fixtures) ? { calls: fixtures.flatMap((id) => loadFixture(id).calls) } : fixtures;
@@ -42,7 +42,7 @@ function executed(envelope: HandoffEnvelope, at: string): ExecutionReport {
       ? {
           autopay: {
             autopay_id: intent.autopay_id,
-            ...(intent.intent_id === 'k' ? { delegate_address: DELEGATE, cre_job_id: 'independent-job' } : {}),
+            ...(intent.intent_id === 'k' ? { plan_id: planIdFor(intent.autopay_id), executor_address: DELEGATE, chain_id: intent.chain_id, token: intent.token } : {}),
           },
         }
       : {}),
@@ -63,10 +63,19 @@ function diskPressure(h: Harness, table: 'handoff_journal' | 'db8_history'): () 
   };
 }
 
+async function confirmMonthly(h: Harness) {
+  const question = await h.say(REPEAT);
+  expect(question.body.question?.code).toBe('Q_AUTOPAY_MONTHLY');
+  const summary = await h.answer(question, { chip: 'four_weeks' });
+  expect(summary.body.state).toBe('awaiting_confirmation');
+  return h.confirm(summary, 'yes');
+}
+
 describe('B19 independent durable submission fault tests', () => {
   it('real SQLITE_FULL during preparation rolls back the autopay and spend rows before any external call', async () => {
     const h = make(['A-58']);
-    const summary = await h.say(REPEAT);
+    const monthly = await h.say(REPEAT);
+    const summary = await h.answer(monthly, { chip: 'four_weeks' });
     expect(summary.body.state).toBe('awaiting_confirmation');
     const restore = diskPressure(h, 'handoff_journal');
     const insert = h.repos.handoffs.insert.bind(h.repos.handoffs);
@@ -84,7 +93,7 @@ describe('B19 independent durable submission fault tests', () => {
     try {
       const response = await h.confirm(summary, 'yes');
       expect(code).toBe('SQLITE_FULL');
-      expect(staged).toEqual([1, 1]);
+      expect(staged).toEqual([0, 1]);
       expect(response.body.error?.code).toBe('INTERNAL_ERROR');
       expect(h.exec.submissions).toHaveLength(0);
       for (const table of ['db6_spend_log', 'db7_autopays', 'handoff_journal', 'db8_history', 'independent_pressure'])
@@ -96,7 +105,8 @@ describe('B19 independent durable submission fault tests', () => {
 
   it('real post-accept SQLITE_FULL retains delivery identity across a cold reopen and fresh HTTP app', async () => {
     const h = make(['A-58']);
-    const summary = await h.say(REPEAT);
+    const monthly = await h.say(REPEAT);
+    const summary = await h.answer(monthly, { chip: 'four_weeks' });
     const restore = diskPressure(h, 'db8_history');
     const append = h.repos.db8.appendHistory.bind(h.repos.db8);
     let code: unknown;
@@ -114,7 +124,7 @@ describe('B19 independent durable submission fault tests', () => {
       expect(response.body.state).toBe('done');
       expect(response.body.messages).toContainEqual({ type: 'text', text: 'Sent to your wallet for signing.' });
       expect(h.exec.submissions).toHaveLength(1);
-      expect(h.count('db6_spend_log')).toBe(1);
+      expect(h.count('db6_spend_log')).toBe(0);
       expect(h.count('db7_autopays')).toBe(1);
       expect(h.count('db8_history')).toBe(0);
       expect(h.repos.handoffs.get(summary.body.request_id)?.status).toBe('submitted');
@@ -157,8 +167,7 @@ describe('B19 independent durable submission fault tests', () => {
         });
         expect(response.statusCode).toBe(204);
       }
-      expect(repos.db6.listByRequest(envelope.request_id)).toHaveLength(1);
-      expect(repos.db6.listByRequest(envelope.request_id)[0]).toMatchObject({ status: 'executed', tx_hash: TX });
+      expect(repos.db6.listByRequest(envelope.request_id)).toHaveLength(0);
       expect(repos.db7.get(callback.autopay!.autopay_id)?.status).toBe('active');
       expect(repos.handoffs.get(envelope.request_id)).toMatchObject({ status: 'accepted', history: null });
       expect(repos.db8.recentHistory(h.sessionId, 5)).toEqual([]);
@@ -181,8 +190,8 @@ describe('B19 independent durable submission fault tests', () => {
         changed = true;
         const intent = envelope.intents[0]!;
         if (intent.intent_id === 'i') {
-          intent.amount.value = '999';
-          intent.amount.base_units = '999000000';
+          intent.recipients[0]!.amount.value = '999';
+          intent.recipients[0]!.amount.base_units = '999000000';
         }
       }
       return response;
@@ -219,7 +228,7 @@ describe('B03/B04/G02 independent callback and replay tests', () => {
       expect(await h.report(executed(envelope, h.nowIso))).toBe(204);
       return response;
     };
-    expect((await h.sayAndConfirm(kind === 'k' ? REPEAT : STOP)).body.state).toBe('done');
+    expect((await (kind === 'k' ? confirmMonthly(h) : h.sayAndConfirm(STOP))).body.state).toBe('done');
     const report = executed(h.envelope, h.nowIso);
     expect(h.repos.db7.get(report.autopay!.autopay_id)?.status).toBe(kind === 'k' ? 'active' : 'cancelled');
     expect(h.repos.handoffs.get(h.envelope.request_id)?.status).toBe('accepted');
@@ -237,7 +246,7 @@ describe('B03/B04/G02 independent callback and replay tests', () => {
     expect(h.repos.db6.listByRequest(h.envelope.request_id)).toEqual([]);
     for (const forged of [
       { ...valid, request_id: 'req_ffffffffffff' },
-      { ...valid, step: 99 },
+      { ...valid, step: 15 },
       { ...valid, autopay: { autopay_id: other } },
     ]) {
       expect(await h.report(forged)).toBe(404);
@@ -253,7 +262,7 @@ describe('B03/B04/G02 independent callback and replay tests', () => {
 
   it('real creation/cancellation followed by old creation and failed-result replays preserves terminal state', async () => {
     const h = make(['A-58', 'A-12']);
-    await h.sayAndConfirm(REPEAT);
+    await confirmMonthly(h);
     const created = executed(h.envelope, h.nowIso);
     expect(await h.report(created)).toBe(204);
     const spend = h.repos.db6.listByRequest(created.request_id!);
@@ -324,7 +333,8 @@ describe('G03 independent confirmation freshness', () => {
     h.setBalances({ [BASE]: { USDC: '0' }, [ARB]: { USDC: '0' }, [SEPOLIA]: { USDC: '0' } });
     const response = await h.confirm(summary, 'yes');
     expect(response.body.error?.code).toBe('INSUFFICIENT_FUNDS');
-    expect(h.rpc.calls.length).toBeGreaterThan(calls);
+    // Privacy fix 8: the "yes" reads DB4 (kept fresh in the background); it sends nothing to the RPC.
+    expect(h.rpc.calls.length).toBe(calls);
     expect(h.exec.submissions).toHaveLength(0);
     expect(h.count('handoff_journal')).toBe(0);
   });
@@ -393,6 +403,6 @@ describe('G01 independent prefix and suffix chain binding', () => {
   ] as Array<[string, ChainId[]]>)('accepts faithful explicit chains in %s', async (text, chains) => {
     const h = make(chainFixture(chains));
     expect((await h.sayAndConfirm(text)).body.state).toBe('done');
-    expect(h.envelope.intents.map((intent) => ('chain_id' in intent ? intent.chain_id : null))).toEqual(chains);
+    expect(h.envelope.intents.flatMap((intent) => intent.intent_id === 'i' ? intent.recipients.map(() => intent.chain_id) : [])).toEqual(chains);
   });
 });

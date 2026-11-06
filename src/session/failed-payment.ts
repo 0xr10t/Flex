@@ -72,7 +72,7 @@ export function failedPaymentContext(req: AgentRequest, repos: Repos): FailedPay
     storedAmount.token !== payment.token
   )
     return undefined;
-  const planned = req.plan?.find((intent) => intent.intent_id === 'i' && intent.recipient === payment.recipient);
+  const planned = req.plan?.find((intent) => intent.intent_id === 'i' && intent.recipients.some((p) => p.recipient === payment.recipient));
   return {
     request_id: req.request_id,
     recipient: recipient.placeholder as FailedPaymentContext['recipient'],

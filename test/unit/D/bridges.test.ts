@@ -9,7 +9,7 @@ import {
   addAmount,
   addAradhya,
   addMihir,
-  ctxD,
+  ctxD as defaultCtxD,
   db6Row,
   expectError,
   setLimits,
@@ -18,6 +18,9 @@ import { PENDING_RECENT, amountOf, asI, asJ, db1Count, iPay, run, runOk, usdc } 
 
 const ALLOWED: ChainId[] = [SEPOLIA, BASE, ARB];
 const m = (e: Array<[ChainId, bigint]>): Map<ChainId, bigint> => new Map(e);
+
+// Padding remains configurable; these cases deliberately exercise a nonzero buffer.
+const ctxD: typeof defaultCtxD = (...args) => { const ctx = defaultCtxD(...args); setLimits(ctx, { bridge_buffer_pct: '2' }); return ctx; };
 
 describe('planBridges (§10.4 math, base units)', () => {
   it('C-213 §10.4 E2: short 20 on Base, surplus 60 on Arbitrum → x = 20, padded = ceil(20 × 1.02) = 20.4', () => {
@@ -216,7 +219,7 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
   it('C-217 §10.4 NO_GAS for a j source whose raw ETH is below eth_gas_reserve', async () => {
     const ctx = ctxD({ balances: { ...usdc('0', '30', '60'), [ARB]: { USDC: '60', ETH: '0.001' } } });
     const r = addAradhya(ctx);
-    expectError(await run(ctx, [iPay(ctx, '50', r, BASE)]), 'NO_GAS', { reserve: '0.002', chain: 'Arbitrum Sepolia' });
+    expectError(await run(ctx, [iPay(ctx, '50', r, BASE)]), 'NO_GAS', { reserve: '0.004', chain: 'Arbitrum Sepolia' });
   });
 
   it('C-217 §10.4 NO_GAS for the chain of an i intent', async () => {

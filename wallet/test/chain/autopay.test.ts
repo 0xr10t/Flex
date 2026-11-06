@@ -66,6 +66,8 @@ describe('creating an autopay (k)', () => {
       autopay_id: 'ap_000000abc000',
       plan_id: planId,
       executor_address: world.executorOf(world.base),
+      chain_id: 84532,
+      token: 'USDC',
     });
     expect(planId).toBe(keccak256(row.redeem));
     expect(row.status).toBe('active');

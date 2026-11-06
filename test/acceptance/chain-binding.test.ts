@@ -139,7 +139,11 @@ describe('G01 document-only explicit chain binding through HTTP', () => {
         expect(response.body.state).toBe('awaiting_confirmation');
         expect((await h.confirm(response, 'yes')).body.state).toBe('done');
         expect(h.envelope.intents).toHaveLength(1);
-        expect(h.envelope.intents[0]).toMatchObject({ intent_id: 'i', chain_id: expected, recipient: MIHIR });
+        expect(h.envelope.intents[0]).toMatchObject({
+intent_id: 'i',
+chain_id: expected,
+recipients: [{ recipient: MIHIR }]
+});
         expect(h.llm.recorded.filter((c) => c.name === 'payments')).toHaveLength(chains.length);
         expect(h.llm.remaining()).toEqual([]);
       } finally {

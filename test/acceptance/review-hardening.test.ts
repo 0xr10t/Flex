@@ -5,7 +5,7 @@ import { openDatabase } from '../../src/db/open.js';
 import { createRepos } from '../../src/db/repos/index.js';
 import { applyReport } from '../../src/server/reports.js';
 import { Harness, harness, loadFixture, BASE, ARB, SEPOLIA } from './harness.js';
-import { DELEGATE } from './seed.js';
+import { planIdFor, DELEGATE } from './seed.js';
 
 const live = new Set<Harness>();
 async function make(id = 'A-55') {
@@ -17,7 +17,7 @@ afterEach(async () => {
   for (const h of live) await h.finish({ allowUnused: true });
   live.clear();
 });
-const tx = `0x${'cf'.repeat(32)}`;
+const tx: `0x${string}` = `0x${'cf'.repeat(32)}`;
 function result(h: Harness, envelope: HandoffEnvelope = h.envelope): ExecutionReport {
   const first = envelope.intents[0]!;
   return {
@@ -28,19 +28,28 @@ function result(h: Harness, envelope: HandoffEnvelope = h.envelope): ExecutionRe
     tx_hash: tx,
     executed_at: h.nowIso,
     ...(first.intent_id === 'k'
-      ? { autopay: { autopay_id: first.autopay_id, delegate_address: DELEGATE, cre_job_id: 'review-job' } }
+      ? { autopay: { autopay_id: first.autopay_id, plan_id: planIdFor(first.autopay_id), executor_address: DELEGATE, chain_id: first.chain_id, token: first.token } }
       : {}),
   };
 }
 const pay = 'send 10 usdc to mihir';
 const repeat = 'pay mihir 10 usdc every month on the 31st for 3 months';
 
+async function confirmMonthly(h: Harness) {
+  const question = await h.say(repeat);
+  expect(question.body.question?.code).toBe('Q_AUTOPAY_MONTHLY');
+  const summary = await h.answer(question, { chip: 'four_weeks' });
+  expect(summary.body.state).toBe('awaiting_confirmation');
+  return h.confirm(summary, 'yes');
+}
+
 describe('B19 / G02 durable submission and early reports', () => {
   it.each(['db6_spend_log', 'db7_autopays', 'handoff_journal'])(
     'a failing %s write prevents external submission',
     async (table) => {
-      const h = await make('A-58');
-      const summary = await h.say(repeat);
+      const h = await make(table === 'db6_spend_log' ? 'A-55' : 'A-58');
+      const first = await h.say(table === 'db6_spend_log' ? pay : repeat);
+      const summary = table === 'db6_spend_log' ? first : await h.answer(first, { chip: 'four_weeks' });
       expect(summary.body.state).toBe('awaiting_confirmation');
       h.db.exec(`CREATE TEMP TRIGGER fail_prepare BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'fault'); END`);
       const response = await h.confirm(summary, 'yes');
@@ -54,12 +63,13 @@ describe('B19 / G02 durable submission and early reports', () => {
 
   it('accepted submission survives a history fault, cold reopen, and callback retry', async () => {
     const h = await make('A-58');
-    const summary = await h.say(repeat);
+    const monthly = await h.say(repeat);
+    const summary = await h.answer(monthly, { chip: 'four_weeks' });
     h.db.exec("CREATE TEMP TRIGGER fail_history BEFORE INSERT ON db8_history BEGIN SELECT RAISE(ABORT, 'fault'); END");
     const response = await h.confirm(summary, 'yes');
     expect(response.body.state).toBe('done');
     expect(response.body.messages).toContainEqual({ type: 'text', text: 'Sent to your wallet for signing.' });
-    expect(h.count('db6_spend_log')).toBe(1);
+    expect(h.count('db6_spend_log')).toBe(0);
     expect(h.count('db7_autopays')).toBe(1);
     expect(h.count('db8_history')).toBe(0);
     const envelope = h.envelope;
@@ -75,8 +85,8 @@ describe('B19 / G02 durable submission and early reports', () => {
       expect(repos.handoffs.get(envelope.request_id)?.envelope).toEqual(envelope);
       expect(applyReport(repos, callback, h.nowIso)).toBe(204);
       expect(applyReport(repos, callback, h.nowIso)).toBe(204);
-      expect(repos.db6.listByRequest(envelope.request_id)).toHaveLength(1);
-      expect(repos.db6.listByRequest(envelope.request_id)[0]?.status).toBe('executed');
+      expect(repos.db6.listByRequest(envelope.request_id)).toHaveLength(0);
+      expect(repos.db7.get(callback.autopay!.autopay_id)?.status).toBe('active');
       expect(repos.db8.recentHistory(h.sessionId, 5)).toHaveLength(1);
     } finally {
       db.close();
@@ -118,14 +128,14 @@ describe('B03 / B04 exact callback correlation and replay', () => {
       {},
     );
     live.add(h);
-    await h.sayAndConfirm(repeat);
+    await confirmMonthly(h);
     const creation = result(h);
     expect(await h.report(creation)).toBe(204);
     const autopay = creation.autopay!;
     await h.sayAndConfirm(pay);
     const ordinary = result(h);
     expect(await h.report({ ...ordinary, autopay })).toBe(404);
-    expect(await h.report({ ...creation, step: 999 })).toBe(404);
+    expect(await h.report({ ...creation, step: 15 })).toBe(404);
     expect(h.repos.db7.get(autopay.autopay_id)?.status).toBe('active');
     expect(h.repos.db6.listByRequest(ordinary.request_id!)[0]?.status).toBe('pending');
   });
@@ -145,13 +155,13 @@ describe('B03 / B04 exact callback correlation and replay', () => {
 
   it('creation or status replays cannot reactivate a cancelled autopay', async () => {
     const h = await make('A-58');
-    await h.sayAndConfirm(repeat);
+    await confirmMonthly(h);
     const created = result(h);
     expect(await h.report(created)).toBe(204);
     const id = created.autopay!.autopay_id;
-    expect(await h.report({ kind: 'autopay_status', autopay: { autopay_id: id, status: 'cancelled' } })).toBe(204);
+    expect(await h.report({ kind: 'autopay_status', request_id: created.request_id, autopay: { ...created.autopay, status: 'cancelled' } })).toBe(204);
     expect(await h.report(created)).toBe(204);
-    expect(await h.report({ kind: 'autopay_status', autopay: { autopay_id: id, status: 'active' } })).toBe(204);
+    expect(await h.report({ kind: 'autopay_status', request_id: created.request_id, autopay: { ...created.autopay, status: 'active' } })).toBe(400);
     expect(h.repos.db7.get(id)?.status).toBe('cancelled');
   });
 });
@@ -216,7 +226,7 @@ describe('G03 confirmation validates current balances and settings', () => {
   it('an ambiguous autopay retry keeps its original envelope even after its first occurrence and settings change', async () => {
     const h = await make('A-58');
     h.exec.responses.push({ status: 'unavailable', cause: 'timeout' });
-    const failed = await h.sayAndConfirm(repeat);
+    const failed = await confirmMonthly(h);
     expect(failed.body.error?.code).toBe('EXECUTION_UNAVAILABLE');
     const first = structuredClone(h.exec.submissions[0]);
     h.advance(120 * 24 * 60);

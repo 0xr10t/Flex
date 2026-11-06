@@ -35,6 +35,7 @@ import {
   planJ,
   planK,
   planL,
+  planIdFor,
   sched,
   weekly,
 } from './helpers.js';
@@ -62,21 +63,20 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
     const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), a, BASE)]);
     expect(res).toEqual({ kind: 'answer', messages: ['Sent to your wallet for signing.'] });
     expect(envelopeOf(ctx)).toEqual({
-      version: '1',
+      version: '2',
       request_id: ctx.req.request_id,
       wallet_address: WALLET_CS,
       created_at: NOW_ISO,
       intents: [
         {
-          intent_id: 'i',
-          step: 0,
-          depends_on: [],
-          token: 'USDC',
-          token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-          chain_id: 84532,
-          amount: { value: '50', base_units: '50000000', decimals: 6 },
-          recipient: ARADHYA_CS,
-        },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+chain_id: 84532,
+recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, recipient: ARADHYA_CS }]
+},
       ],
     });
   });
@@ -93,7 +93,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
     const env = swapBack(ctx, plan);
     const is = env.intents.map((x) => (x.intent_id === 'i' ? x.token_address : 'n/a'));
     expect(is).toEqual([USDC_ADDR[SEPOLIA], USDC_ADDR[BASE], USDC_ADDR[ARB], null]);
-    expect(env.intents[3]).toMatchObject({ amount: { value: '0.01', base_units: '10000000000000000', decimals: 18 } });
+    expect(env.intents[3]).toMatchObject({ recipients: [{ amount: { value: '0.01', base_units: '10000000000000000', decimals: 18 } }] });
   });
 
   it('C-275 E2 §12.5 j intent: both token addresses set (per chain), amount = padded, receiver self, funds_steps, no deliverable', async () => {
@@ -111,56 +111,39 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
       dest_chain_id: BASE,
       amount: { value: '20.4', base_units: '20400000', decimals: 6 },
       receiver: 'self',
+      fee_max_eth: '0.002',
       funds_steps: [1],
     });
     expect(env.intents[1]).toMatchObject({ intent_id: 'i', depends_on: [0] });
   });
 
-  it('C-275 §12.5 an ETH j intent has null source and destination token addresses', () => {
-    const ctx = ctxD({ balances: usdc('0', '0', '0') });
-    const j = planJ(ctx, 0, ARB, BASE, '0.0102', '0.01', [1], 'ETH');
-    const i = planI(1, mintAmount(ctx, '0.01', 'ETH'), addAradhya(ctx), BASE, { token: 'ETH', depends_on: [0] });
+  it('the shared wire schema rejects an ETH bridge', () => {
+    const ctx = ctxD();
+    const j = planJ(ctx, 0, ARB, BASE, '1', '1', [1]);
+    const i = planI(1, mintAmount(ctx, '1'), addAradhya(ctx), BASE, { depends_on: [0] });
     const env = swapBack(ctx, [j, i]);
-    expect(env.intents[0]).toMatchObject({ source_token_address: null, dest_token_address: null });
+    expect(validators.handoffEnvelope(env)).toBe(true);
+    expect(validators.handoffEnvelope({ ...env, intents: [{ ...env.intents[0], token: 'ETH', source_token_address: null, dest_token_address: null }, env.intents[1]] })).toBe(false);
   });
 
-  it('C-278 C-150 E6 §12.5 k intent: prefund = limits.total_cap, schedule + cre_job copied, exact key allowlist', () => {
+  it('C-278 v2 k intent carries fixed UTC timing, recipients, per-run fees and delegation caps', () => {
     const { ctx, plan } = kPlan();
-    const env = swapBack(ctx, plan);
-    const k = env.intents[0];
+    const k = swapBack(ctx, plan).intents[0];
+    const start = Date.parse('2026-11-06T04:30:00Z') / 1000;
     expect(k).toEqual({
-      intent_id: 'k',
-      step: 0,
-      depends_on: [],
-      autopay_id: 'ap_00000000000e',
-      token: 'USDC',
-      token_address: USDC_ADDR[BASE],
-      chain_id: BASE,
-      recipient: MIHIR_CS,
-      amount_per_payment: { value: '10', base_units: '10000000', decimals: 6 },
-      prefund: { value: '80', base_units: '80000000', decimals: 6 },
-      schedule: {
-        frequency: 'weekly',
-        interval: 1,
-        days_of_week: ['FRI'],
-        day_of_month: null,
-        time_of_day: '10:00',
-        timezone: 'Asia/Kolkata',
-        start_date: '2026-11-06',
-        first_occurrence: '2026-11-06T10:00:00.000+05:30',
-        end: { type: 'on_date', date: '2026-12-31' },
-      },
-      limits: {
-        per_period_cap: { value: '10', base_units: '10000000', decimals: 6 },
-        total_cap: { value: '80', base_units: '80000000', decimals: 6 },
-        expires_at: '2026-12-31T18:29:59Z',
-      },
-      cre_job: { trigger: 'cron', cron: '0 10 * * 5', timezone: 'Asia/Kolkata', interval: 1 },
+      intent_id: 'k', step: 0, depends_on: [], autopay_id: 'ap_00000000000e',
+      token: 'USDC', token_address: USDC_ADDR[BASE], chain_id: BASE,
+      recipients: [{ recipient: MIHIR_CS, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
+      fee: { to: getAddress(ctx.config.autopay!.fee_collector), amount: { value: '0.05', base_units: '50000', decimals: 6 } },
+      schedule: { start_at: start, interval_seconds: 604800, max_runs: 8, late_window_seconds: 3600, end_at: start + 7 * 604800 + 3600 },
+      limits: { max_per_run: { value: '10.05', base_units: '10050000', decimals: 6 }, max_total: { value: '80.4', base_units: '80400000', decimals: 6 } },
+      executor: 'chainlink-cre',
     });
-    if (k?.intent_id === 'k') expect(k.prefund).toEqual(k.limits.total_cap);
+    expect(k).not.toHaveProperty('display');
+    expect(k).not.toHaveProperty('prefund');
   });
 
-  it('C-150 E7 §12.5 l intent: autopay_id, chain, checksummed delegate, recipient, refund_remaining true', () => {
+  it('C-150 E7 §12.5 l intent: autopay_id, chain and on-chain plan_id only', () => {
     const ctx = ctxD({ actions: ['l'] });
     addAutopay(ctx, { autopay_id: 'ap_0000000000f7' });
     const env = swapBack(ctx, [planL(0, addMihir(ctx), 'ap_0000000000f7')]);
@@ -170,9 +153,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
         step: 0,
         autopay_id: 'ap_0000000000f7',
         chain_id: BASE,
-        delegate_address: getAddress('0xde1e9a7e00000000000000000000000000000d01'),
-        recipient: MIHIR_CS,
-        refund_remaining: true,
+        plan_id: planIdFor('ap_0000000000f7'),
       },
     ]);
   });
@@ -183,7 +164,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
     const env = swapBack(ctx, [planI(0, mintAmount(ctx, '5'), lower, BASE)]);
     expect(env.wallet_address).toBe(getAddress(TEST_WALLET));
     expect(env.wallet_address).not.toBe(TEST_WALLET.toLowerCase());
-    expect(env.intents[0]).toMatchObject({ recipient: ARADHYA_CS });
+    expect(env.intents[0]).toMatchObject({ recipients: [{ recipient: ARADHYA_CS }] });
     expect(validators.handoffEnvelope(env)).toBe(true);
   });
 
@@ -195,7 +176,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
       planI(1, mintAmount(ctx, '9007199254740993.000001'), a, BASE),
       planI(2, mintAmount(ctx, '123456789.123456789012345678', 'ETH'), a, BASE, { token: 'ETH' }),
     ]);
-    const amounts = env.intents.map((x) => (x.intent_id === 'i' ? x.amount : null));
+    const amounts = env.intents.map((x) => (x.intent_id === 'i' ? x.recipients[0]!.amount : null));
     expect(amounts).toEqual([
       { value: '50.5', base_units: '50500000', decimals: 6 },
       { value: '9007199254740993.000001', base_units: '9007199254740993000001', decimals: 6 },
@@ -220,6 +201,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
         'dest_chain_id',
         'dest_token_address',
         'funds_steps',
+        'fee_max_eth',
         'intent_id',
         'receiver',
         'source_chain_id',
@@ -229,19 +211,18 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
       ].sort(),
     );
     expect(keys[1]).toEqual(
-      ['amount', 'chain_id', 'depends_on', 'intent_id', 'recipient', 'step', 'token', 'token_address'].sort(),
+      ['recipients', 'chain_id', 'depends_on', 'intent_id', 'step', 'token', 'token_address'].sort(),
     );
     expect(keys[2]).toEqual(
       [
-        'amount_per_payment',
         'autopay_id',
         'chain_id',
-        'cre_job',
+        'executor',
         'depends_on',
         'intent_id',
         'limits',
-        'prefund',
-        'recipient',
+        'fee',
+        'recipients',
         'schedule',
         'step',
         'token',
@@ -249,7 +230,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
       ].sort(),
     );
     expect(keys[3]).toEqual(
-      ['autopay_id', 'chain_id', 'delegate_address', 'intent_id', 'recipient', 'refund_remaining', 'step'].sort(),
+      ['autopay_id', 'chain_id', 'plan_id', 'intent_id', 'step'].sort(),
     );
     expect(validators.handoffEnvelope(env)).toBe(true);
   });
@@ -305,7 +286,7 @@ describe('C-451 §20.1 handoff: §8.14 step 1 / §12.5 swap_back envelope', () =
 function kPlan(): { ctx: TestContext; plan: InternalIntent[] } {
   const ctx = ctxD({ actions: ['k'], balances: usdc('0', '1000', '0') });
   const mi = addMihir(ctx);
-  return { ctx, plan: [planK(ctx, 0, mi, BASE, { amount: '10', total: '80' })] };
+  return { ctx, plan: [planK(ctx, 0, mi, BASE, { amount: '10' })] };
 }
 
 describe('§8.14 step 2 HANDOFF_INVALID (SQ-02)', () => {
@@ -378,22 +359,22 @@ describe('§8.14 steps 3–4 accepted hand-off: DB6 / DB7 / DB8 (§11.4, SQ-C-08
     expect(ctx.exec.submissions[0]?.idempotencyKey).toBe(ctx.req.request_id);
     expect(ctx.repos.tables.db6).toEqual([
       {
-        id: expect.any(Number),
-        request_id: ctx.req.request_id,
-        step: 0,
-        kind: 'payment',
-        counts_toward_limit: true,
-        chain_id: BASE,
-        token: 'USDC',
-        amount: '50',
-        recipient_address: ARADHYA_CS,
-        intent_id: 'i',
-        autopay_id: null,
-        status: 'pending',
-        tx_hash: null,
-        created_at: NOW_ISO,
-        executed_at: null,
-      },
+id: expect.any(Number),
+request_id: ctx.req.request_id,
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: BASE,
+token: 'USDC',
+recipient_address: ARADHYA_CS,
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: NOW_ISO,
+executed_at: null,
+amount: '50'
+},
     ]);
     expect(ctx.req.state).toBe('HANDED_OFF');
     expect(ctx.log.lines.some((l) => l.event === 'handed_off' && l.level === 'info')).toBe(true);
@@ -435,6 +416,7 @@ describe('§8.14 steps 3–4 accepted hand-off: DB6 / DB7 / DB8 (§11.4, SQ-C-08
         intent: 'j',
         status: 'pending',
       },
+      { step: 0, kind: 'bridge_fee', counts: true, chain: ARB, amount: '0.002', to: null, intent: 'j', status: 'pending' },
       {
         step: 1,
         kind: 'payment',
@@ -458,41 +440,24 @@ describe('§8.14 steps 3–4 accepted hand-off: DB6 / DB7 / DB8 (§11.4, SQ-C-08
     ];
     await handoff(ctx, plan);
     const counted = ctx.repos.tables.db6.filter((r) => r.counts_toward_limit).map((r) => r.amount);
-    expect(counted).toEqual(['0.2', '40', '20']);
+    expect(counted).toEqual(['0.2', '0.002', '40', '20']);
   });
 
-  it('C-264 E6 §11.4 k → autopay_prefund = total_cap (counts 0, with autopay_id and recipient); DB7 pending row', async () => {
+  it('C-264 v2 k records the exact schedule and recipients in DB7 without a prefund debit', async () => {
     const { ctx, plan } = kPlan();
-    await handoff(ctx, plan);
-    expect(ctx.repos.tables.db6).toHaveLength(1);
-    expect(ctx.repos.tables.db6[0]).toMatchObject({
-      step: 0,
-      kind: 'autopay_prefund',
-      counts_toward_limit: false,
-      chain_id: BASE,
-      token: 'USDC',
-      amount: '80',
-      recipient_address: MIHIR_CS,
-      intent_id: 'k',
-      autopay_id: 'ap_00000000000e',
-      status: 'pending',
-    });
+    expect((await handoff(ctx, plan)).kind).toBe('answer');
+    expect(ctx.repos.tables.db6).toEqual([]);
     const rows = ctx.repos.db7.listByRequest(ctx.req.request_id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      autopay_id: 'ap_00000000000e',
-      request_id: ctx.req.request_id,
-      recipient_name: 'Mihir',
-      recipient_address: MIHIR_CS,
-      chain_id: BASE,
-      token: 'USDC',
-      amount_per_payment: '10',
-      status: 'pending',
-      delegate_address: null,
+      autopay_id: 'ap_00000000000e', request_id: ctx.req.request_id, recipient_name: 'Mihir',
+      recipient_address: MIHIR_CS, chain_id: BASE, token: 'USDC', amount_per_payment: '10', fee: '0.05',
+      status: 'pending', plan_id: null, executor_address: null,
     });
-    expect(JSON.parse(rows[0]?.schedule_json ?? '{}')).toEqual(
-      weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', { type: 'on_date', date: '2026-12-31' }),
-    );
+    const k = envelopeOf(ctx).intents[0];
+    if (k?.intent_id !== 'k') throw new Error('missing autopay');
+    expect(JSON.parse(rows[0]!.schedule_json)).toEqual(k.schedule);
+    expect(JSON.parse(rows[0]!.recipients_json!)).toEqual(k.recipients);
   });
 
   it('C-265 E7 §11.4 l → no DB6 row and no new DB7 row; the existing autopay row is untouched', async () => {
@@ -599,7 +564,7 @@ describe('§8.14 steps 3–4 accepted hand-off: DB6 / DB7 / DB8 (§11.4, SQ-C-08
   it('C-153 §8.14 DB6 / DB7 / DB8 rows are written exactly once per accepted hand-off', async () => {
     const { ctx, plan } = kPlan();
     await handoff(ctx, plan);
-    expect(ctx.repos.tables.db6).toHaveLength(1);
+    expect(ctx.repos.tables.db6).toHaveLength(0);
     expect(ctx.repos.tables.db7.size).toBe(1);
     expect(ctx.repos.tables.db8_history).toHaveLength(1);
   });

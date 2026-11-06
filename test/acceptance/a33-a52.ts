@@ -91,8 +91,7 @@ export function registerA33toA52(): void {
       expect(r1.body.question?.code).toBe('Q_TOKEN'); // no token word in the message (§8.4 rule (e))
       const r = await h.answer(r1, { chipLabel: 'USDC' });
       expect(lines(r)).toEqual([
-        'Send 10 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.',
-        'Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.',
+        'Send 10 USDC to Aradhya (0x3fA9…c21E) and 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia in one atomic payment.',
       ]);
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 20 of 300 USDC.']);
       expect(h.rows('SELECT amount FROM db1_amount_placeholders')).toEqual([{ amount: '10' }]); // one placeholder
@@ -102,8 +101,7 @@ export function registerA33toA52(): void {
       expect(hist[0]!.amount).toBe(hist[1]!.amount);
       expect(hist[0]!.recipient).not.toBe(hist[1]!.recipient);
       expectEnvelope(h, r.body.request_id, [
-        usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: ARADHYA }),
-        usdcIntent({ step: 1, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: MIHIR }),
+        { ...usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: ARADHYA }), recipients: [{ recipient: ARADHYA, amount: usdc('10') }, { recipient: MIHIR, amount: usdc('10') }] },
       ]);
       await h.finish();
     });
@@ -133,15 +131,14 @@ export function registerA33toA52(): void {
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
         {
-          intent_id: 'i',
-          step: 0,
-          depends_on: [],
-          token: 'ETH',
-          token_address: null,
-          chain_id: BASE,
-          amount: eth('0.049'),
-          recipient: MIHIR,
-        },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'ETH',
+token_address: null,
+chain_id: BASE,
+recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
+},
       ]);
       await h.finish();
     });
@@ -183,7 +180,7 @@ export function registerA33toA52(): void {
       const r2 = await h.answer(r1, { text: '0.123456' });
       expect(lines(r2)).toEqual(['Send 0.123456 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expectHandedOff(await h.confirm(r2, 'yes'));
-      expect((h.envelope.intents[0] as { amount: unknown }).amount).toEqual(usdc('0.123456'));
+      expect((h.envelope.intents[0] as { recipients: { amount: unknown }[] }).recipients[0]!.amount).toEqual(usdc('0.123456'));
       await h.finish();
     });
 
@@ -237,6 +234,7 @@ export function registerA33toA52(): void {
     it("A-47: one chain's RPC down -> chain excluded with a note; still plans on the others", async () => {
       const h = await harness('A-47');
       h.rpc.down.add(ARB);
+      await h.refreshBalances();
       const r = await h.say('Send 50 USDc to ARADHYA');
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(lines(r)).toEqual(['Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.']);
@@ -258,6 +256,7 @@ export function registerA33toA52(): void {
     it('A-48: all RPCs down -> BALANCES_UNAVAILABLE', async () => {
       const h = await harness('none');
       [SEPOLIA, BASE, ARB].forEach((c) => h.rpc.down.add(c));
+      await h.refreshBalances();
       const r = await h.say('Send 50 USDc to ARADHYA');
       expectError(
         r,

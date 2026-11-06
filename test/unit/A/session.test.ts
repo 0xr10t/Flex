@@ -116,21 +116,21 @@ describe('§17.1 session lifecycle', () => {
       step: async (ctx) => {
         ctx.repos.db6.insertMany([
           {
-            request_id: ctx.req.request_id,
-            step: 0,
-            kind: 'payment',
-            counts_toward_limit: true,
-            chain_id: 84532,
-            token: 'USDC',
-            amount: '50',
-            recipient_address: '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E',
-            intent_id: 'i',
-            autopay_id: null,
-            status: 'pending',
-            tx_hash: null,
-            created_at: '2026-11-05T17:30:00.000Z',
-            executed_at: null,
-          },
+request_id: ctx.req.request_id,
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: 84532,
+token: 'USDC',
+recipient_address: '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E',
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: '2026-11-05T17:30:00.000Z',
+executed_at: null,
+amount: '50'
+},
         ]);
         ctx.repos.db8.appendHistory({
           session_id: ctx.req.session_id,
@@ -165,7 +165,7 @@ describe('§17.1 session lifecycle', () => {
     // Handed-off request unaffected: DB6 row, DB2, DB5 stay.
     expect(n('db6_spend_log')).toBe(1);
     expect(n('db2_address_book')).toBe(1);
-    expect(n('db5_limits')).toBe(8);
+    expect(n('db5_limits')).toBe(9);
   });
 
   it('C-411: a request in progress is abandoned as DISCARDED when the session closes', async () => {
@@ -713,18 +713,29 @@ describe('§17.3 confirmation, answers and cancellation', () => {
     ]);
   });
 
-  it('C-425 / C-305: other text while awaiting confirmation → pending DISCARDED, new request with the line prepended', async () => {
+  it('C-425 / C-305: a complete new request while awaiting confirmation replaces the pending request', async () => {
     const h = makeHarness();
     const { sid, rid } = await toConfirmation(h);
-    const r = body(await h.manager.handleMessage(sid, msg('actually send 20 to mihir')));
+    const r = body(await h.manager.handleMessage(sid, msg('send 20 usdc to mihir on base')));
     expect(r.request_id).not.toBe(rid);
     expect(r.state).toBe('awaiting_confirmation');
     expect(r.messages).toEqual([
       { type: 'text', text: 'I dropped the previous plan and started on your new request.' },
     ]);
-    expect(h.contexts.at(-1)?.req.input?.text).toBe('actually send 20 to mihir');
+    expect(h.contexts.at(-1)?.req.input?.text).toBe('send 20 usdc to mihir on base');
     expect(finals(h)).toEqual(['DISCARDED']);
     expect((await h.manager.handleConfirm(sid, rid, 'yes')).kind).toBe('conflict');
+  });
+
+  it('SQ-CV-02: an edit cannot inherit fields when the stub summary has no validated draft rows', async () => {
+    const h = makeHarness();
+    const { sid, rid } = await toConfirmation(h);
+    const response = body(await h.manager.handleMessage(sid, msg('actually send 20 to mihir')));
+    expect(response.request_id).toBe(rid);
+    expect(response.state).toBe('awaiting_confirmation');
+    expect(response.summary).toEqual(SUMMARY);
+    expect(finals(h)).toEqual([]);
+    expect(h.calls.some((call) => call.step === 's12')).toBe(false);
   });
 
   it('C-343: confirm outside AWAITING_CONFIRMATION/HANDOFF_FAILED, or for another request → conflict', async () => {

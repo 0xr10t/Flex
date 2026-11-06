@@ -110,7 +110,7 @@ It never signs, bridges, schedules or broadcasts anything itself.
 | ID | Requirement |
 | --- | --- |
 | FR-01 | Accept a plain-language message, optional pasted blocks, file attachments (text, PDF) and URLs. |
-| FR-02 | Refresh balances for all allowed chains and tokens via anon-rpc before processing each message (S0). |
+| FR-02 | Keep balances for all allowed chains and tokens fresh via anon-rpc on a background timer with jitter, not per message; S0 reads DB4 (§8.1, §16.5). |
 | FR-03 | Block any message containing private keys, extended keys, seed phrases or keystore files (S1). |
 | FR-04 | Normalise free-form amounts ("fifty", "5k", "$50", "half my usdc") into verified numbers; ignore story-only amounts (S3). |
 | FR-05 | Classify the request as actions (`i`, `k`, `l`), a balance question, or unsupported (S4). |
@@ -368,7 +368,7 @@ All choices are fixed for v1.
   "ens": {
     "rpc_chain_id": 11155111,
     "universal_resolver_address": "0x<ENSv2 Universal Resolver on Sepolia, from docs.ens.domains deployments>",
-    "indexer_url": "https://<ens-indexer>/graphql",
+    "indexer_url": "https://api.v2-sepolia.ensnode.io/api/omnigraph",
     "indexer_kind": "ens-subgraph"
   },
   "execution": {
@@ -384,14 +384,21 @@ All choices are fixed for v1.
   "bridge": {
     "ccip_fee_max_eth": "0.002"
   },
-  "fetch": { "max_bytes": 1048576, "timeout_ms": 10000, "max_redirects": 3 },
+  "network": { "socks_proxy": "socks5h://127.0.0.1:9050" },
+  "fetch": { "enabled": true, "max_bytes": 1048576, "timeout_ms": 10000, "max_redirects": 3 },
   "defaults": { "timezone": "Asia/Kolkata", "autopay_time_of_day": "10:00" }
 }
 ```
 
 - The three USDC addresses are Circle's testnet USDC contracts. Verify them against Circle's published list before the first run; they are config, not code.
 - Token files contain one random 32-byte hex token each, mode `0600`; generated on first run if missing.
-- `ens.universal_resolver_address` and `ens.indexer_url` are taken from the ENSv2 Sepolia deployment the team uses.
+- `ens.universal_resolver_address` is taken from the ENSv2 Sepolia deployment the team uses.
+- `network.socks_proxy`: Tor's SOCKS port, `socks5h://127.0.0.1:<port>`, or `null` for direct connections (§16.5).
+- `ens.indexer_url`: `null` turns group sends off (`GROUP_SENDS_OFF`); an https URL turns them on. `fetch.enabled`:
+  `false` turns link reading off (`LINKS_OFF`); `true` reads `urls[]` links. Both go through Tor when
+  `network.socks_proxy` is set, and directly otherwise (§16.5).
+- `chains[].rpc_url` must be https (the anon-rpc endpoints) or `http://127.0.0.1` (a node on this machine);
+  `execution.url` must be `http://127.0.0.1` (§16.5).
 - `autopay.fee` is charged on every autopay run, inside the batch the user signs, to `autopay.fee_collector`. The
   collector must not be a payee. `autopay.late_window_seconds` is how long after its due time a run may still be paid.
 - `bridge.ccip_fee_max_eth` is the most the user pays in ETH for one CCIP bridge (hard ceiling 0.01). Measured live fees
@@ -582,7 +589,7 @@ CREATE TABLE db8_history (
 | DB1 | S3 `mask_amounts`, S6/S3 untrusted values, S9 `plan_funding` (bridge amounts, autopay fee and caps) | S8 (keys only), S9, S10, S11, S12 | Session |
 | DB2 | `add_contact` only, after an explicit user "yes" | S6 | Persistent |
 | DB3 | S7 `mask_recipient`, S6 group expansion | S8 (keys only), S9, S10, S11, S12 | Session |
-| DB4 | S0 balance refresher | S9, S10, balance answers | Persistent (overwritten each message) |
+| DB4 | Background balance refresher (S0 only at a cold start) | S0, S9, S10, balance answers | Persistent (overwritten on each refresh) |
 | DB5 | Settings API only (`PUT /v1/settings/limits`) | S9, S10 | Persistent |
 | DB6 | S12 (pending rows), execution reports (status updates, autopay payments) | S9 (pending subtraction), S10 (daily limit) | Persistent |
 | DB7 | S12 (pending row for each `k`), execution reports | `find_autopays` (S8/S9 for `l`) | Persistent |
@@ -643,9 +650,13 @@ interface AgentRequest {
 
 The request lives in memory in the session manager. Its raw texts are also written to DB8 (`db8_prompts`) after S1 passes.
 
-### 8.1 S0 — Refresh balances (code)
+### 8.1 S0 — Balances (code)
 
-Runs before anything else for every new message (not for answers to questions or confirmations).
+Runs before anything else for every new message (not for answers to questions or confirmations). S0 reads DB4 and makes
+no RPC call, except for a chain that has never been read (cold start), which it reads once with steps 1–4. Balances are
+read by a background refresher: at startup, then every 0.5–1.5 × 5 minutes (random jitter), so balance queries never
+line up with the user's messages (§16.5). Each refresh runs steps 1–4; S0 adds the step-4 note for every chain DB4 marks
+`unavailable`, and step 5 applies.
 
 1. For each chain in `allowed_chain_ids` (DB5), in parallel, using that chain's anon-rpc URL with a 10 s timeout:
    - `eth_getBalance(wallet.address, 'latest')` → ETH.
@@ -663,7 +674,9 @@ Runs before anything else for every new message (not for answers to questions or
 
 - Every `pasted_blocks[]` entry.
 - Every attachment. Allowed MIME types: `text/plain`, `text/markdown`, `text/csv` (UTF-8 decoded), `application/pdf` (text via `pdf-parse`). Anything else, including images → error `ATTACHMENT_UNSUPPORTED` naming the file; the whole request stops.
-- Every URL in `urls[]`, plus every `https://…` URL found in the typed text. URLs found in typed text are removed from `typed_text` and replaced by `[link N]`.
+- Every URL in `urls[]`. URLs found in the typed text are removed from `typed_text` and replaced by `[link N]`, but are
+  **never fetched**; the request gets the note "Links in your message weren't opened. Paste their text if I should read
+  it." (§16.5). With `fetch.enabled = false`, a `urls[]` link → error `LINKS_OFF` after the secret scan.
 - `http://` URLs → error `URL_FETCH_FAILED` ("only https links are supported").
 
 **Step 2 — secret scan** over `typed_text`, every pasted block and every attachment's text (not fetched web pages; they are not the user's secrets). A hit → error `SECRET_DETECTED`, request `FAILED`. Nothing from this message is written to DB8, DB1, DB3 or logs; buffers are dropped.
@@ -1015,6 +1028,9 @@ flowchart TD
 
 1. `normalize()` the name (ENSIP-15). Failure → `Q_WHO_IS` ("That isn't a valid ENS name. Who is it?").
 2. DB2 rows with this `ens_name` → resolved like a contact (§9.1 step 2, including the re-check).
+   A name from attached content (untrusted) is not looked up yet: `Q_WHO_IS` asks "The attached content names
+   bob.eth. Should I look it up? You can also paste the wallet address." with chips "Look it up" / "Don't pay this
+   one" (§16.5). A typed answer is the user's own payee (SQ-C-05).
 3. Otherwise resolve through ENSv2 on Sepolia (`ens.rpc_chain_id`) via anon-rpc, using the Universal Resolver in config:
    - **Target chain known** (exactly one chain word in the span's clause, or exactly one chain word in the whole prompt): query the address for that chain.
    - **Not known:** query every allowed `ok` chain.
@@ -1040,6 +1056,9 @@ When a resolved contact has `ens_name`, re-resolve it for each chain it has rows
 Applied in S9 when a payment's chain has no DB2 row for its contact: the address is reused without asking, **no DB2 row is written**, DB3 `reused_from_chain_id` is set, and the summary note says "Same address as on Arbitrum Sepolia." Recipients pinned by ENS (§9.3 step 6) are never reused on another chain. Accepted risk (D-06): a smart-contract wallet can have different addresses per chain.
 
 ### 9.6 Group sends under an ENS name
+
+With `ens.indexer_url = null` a group payee stops the request with `GROUP_SENDS_OFF` before any question or lookup
+(§16.5). Otherwise:
 
 1. Parent text → `normalize()`. Failure → `Q_GROUP_PARENT` ("Which ENS name's members should I pay?", input text).
 2. **Chain:** exactly one chain word in the group's clause or in the prompt → that chain; otherwise `Q_GROUP_CHAIN` (chips: allowed `ok` chains).
@@ -1848,6 +1867,7 @@ Errors end the request. They are returned in `AgentResponse.error` with `state =
 | `SECRET_DETECTED` | S1 secret hit | "This looks like a private key or recovery phrase. I didn't send or save it anywhere. Never share it; if you pasted it elsewhere, move your funds to a new wallet." |
 | `ATTACHMENT_UNSUPPORTED` | Non text/PDF file | "I can only read text and PDF files. {filename} wasn't read, so nothing was done." |
 | `URL_FETCH_FAILED` | Fetch failed / http / private host | "I couldn't open link {n}, so nothing was done." |
+| `LINKS_OFF` | A `urls[]` link while `fetch.enabled = false` (§16.5) | "Opening links is turned off for privacy, so link {n} wasn't read and nothing was done. Paste its text instead." |
 | `DOCUMENT_TOO_LARGE` | > 20,000 chars | "{item} is too long for me to read safely." |
 | `BALANCES_UNAVAILABLE` | All chains, or a needed chain, unreadable | "I can't read your balances on {chains} right now. Try again in a moment." |
 | `MAINNET_NOT_SUPPORTED` | Mainnet word | "I only work on test networks for now: Sepolia, Base Sepolia and Arbitrum Sepolia." |
@@ -1862,6 +1882,7 @@ Errors end the request. They are returned in `AgentResponse.error` with `state =
 | `PAIRING_FAILED` | S8 checks fail twice | "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?" |
 | `SELF_PAYMENT` | Recipient is the wallet | "That's your own address. Moving funds between your own chains isn't a payment I can make." |
 | `ENS_INDEXER_UNAVAILABLE` | Indexer failed | "I can't list the members of {parent} right now." |
+| `GROUP_SENDS_OFF` | Group payee while `ens.indexer_url = null` (§16.5) | "Paying everyone under {parent} is turned off for privacy: listing its members needs a direct connection to an ENS indexer. Name each person instead." |
 | `GROUP_EMPTY` | No payable members | "{parent} has no members I can pay on {chain}." |
 | `NO_ACTIVE_AUTOPAY` | Nothing to cancel | "There's no active repeating payment to {name}." |
 | `AUTOPAY_NOT_READY` | Only pending autopay | "That repeating payment is still being set up. Try again shortly." |
@@ -1932,7 +1953,49 @@ Public on-chain regardless of this layer: sender, recipient, amount, token, chai
 - One SQLCipher file; key from the OS keychain; `secure_delete=ON`; `VACUUM` after session clears.
 - HTTP server bound to `127.0.0.1` only; bearer tokens from `0600` files; UI and execution-report tokens are different.
 - No code path from the pipeline writes DB5. DB2 is written only by `add_contact` after an explicit "Yes" + name.
-- The agent process makes outbound requests only to: Ollama (localhost), configured RPC URLs, the ENS indexer, the execution layer, and user-supplied HTTPS URLs (S1).
+- The agent process makes outbound requests only to: Ollama (localhost), configured RPC URLs, the execution layer
+  (localhost), and, only when enabled, the ENS indexer and `urls[]` HTTPS links (S1). With `network.socks_proxy` set,
+  everything except localhost goes through Tor (§16.5).
+
+### 16.5 Network privacy
+
+**anon-rpc is the RPC URLs reached through Tor.** With `network.socks_proxy` set (agent and wallet), every request to a
+host that isn't this machine goes through Tor's SOCKS port: balance reads, ENS lookups, the ENS indexer, `urls[]` links
+and every wallet RPC call (reads, simulation, broadcast). The hostname is sent to Tor (`socks5h`), so no DNS lookup
+happens here. Each kind of query has its own SOCKS username (`balances`, `ens`, `indexer`, `links`, `wallet-<chainId>`)
+with a random per-process password, and Tor (`IsolateSOCKSAuth`, on by default) gives each its own circuit. The agent
+opens a new Tor stream per request, so a long-lived connection can't tie lookups together; the wallet keeps its
+connections alive, because everything it sends carries the user's address anyway. If Tor can't be reached, requests
+fail: nothing falls back to a direct connection. `127.0.0.1` (a node on this machine) is always reached directly.
+`network.socks_proxy` is required, so a direct setup (`null`) is always a stated choice.
+
+Through Tor, links are not resolved here: literal IPs are still checked against the private ranges, `localhost` names are
+refused, and Tor's exits refuse private addresses for every other name.
+
+Tor setup: install Tor and run it with its default `SocksPort 9050` (`IsolateSOCKSAuth` is on by default). Some RPC
+providers block or rate-limit Tor exits; pick anon-rpc endpoints that accept Tor.
+
+1. **Wallet RPC.** The wallet's `chains[].rpc_url` are the same anon-rpc endpoints (https), or `http://127.0.0.1` for a
+   node on this machine. There is no fallback RPC: an unreachable chain fails the step.
+2. **Approval before simulation.** The wallet checks the account and quotes the bridge fee, then asks for approval, then
+   simulates and checks the decoded bytes, then signs. A refused request never reaches the RPC as a simulated batch.
+3. **No CCIP-Read.** Every viem client is created with `ccipRead: false`: an offchain lookup would fetch a URL the
+   resolver (or any contract) chose, straight from this machine. An ENS name whose record is offchain has no address.
+4. **Content names.** An ENS name from attached content is looked up only after the user says "Look it up" (§9.3).
+5. **Links.** Links typed in the message are never fetched. `urls[]` links are fetched only when `fetch.enabled` is
+   `true`, through Tor when it is configured.
+6. **Group sends.** `ens.indexer_url = null` turns group sends off; with a URL, the indexer is queried through Tor when
+   it is configured.
+7. **Separate connections.** Balance reads and ENS lookups use separate connection pools, and every JSON-RPC id is
+   random (viem's process-wide counter would link requests).
+8. **Balance timing.** Balances are read on a jittered background timer (§8.1), never because of a message or a "yes".
+9. **Run watcher.** The wallet reads every `Executed` event on the shared executor and keeps its own plans locally, so
+   the RPC can't tell which plans it watches.
+10. **Local only.** `execution.url` (agent) and `agent.url` (wallet) must be `http://127.0.0.1`.
+
+Accepted limits: the bridge arrival check still filters `Transfer` logs by the user's address on the destination
+chain; Tor hides the IP, not what the queries say. Tor adds latency (about 1–3 s per new stream). The CRE workflow runs
+in Chainlink's network and is not affected by this setting.
 
 ---
 
@@ -2154,7 +2217,7 @@ Typed: "pay this invoice"; pasted block: "Invoice #42: 120 USDC to 0xAAAA…1111
 | A-43 | "send 0.1234567 usdc to mihir" | `Q_AMOUNT_PRECISION` |
 | A-44 | "send 10 usdc to me" / own address | `SELF_PAYMENT` |
 | A-45 | Image attachment | `ATTACHMENT_UNSUPPORTED` |
-| A-46 | http:// link | `URL_FETCH_FAILED` |
+| A-46 | http:// link in `urls[]` | `URL_FETCH_FAILED` |
 | A-47 | One chain's RPC down | Chain excluded, note; still plans on others |
 | A-48 | All RPCs down | `BALANCES_UNAVAILABLE` |
 | A-49 | Summary → "no" | `DISCARDED`; not in history |
@@ -2249,7 +2312,7 @@ Build order (each milestone is shippable and tested):
 | D-06 | Recipient saved only on another chain | Reuse silently; summary notes it; smart-wallet risk accepted |
 | D-07 | Allowed chains | `allowed_chain_ids` in DB5 |
 | D-08 | Bridge fees | **(v1.1)** CCIP fee paid in ETH on the source chain, capped by `ccip_fee_max_eth`; `bridge_buffer_pct` default 0 (raise only if USDC arrives short) |
-| D-09 | Balance freshness | Refreshed via anon-rpc on every prompt before the agent runs |
+| D-09 | Balance freshness | Refreshed via anon-rpc on a jittered background timer, not per prompt (§16.5) |
 | D-10 | Spend log | DB6 in the agent layer, fed by the execution layer |
 | D-11 | Names | Unique; one name per address; an EVM address is the same on every chain |
 | D-12 | Final confirmation | Agent builds the summary, sent to the UI only; UI collects "yes"; execution layer signs |
@@ -2302,7 +2365,7 @@ Build order (each milestone is shippable and tested):
 | I-14 | Any 64-hex string blocks (tx hashes included) |
 | I-15 | Fetched web pages are not secret-scanned |
 | I-16 | Attachments: text and PDF only; 20,000-character cap per item |
-| I-17 | URLs typed in the message are fetched as untrusted content |
+| I-17 | URLs typed in the message are never fetched; `urls[]` links are fetched as untrusted content only when `fetch.enabled` (§16.5) |
 | I-18 | Content values are used only when the typed text has no amounts / no payees |
 | I-19 | Relative amounts: `i` to one person only; one chain; half rounds down |
 | I-20 | Uncovered numbers trigger `Q_AMOUNT_UNCOVERED` |
@@ -2349,7 +2412,7 @@ Build order (each milestone is shippable and tested):
 | Silent reuse | Using a contact's address on a chain where it isn't saved, without asking |
 | Group send | Paying every chosen subname under an ENS parent |
 | Session | One open chat; its end clears DB1, DB3, DB8 |
-| anon-rpc | The private RPC endpoints used for every chain read |
+| anon-rpc | The RPC endpoints used for every chain read, reached through Tor (`network.socks_proxy`, §16.5) |
 | CRE workflow | The one shared Chainlink CRE workflow that pays every registered autopay run when it is due |
 | Delegation | A MetaMask permission the user signs once per autopay leg: exact batch, run count and time window, checked onchain |
 | Leg | One fixed-interval `k`; a weekly autopay on several days has one leg per day |

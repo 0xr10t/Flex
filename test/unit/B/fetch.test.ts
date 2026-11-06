@@ -39,6 +39,7 @@ function setup(
 ) {
   const cfg = testConfig();
   cfg.fetch = {
+    enabled: true,
     max_bytes: opts.max_bytes ?? 1000,
     timeout_ms: opts.timeout_ms ?? 2000,
     max_redirects: opts.max_redirects ?? 3,
@@ -394,7 +395,7 @@ describe('content fetcher (§8.2 step 3, C-069, C-071, C-072)', () => {
 
   it('timeout: a request that never answers resolves { ok: false } after fetch.timeout_ms', async () => {
     const cfg = testConfig();
-    cfg.fetch = { max_bytes: 1000, timeout_ms: 60, max_redirects: 3 };
+    cfg.fetch = { enabled: true, max_bytes: 1000, timeout_ms: 60, max_redirects: 3 };
     const fetcher = createContentFetcher(cfg, {
       resolve: PUBLIC,
       httpGet: () => new Promise<HttpResponse>(() => undefined),
@@ -406,7 +407,7 @@ describe('content fetcher (§8.2 step 3, C-069, C-071, C-072)', () => {
 
   it('timeout while streaming the body also fails', async () => {
     const cfg = testConfig();
-    cfg.fetch = { max_bytes: 1000, timeout_ms: 60, max_redirects: 3 };
+    cfg.fetch = { enabled: true, max_bytes: 1000, timeout_ms: 60, max_redirects: 3 };
     const slow: HttpResponse = {
       status: 200,
       headers: { 'content-type': 'text/plain' },
