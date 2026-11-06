@@ -101,7 +101,7 @@ Made so that work can continue. Each one is easy to change and has not been appr
 **Decoder, simulation and ENS** (uncommitted when written)
 
 - Merged 67 commits from `origin/agentic_layer`. None of them moved ENS forward: the agent is still on envelope v1, with placeholder ENS settings, tested only against fakes.
-- Added `src/guard/`: the decoder and the check. It runs before approval on `i`, `j`, `k` and `l`. Autopay checks twice: before the permission is signed, and after, simulating `register` and then the first run at its start time. Cancel simulates a later run too.
+- Added `src/guard/`: the decoder and the check. It runs on `i`, `j`, `k` and `l` (after approval since privacy fix 2, 6 Nov 2026). Autopay checks twice: before the permission is signed, and after, simulating `register` and then the first run at its start time. Cancel simulates a later run too.
 - The token that claims success and moves nothing is now caught before signing, not after.
 - Added `ensnode-omnigraph` as an indexer kind in the agent (`src/recipients/subnames.ts`). This is the first change to agent code from this branch.
 - Added a test of ETH to several people with different amounts. The agent can't produce this yet; see R-2.

@@ -123,6 +123,8 @@ user settings, and the agent's `Q_LIMIT_OVERRIDE` can lift a limit once (SQ-D-16
 
 **Change:** this replaces "Not in this plan: simulating a hand-off". A decoder and `eth_simulateV1` run together on every transaction, in the wallet, before approval. The intent, the decoded bytes and the simulated result must all match, or nothing is signed. If simulation isn't available, the payment stops.
 
+**Update (6 Nov 2026, privacy fix 2):** the simulation now runs after approval, not before. The wallet checks the account and quotes the bridge fee, asks for approval with the decoded summary, then simulates. A refused request never reaches the RPC as a full simulated batch; nothing is signed unless the simulation still matches. See `docs/spec/AGENT_SPEC_v1.1.md` §16.5.
+
 **Why:** the decoder catches a batch built wrongly. The simulation catches one that looks right and does nothing.
 
 **What we give up:** a payment now depends on the RPC offering `eth_simulateV1`, so an outage or a provider without it stops payments. It also shows the RPC what you're about to do, before you've approved it.

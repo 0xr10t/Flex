@@ -6,7 +6,10 @@ import type { EnvelopeIntent, HandoffEnvelope } from './schemas/envelope.js';
 export interface ApprovalRequest {
   envelope: HandoffEnvelope;
   intent: EnvelopeIntent;
-  /** What the decoder read from the bytes about to be signed, already matched against a simulation. */
+  /**
+   * What the decoder read from the bytes about to be signed. Privacy fix 2: the simulation runs after approval, so a
+   * refused request never reaches the RPC; nothing is signed unless the simulation then matches too.
+   */
   summary: string[];
 }
 

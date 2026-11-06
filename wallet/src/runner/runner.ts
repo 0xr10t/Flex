@@ -196,7 +196,10 @@ export class Runner {
     }
   }
 
-  /** Decoder and simulation first, then approval. Nothing is signed on any path that returns false. */
+  /**
+   * Account check and quote, then approval, then the decoder and simulation (privacy fix 2). Nothing is signed on any
+   * path that returns false. A retry after the chain was unavailable never asks the user a second time.
+   */
   private gate(
     ctx: HandlerContext,
     handler: StepHandler,
@@ -204,6 +207,7 @@ export class Runner {
     status: StepStatus,
   ): Promise<boolean> {
     const id = ctx.envelope.request_id;
+    let approved = status !== 'pending';
     return this.attempt(ctx, intent, 'check', async () => {
       const problem = await accountProblem(ctx.gateway, this.deps.walletAddress);
       if (problem) {
@@ -215,24 +219,29 @@ export class Runner {
         this.finish(id, intent, planned.outcome);
         return false;
       }
+      // Privacy fix 2 (user decision, 6 Nov 2026): ask after quoting and before the simulation, so a request the user
+      // refuses never reaches the RPC as a full simulated batch. Nothing is signed until the simulation passes as well.
+      if (!approved) {
+        const yes = await this.deps.approver.approve({
+          envelope: ctx.envelope,
+          intent,
+          summary: planned.check.summary,
+        });
+        if (!yes) {
+          this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
+          return false;
+        }
+        this.deps.store.markApproved(id, intent.step);
+        approved = true;
+      }
       const failure = await runCheck(ctx.gateway, planned.check, this.deps.walletAddress);
       if (failure) {
         this.finish(id, intent, { status: 'failed', error_code: failure });
         return false;
       }
+      // MetaMask mode approves automatically here; the user decides in MetaMask afterwards, on this checked summary. In
+      // that mode the simulation comes before the user's decision, because MetaMask signs and sends on its own.
       if (this.deps.browserWallet) this.summaries.set(`${id}:${intent.step}`, planned.check.summary);
-      if (status === 'pending') {
-        const approved = await this.deps.approver.approve({
-          envelope: ctx.envelope,
-          intent,
-          summary: planned.check.summary,
-        });
-        if (!approved) {
-          this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
-          return false;
-        }
-        this.deps.store.markApproved(id, intent.step);
-      }
       return true;
     });
   }
