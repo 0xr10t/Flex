@@ -46,6 +46,8 @@ export const SCENE_ACCENTS = ['#f2b45a', '#7fd1b9', '#9aa8ff', '#ff7a6b'] as con
 export interface Run {
   text: string;
   ink: Ink;
+  /** Drawn on the terminal's own background instead of the panel's. */
+  clear?: boolean;
 }
 
 export type Row = Run[];
@@ -103,9 +105,10 @@ export function frameRows(f: Frame): Row[] {
       const i = y * f.cols + x;
       const c = f.ch[i]!;
       const ink = c === ' ' && cur ? cur.ink : TONE_INK[f.tone[i]!]!;
-      if (cur && cur.ink === ink) cur.text += c;
+      const clear = f.clear?.[i] === 1;
+      if (cur && cur.ink === ink && (cur.clear ?? false) === clear) cur.text += c;
       else {
-        cur = { text: c, ink };
+        cur = clear ? { text: c, ink, clear } : { text: c, ink };
         row.push(cur);
       }
     }
@@ -119,21 +122,26 @@ export function rowWidth(row: Row): number {
   return row.reduce((n, r) => n + [...r.text].length, 0);
 }
 
-/**
- * Paints one row padded to `width` cells; ends with an attribute reset. `background: false` leaves the terminal's own
- * background (for captions outside the panel).
- */
-export function paintRow(row: Row, width: number, palette: Palette, mode: ColorMode, background = true): string {
+/** Paints one row on the panel background, padded to `width` cells; ends with an attribute reset. */
+export function paintRow(row: Row, width: number, palette: Palette, mode: ColorMode): string {
   const pad = Math.max(0, width - rowWidth(row));
   if (mode === 'none') return row.map((r) => r.text).join('') + ' '.repeat(pad);
-  let out = background ? bgCode(mode, palette) : '';
+  const panelBg = bgCode(mode, palette);
+  let out = panelBg;
   let ink: Ink | undefined;
+  let clear = false;
   for (const r of row) {
+    const c = r.clear ?? false;
+    if (c !== clear && panelBg) {
+      out += c ? `${ESC}49m` : panelBg;
+      clear = c;
+    }
     if (r.ink !== ink) {
       out += fgCode(mode, palette, r.ink);
       ink = r.ink;
     }
     out += r.text;
   }
+  if (clear && pad) out += panelBg;
   return out + ' '.repeat(pad) + `${ESC}0m`;
 }

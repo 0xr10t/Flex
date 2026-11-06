@@ -9,12 +9,27 @@ export interface Frame {
   readonly rows: number;
   readonly ch: string[];
   readonly tone: Uint8Array;
+  /** Cells drawn without the panel background (1), so the terminal's own background shows. Absent: none. */
+  readonly clear?: Uint8Array;
 }
 
 export type Vec3 = readonly [number, number, number];
 
 export function createFrame(cols: number, rows: number): Frame {
   return { cols, rows, ch: new Array<string>(cols * rows).fill(' '), tone: new Uint8Array(cols * rows) };
+}
+
+/** A copy of `src` with `padX` blank columns either side and `padY` blank rows above and below. */
+export function padFrame(src: Frame, padX: number, padY: number): Frame {
+  const f = createFrame(src.cols + 2 * padX, src.rows + 2 * padY);
+  for (let y = 0; y < src.rows; y++)
+    for (let x = 0; x < src.cols; x++) {
+      const i = y * src.cols + x;
+      const j = (y + padY) * f.cols + x + padX;
+      f.ch[j] = src.ch[i]!;
+      f.tone[j] = src.tone[i]!;
+    }
+  return f;
 }
 
 /** Writes one glyph at the rounded cell position; positions outside the grid are ignored. */

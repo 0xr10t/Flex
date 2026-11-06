@@ -3,6 +3,7 @@ import { frameLines } from '../../../src/cli/render/frame.js';
 import { place } from '../../../src/cli/render/layout.js';
 import { paintRow, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
 import { renderScene, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
+import { snap, SNAP_SECONDS } from '../../../src/cli/render/snap.js';
 import { SplashAnimation, SPLASH_COLS, SPLASH_ROWS } from '../../../src/cli/render/splash.js';
 import { detectColorMode, parseInput, renderStatic } from '../../../src/cli/terminal.js';
 import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
@@ -74,11 +75,67 @@ describe('scene renderer', () => {
   });
 });
 
+describe('snap', () => {
+  const scene = renderScene(5.5, { starfield: false });
+  const glyphs = (f: { ch: string[] }): number => f.ch.filter((c) => c !== ' ').length;
+
+  it('starts from the scene exactly as it stood', () => {
+    const f = snap(scene, 0);
+    expect(f.ch).toEqual(scene.ch);
+    expect(f.clear!.every((c) => c === 0)).toBe(true);
+  });
+
+  it('takes the right side first', () => {
+    const f = snap(scene, 0.9);
+    const standing = (from: number, to: number): number => {
+      let n = 0;
+      for (let y = 0; y < f.rows; y++)
+        for (let x = from; x < to; x++)
+          if (scene.ch[y * f.cols + x] !== ' ' && f.ch[y * f.cols + x] === scene.ch[y * f.cols + x]) n++;
+      return n;
+    };
+    const half = f.cols / 2;
+    const left =
+      standing(0, half) / Math.max(1, scene.ch.slice(0).filter((c, i) => c !== ' ' && i % f.cols < half).length);
+    const right =
+      standing(half, f.cols) / Math.max(1, scene.ch.filter((c, i) => c !== ' ' && i % f.cols >= half).length);
+    expect(left).toBeGreaterThan(right);
+  });
+
+  it('turns cells into drifting dust and flakes the backdrop away', () => {
+    const f = snap(scene, 1.2);
+    expect(f.ch.some((c, i) => '%#*+=-:.'.includes(c) && scene.ch[i] === ' ')).toBe(true);
+    const cleared = f.clear!.reduce((n, c) => n + c, 0);
+    expect(cleared).toBeGreaterThan(0);
+    expect(cleared).toBeLessThan(f.clear!.length);
+  });
+
+  it('leaves nothing once it is over', () => {
+    const f = snap(scene, SNAP_SECONDS + 0.01);
+    expect(glyphs(f)).toBe(0);
+    expect(f.clear!.every((c) => c === 1)).toBe(true);
+  });
+});
+
 describe('painting and layout', () => {
   it('maps colours to the xterm-256 palette', () => {
     expect(to256('#000000')).toBe(16);
     expect(to256('#ffffff')).toBe(231);
     expect(to256('#e1ad66')).toBe(16 + 36 * 4 + 6 * 3 + 1);
+  });
+
+  it('drops the panel background for cleared cells', () => {
+    const s = paintRow(
+      [
+        { text: 'a', ink: 'fg' },
+        { text: '  ', ink: 'fg', clear: true },
+        { text: 'b', ink: 'fg' },
+      ],
+      4,
+      SPLASH_PALETTE,
+      'truecolor',
+    );
+    expect(s).toContain(`a${ESC}[49m  ${ESC}[48;2;27;25;24mb`);
   });
 
   it('paints truecolor rows with the panel background and resets after', () => {
@@ -127,8 +184,17 @@ describe('terminal input', () => {
 });
 
 describe('arguments', () => {
-  it('defaults to the cube splash', () => {
-    expect(parseCliArgs([])).toMatchObject({ view: 'splash', shape: 'cube', speed: 1, starfield: true, help: false });
+  it('defaults to the opening, then the cube splash', () => {
+    expect(parseCliArgs([])).toMatchObject({
+      view: 'splash',
+      intro: true,
+      shape: 'cube',
+      speed: 1,
+      starfield: true,
+      help: false,
+    });
+    expect(parseCliArgs(['splash'])).toMatchObject({ view: 'splash', intro: false });
+    expect(parseCliArgs(['scene'])).toMatchObject({ view: 'scene', intro: false });
   });
 
   it('accepts the design options', () => {

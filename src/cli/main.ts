@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// `flexx` command-line entry (macOS already ships an unrelated `/usr/bin/flex`). For now it plays the designed splash ("Flex Terminal") and the gateway scene
-// ("Flex ASCII"); the wallet commands land behind the splash's `flex $` prompt next.
+// `flexx` command-line entry (macOS already ships an unrelated `/usr/bin/flex`). It opens on the gateway scene
+// ("Flex ASCII"), snaps it away into dust and lands on the splash ("Flex Terminal"); the wallet commands land behind
+// the splash's `flex $` prompt next.
 
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -13,9 +14,12 @@ import { detectColorMode, renderStatic, runInteractive, type ViewOptions } from 
 
 export const USAGE = `Usage: flexx [splash|scene] [options]
 
+With no view, opens on the gateway scene, snaps it away into dust and lands on the
+splash (any key skips ahead; the opening is skipped below 120 × 40).
+
 Views:
-  splash            96 × 24 splash: the logo beside FLEXX; move the mouse over it to steer (default)
-  scene             120 × 40 gateway scene: AI model ↔ FLEX GATEWAY ↔ Ethereum
+  splash            96 × 24 splash only: the logo beside FLEXX; move the mouse over it to steer
+  scene             120 × 40 gateway scene only: AI model ↔ FLEX GATEWAY ↔ Ethereum
 
 Options:
   --shape <s>       splash object: cube (default) or diamond
@@ -30,6 +34,8 @@ export interface CliArgs {
   help: boolean;
   staticFrame: boolean;
   view: View;
+  /** No view named: play the opening scene and snap into the splash. */
+  intro: boolean;
   shape: SplashShape;
   speed: number;
   accent: string | undefined;
@@ -69,6 +75,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     help: values.help,
     staticFrame: values.static,
     view,
+    intro: positionals[0] === undefined,
     shape: values.shape,
     speed,
     accent: values.accent,
@@ -93,6 +100,7 @@ export async function runCli(argv: string[]): Promise<number> {
 
   const opts: ViewOptions = {
     view: args.view,
+    intro: args.intro,
     splash: { shape: args.shape, speed: args.speed },
     scene: { starfield: args.starfield },
     sceneSpeed: args.speed,

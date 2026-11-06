@@ -23,7 +23,8 @@ export interface Placement {
   chrome: boolean;
 }
 
-const PAD_X = 2;
+/** Columns of panel padding either side of the frame when the chrome fits. */
+export const PAD_X = 2;
 
 const SIZE: Record<View, { cols: number; rows: number; chromeCols: number; chromeRows: number }> = {
   // title bar + divider + padding row above and below the frame
