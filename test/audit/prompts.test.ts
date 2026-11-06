@@ -200,3 +200,33 @@ describe('F-12: a name tagged both payee and mentioned asks Q_NAME_ROLE', () => 
     await h.finish({ allowUnused: true });
   });
 });
+
+describe('R3-3: the S7 sweep catches names whose lowercase form changes length', () => {
+  it('R3-3: a repeat of a tagged "İrem" does not reach the LLM #4 user message', async () => {
+    const TEXT = 'send 50 usdc to İrem. İrem is my flatmate';
+    const fixture: FixtureFile = {
+      calls: [
+        {
+          name: 'amounts',
+          match: 'İrem',
+          output: {
+            amounts: [{ phrase: '50 usdc', number: '50', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+          },
+        },
+        {
+          name: 'request_type',
+          match: 'İrem',
+          output: { request_type: 'actions', actions: ['i'], also_balance: false },
+        },
+        { name: 'spans', match: 'İrem', output: { spans: [{ text: 'İrem', kind: 'name', role: 'payee' }] } },
+        { name: 'payments', match: 'ACTION KINDS:', output: { payments: [PAYMENT] } },
+      ],
+    };
+    const h = new Harness('audit-r33', fixture, {});
+    await h.say(TEXT);
+    const four = h.llm.recorded.find((c) => c.name === 'payments')?.user ?? '';
+    await h.finish({ allowUnused: true });
+    expect(four).toMatch(/address_[0-9a-f]{8}/);
+    expect(four).not.toContain('İrem');
+  });
+});
