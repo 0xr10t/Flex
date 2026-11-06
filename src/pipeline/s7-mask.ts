@@ -4,6 +4,7 @@
 // follow-ups), §17.2 step 4 (follow-up payee offered to S8 under SESSION with its previous chain). SQ-O-01 / SQB-23
 // (human, 2026-11-06): further whole-word occurrences of a tagged text are masked with the same placeholder
 // (`sweepRepeats`), without a new DB3 row; the fail-closed `s7_span_mismatch` check covers them too.
+// SQ-S-01: a failed-payment correction takes its chain from in-memory context, not handed-off history.
 
 import type { Db8HistoryRow } from '../contracts/repos.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
@@ -77,10 +78,10 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
         type: 'person',
         source: 'session',
         followup: true,
-        last_chain_id: lastChainFor(
-          ctx.repos.db8.recentHistory(req.session_id, HISTORY_LIMIT),
-          span.followup_placeholder,
-        ),
+        last_chain_id:
+          req.retry_context?.recipient === placeholder
+            ? req.retry_context.chain_id
+            : lastChainFor(ctx.repos.db8.recentHistory(req.session_id, HISTORY_LIMIT), span.followup_placeholder),
       });
     } else if (r.kind === 'group') {
       const g = s6.groups[i];

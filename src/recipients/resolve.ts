@@ -4,6 +4,7 @@
 // Q_GROUP_MEMBERS (and Q_NO_PAYEE when every document payee was dropped), §16.1 untrusted addresses,
 // §7.2 / §16.4 DB2 written only by add_contact after "Yes" + name, §15 SELF_PAYMENT / ENS_INDEXER_UNAVAILABLE /
 // GROUP_EMPTY / TOO_MANY_RETRIES.
+// SQ-S-01: failed-payment corrections preserve the resolved recipient's ENS chain restrictions.
 
 import {
   CHIPS,
@@ -513,7 +514,10 @@ async function startSpan(ctx: StepContext, span: RecipientSpan): Promise<Outcome
         source: 'session',
         is_contact: contactRows.length > 0,
         contact_chain_ids: contactRows.map((r) => r.chain_id),
-        ens_chain_ids: [],
+        ens_chain_ids:
+          ctx.req.retry_context?.recipient === span.followup_placeholder
+            ? [...ctx.req.retry_context.ens_chain_ids]
+            : [],
         pinned_chain_id: row.chain_id,
       },
     };

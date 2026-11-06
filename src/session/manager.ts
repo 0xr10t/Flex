@@ -7,6 +7,7 @@
 // AgentResponse, §14.4 MODEL_FAILED when the model is unavailable, §15 error responses, §0 / SQ-19 uncovered states
 // → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
 // cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
+// SQ-S-01 / SQ-S-02: retain an unsubmitted failed payment for the next follow-up, without adding DB8 history.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
@@ -35,6 +36,7 @@ import type {
   Answer,
   Config,
   ErrorCode,
+  FailedPaymentContext,
   Limits,
   MessageInput,
   RequestId,
@@ -47,6 +49,7 @@ import { extractUrls, urlHasSecret } from '../guard/urls.js';
 import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
+import { failedPaymentContext } from './failed-payment.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -87,6 +90,8 @@ interface Active {
   limits: Limits;
   /** SQ-R-06: cause of the last failed hand-off attempt ('timeout' | 'server_error'). */
   lastHandoffCause?: string;
+  /** SQ-S-01: consumed by the next message, cleared on cancellation; never persisted. */
+  failedPayment?: FailedPaymentContext;
 }
 
 interface OpenSession {
@@ -213,6 +218,10 @@ export class SessionManager {
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
       const a = s.active;
+      if (a?.failedPayment !== undefined && isCancelText(input.text)) {
+        delete a.failedPayment;
+        return ok(this.noopReply(s, a.req.request_id, REPLY.CANCELLED()));
+      }
       if (a !== null && isAwaitingAnswer(a.req)) {
         // §17.3: cancel texts drop the request; any other text is a free-text answer to the pending question.
         if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
@@ -285,6 +294,7 @@ export class SessionManager {
   async handleCancel(session_id: string, request_id: string): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
       const a = s.active;
+      if (a?.req.request_id === request_id) delete a.failedPayment;
       const cancellable =
         a !== null &&
         a.req.request_id === request_id &&
@@ -372,6 +382,19 @@ export class SessionManager {
 
   private async newRequest(s: OpenSession, input: MessageInput, prepend: string[]): Promise<AgentResponse> {
     const req = newAgentRequest(this.newId('request') as RequestId, s.session_id, input);
+    const previous = s.active;
+    if (
+      previous?.req.state === 'FAILED' &&
+      previous.failedPayment !== undefined &&
+      input.pasted_blocks.length === 0 &&
+      input.attachments.length === 0 &&
+      extractUrls(input.text, input.urls).links.length === 0
+    ) {
+      req.failed_payment_candidate = {
+        ...previous.failedPayment,
+        ens_chain_ids: [...previous.failedPayment.ens_chain_ids],
+      };
+    }
     req.prepend_messages.push(...prepend);
     const a: Active = { req, limits: this.deps.repos.db5.getAll() };
     s.active = a;
@@ -591,6 +614,8 @@ export class SessionManager {
     }
     a.req.state = state;
     a.req.paused_at = undefined;
+    a.failedPayment =
+      state === 'FAILED' && errCode === 'INSUFFICIENT_FUNDS' ? failedPaymentContext(a.req, this.deps.repos) : undefined;
     if (state !== 'HANDOFF_FAILED') this.logFinal(a.req, errCode);
     return this.respond(s, a, 'error', [], { error: { code: errCode, message } });
   }

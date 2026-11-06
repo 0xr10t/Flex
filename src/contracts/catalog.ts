@@ -1,5 +1,6 @@
 // Implements: §13.4 question texts + fixed chips, §15 error messages, §13.1 notes, §13.3 fixed replies,
 // re-ask / variant wordings quoted in §8.4, §9.1–§9.6. Verbatim from the spec.
+// SQ-S-01: summary note for a correction to an insufficient-funds request.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
 // Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
 
@@ -388,6 +389,8 @@ export const NOTES = {
   /** SQ-O-10: `chains` = joinList of every chain whose DB2 row for the contact holds the reused address. */
   SILENT_REUSE: (p: P) => `Same address as on ${req(p, 'chains')}.`,
   FOLLOWUP: () => 'Recipient and chain from your last payment.',
+  /** SQ-S-01: an insufficient-funds failure is not a previous payment. */
+  PAYMENT_CORRECTION: () => 'Continuing your previous request with a new amount.',
   YOU_WROTE: (p: P) => `You wrote '${req(p, 'phrase')}' → ${req(p, 'amount')} ${req(p, 'token')}.`,
   FROM_CONTENT: (p: P) => `From attached content: ${req(p, 'what')}. You confirmed it.`,
   CHAIN_UNREADABLE: (p: P) => `${req(p, 'chain')} balance couldn't be read right now, so it wasn't used.`,

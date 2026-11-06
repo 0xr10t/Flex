@@ -186,8 +186,8 @@ describe('§7.2 / §16.4 write paths', () => {
   });
 
   it('DB2 writers: addContact only in S6 answerName (after Yes + name); updateAddressForName only for the §9.4 "Use new address" chip', () => {
-    expect(callers(/db2\.addContact\(/)).toEqual(['recipients/resolve.ts:747']);
-    expect(callers(/db2\.updateAddressForName\(/)).toEqual(['recipients/resolve.ts:814']);
+    expect(callers(/db2\.addContact\(/)).toEqual(['recipients/resolve.ts:751']);
+    expect(callers(/db2\.updateAddressForName\(/)).toEqual(['recipients/resolve.ts:818']);
     expect(callers(/db2\.(?!find|list|get|addContact|updateAddressForName)\w+\(/)).toEqual([]);
   });
 

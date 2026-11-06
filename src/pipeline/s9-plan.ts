@@ -6,6 +6,7 @@
 // §10.7 cancel (Q_AUTOPAY_PICK, AUTOPAY_NOT_READY, NO_ACTIVE_AUTOPAY), §17.2 step 4 (follow-up chain reuse) and
 // step 7 note, §12.4 fill rules. Re-entrant: answers are kept in req.step_state.s9 and every derived DB1 row and
 // autopay_id is minted only in the final phase, which asks no question.
+// SQ-S-01: an amount correction keeps the failed request's chain and uses its own summary note.
 
 import { DateTime } from 'luxon';
 import { CHIPS, NOTES, buildQuestion, joinList, matchChip, reask } from '../contracts/catalog.js';
@@ -687,7 +688,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
   }
   // §17.2 step 7: every follow-up payee gets the note (SQ-D-07 for a follow-up with a typed chain).
   if (payments.some((p) => req.recipients.some((r) => r.placeholder === p.recipient && r.followup))) {
-    pushNote(ctx, NOTES.FOLLOWUP());
+    pushNote(ctx, req.retry_context !== undefined ? NOTES.PAYMENT_CORRECTION() : NOTES.FOLLOWUP());
   }
   req.plan = plan;
   req.state = 'PLANNED';

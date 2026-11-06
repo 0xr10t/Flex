@@ -7,6 +7,7 @@
 // Q_TOKEN), §13.4 answer validation for these questions (number answers via the S3 code parser, chips via
 // matchChip), §9.7 re-asks (attempt + 1), I-19, I-41, I-42, I-43. NFR-06: values are decimal strings / bigint only.
 // Shared by S3 (src/pipeline/s3-amounts.ts) and S4's Q_AMOUNT_MISSING (src/pipeline/s4-type.ts).
+// SQ-S-01: an eligible amount correction can also inherit the failed payment's token.
 // Owner: Lane B.
 
 import {
@@ -154,6 +155,7 @@ function mapKind(k: TokenWordKind): Token | 'FIAT_OTHER' {
 
 /** §17.2 step 6: the token of the previous payment (most recent history entry), when it names exactly one. */
 export function previousToken(ctx: StepContext): Token | null {
+  if (ctx.req.retry_context !== undefined) return ctx.req.retry_context.token;
   if (ctx.req.scan.back_reference.length === 0) return null;
   const tokens = new Set<Token>();
   for (const p of lastHistoryPayments(ctx)) {

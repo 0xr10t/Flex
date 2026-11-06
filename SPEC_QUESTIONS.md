@@ -304,3 +304,32 @@ The following are implementation decisions made under that request, rather than 
 `HANDOFF_PROMPT.md` §5.4 wording check. Approved exactly: “That would leave {name} with nothing.”;
 “Yes, this once” / “Yes, set it up” / “No”; and “today's limit of {daily_max} (only {remaining} is left)”.
 These texts no longer await approval. This does not authorize pushing or deleting branches, worktrees or process files.
+
+## Failed-payment corrections (2026-11-06)
+
+**SQ-S-01 — requested by the human in chat.** After an insufficient-funds rejection of “send 100 USDC on Arbitrum
+to abhivansh sir”, “ok no worries, send 70” in the same session should retain the recipient, token and chain.
+This extends §17.2 beyond handed-off history. The implementation uses the immediately preceding failed request's
+resolved details in memory; failed requests are still never appended to `db8_history`.
+
+Implementation scope under this request: one resolved, trusted, absolute-amount, one-time payment that failed with
+`INSUFFICIENT_FUNDS` before any hand-off attempt or submission. A correction is an optional acknowledgement followed
+by `send`, `pay` or `transfer` and one new code-parseable amount, optionally a token, `on`/`via` a configured chain,
+or `instead`/`please`/`then`. Explicit token and chain choices take precedence. New payee text, multiple payments,
+recurrence, relative amounts and attached/URL content do not use this implicit fallback. An intervening request,
+cancellation or session close clears it. Repeated insufficient-funds corrections may retain the most recent details.
+Every correction has a fresh request ID and amount placeholder, runs balances, pairing, planning and validation again,
+and requires a fresh summary confirmation. Its summary notes “Continuing your previous request with a new amount.”
+
+**SQ-S-02 — follow-up correction from the human in chat.** The human reproduced: “Pay 200 dollars to Riya” →
+`INSUFFICIENT_FUNDS`, then “okay, send 50 instead. I want to send her some funds for the medicine she bought me” →
+`Q_TOKEN` and `Q_NO_PAYEE`. The added explanation must not break the reference to Riya or the earlier USDC token.
+
+The eligible failed payment is now also the nearest context for S2 back-reference words under §17.2, independent
+of the prose accompanying them. S3 uses its token only as a fallback; explicit current tokens retain precedence.
+S5 reuses its recipient only for one fresh, confirmed, absolute user amount in a one-time payment, with no explicit
+payee and no other mentioned person. An explicit new payee goes through ordinary resolution without the prior
+recipient's chain or correction note; a mentioned-person ambiguity asks `Q_NO_PAYEE`. Missing amounts still ask
+`Q_AMOUNT_MISSING`; the previous amount is never copied. Repeating/cancel/group/split requests, conflicting tokens
+and messages with attachments, pasted content or URLs do not receive this implicit failed-payment reference.
+The prior eligibility, session lifetime, submission safety and fresh-confirmation requirements remain in force.
