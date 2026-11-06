@@ -65,6 +65,12 @@ in that file under "Code changes required". Lanes: A platform, B S0–S5, C S6�
   **NEEDS FOLLOW-UP** (F-8).
 - **SQ-11**: Node 25 is accepted. Closed. (no code change)
 
+- **SQ-O-10** (new; §9.5 / §13.1 silent-reuse note; first seen in A-26): when a contact's address is reused on a chain
+  with no DB2 row and it is saved on several other chains, the note names all of them, joined as other lists are:
+  "Same address as on Base Sepolia and Arbitrum Sepolia." The chains are derived from the DB2 rows at summary time;
+  DB3 `reused_from_chain_id` and the internal plan schema stay single-valued. Human-approved refinement of the §13.1
+  note. (code change needed: lane D)
+
 ### Answered by the default rule (item 17: accepted as currently implemented)
 
 Each "Now" / interim behaviour in the entry below becomes the answer. (no code change) for all of them, except where
@@ -79,7 +85,7 @@ noted by the decisions above.
 - **SQ-D-01 to SQ-D-14, SQ-D-17, SQ-D-18**.
 - **SQ-O-07**.
 
-Totals: 64 ids answered; 10 of them also carry a follow-up (SQ-O-01, SQB-23, SQ-O-03, SQ-O-08, SQ-08, SQ-A-06, SQ-01,
+Totals: 65 ids answered (including SQ-O-10); 10 of them also carry a follow-up (SQ-O-01, SQB-23, SQ-O-03, SQ-O-08, SQ-08, SQ-A-06, SQ-01,
 SQ-A-01, SQ-D-16, SQ-15).
 
 ## Previously open — now answered (original entries)
