@@ -23,13 +23,19 @@ import { checkPayments, pairsToConfirm, type PairingContext } from '../plan/pair
 
 type RawPayment = Omit<Payment, 'token'>;
 
+/** §13.4 `max_attempts` (first ask plus at most 3 re-asks). */
+const MAX_ATTEMPTS = 4;
+
 /** Q_PAIR_AMOUNT progress: the checked payments, which of them to confirm, and the recipients chosen so far. */
 interface S8State {
   payments: Payment[];
   confirm: number[];
   /** Payment index → chosen recipient placeholder. */
   choices: Record<string, RecipientPh>;
+  /** R1-F2 / R4-F3, §9.7: the attempt of the amount question being asked (1 for each new amount). */
   attempt: number;
+  /** Rounds of questions: 1, +1 for each "That would leave {name} with nothing" re-ask (its own counter). */
+  round?: number;
   /** Re-ask hint after choices that leave a payee unpaid (shown on the first question of the round). */
   hint?: string;
 }
@@ -160,7 +166,13 @@ function confirmPairs(ctx: StepContext, pc: PairingContext, st: S8State): StepRe
     ctx.log.warn({ event: 'pairing_failed', request_id: ctx.req.request_id, step: 's8', error_code: 'PAIRING_FAILED' });
     return { kind: 'error', code: 'PAIRING_FAILED' };
   }
-  st.attempt += 1;
+  // §9.7 / §13.4: the round question is asked at most 1 + 3 times.
+  st.round = (st.round ?? 1) + 1;
+  if (st.round > MAX_ATTEMPTS) {
+    ctx.log.warn({ event: 'pair_amount_rounds', request_id: ctx.req.request_id, step: 's8', attempt: st.round });
+    return { kind: 'error', code: 'TOO_MANY_RETRIES' };
+  }
+  st.attempt = 1;
   st.choices = {};
   st.hint = REASK_HINT.PAIR_UNPAID({ name: recipientLabel(ctx, unpaid) });
   return confirmPairs(ctx, pc, st);
@@ -233,6 +245,7 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
     return { kind: 'question', question: again };
   }
   st.choices[String(next)] = chip.id as RecipientPh;
+  st.attempt = 1; // the next amount's question starts its own counter
   return { kind: 'continue' };
 };
 

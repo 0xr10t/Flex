@@ -170,7 +170,13 @@ function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalanc
   for (const token of tokensUsed(plan)) {
     const perChain = balances.map((b) => needAndAvailable(ctx, plan, b, token));
     if (perChain.some((x) => x.need > x.available)) {
-      const total = perChain.reduce((sum, x) => sum + x.need, 0n);
+      // R4-F4: {need} also counts the padding of the plan's bridges (padded − deliverable).
+      let total = perChain.reduce((sum, x) => sum + x.need, 0n);
+      for (const it of plan) {
+        if (it.intent_id === 'j' && it.token === token) {
+          total += db1BaseUnits(ctx, it.amount).units - BigInt(it.deliverable_base_units);
+        }
+      }
       return { kind: 'error', code: 'INSUFFICIENT_FUNDS', params: insufficientParams(ctx, token, balances, total) };
     }
   }
@@ -221,19 +227,39 @@ function subjectAmount(ctx: StepContext, plan: InternalIntent[], found: LimitBre
   return total > 0n ? { value: fmt(total, token), token } : undefined;
 }
 
+/** R4-F2: the limits a Q_LIMIT_OVERRIDE named (`asked`) and the ones a "Yes" lifted, as `kind:token` keys. */
+interface S10State {
+  asked: string[];
+  lifted: string[];
+}
+
+const breachKey = (x: LimitBreach): string => `${x.limit.kind}:${'token' in x.limit ? x.limit.token : ''}`;
+
+function stateOf(ctx: StepContext): S10State {
+  const existing = ctx.req.step_state.s10 as S10State | undefined;
+  if (existing) return existing;
+  const st: S10State = { asked: [], lifted: [] };
+  ctx.req.step_state.s10 = st;
+  return st;
+}
+
 /**
- * SQ-D-16, F-1…F-6: no broken limit → pass. Lifted by an earlier "Yes" → the note, pass. An amount from attached
- * content → the first broken limit's error (F-5). Otherwise Q_LIMIT_OVERRIDE once, naming every broken limit.
+ * SQ-D-16, F-1…F-6: no broken limit → pass. Every broken limit lifted by an earlier "Yes" → the note, pass. An amount
+ * from attached content → the first broken limit's error (F-5). Otherwise Q_LIMIT_OVERRIDE, naming every broken
+ * limit. R4-F2: a "Yes" lifts only the limits its question named; a limit broken later (e.g. an autopay payment
+ * reported while the question was open) is asked about again.
  */
 function limits(ctx: StepContext, plan: InternalIntent[]): Failure {
   const found = breaches(ctx, plan);
   const first = found[0];
   if (first === undefined) return null;
-  if (ctx.req.limit_override) {
+  const st = stateOf(ctx);
+  if (ctx.req.limit_override && found.every((x) => st.lifted.includes(breachKey(x)))) {
     pushNote(ctx, NOTES.LIMIT_LIFTED());
     return null;
   }
   if (!limitsCanBeLifted(ctx)) return first.error;
+  st.asked = found.map(breachKey);
   const args: LimitOverrideArgs = { broken: found.map((x) => x.limit) };
   const amount = subjectAmount(ctx, plan, found);
   if (amount !== undefined) args.amount = amount;
@@ -262,11 +288,13 @@ async function step(ctx: StepContext): Promise<StepResult> {
   return { kind: 'continue' };
 }
 
-/** Q_LIMIT_OVERRIDE: "Yes" lifts every limit for this request only (DB5 is never written); "No" → DISCARDED. */
+/** Q_LIMIT_OVERRIDE: "Yes" lifts the limits it named for this request only (DB5 is never written); "No" → DISCARDED. */
 const onAnswer: AnswerHandler = async (ctx, q, answer) => {
   if (q.code !== 'Q_LIMIT_OVERRIDE') return internalError(ctx, 's10', 'S10_UNKNOWN_QUESTION');
   const chip = matchChip(q, answer, LIMIT_OVERRIDE_YES_NO);
   if (chip?.id === LIMIT_OVERRIDE_YES_NO.yes) {
+    const st = stateOf(ctx);
+    st.lifted = [...new Set([...st.lifted, ...st.asked])];
     ctx.req.limit_override = true;
     return { kind: 'continue' };
   }

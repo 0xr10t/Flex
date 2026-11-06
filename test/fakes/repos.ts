@@ -210,6 +210,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     },
     hasRequest: (rid) => t.db6.some((r) => r.request_id === rid),
     listByRequest: (rid) => t.db6.filter((r) => r.request_id === rid).map(clone),
+    hasTxHash: (h) => t.db6.some((r) => r.tx_hash !== null && r.tx_hash.toLowerCase() === h.toLowerCase()),
     applyIntentResult({ request_id, step, status, tx_hash, executed_at }) {
       let n = 0;
       for (const r of t.db6) {
@@ -280,6 +281,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     getSession: (id) => clone(t.db8_sessions.get(id)),
     insertPrompt: (row) => void t.db8_prompts.push(clone(row)),
     appendHistory: (row) => void t.db8_history.push({ ...row, id: db8hId++ }),
+    hasHistory: (sid, rid) => t.db8_history.some((r) => r.session_id === sid && r.request_id === rid),
     recentHistory: (sid, limit) =>
       t.db8_history
         .filter((r) => r.session_id === sid)

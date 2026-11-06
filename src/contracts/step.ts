@@ -90,6 +90,11 @@ export type AnswerHandler = (ctx: StepContext, q: Question, answer: Answer) => P
 export interface StepEntry {
   step: Step;
   onAnswer?: AnswerHandler;
+  /**
+   * SQ-R-05 (S9 only): run by the session manager on a "yes", before S12. Null → hand off. A question → the request
+   * pauses on this step; once answered, the runner re-enters the step and runs on to a new S11 summary.
+   */
+  beforeHandoff?: (ctx: StepContext) => StepResult | null;
 }
 
 // ───────────────────────────── Cross-lane shared functions (signatures) ─────────────────────────────

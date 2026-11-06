@@ -369,7 +369,7 @@ export function registerA17toA32(): void {
       // SQ-08 F-10: only the chains with a positive amount, in config order.
       const m = r.body.error!.message;
       expect(m).toBe(
-        "You don't have enough USDC: you need 100, and can use 50 across Base Sepolia (30) and Arbitrum Sepolia (20).",
+        "You don't have enough USDC: you need 101.4, and can use 50 across Base Sepolia (30) and Arbitrum Sepolia (20).",
       );
       noSubmission(h);
       await h.finish();

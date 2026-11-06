@@ -17,13 +17,14 @@ function body(r: SessionResult): AgentResponse {
   if (r.kind !== 'ok') throw new Error(`expected ok, got ${r.kind}`);
   return r.body;
 }
-const open = (h: Pick<Harness, 'manager'>): string => h.manager.openSession('Asia/Kolkata').session_id;
+const open = async (h: Pick<Harness, 'manager'>): Promise<string> =>
+  (await h.manager.openSession('Asia/Kolkata')).session_id;
 const finals = (h: Harness): string[] =>
   h.log.lines.filter((l) => l.event === 'request_final').map((l) => l.state ?? '');
 const text = (s: string): Array<{ type: 'text'; text: string }> => [{ type: 'text', text: s }];
 
 async function toConfirmation(h: Harness): Promise<{ sid: string; rid: string }> {
-  const sid = open(h);
+  const sid = await open(h);
   const r = body(await h.manager.handleMessage(sid, msg('send 50 usdc to aradhya')));
   expect(r.state).toBe('awaiting_confirmation');
   return { sid, rid: r.request_id };
@@ -43,7 +44,7 @@ async function toQuestion(
       return { kind: 'question', question: q };
     },
   });
-  const sid = open(h);
+  const sid = await open(h);
   const r = body(await h.manager.handleMessage(sid, msg('send 50 to aradhya')));
   expect(r.state).toBe('awaiting_answer');
   return { sid, rid: r.request_id, q };
@@ -135,7 +136,7 @@ describe('StepResult kinds returned by an AnswerHandler', () => {
         return { kind: 'continue' };
       },
     });
-    const sid = open(h);
+    const sid = await open(h);
     await h.manager.handleMessage(sid, msg('send'));
     const r = body(await answerText(h, sid, q));
     expect(seen).toEqual([{}, { progress: 'half', answered: true }]);
@@ -224,7 +225,7 @@ describe('§8.14 step 6 HANDOFF_FAILED attempts', () => {
 describe('§17.3 word table (mixed case, padded)', () => {
   const mixed = (w: string): string => `  ${[...w].map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c)).join('')}\t `;
 
-  it('C-422 §17.3: the lists are exactly the spec words', () => {
+  it('C-422 §17.3: the lists are exactly the spec words', async () => {
     expect(CANCEL_TEXTS).toEqual(['cancel', 'stop', 'abort', 'never mind', 'nevermind', 'forget it']);
     for (const w of ['yes', 'y', 'confirm', 'go ahead', 'ok', 'okay', 'do it', 'send it']) {
       expect(CONFIRM_YES_TEXTS).toContain(w);
@@ -283,7 +284,7 @@ describe('§17.3 word table (mixed case, padded)', () => {
 });
 
 describe('§13.3 fixed replies', () => {
-  it('C-303 / C-304 / C-305: the literal texts', () => {
+  it('C-303 / C-304 / C-305: the literal texts', async () => {
     expect(REPLY.USER_SAID_NO()).toBe("OK, I've dropped that. Tell me what you'd like instead.");
     expect(REPLY.CANCELLED()).toBe('Cancelled. Nothing was sent.');
     expect(REPLY.PENDING_REPLACED()).toBe('I dropped the previous plan and started on your new request.');
@@ -339,7 +340,7 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
       },
     });
     const n = (table: string): number => (t.db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n;
-    const sid = open(h);
+    const sid = await open(h);
     const a = body(await h.manager.handleMessage(sid, msg('one')));
     await h.manager.handleConfirm(sid, a.request_id, 'no');
     const b = body(await h.manager.handleMessage(sid, msg('two')));
@@ -352,7 +353,7 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
     expect(t.repos.db8.recentHistory(sid, 5).map((r) => r.request_id)).toEqual([c.request_id]);
   });
 
-  it('C-412 §17.2: recentHistory(session, 5) returns the last 5 of 7 rows, most recent first, only for that session', () => {
+  it('C-412 §17.2: recentHistory(session, 5) returns the last 5 of 7 rows, most recent first, only for that session', async () => {
     const t = openTempDb();
     for (const id of ['ses_aaaaaaaaaaaa', 'ses_bbbbbbbbbbbb']) {
       t.repos.db8.insertSession({ session_id: id, timezone: 'UTC', opened_at: 't' });
@@ -455,7 +456,7 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
   it('C-411 / C-048 / C-408: close empties DB1, DB3, db8_prompts, db8_history, db8_sessions and leaves DB2, DB4–DB7 identical; secure_delete is 1 and VACUUM ran', async () => {
     const t = openTempDb();
     const h = makeHarness({ repos: t.repos });
-    const sid = open(h);
+    const sid = await open(h);
     seedEverything(t, sid, 'req_000000000001');
     const count = (table: string): number => (t.db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n;
     const snap = (table: string): unknown => t.db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all();
@@ -467,23 +468,23 @@ describe('§7.4 / §17.2 / §16.4 on a real SQLCipher DB', () => {
       if (/^\s*VACUUM/i.test(sql)) vacuums.push(t.db.pragma('secure_delete', { simple: true }));
       return originalExec(sql);
     }) as typeof t.db.exec;
-    expect(h.manager.closeSession(sid)).toBe(true);
+    expect(await h.manager.closeSession(sid)).toBe(true);
     for (const table of SESSION_TABLES) expect(count(table), table).toBe(0);
     expect(KEPT_TABLES.map(snap)).toEqual(before);
     expect(vacuums).toEqual([1]);
   });
 
-  it('C-411: a row of a crashed earlier session is cleared too when that session id is closed', () => {
+  it('C-411: a row of a crashed earlier session is cleared too when that session id is closed', async () => {
     const t = openTempDb();
     const h = makeHarness({ repos: t.repos });
     t.repos.db8.insertSession({ session_id: 'ses_cccccccccccc', timezone: 'UTC', opened_at: 't' });
     seedEverything(t, 'ses_cccccccccccc', 'req_00000000000c');
-    expect(h.manager.closeSession('ses_cccccccccccc')).toBe(true);
+    expect(await h.manager.closeSession('ses_cccccccccccc')).toBe(true);
     for (const table of SESSION_TABLES) {
       expect((t.db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n, table).toBe(0);
     }
     expect((t.db.prepare('SELECT count(*) n FROM db6_spend_log').get() as { n: number }).n).toBe(1);
-    expect(h.manager.closeSession('ses_cccccccccccc')).toBe(false);
+    expect(await h.manager.closeSession('ses_cccccccccccc')).toBe(false);
   });
 });
 
@@ -495,7 +496,7 @@ describe('SQ-A-05 / C-340 closing a leftover session id', () => {
     const t = openTempDb();
     t.repos.db5.insertDefaultsIfMissing('t');
     const h = makeHarness({ repos: t.repos });
-    const sid = open(h);
+    const sid = await open(h);
     const a = body(await h.manager.handleMessage(sid, msg('hello')));
     t.repos.db1.mint({
       session_id: sid,
@@ -516,23 +517,23 @@ describe('SQ-A-05 / C-340 closing a leftover session id', () => {
     });
     const before = [count(t, 'db1_amount_placeholders'), count(t, 'db8_sessions'), count(t, 'db8_prompts')];
 
-    expect(h.manager.closeSession('ses_dddddddddddd')).toBe(false);
+    expect(await h.manager.closeSession('ses_dddddddddddd')).toBe(false);
     expect([count(t, 'db1_amount_placeholders'), count(t, 'db8_sessions'), count(t, 'db8_prompts')]).toEqual(before);
     expect(t.repos.db8.getSession('ses_dddddddddddd')).toBeDefined();
     expect(t.repos.db8.getSession(sid)).toBeDefined();
     expect(body(await h.manager.handleMessage(sid, msg('still here'))).state).toBe('awaiting_confirmation');
 
-    expect(h.manager.closeSession(sid)).toBe(true);
+    expect(await h.manager.closeSession(sid)).toBe(true);
     expect(count(t, 'db8_sessions')).toBe(0);
     expect(count(t, 'db8_prompts')).toBe(0);
     expect(count(t, 'db1_amount_placeholders')).toBe(0);
   });
 
-  it('SQ-A-05 / C-340: with no session open, a leftover id still clears and returns true', () => {
+  it('SQ-A-05 / C-340: with no session open, a leftover id still clears and returns true', async () => {
     const t = openTempDb();
     const h = makeHarness({ repos: t.repos });
     t.repos.db8.insertSession({ session_id: 'ses_dddddddddddd', timezone: 'UTC', opened_at: 't' });
-    expect(h.manager.closeSession('ses_dddddddddddd')).toBe(true);
+    expect(await h.manager.closeSession('ses_dddddddddddd')).toBe(true);
     expect(count(t, 'db8_sessions')).toBe(0);
   });
 });
@@ -542,7 +543,7 @@ describe('SQ-A-01 F-8 / §18 cancel with nothing to cancel', () => {
     const chunks: string[] = [];
     const log = createLogger({ destination: { write: (c: string) => chunks.push(c) } });
     const h = makeHarness({ log });
-    const sid = open(h);
+    const sid = await open(h);
     const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
     expect(r.state).toBe('done');
     expect(chunks.join('')).not.toContain('unsupported_state');
