@@ -394,15 +394,15 @@ describe('§13.1 footer and framing', () => {
 });
 
 describe('§13.1 notes', () => {
-  it('C-290 §13.1 note "Same address as on {Chain}." is emitted by S9 and appears in the summary', async () => {
+  it('C-290 SQ-O-10 §13.1 note "Same address as on {Chain}." is emitted by S9 and appears in the summary', async () => {
     // Aradhya has Base + Arbitrum rows; paying on Sepolia reuses the address silently.
     const ctx = ctxD({ balances: usdc('100', '0', '0') });
     const r = addAradhya(ctx);
     const res = await run(ctx, [iPay(ctx, '5', r, SEPOLIA)]);
     expect(res).toEqual({ kind: 'continue' });
     const s = buildSummary(ctx, ctx.req.plan as InternalIntent[]);
-    expect(s.notes.some((n) => /^Same address as on (Base|Arbitrum) Sepolia\.$/.test(n))).toBe(true);
-    expect(s.text).toMatch(/\n- Same address as on (Base|Arbitrum) Sepolia\.\n/);
+    expect(s.notes).toContain('Same address as on Base Sepolia and Arbitrum Sepolia.');
+    expect(s.text).toContain('\n- Same address as on Base Sepolia and Arbitrum Sepolia.\n');
   });
 
   it('C-291 §13.1 note "Recipient and chain from your last payment." (follow-up) appears in the summary', () => {
@@ -459,11 +459,11 @@ describe('§13.1 notes', () => {
     expect(s.notes).toEqual([`From attached content: 120 USDC to ${shortAddress(DOC_ADDR_CS)}. You confirmed it.`]);
   });
 
-  it('C-298 §13.1 note "Today\'s limit was lifted once for this group payment." passes through from req.notes', () => {
+  it('SQ-D-16 F-2 §13.1 note "A limit was lifted once for this request." passes through from req.notes', () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
     ctx.req.notes.push(NOTES.LIMIT_LIFTED());
     const s = build(ctx, [planI(0, mintAmount(ctx, '5'), addAradhya(ctx), BASE)]);
-    expect(s.text).toContain("\n- Today's limit was lifted once for this group payment.\n");
+    expect(s.text).toContain('\n- A limit was lifted once for this request.\n');
   });
 
   it('C-297 §13.1 notes from earlier steps keep their order and are bulleted with "- "', () => {

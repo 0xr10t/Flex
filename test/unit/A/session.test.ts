@@ -384,7 +384,7 @@ describe('runner over the registry (src/contracts/step.ts semantics)', () => {
 
   it("'discard' → DISCARDED with the step's messages, or CANCELLED by default (SQ-15)", async () => {
     const h = makeHarness();
-    const { sid, q } = await toQuestion(h, question('Q_GROUP_OVER_LIMIT'));
+    const { sid, q } = await toQuestion(h, question('Q_LIMIT_OVERRIDE'));
     h.set('s3', { onAnswer: async () => ({ kind: 'discard' }) });
     const r = body(await h.manager.handleAnswer(sid, { question_id: q.question_id, chip_id: 'no' }));
     expect(r).toMatchObject({ state: 'done', messages: [{ type: 'text', text: REPLY.CANCELLED() }] });
@@ -544,15 +544,73 @@ describe('§17.3 confirmation, answers and cancellation', () => {
     expect(h2.calls.some((x) => x.step === 's12')).toBe(false);
   });
 
-  it('C-422 / SQ-A-01: cancel with no matching active request → UNSUPPORTED_REQUEST, nothing changes', async () => {
+  it('SQ-A-01 F-8: cancel with no matching active request -> 200 done "Cancelled. Nothing was sent.", nothing changes, repeatable', async () => {
     const h = makeHarness();
     const sid = open(h);
-    const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
-    expect(r).toMatchObject({ state: 'error', request_id: 'req_000000000000', error: { code: 'UNSUPPORTED_REQUEST' } });
+    for (let n = 0; n < 2; n++) {
+      const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
+      expect(r).toEqual({
+        session_id: sid,
+        request_id: 'req_000000000000',
+        state: 'done',
+        messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }],
+      });
+      expect(r.error).toBeUndefined();
+    }
+    expect(h.log.lines.some((l) => l.event === 'unsupported_state')).toBe(false);
     const c = await toConfirmation(h);
-    expect(body(await h.manager.handleCancel(c.sid, 'req_000000000000')).error?.code).toBe('UNSUPPORTED_REQUEST');
+    expect(body(await h.manager.handleCancel(c.sid, 'req_000000000000'))).toMatchObject({
+      state: 'done',
+      messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }],
+    });
+    expect(finals(h)).toEqual([]);
     // the real pending request is still confirmable
     expect(body(await h.manager.handleConfirm(c.sid, c.rid, 'yes')).state).toBe('done');
+  });
+
+  it('SQ-A-01 F-8: cancel of an ended (ANSWERED) request -> "Cancelled. Nothing was sent.", request unchanged', async () => {
+    const h = makeHarness();
+    h.set('s4', { step: async () => ({ kind: 'error', code: 'UNSUPPORTED_REQUEST', final_state: 'ANSWERED' }) });
+    const sid = open(h);
+    const first = body(await h.manager.handleMessage(sid, msg('swap my eth for usdc')));
+    expect(finals(h)).toEqual(['ANSWERED']);
+    const r = body(await h.manager.handleCancel(sid, first.request_id));
+    expect(r).toEqual({
+      session_id: sid,
+      request_id: first.request_id,
+      state: 'done',
+      messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }],
+    });
+    expect(finals(h)).toEqual(['ANSWERED']);
+    expect(h.log.lines.some((l) => l.event === 'unsupported_state')).toBe(false);
+  });
+
+  it('SQ-A-01 F-8: cancel of a DISCARDED request (second cancel) -> same reply, no new final', async () => {
+    const h = makeHarness();
+    const { sid, rid } = await toConfirmation(h);
+    await h.manager.handleCancel(sid, rid);
+    const r = body(await h.manager.handleCancel(sid, rid));
+    expect(r.state).toBe('done');
+    expect(r.messages).toEqual([{ type: 'text', text: 'Cancelled. Nothing was sent.' }]);
+    expect(finals(h)).toEqual(['DISCARDED']);
+  });
+
+  it('SQ-A-01 F-8: cancel of a HANDED_OFF request -> "already sent to your wallet" reply, state stays HANDED_OFF', async () => {
+    const h = makeHarness();
+    const { sid, rid } = await toConfirmation(h);
+    await h.manager.handleConfirm(sid, rid, 'yes');
+    expect(finals(h)).toEqual(['HANDED_OFF']);
+    const r = body(await h.manager.handleCancel(sid, rid));
+    expect(r).toEqual({
+      session_id: sid,
+      request_id: rid,
+      state: 'done',
+      messages: [
+        { type: 'text', text: "That was already sent to your wallet for signing, so it can't be cancelled here." },
+      ],
+    });
+    expect(finals(h)).toEqual(['HANDED_OFF']);
+    expect(h.log.lines.some((l) => l.event === 'unsupported_state')).toBe(false);
   });
 
   it('C-423: confirm yes → S12 hand-off; HANDED_OFF; reply "Sent to your wallet for signing."', async () => {
@@ -696,6 +754,26 @@ describe('§8.14 step 6 / §17.3 HANDOFF_FAILED', () => {
     expect(h.calls.filter((c) => c.step === 's12')).toHaveLength(3);
   });
 
+  it('SQ-A-06 F-9: attempts 1-2 show the section 15 text; the 3rd failure shows the text for its cause', async () => {
+    const cases: Array<['timeout' | 'server_error', string]> = [
+      ['timeout', "I couldn't confirm your wallet received this after 3 tries. Check your wallet before trying again."],
+      ['server_error', "I couldn't reach your wallet after 3 tries. Nothing was sent. Please try again later."],
+    ];
+    for (const [cause, final] of cases) {
+      const h = makeHarness();
+      const fail: StepResult = { kind: 'error', code: 'EXECUTION_UNAVAILABLE', params: { cause } };
+      failingHandoff(h, [fail, fail, fail]);
+      const { sid, rid } = await toConfirmation(h);
+      const r1 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      const r2 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      const r3 = body(await h.manager.handleConfirm(sid, rid, 'yes'));
+      expect(r1.error?.message).toBe("I couldn't reach your wallet. Confirm again to retry.");
+      expect(r2.error?.message).toBe("I couldn't reach your wallet. Confirm again to retry.");
+      expect(r3.error).toEqual({ code: 'EXECUTION_UNAVAILABLE', message: final });
+      expect(finals(h)).toEqual(['FAILED']);
+    }
+  });
+
   it('C-343: in HANDOFF_FAILED only "yes" is accepted by confirm (no → conflict)', async () => {
     const h = makeHarness();
     failingHandoff(h, [UNAVAILABLE]);
@@ -714,7 +792,7 @@ describe('§8.14 step 6 / §17.3 HANDOFF_FAILED', () => {
     expect((await h.manager.handleConfirm(sid, rid, 'yes')).kind).toBe('conflict');
   });
 
-  it('C-422 / SQ-A-01: the cancel endpoint drops a HANDOFF_FAILED request', async () => {
+  it('SQ-A-01 F-8: the cancel endpoint still drops a HANDOFF_FAILED request -> DISCARDED', async () => {
     const h = makeHarness();
     failingHandoff(h, [UNAVAILABLE]);
     const { sid, rid } = await toConfirmation(h);

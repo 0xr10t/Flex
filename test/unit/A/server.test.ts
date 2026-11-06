@@ -457,11 +457,12 @@ describe('§14.1 cancel', () => {
     expect(r.json).toMatchObject({ state: 'done', messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }] });
   });
 
-  it('C-344 / SQ-A-01: no active request → 200, state error, code UNSUPPORTED_REQUEST', async () => {
+  it('C-344 / SQ-A-01 F-8: no active request → 200, state done, "Cancelled. Nothing was sent.", no error', async () => {
     const sid = await s.openSession();
     const r = await s.call('POST', `/v1/sessions/${sid}/cancel`, { body: { request_id: 'req_000000000000' } });
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ state: 'error', error: { code: 'UNSUPPORTED_REQUEST' } });
+    expect(r.json).toMatchObject({ state: 'done', messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }] });
+    expect(r.json).not.toHaveProperty('error');
   });
 
   it('C-344: unknown session → 404; invalid body → 400', async () => {

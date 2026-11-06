@@ -56,7 +56,7 @@ export function registerA17toA32(): void {
       expectError(
         r,
         'UNSUPPORTED_REQUEST',
-        "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't help with that part.",
+        "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
       );
       noSubmission(h);
       await h.finish();
@@ -207,7 +207,7 @@ export function registerA17toA32(): void {
       await h.finish();
     });
 
-    it('A-26: "send 50 usdc to aradhya on sepolia" (no Sepolia row) -> silent reuse note', async () => {
+    it('A-26 SQ-O-10: "send 50 usdc to aradhya on sepolia" (no Sepolia row) -> silent reuse note naming both chains', async () => {
       const h = await harness('A-26', {
         balances: {
           11155111: { USDC: '100', ETH: '0.1' },
@@ -219,9 +219,8 @@ export function registerA17toA32(): void {
       expect(h.asked).toEqual([]);
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(lines(r)).toEqual(['Send 50 USDC to Aradhya (0x3fA9…c21E) on Sepolia.']);
-      // §9.5 names the chain the address was reused from; the spec does not say which of the two when both exist.
-      expect(r.body.summary?.notes).toHaveLength(1);
-      expect(r.body.summary?.notes[0]).toMatch(/^Same address as on (Base|Arbitrum) Sepolia\.$/);
+      // SQ-O-10: the note names every chain where the address is saved.
+      expect(r.body.summary?.notes).toEqual(['Same address as on Base Sepolia and Arbitrum Sepolia.']);
       expect(
         h.repos.db2
           .findByNameKey('aradhya')
@@ -245,7 +244,7 @@ export function registerA17toA32(): void {
       await h.finish();
     });
 
-    it('A-27: "send 150 usdc to mihir" -> LIMIT_PER_TX', async () => {
+    it('A-27 SQ-D-16: "send 150 usdc to mihir" -> Q_LIMIT_OVERRIDE; No cancels', async () => {
       const h = await harness('A-27', {
         balances: {
           84532: { USDC: '200', ETH: '0.1' },
@@ -254,12 +253,36 @@ export function registerA17toA32(): void {
         },
       });
       const r = await h.say('send 150 usdc to mihir');
-      expectError(r, 'LIMIT_PER_TX', '150 USDC is over your per-payment limit of 100.');
+      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+      expect(r.body.question?.text).toBe('This is 150 USDC, over your per-payment limit of 100. Go ahead this once?');
+      expect(r.body.question?.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
+      const r2 = await h.answer(r, { chipLabel: 'No' });
+      expect(r2.body.state).toBe('done');
+      expect(r2.body.messages.map((m) => m.text)).toEqual(['Cancelled. Nothing was sent.']);
       noSubmission(h);
       await h.finish();
     });
 
-    it('A-28: three payments of 100 after 50 spent today -> LIMIT_DAILY with remaining 250', async () => {
+    it('SQ-D-16 F-2: "send 150 usdc to mihir", Yes this once -> limit lifted note, summary, hand-off; DB5 unchanged', async () => {
+      const h = await harness('A-27', {
+        balances: {
+          84532: { USDC: '200', ETH: '0.1' },
+          421614: { USDC: '60', ETH: '0.1' },
+          11155111: { USDC: '0', ETH: '0.1' },
+        },
+      });
+      const r = await h.say('send 150 usdc to mihir');
+      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+      const r2 = await h.answer(r, { chipLabel: 'Yes, this once' });
+      expect(r2.body.state).toBe('awaiting_confirmation');
+      expect(r2.body.summary?.notes).toContain('A limit was lifted once for this request.');
+      expect(lines(r2)).toEqual(['Send 150 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
+      expectHandedOff(await h.confirm(r2, 'yes'));
+      expect(h.repos.db5.getAll().per_tx_max.USDC).toBe('100');
+      await h.finish();
+    });
+
+    it('A-28 SQ-D-16: three payments of 100 after 50 spent today -> Q_LIMIT_OVERRIDE (remaining 250)', async () => {
       const h = await harness('A-28', {
         balances: {
           84532: { USDC: '400', ETH: '0.1' },
@@ -270,12 +293,15 @@ export function registerA17toA32(): void {
       h.addContact('Priya', addr(0xc1), [BASE, ARB]);
       seedSpend(h, { amount: '50' });
       const r = await h.say('send 100 usdc to aradhya, 100 usdc to mihir and 100 usdc to priya');
-      expectError(r, 'LIMIT_DAILY', "This would go over today's USDC limit. You can still send 250 today.");
+      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+      expect(r.body.question?.text).toBe(
+        "This is 300 USDC, over today's limit of 300 (only 250 is left). Go ahead this once?",
+      );
       noSubmission(h);
       await h.finish();
     });
 
-    it('A-29: group over the daily limit, user says yes -> override note, hand-off proceeds', async () => {
+    it('A-29 SQ-D-16: group over the daily limit, user says yes -> override note, hand-off proceeds', async () => {
       const h = await harness('A-29', {
         balances: {
           84532: { USDC: '400', ETH: '0.1' },
@@ -290,15 +316,15 @@ export function registerA17toA32(): void {
       const r1 = await h.say('send 100 usdc to everyone under iitr.eth on base');
       expect(r1.body.question?.code).toBe('Q_GROUP_MEMBERS');
       const r2 = await h.answer(r1, { selectedLabels: names });
-      expect(r2.body.question?.code).toBe('Q_GROUP_OVER_LIMIT');
+      expect(r2.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
       expect(r2.body.question?.text).toBe(
-        "This sends 300 USDC, but only 250 is left of today's 300 limit. Go ahead this once?",
+        "This is 300 USDC, over today's limit of 300 (only 250 is left). Go ahead this once?",
       );
       expect(r2.body.question?.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
       const r3 = await h.answer(r2, { chipLabel: 'Yes, this once' });
-      expect(h.asked).toEqual(['Q_GROUP_MEMBERS', 'Q_GROUP_OVER_LIMIT']);
+      expect(h.asked).toEqual(['Q_GROUP_MEMBERS', 'Q_LIMIT_OVERRIDE']);
       expect(r3.body.state).toBe('awaiting_confirmation');
-      expect(r3.body.summary?.notes).toContain("Today's limit was lifted once for this group payment.");
+      expect(r3.body.summary?.notes).toContain('A limit was lifted once for this request.');
       expect(lines(r3)).toEqual([`Send 100 USDC each to 3 members of iitr.eth on Base Sepolia: ${names.join(', ')}.`]);
       expectHandedOff(await h.confirm(r3, 'yes'));
       expect(h.envelope.intents.map((i) => i.intent_id)).toEqual(['i', 'i', 'i']);
@@ -330,7 +356,7 @@ export function registerA17toA32(): void {
       await h.finish();
     });
 
-    it('A-30: need exceeds all balances -> INSUFFICIENT_FUNDS with per-chain numbers', async () => {
+    it('A-30 SQ-08 F-10: need exceeds all balances -> INSUFFICIENT_FUNDS with per-chain numbers', async () => {
       const h = await harness('A-30', {
         balances: {
           11155111: { USDC: '0', ETH: '0.1' },
@@ -340,12 +366,10 @@ export function registerA17toA32(): void {
       });
       const r = await h.say('send 100 usdc to mihir');
       expectError(r, 'INSUFFICIENT_FUNDS');
-      // SQ-08 (OPEN, spec conflict §10.4 "per chain" vs §15 template): the interim behaviour is the §15 template with
-      // {have} the total and {chains} the chain names. Per-chain numbers (A-30 "per-chain numbers") are not asserted
-      // until the human answers.
+      // SQ-08 F-10: only the chains with a positive amount, in config order.
       const m = r.body.error!.message;
       expect(m).toBe(
-        "You don't have enough USDC: you need 100, and can use 50 across Sepolia, Base Sepolia and Arbitrum Sepolia.",
+        "You don't have enough USDC: you need 100, and can use 50 across Base Sepolia (30) and Arbitrum Sepolia (20).",
       );
       noSubmission(h);
       await h.finish();
@@ -359,7 +383,7 @@ export function registerA17toA32(): void {
       await h.finish();
     });
 
-    it('A-32: four bridges needed -> LIMIT_BRIDGES', async () => {
+    it('A-32 SQ-D-16 F-4: four bridges needed -> Q_LIMIT_OVERRIDE', async () => {
       // USDC: Base 0, Sepolia 80, Arbitrum 80 -> 100 USDC on Base needs two bridges (80 then the rest).
       // ETH: Base 0.003 (0.001 spendable), Sepolia 0.03 (0.02), Arbitrum 0.05 (0.048) -> 0.05 ETH on Base needs two more.
       const h = await harness('A-32', {
@@ -370,7 +394,9 @@ export function registerA17toA32(): void {
         },
       });
       const r = await h.say('send 100 usdc to aradhya on base and 0.05 eth to mihir on base');
-      expectError(r, 'LIMIT_BRIDGES', 'This needs 4 transfers between chains; your limit is 3.');
+      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+      expect(r.body.question?.text).toBe('This needs 4 transfers between chains; your limit is 3. Go ahead this once?');
+      expect(r.body.question?.chips.map((c) => c.label)).toEqual(['Yes, this once', 'No']);
       noSubmission(h);
       await h.finish();
     });

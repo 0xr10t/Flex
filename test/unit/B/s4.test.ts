@@ -74,7 +74,7 @@ describe('S4 request type', () => {
     const { result } = await run(ctx);
     expect(result).toEqual({ kind: 'error', code: 'UNSUPPORTED_REQUEST', final_state: 'ANSWERED' });
     expect(ERROR_MESSAGE.UNSUPPORTED_REQUEST({})).toBe(
-      "I can send USDC or ETH, set up or stop repeating payments, and show balances. I can't help with that part.",
+      "I can send USDC or ETH, bridge funds between chains when a payment needs it, set up or stop repeating payments, and show balances. I can't help with that part.",
     );
   });
 

@@ -1,13 +1,14 @@
 // Implements: §8.11 / §10 S9 — Plan: §10.1 spendable, §10.2 expansion (groups → one `i` per selected member in
 // alphabetical order of subname, `k` schedule and caps first, `l` from DB7), §10.3 chain selection incl. silent reuse
-// marking (§9.5), §10.4 bridges with bigint padding/rounding, LIMIT_BRIDGES and the gas check, §10.5 step numbering
+// marking (§9.5), §10.4 bridges with bigint padding/rounding, LIMIT_BRIDGES (left to S10's Q_LIMIT_OVERRIDE when it
+// can be lifted, SQ-D-16; likewise the autopay limits) and the gas check, §10.5 step numbering
 // and dependencies, §10.6 autopay schedule (questions Q_AUTOPAY_FREQUENCY / _START / _END / _COUNT / _DATE),
 // §10.7 cancel (Q_AUTOPAY_PICK, AUTOPAY_NOT_READY, NO_ACTIVE_AUTOPAY), §17.2 step 4 (follow-up chain reuse) and
 // step 7 note, §12.4 fill rules. Re-entrant: answers are kept in req.step_state.s9 and every derived DB1 row and
 // autopay_id is minted only in the final phase, which asks no question.
 
 import type { DateTime } from 'luxon';
-import { CHIPS, NOTES, buildQuestion, matchChip, reask } from '../contracts/catalog.js';
+import { CHIPS, NOTES, buildQuestion, joinList, matchChip, reask } from '../contracts/catalog.js';
 import type { Db7Row } from '../contracts/repos.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type {
@@ -64,7 +65,16 @@ import {
   TOKENS_ORDER,
   type ChainBalance,
 } from '../plan/spendable.js';
-import { autopayDurationError, checkAutopayPeriod, checkBridgeCount, checkPerTx } from '../plan/limits.js';
+import {
+  autopayDurationBreach,
+  autopayPeriodBreach,
+  bridgeBreach,
+  limitsCanBeLifted,
+  perTxBreach,
+} from '../plan/limits.js';
+
+/** Bound on a schedule's length once the duration limit is lifted (SQ-D-16): about 57 years. */
+const LIFTED_MAX_WEEKS = 3000;
 import { AUTOPAY_PICK_LABEL } from '../messages/templates.js';
 
 // ───────────────────────────── re-entrant state ─────────────────────────────
@@ -210,8 +220,14 @@ function resolveK(
   const schedule: Schedule = { ...core, first_occurrence: first.toISO({ suppressMilliseconds: true }) as string, end };
 
   // Derived values (§10.6): 2 zero occurrences, 3 duration, 4 per-period cap, 5 per-payment limit.
-  const occ = enumerateOccurrences(schedule, limits.autopay_max_weeks);
-  if (occ.exceedsMaxWeeks) return { kind: 'result', result: autopayDurationError(ctx) };
+  // A broken limit that can be lifted is left to S10, which asks Q_LIMIT_OVERRIDE once for all of them (SQ-D-16).
+  const liftable = limitsCanBeLifted(ctx);
+  let occ = enumerateOccurrences(schedule, limits.autopay_max_weeks);
+  if (occ.exceedsMaxWeeks) {
+    if (!liftable) return { kind: 'result', result: autopayDurationBreach(ctx).error };
+    occ = enumerateOccurrences(schedule, LIFTED_MAX_WEEKS);
+    if (occ.exceedsMaxWeeks) return { kind: 'result', result: unsupported(ctx, 's9', 'S9_AUTOPAY_BEYOND_LIFTED_MAX') };
+  }
   if (occ.occurrences.length === 0)
     return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NO_OCCURRENCES' } };
   // §12.5 caps after_count at 520 and the spec has no reply for a longer count within the duration limit (SQ-D-06).
@@ -223,8 +239,8 @@ function resolveK(
   const token = row.token;
   const amount = toBaseUnits(row.amount, decimalsOf(token));
   const perPeriod = amount * paymentsPerWeek(schedule);
-  const overLimit = checkAutopayPeriod(ctx, perPeriod, token) ?? checkPerTx(ctx, amount, token);
-  if (overLimit) return { kind: 'result', result: overLimit };
+  const overLimit = autopayPeriodBreach(ctx, perPeriod, token) ?? perTxBreach(ctx, amount, token, true);
+  if (overLimit && !liftable) return { kind: 'result', result: overLimit.error };
   const count = BigInt(occ.occurrences.length);
   const last = occ.occurrences[occ.occurrences.length - 1] as DateTime;
   return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total: amount * count, day28, last } };
@@ -430,6 +446,19 @@ function pickChain(
   return { kind: 'ok', chain, reused: reuseFrom(chain) };
 }
 
+/**
+ * SQ-O-10: the silent-reuse note names every chain whose DB2 row holds the reused address (one contact per address,
+ * §7.1), the payment's own chain excluded, in configured chain order. `reused_from_chain_id` stays single-valued.
+ */
+function reusedOnChains(ctx: StepContext, recipient: AddressPh, own: ChainId): string {
+  const address = ctx.repos.db3.get(recipient)?.address;
+  const rows = address ? ctx.repos.db2.findByAddress(address) : [];
+  const chains = ctx.config.chains
+    .map((c) => c.chain_id)
+    .filter((c) => c !== own && rows.some((r) => r.chain_id === c));
+  return joinList(chains.map((c) => chainName(ctx, c)));
+}
+
 async function step(ctx: StepContext): Promise<StepResult> {
   const { req, limits } = ctx;
   const payments = req.payments;
@@ -522,8 +551,10 @@ async function step(ctx: StepContext): Promise<StepResult> {
   }
   // LIMIT_BRIDGES, then the gas check on every chain the plan touches.
   const touched = new Set<ChainId>([...bridges.map((b) => b.source), ...items.map((it) => it.chain)]);
-  const capped = checkBridgeCount(ctx, bridges.length) ?? checkGas(ctx, balances, touched);
-  if (capped) return capped;
+  const tooMany = bridgeBreach(ctx, bridges.length, false);
+  if (tooMany && !limitsCanBeLifted(ctx)) return tooMany.error;
+  const noGas = checkGas(ctx, balances, touched);
+  if (noGas) return noGas;
 
   // §10.5 ordering: all j first (by first payment needing the destination, then source in allowed order).
   const firstNeed = (b: PlannedBridge): number => {
@@ -591,7 +622,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
     for (const j of jSteps) if (depends_on.includes(j.step)) j.funds_steps.push(stepNo);
     if (it.reused !== null) {
       ctx.repos.db3.setReusedFromChain(it.recipient, it.reused);
-      pushNote(ctx, NOTES.SILENT_REUSE({ chain: chainName(ctx, it.reused) }));
+      pushNote(ctx, NOTES.SILENT_REUSE({ chains: reusedOnChains(ctx, it.recipient, it.chain) }));
     }
     if (it.kind === 'i') {
       plan.push({

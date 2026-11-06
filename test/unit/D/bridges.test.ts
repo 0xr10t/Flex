@@ -2,7 +2,18 @@
 import { describe, expect, it } from 'vitest';
 import { planBridges } from '../../../src/plan/bridges.js';
 import type { ChainId } from '../../../src/contracts/types.js';
-import { ARB, BASE, SEPOLIA, addAradhya, addMihir, ctxD, db6Row, expectError, setLimits } from './helpers.js';
+import {
+  ARB,
+  BASE,
+  SEPOLIA,
+  addAmount,
+  addAradhya,
+  addMihir,
+  ctxD,
+  db6Row,
+  expectError,
+  setLimits,
+} from './helpers.js';
 import { PENDING_RECENT, amountOf, asI, asJ, db1Count, iPay, run, runOk, usdc } from './s9-helpers.js';
 
 const ALLOWED: ChainId[] = [SEPOLIA, BASE, ARB];
@@ -183,11 +194,12 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
     expectError(res, 'INSUFFICIENT_FUNDS', { need: '50', have: '20' });
   });
 
-  it('C-215 §10.4 more j intents than max_bridges_per_request → LIMIT_BRIDGES {n, max}', async () => {
+  it('SQ-D-16 F-5 content amount: C-215 §10.4 more j intents than max_bridges_per_request → LIMIT_BRIDGES {n, max}', async () => {
     const ctx = ctxD({ balances: usdc('100', '30', '30') });
     setLimits(ctx, { max_bridges_per_request: 1 });
     const a = addAradhya(ctx);
     const mi = addMihir(ctx);
+    markContent(ctx);
     const res = await run(ctx, [iPay(ctx, '40', a, BASE), iPay(ctx, '40', mi, ARB)]);
     expectError(res, 'LIMIT_BRIDGES', { n: '2', max: '1' });
   });
@@ -292,5 +304,21 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
     const before = db1Count(ctx);
     await run(ctx, [payment]);
     expect(db1Count(ctx)).toBe(before);
+  });
+});
+
+/** SQ-D-16 F-5: an amount from attached content in the request keeps the limit errors at S9 (typed amounts are left to S10). */
+function markContent(ctx: Parameters<typeof addAmount>[0]): void {
+  addAmount(ctx, '1', { source: 'untrusted' });
+}
+
+describe('SQ-D-16 F-4 typed amounts: S9 lets the bridge count through (S10 asks)', () => {
+  it('SQ-D-16 F-4 S9 more j intents than max_bridges_per_request pass S9 for typed amounts', async () => {
+    const ctx = ctxD({ balances: usdc('100', '30', '30') });
+    setLimits(ctx, { max_bridges_per_request: 1 });
+    const a = addAradhya(ctx);
+    const mi = addMihir(ctx);
+    const plan = await runOk(ctx, [iPay(ctx, '40', a, BASE), iPay(ctx, '40', mi, ARB)]);
+    expect(plan.filter((p) => p.intent_id === 'j')).toHaveLength(2);
   });
 });

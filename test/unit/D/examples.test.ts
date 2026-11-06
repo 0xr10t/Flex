@@ -284,20 +284,20 @@ describe('§19 worked examples end to end', () => {
     expect(hist[0]?.chain_id).toBe(BASE);
   });
 
-  it('C-435 C-326 C-298 E4 "If today\'s spend were 290 of 300 → Q_GROUP_OVER_LIMIT before the summary"; yes → lifted note + footer 310 of 300', async () => {
+  it('C-435 C-326 C-298 SQ-D-16 F-1 E4 "If today\'s spend were 290 of 300 → Q_LIMIT_OVERRIDE before the summary"; yes → lifted note + footer 310 of 300', async () => {
     const { ctx } = e4();
     ctx.repos.db6.insertMany([db6Row({ kind: 'payment', amount: '290', created_at: '2026-11-05T10:00:00.000Z' })]);
     const first = await toSummary(ctx);
     expect(first.s10?.kind).toBe('question');
     expect(first.s11).toBeUndefined();
-    const q = expectQuestion(first.s10 as StepResult, 'Q_GROUP_OVER_LIMIT');
-    expect(q.text).toBe("This sends 20 USDC, but only 10 is left of today's 300 limit. Go ahead this once?");
+    const q = expectQuestion(first.s10 as StepResult, 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toBe("This is 20 USDC, over today's limit of 300 (only 10 is left). Go ahead this once?");
     expect(await s10.onAnswer?.(ctx, q, chip('override'))).toEqual({ kind: 'continue' });
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
     const sum = await s11.step(ctx);
     expect(sum.kind).toBe('summary');
     const text = sum.kind === 'summary' ? sum.summary.text : '';
-    expect(text).toContain("- Today's limit was lifted once for this group payment.");
+    expect(text).toContain('- A limit was lifted once for this request.');
     expect(text).toContain('Spent today after this: 310 of 300 USDC.');
     await s12.step(ctx);
     expect(ctx.req.state).toBe('HANDED_OFF');

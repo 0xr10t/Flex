@@ -1,10 +1,15 @@
 // Implements: §8.9 S8 — Pair payments (LLM #4, constrained) + code checks P1–P9, retry once with a `CORRECTION:`
 // line, PAIRING_FAILED; I-06 token from DB1; §17.2 step 4 (follow-up placeholder under SESSION);
-// §16.1 (document pairs only as placeholder pairs); §8.10 MODEL_FAILED after the client's own retry.
+// §16.1 (document pairs only as placeholder pairs); §8.10 MODEL_FAILED after the client's own retry; SQ-O-03 / F-11
+// Q_PAIR_AMOUNT (who gets a cross-clause amount), with P1–P9 re-run on the user's choices. Re-entrant: the checked
+// payments and the answers are kept in req.step_state.s8, so the model is not called again after a question.
 
+import { PAIR_AMOUNT, REASK_HINT, buildQuestion, matchChip, reask, withHint } from '../contracts/catalog.js';
+import { shortAddress } from '../contracts/money.js';
 import { LlmFailed } from '../contracts/llm.js';
-import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
-import type { AddressPh, AmountPh, ChainId, Payment, RecipientPh } from '../contracts/types.js';
+import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
+import type { AddressPh, AmountPh, ChainId, Payment, QuestionId, RecipientPh } from '../contracts/types.js';
+import { newId } from '../util/ids.js';
 import {
   buildPaymentsPrompt,
   type PaymentsAmount,
@@ -13,10 +18,21 @@ import {
   type PaymentsRecipient,
   type PaymentsSessionItem,
 } from '../llm/prompt-builder/payments.js';
-import { unsupported } from '../plan/common.js';
-import { checkPayments, type PairingContext } from '../plan/pairing-checks.js';
+import { db1BaseUnits, fmt, internalError, recipientNameOf, unsupported } from '../plan/common.js';
+import { checkPayments, pairsToConfirm, type PairingContext } from '../plan/pairing-checks.js';
 
 type RawPayment = Omit<Payment, 'token'>;
+
+/** Q_PAIR_AMOUNT progress: the checked payments, which of them to confirm, and the recipients chosen so far. */
+interface S8State {
+  payments: Payment[];
+  confirm: number[];
+  /** Payment index → chosen recipient placeholder. */
+  choices: Record<string, RecipientPh>;
+  attempt: number;
+  /** Re-ask hint after choices that leave a payee unpaid (shown on the first question of the round). */
+  hint?: string;
+}
 
 function buildInput(ctx: StepContext): { input: PaymentsPromptInput; pc: PairingContext } {
   const { req } = ctx;
@@ -91,10 +107,71 @@ function withToken(ctx: StepContext, raw: RawPayment[]): Payment[] {
   }));
 }
 
+function paired(ctx: StepContext, payments: Payment[]): StepResult {
+  const { req } = ctx;
+  req.payments = payments;
+  req.state = 'PAIRED';
+  delete req.step_state.s8;
+  ctx.log.info({ event: 'paired', request_id: req.request_id, step: 's8', n_intents: payments.length });
+  return { kind: 'continue' };
+}
+
+function recipientLabel(ctx: StepContext, ph: RecipientPh): string {
+  const name = recipientNameOf(ctx, ph);
+  if (name !== '') return name;
+  const address = ctx.repos.db3.get(ph)?.address;
+  return address ? shortAddress(address) : ph;
+}
+
+/** Asks Q_PAIR_AMOUNT for the next unanswered amount; once all are answered, re-runs P1–P9 on the choices. */
+function confirmPairs(ctx: StepContext, pc: PairingContext, st: S8State): StepResult {
+  const next = st.confirm.find((n) => st.choices[String(n)] === undefined);
+  const p = next === undefined ? undefined : st.payments[next];
+  if (p !== undefined) {
+    if (p.amount === null) return internalError(ctx, 's8', 'S8_PAIR_AMOUNT_NULL');
+    const { units, token } = db1BaseUnits(ctx, p.amount);
+    const text = PAIR_AMOUNT.text({ amount: fmt(units, token), token });
+    const first = next === st.confirm[0];
+    return {
+      kind: 'question',
+      question: buildQuestion({
+        question_id: newId('question') as QuestionId,
+        code: 'Q_PAIR_AMOUNT',
+        text: first && st.hint !== undefined ? withHint(st.hint, text) : text,
+        chips: PAIR_AMOUNT.chips(pc.recipients.map((r) => ({ id: r, label: recipientLabel(ctx, r) }))),
+        attempt: st.attempt,
+      }),
+    };
+  }
+  const chosen = st.payments.map((q, n) => {
+    const r = st.choices[String(n)];
+    return r === undefined ? q : { ...q, recipient: r };
+  });
+  const outcome = checkPayments(ctx, pc, chosen);
+  if (outcome.kind === 'ok') return paired(ctx, chosen);
+  if (outcome.kind === 'error') {
+    return outcome.params
+      ? { kind: 'error', code: outcome.code, params: outcome.params }
+      : { kind: 'error', code: outcome.code };
+  }
+  // F-11: choices that leave a payee unpaid (P3) are re-asked with a hint; attempts count as for other questions.
+  const unpaid = pc.recipients.find((r) => !chosen.some((q) => q.recipient === r));
+  if (unpaid === undefined) {
+    ctx.log.warn({ event: 'pairing_failed', request_id: ctx.req.request_id, step: 's8', error_code: 'PAIRING_FAILED' });
+    return { kind: 'error', code: 'PAIRING_FAILED' };
+  }
+  st.attempt += 1;
+  st.choices = {};
+  st.hint = REASK_HINT.PAIR_UNPAID({ name: recipientLabel(ctx, unpaid) });
+  return confirmPairs(ctx, pc, st);
+}
+
 async function step(ctx: StepContext): Promise<StepResult> {
   const { req } = ctx;
   const { input, pc } = buildInput(ctx);
   if (input.actions.length === 0 || pc.recipients.length === 0) return unsupported(ctx, 's8', 'S8_NO_INPUT');
+  const pending = req.step_state.s8 as S8State | undefined;
+  if (pending !== undefined) return confirmPairs(ctx, pc, pending);
 
   let correction: string | undefined;
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -118,10 +195,11 @@ async function step(ctx: StepContext): Promise<StepResult> {
     const payments = withToken(ctx, out.payments);
     const outcome = checkPayments(ctx, pc, payments);
     if (outcome.kind === 'ok') {
-      req.payments = payments;
-      req.state = 'PAIRED';
-      ctx.log.info({ event: 'paired', request_id: req.request_id, step: 's8', n_intents: payments.length });
-      return { kind: 'continue' };
+      const confirm = pairsToConfirm(ctx, pc, payments);
+      if (confirm.length === 0) return paired(ctx, payments);
+      const st: S8State = { payments, confirm, choices: {}, attempt: 1 };
+      req.step_state.s8 = st;
+      return confirmPairs(ctx, pc, st);
     }
     if (outcome.kind === 'error') {
       ctx.log.info({ event: 'pairing_rejected', request_id: req.request_id, step: 's8', error_code: outcome.code });
@@ -143,4 +221,19 @@ async function step(ctx: StepContext): Promise<StepResult> {
   return { kind: 'error', code: 'PAIRING_FAILED' };
 }
 
-export const s8: StepEntry = { step };
+/** Q_PAIR_AMOUNT answer: a recipient chip (or its label typed); anything else is re-asked. */
+const onAnswer: AnswerHandler = async (ctx, q, answer) => {
+  const st = ctx.req.step_state.s8 as S8State | undefined;
+  if (q.code !== 'Q_PAIR_AMOUNT' || st === undefined) return internalError(ctx, 's8', 'S8_STALE_ANSWER');
+  const next = st.confirm.find((n) => st.choices[String(n)] === undefined);
+  const chip = matchChip(q, answer);
+  if (chip === null || next === undefined) {
+    const again = reask(q, newId('question') as QuestionId);
+    st.attempt = again.attempt;
+    return { kind: 'question', question: again };
+  }
+  st.choices[String(next)] = chip.id as RecipientPh;
+  return { kind: 'continue' };
+};
+
+export const s8: StepEntry = { step, onAnswer };

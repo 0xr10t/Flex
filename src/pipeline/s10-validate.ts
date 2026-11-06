@@ -1,23 +1,33 @@
-// Implements: §8.12 / §11 S10 — Validate: V-01…V-09 structural (§11.1), V-10…V-12 funding (§11.2), V-13…V-15 limits
-// (§11.3) incl. the `Q_GROUP_OVER_LIMIT` override (§13.4), §11.1 INTERNAL_ERROR logging the rule ID, §16.1 / V-08
-// keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
+// Implements: §8.12 / §11 S10 — Validate: V-01…V-09 structural (§11.1), V-10…V-11 funding (§11.2), V-12…V-15 limits
+// (§11.3) with the one-time Q_LIMIT_OVERRIDE question (SQ-D-16, F-1…F-6; human-approved difference from §11.3),
+// §11.1 INTERNAL_ERROR logging the rule ID, §16.1 / V-08 keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
 
 import { getAddress, zeroAddress } from 'viem';
-import { CHIPS, NOTES, REPLY, buildQuestion, matchChip, reask } from '../contracts/catalog.js';
+import {
+  LIMIT_OVERRIDE,
+  LIMIT_OVERRIDE_YES_NO,
+  NOTES,
+  REPLY,
+  buildQuestion,
+  matchChip,
+  reask,
+  type LimitOverrideArgs,
+} from '../contracts/catalog.js';
 import { toBaseUnits } from '../contracts/money.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { AddressPh, AmountPh, ChainId, InternalIntent, QuestionId, Token } from '../contracts/types.js';
 import { validators } from '../schemas/index.js';
 import { newId } from '../util/ids.js';
-import { db1BaseUnits, decimalsOf, fmt, internalError, isGroupPh, pushNote, recipientNameOf } from '../plan/common.js';
+import { db1BaseUnits, decimalsOf, fmt, internalError, pushNote, recipientNameOf } from '../plan/common.js';
 import {
-  autopayDurationError,
-  checkAutopayPeriod,
-  checkBridgeCount,
-  checkPerTx,
-  spentToday,
-  thisRequest,
+  autopayDurationBreach,
+  autopayPeriodBreach,
+  bridgeBreach,
+  dailyBreach,
+  limitsCanBeLifted,
+  perTxBreach,
   tokensUsed,
+  type LimitBreach,
 } from '../plan/limits.js';
 import { enumerateOccurrences } from '../plan/schedule.js';
 import { checkChain, checkGas, insufficientParams, readBalances, type ChainBalance } from '../plan/spendable.js';
@@ -165,54 +175,77 @@ function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalanc
     }
   }
   const touched = new Set(plan.map((it) => (it.intent_id === 'j' ? it.source_chain_id : it.chain_id)));
-  return checkGas(ctx, balances, touched) ?? checkBridgeCount(ctx, plan.filter((it) => it.intent_id === 'j').length);
+  return checkGas(ctx, balances, touched);
 }
 
-// ───────────────────────────── §11.3 limits ─────────────────────────────
+// ───────────────────────────── §11.3 limits (SQ-D-16) ─────────────────────────────
 
-function perIntentLimits(ctx: StepContext, plan: InternalIntent[]): Failure {
+/** Every broken limit, in check order: V-12 bridges, V-13 / V-14 per intent, V-15 daily per token. */
+function breaches(ctx: StepContext, plan: InternalIntent[]): LimitBreach[] {
+  const repeating = plan.some((it) => it.intent_id === 'k');
+  const found = [bridgeBreach(ctx, plan.filter((it) => it.intent_id === 'j').length, repeating)];
   for (const it of plan) {
     if (it.intent_id === 'i') {
-      const bad = checkPerTx(ctx, db1BaseUnits(ctx, it.amount).units, it.token);
-      if (bad) return bad;
+      found.push(perTxBreach(ctx, db1BaseUnits(ctx, it.amount).units, it.token, false));
     } else if (it.intent_id === 'k') {
-      const bad =
-        checkPerTx(ctx, db1BaseUnits(ctx, it.amount_per_payment).units, it.token) ??
-        checkAutopayPeriod(ctx, db1BaseUnits(ctx, it.limits.per_period_cap).units, it.token);
-      if (bad) return bad;
+      found.push(
+        perTxBreach(ctx, db1BaseUnits(ctx, it.amount_per_payment).units, it.token, true),
+        autopayPeriodBreach(ctx, db1BaseUnits(ctx, it.limits.per_period_cap).units, it.token),
+      );
       if (enumerateOccurrences(it.schedule, ctx.limits.autopay_max_weeks).exceedsMaxWeeks) {
-        return autopayDurationError(ctx);
+        found.push(autopayDurationBreach(ctx));
       }
     }
   }
-  return null;
+  found.push(...tokensUsed(plan).map((t) => dailyBreach(ctx, plan, t)));
+  // One fragment per limit and token (F-1): two payments over the per-payment limit name it once; it counts as a
+  // repeating payment's limit when any of them repeats.
+  const byKey = new Map<string, LimitBreach>();
+  for (const x of found) {
+    if (x === null) continue;
+    const key = `${x.limit.kind}:${'token' in x.limit ? x.limit.token : ''}`;
+    const prev = byKey.get(key);
+    if (prev === undefined) byKey.set(key, x);
+    else if (x.limit.repeating && prev.limit.kind === 'per_payment') prev.limit.repeating = true;
+  }
+  return [...byKey.values()];
 }
 
-function dailyLimit(ctx: StepContext, plan: InternalIntent[]): Failure {
-  const { req, limits } = ctx;
-  const hasGroup = (req.payments ?? []).some((p) => isGroupPh(p.recipient));
-  for (const token of tokensUsed(plan)) {
-    const max = toBaseUnits(limits.daily_max[token], decimalsOf(token));
-    const spent = spentToday(ctx, token);
-    const request = thisRequest(ctx, plan, token);
-    if (spent + request <= max) continue;
-    if (req.daily_limit_override) {
-      pushNote(ctx, NOTES.LIMIT_LIFTED());
-      continue;
-    }
-    const remaining = fmt(spent < max ? max - spent : 0n, token);
-    if (!hasGroup) return { kind: 'error', code: 'LIMIT_DAILY', params: { token, remaining } };
-    return {
-      kind: 'question',
-      question: buildQuestion({
-        question_id: newId('question') as QuestionId,
-        code: 'Q_GROUP_OVER_LIMIT',
-        params: { total: fmt(request, token), token, remaining, daily_max: limits.daily_max[token] },
-        chips: [CHIPS.OVER_LIMIT_YES, CHIPS.NO],
-      }),
-    };
+/** "This is {total} {token}, …": the one-time payments' total when every broken amount limit has one token. */
+function subjectAmount(ctx: StepContext, plan: InternalIntent[], found: LimitBreach[]): LimitOverrideArgs['amount'] {
+  const tokens = [...new Set(found.flatMap((x) => ('token' in x.limit ? [x.limit.token] : [])))];
+  const token = tokens[0];
+  if (tokens.length !== 1 || token === undefined) return undefined;
+  let total = 0n;
+  for (const it of plan) if (it.intent_id === 'i' && it.token === token) total += db1BaseUnits(ctx, it.amount).units;
+  return total > 0n ? { value: fmt(total, token), token } : undefined;
+}
+
+/**
+ * SQ-D-16, F-1…F-6: no broken limit → pass. Lifted by an earlier "Yes" → the note, pass. An amount from attached
+ * content → the first broken limit's error (F-5). Otherwise Q_LIMIT_OVERRIDE once, naming every broken limit.
+ */
+function limits(ctx: StepContext, plan: InternalIntent[]): Failure {
+  const found = breaches(ctx, plan);
+  const first = found[0];
+  if (first === undefined) return null;
+  if (ctx.req.limit_override) {
+    pushNote(ctx, NOTES.LIMIT_LIFTED());
+    return null;
   }
-  return null;
+  if (!limitsCanBeLifted(ctx)) return first.error;
+  const args: LimitOverrideArgs = { broken: found.map((x) => x.limit) };
+  const amount = subjectAmount(ctx, plan, found);
+  if (amount !== undefined) args.amount = amount;
+  return {
+    kind: 'question',
+    question: buildQuestion({
+      question_id: newId('question') as QuestionId,
+      code: 'Q_LIMIT_OVERRIDE',
+      text: LIMIT_OVERRIDE.text(args),
+      chips: LIMIT_OVERRIDE.chips(args),
+    }),
+  };
 }
 
 // ───────────────────────────── step ─────────────────────────────
@@ -222,27 +255,22 @@ async function step(ctx: StepContext): Promise<StepResult> {
   const plan = req.plan;
   if (!plan) return internalError(ctx, 's10', 'V-01');
   const balances = readBalances(ctx);
-  const failure =
-    structural(ctx, plan, balances) ??
-    funding(ctx, plan, balances) ??
-    perIntentLimits(ctx, plan) ??
-    dailyLimit(ctx, plan);
+  const failure = structural(ctx, plan, balances) ?? funding(ctx, plan, balances) ?? limits(ctx, plan);
   if (failure) return failure;
   req.state = 'VALIDATED';
   ctx.log.info({ event: 'validated', request_id: req.request_id, step: 's10', n_intents: plan.length });
   return { kind: 'continue' };
 }
 
+/** Q_LIMIT_OVERRIDE: "Yes" lifts every limit for this request only (DB5 is never written); "No" → DISCARDED. */
 const onAnswer: AnswerHandler = async (ctx, q, answer) => {
-  if (q.code !== 'Q_GROUP_OVER_LIMIT') return internalError(ctx, 's10', 'S10_UNKNOWN_QUESTION');
-  const chip = matchChip(q, answer);
-  // §13.4 allows plain "yes" for a Yes chip; this one is labelled "Yes, this once".
-  const saidYes = answer.kind === 'text' && answer.text.trim().toLowerCase() === 'yes';
-  if (chip?.id === CHIPS.OVER_LIMIT_YES.id || saidYes) {
-    ctx.req.daily_limit_override = true;
+  if (q.code !== 'Q_LIMIT_OVERRIDE') return internalError(ctx, 's10', 'S10_UNKNOWN_QUESTION');
+  const chip = matchChip(q, answer, LIMIT_OVERRIDE_YES_NO);
+  if (chip?.id === LIMIT_OVERRIDE_YES_NO.yes) {
+    ctx.req.limit_override = true;
     return { kind: 'continue' };
   }
-  if (chip?.id === CHIPS.NO.id) return { kind: 'discard', messages: [REPLY.CANCELLED()] };
+  if (chip?.id === LIMIT_OVERRIDE_YES_NO.no) return { kind: 'discard', messages: [REPLY.CANCELLED()] };
   return { kind: 'question', question: reask(q, newId('question') as QuestionId) };
 };
 

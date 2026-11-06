@@ -537,37 +537,25 @@ describe('SQ-A-05 / C-340 closing a leftover session id', () => {
   });
 });
 
-describe('SQ-A-01 / §18 the cancel:no_active_request log line', () => {
-  function withRealLogger(): { h: Harness; lines: () => Array<Record<string, unknown>> } {
+describe('SQ-A-01 F-8 / §18 cancel with nothing to cancel', () => {
+  it('SQ-A-01 F-8: no active request -> done reply and no unsupported_state log line', async () => {
     const chunks: string[] = [];
     const log = createLogger({ destination: { write: (c: string) => chunks.push(c) } });
     const h = makeHarness({ log });
-    return {
-      h,
-      lines: () =>
-        chunks
-          .join('')
-          .split('\n')
-          .filter((l) => l !== '')
-          .map((l) => JSON.parse(l) as Record<string, unknown>),
-    };
-  }
-
-  it('SQ-A-01 §18: with no active request the line keeps rule_id and has no state key', async () => {
-    const { h, lines } = withRealLogger();
     const sid = open(h);
-    await h.manager.handleCancel(sid, 'req_000000000000');
-    const line = lines().find((l) => l.event === 'unsupported_state');
-    expect(line).toBeDefined();
-    expect(line).toMatchObject({ rule_id: 'cancel:no_active_request', level: 'warn' });
-    expect(line).not.toHaveProperty('state');
+    const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
+    expect(r.state).toBe('done');
+    expect(chunks.join('')).not.toContain('unsupported_state');
   });
 
-  it('SQ-A-01 §18: with another active request the line keeps both rule_id and state', async () => {
-    const { h, lines } = withRealLogger();
-    const { sid } = await toConfirmation(h);
-    await h.manager.handleCancel(sid, 'req_000000000000');
-    const line = lines().find((l) => l.event === 'unsupported_state');
-    expect(line).toMatchObject({ rule_id: 'cancel:no_active_request', state: 'AWAITING_CONFIRMATION' });
+  it('SQ-A-01 F-8: a wrong request_id while another request is active -> done reply, no log line, request unchanged', async () => {
+    const chunks: string[] = [];
+    const log = createLogger({ destination: { write: (c: string) => chunks.push(c) } });
+    const h = makeHarness({ log });
+    const { sid, rid } = await toConfirmation(h);
+    const r = body(await h.manager.handleCancel(sid, 'req_000000000000'));
+    expect(r.messages).toEqual(text('Cancelled. Nothing was sent.'));
+    expect(chunks.join('')).not.toContain('unsupported_state');
+    expect(body(await h.manager.handleConfirm(sid, rid, 'yes')).state).toBe('done');
   });
 });

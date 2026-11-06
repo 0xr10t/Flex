@@ -1,11 +1,12 @@
 // Implements: §10.1 spendable balance (DB4 − pending DB6 rows of the last 10 minutes of kinds payment / bridge_out /
 // autopay_prefund − ETH gas reserve, floored at 0; unavailable chains excluded; bigint base units), §10.4 gas check
-// input (raw ETH − pending ETH, SQ-16), §11.2 V-11.
+// input (raw ETH − pending ETH, SQ-16), §11.2 V-11, §15 INSUFFICIENT_FUNDS params (SQ-08, F-10).
 
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
-import { chainName, decimalsOf, fmt, joinAnd, nowUtcIso } from './common.js';
+import { insufficientFundsParams } from '../contracts/catalog.js';
+import { chainName, decimalsOf, fmt, nowUtcIso } from './common.js';
 
 export const TOKENS_ORDER: readonly Token[] = ['USDC', 'ETH'];
 
@@ -86,19 +87,25 @@ export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: Re
   return null;
 }
 
-/** §15 INSUFFICIENT_FUNDS params (SQ-08): totals across the readable chains. */
+/**
+ * §15 INSUFFICIENT_FUNDS params (SQ-08, F-10): the total across the readable chains, and each chain with a positive
+ * spendable amount of the token, in configured chain order (unreadable chains left out).
+ */
 export function insufficientParams(
   ctx: StepContext,
   token: Token,
   balances: ChainBalance[],
   needTotal: bigint,
 ): Record<string, string> {
-  const ok = balances.filter((b) => b.ok);
-  const have = ok.reduce((sum, b) => sum + b.spendable[token], 0n);
-  return {
+  const order = (c: ChainId): number => ctx.config.chains.findIndex((x) => x.chain_id === c);
+  const positive = balances
+    .filter((b) => b.ok && b.spendable[token] > 0n)
+    .sort((x, y) => order(x.chain_id) - order(y.chain_id));
+  const have = positive.reduce((sum, b) => sum + b.spendable[token], 0n);
+  return insufficientFundsParams({
     token,
     need: fmt(needTotal, token),
     have: fmt(have, token),
-    chains: joinAnd(ok.map((b) => chainName(ctx, b.chain_id))),
-  };
+    chains: positive.map((b) => ({ name: chainName(ctx, b.chain_id), spendable: fmt(b.spendable[token], token) })),
+  });
 }

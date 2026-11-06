@@ -5,8 +5,8 @@
 // re-enters the same step), §9.7 / §13.4 max_attempts 4 → TOO_MANY_RETRIES, §17.3 confirmation/answer/cancel
 // table, §8.14 step 6 / I-37 HANDOFF_FAILED retried up to 3 attempts in total, §13.3 fixed replies, §14.1
 // AgentResponse, §14.4 MODEL_FAILED when the model is unavailable, §15 error responses, §0 / SQ-19 uncovered states
-// → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-01 cancel without a matching request, SQ-A-03
-// message while HANDOFF_FAILED), §18 metrics as log events.
+// → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
+// cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
@@ -248,8 +248,8 @@ export class SessionManager {
 
   /**
    * POST /v1/sessions/{id}/cancel: cancels the active request (awaiting an answer, a confirmation, or a hand-off
-   * retry) → DISCARDED, reply CANCELLED. No such request with this id: not covered by §14.1/§17.3 →
-   * UNSUPPORTED_REQUEST (§0; spec-questions/A.md SQ-A-01).
+   * retry) → DISCARDED, reply CANCELLED. Nothing cancellable with this id (no request, wrong id, ended request):
+   * `done` with the CANCELLED reply, nothing changed (SQ-A-01); a HANDED_OFF request gets the F-8 reply.
    */
   async handleCancel(session_id: string, request_id: string): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
@@ -259,9 +259,16 @@ export class SessionManager {
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
       if (cancellable) return ok(this.discard(s, a, REPLY.CANCELLED()));
-      this.logUnsupported(s, a?.req.state, 'cancel:no_active_request');
-      return ok(this.unsupportedReply(s, request_id));
+      // SQ-A-01, F-8: nothing to cancel → HTTP 200, state done, nothing changed, safe to repeat. A request already
+      // handed off gets its own reply.
+      const handedOff = a !== null && a.req.request_id === request_id && a.req.state === 'HANDED_OFF';
+      return ok(this.noopReply(s, request_id, handedOff ? REPLY.CANCEL_AFTER_HANDOFF() : REPLY.CANCELLED()));
     });
+  }
+
+  /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
+  private noopReply(s: OpenSession, request_id: string, text: string): AgentResponse {
+    return { session_id: s.session_id, request_id, state: 'done', messages: [{ type: 'text', text }] };
   }
 
   /** §0 / SQ-19: an uncovered input is logged with its state and branch id (no request is changed). */
@@ -425,6 +432,8 @@ export class SessionManager {
       case 'error': {
         if (step === 's12' && res.code === 'EXECUTION_UNAVAILABLE') {
           const state = req.handoff_attempts < MAX_HANDOFF_ATTEMPTS ? 'HANDOFF_FAILED' : 'FAILED';
+          // SQ-A-06, F-9: the 3rd failure's cause (S12 `params.cause`) picks the final text.
+          const params = state === 'FAILED' ? { final: res.params?.cause ?? 'server_error' } : undefined;
           this.deps.log.warn({
             event: 'handoff_failed',
             session_id: s.session_id,
@@ -432,7 +441,7 @@ export class SessionManager {
             attempt: req.handoff_attempts,
             error_code: res.code,
           });
-          return this.fail(s, a, res.code, res.params, state);
+          return this.fail(s, a, res.code, params, state);
         }
         return this.fail(s, a, res.code, res.params, res.final_state ?? 'FAILED');
       }

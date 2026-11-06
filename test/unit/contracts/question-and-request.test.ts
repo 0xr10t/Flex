@@ -44,7 +44,7 @@ describe('C-049 §8.0 request object', () => {
       spans: [],
       recipients: [],
       notes: [],
-      daily_limit_override: false,
+      limit_override: false,
       handoff_attempts: 0,
     });
     expect(r.scan).toBeDefined();

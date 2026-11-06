@@ -1,7 +1,8 @@
 // Implements: §8.14 S12 — Hand off: swap_back (src/handoff/swap-back.ts), validation against §12.5 (HANDOFF_INVALID →
 // INTERNAL_ERROR, SQ-02), POST with the request id as idempotency key (§14.2), on 2xx DB6 rows per §11.4, DB7 `pending`
 // rows per `k`, `db8_history` append (SQ-C-08: S8 payment plus the numeric chain S9 assigned), reply §13.3; 4xx →
-// EXECUTION_REJECTED; 5xx/timeout → EXECUTION_UNAVAILABLE. Retries reuse req.envelope and the key (§8.14 step 6); the
+// EXECUTION_REJECTED (message cut to 200 characters, control characters removed, SQ-O-09); 5xx/timeout →
+// EXECUTION_UNAVAILABLE with its cause (the runner picks the 3rd attempt's text from it, SQ-A-06 / F-9). Retries reuse req.envelope and the key (§8.14 step 6); the
 // runner counts attempts and sets HANDOFF_FAILED (src/contracts/step.ts).
 
 import { REPLY } from '../contracts/catalog.js';
@@ -16,6 +17,7 @@ import type {
   InternalIntent,
   Payment,
 } from '../contracts/types.js';
+import { rejectMessage } from '../handoff/execution-client.js';
 import { swapBack } from '../handoff/swap-back.js';
 import { decimalsOf, internalError, recipientNameOf } from '../plan/common.js';
 import { validators } from '../schemas/index.js';
@@ -156,7 +158,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
       step: 's12',
       error_code: 'EXECUTION_REJECTED',
     });
-    return { kind: 'error', code: 'EXECUTION_REJECTED', params: { message: result.message } };
+    return { kind: 'error', code: 'EXECUTION_REJECTED', params: { message: rejectMessage(result.message) } };
   }
   if (result.status === 'unavailable') {
     ctx.log.warn({
@@ -166,7 +168,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
       error_code: 'EXECUTION_UNAVAILABLE',
       attempt: req.handoff_attempts,
     });
-    return { kind: 'error', code: 'EXECUTION_UNAVAILABLE' };
+    return { kind: 'error', code: 'EXECUTION_UNAVAILABLE', params: { cause: result.cause } };
   }
   recordHandoff(ctx, plan, envelope);
   req.state = 'HANDED_OFF';

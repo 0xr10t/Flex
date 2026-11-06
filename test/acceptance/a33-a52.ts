@@ -310,7 +310,7 @@ export function registerA33toA52(): void {
 
     it('A-51: execution 503 then confirm again -> same idempotency key; success on retry', async () => {
       const h = await harness('A-51');
-      h.exec.responses = [{ status: 'unavailable' }];
+      h.exec.responses = [{ status: 'unavailable', cause: 'server_error' }];
       const r = await h.say('Send 50 USDc to ARADHYA');
       const fail = await h.confirm(r, 'yes');
       expectError(fail, 'EXECUTION_UNAVAILABLE', "I couldn't reach your wallet. Confirm again to retry.");
