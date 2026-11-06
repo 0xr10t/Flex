@@ -106,9 +106,16 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
   }
   // §8.6 rule 6 / §8.8 (CCR C-1): S5's `mentioned` spans become `[person]`.
   for (const m of req.mentioned_spans) reps.push({ start: m.start, end: m.end, text: m.text, with: PERSON });
+  // §16.1 / §8.8: a payee removed in S6 ("Don't pay this one") never reaches LLM #4: its typed range becomes
+  // `[person]` (checked by the fail-closed rule below); a removed payee without a range is swept where it repeats.
+  const unplaced: Array<{ text: string; with: string }> = [];
+  for (const rm of s6.removed_spans) {
+    if (rm.span !== null) reps.push({ start: rm.span.start, end: rm.span.end, text: rm.text, with: PERSON });
+    else unplaced.push({ text: rm.text, with: PERSON });
+  }
 
   const source = req.masked_text_s3 ?? req.typed_text;
-  const masked = applyReplacements(source, [...reps, ...sweepRepeats(source, reps)]);
+  const masked = applyReplacements(source, [...reps, ...sweepRepeats(source, reps, unplaced)]);
   if (masked === null) {
     ctx.log.error({
       event: 'internal_error',
