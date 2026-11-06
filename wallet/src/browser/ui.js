@@ -6,6 +6,8 @@ const rpcs = {
   84532: ['https://sepolia.base.org', 'https://sepolia.basescan.org'],
   421614: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://sepolia.arbiscan.io'],
 };
+// Invalid params, unauthorized, unsupported method, capability or chain: MetaMask refused before submitting anything.
+const REFUSED_BEFORE_SENDING = [-32602, 4100, 4200, 5700, 5710];
 const $ = (id) => document.getElementById(id);
 let state,
   provider,
@@ -170,6 +172,9 @@ async function send(batch) {
     if (claimed && [4001, 5750].includes(e.code)) {
       await api('/browser/reject', { id: batch.id });
       notify('You rejected this batch in MetaMask. No replacement was started.');
+    } else if (claimed && REFUSED_BEFORE_SENDING.includes(e.code)) {
+      await api('/browser/reject', { id: batch.id });
+      notify(`MetaMask refused this request before sending it (${e.code}). Nothing was submitted.`);
     } else if (claimed && e.code === 5720) await track(batch);
     else
       notify(
