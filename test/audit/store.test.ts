@@ -195,16 +195,17 @@ describe('§7.2 / §16.4 write paths', () => {
     });
   }
   const files = walk(SRC).map((p) => ({ path: relative(SRC, p), text: readFileSync(p, 'utf8') }));
+  // `file#function`: each call site named by its enclosing top-level function, so edits elsewhere don't move it.
   const callers = (re: RegExp): string[] =>
     files
       .filter((f) => !f.path.startsWith('db/') && !f.path.startsWith('contracts/'))
-      .flatMap((f) =>
-        f.text
-          .split('\n')
-          .map((l, i) => ({ l, n: i + 1 }))
-          .filter(({ l }) => re.test(l) && !/^\s*(\/\/|\*)/.test(l))
-          .map(({ n }) => `${f.path}:${n}`),
-      );
+      .flatMap((f) => {
+        let fn = '';
+        return f.text.split('\n').flatMap((l) => {
+          fn = /^(?:export )?(?:async )?function (\w+)/.exec(l)?.[1] ?? fn;
+          return re.test(l) && !/^\s*(\/\/|\*)/.test(l) ? [`${f.path}#${fn}`] : [];
+        });
+      });
 
   it('no SQL outside src/db', () => {
     const sql = files.filter(
@@ -214,10 +215,8 @@ describe('§7.2 / §16.4 write paths', () => {
   });
 
   it('DB5 has exactly one write caller outside startup defaults: PUT /v1/settings/limits', () => {
-    // Keep the exact caller count and file restriction; imports/comments must not invalidate the audit.
-    const paths = (sites: string[]) => sites.map((site) => site.replace(/:\d+$/, ''));
-    expect(paths(callers(/db5\.putAll\(/))).toEqual(['server/app.ts']);
-    expect(paths(callers(/db5\.insertDefaultsIfMissing\(/))).toEqual(['index.ts']);
+    expect(callers(/db5\.putAll\(/)).toEqual(['server/app.ts#createApp']);
+    expect(callers(/db5\.insertDefaultsIfMissing\(/)).toEqual(['index.ts#main']);
     // Nothing else on the db5 handle besides reads.
     const other = callers(/\.db5\.(?!getAll|putAll|insertDefaultsIfMissing)/);
     expect(other).toEqual([]);

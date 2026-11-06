@@ -103,13 +103,13 @@ describe('§19 worked examples end to end', () => {
     expect(ctx.req.payments).toEqual([{ ...llmItem('i', a, r), token: 'USDC' }]);
     expect(plan(ctx)).toEqual([
       {
-intent_id: 'i',
-step: 0,
-depends_on: [],
-token: 'USDC',
-chain_id: BASE,
-recipients: [{ amount: a, recipient: r, reused_from_chain_id: null }]
-},
+        intent_id: 'i',
+        step: 0,
+        depends_on: [],
+        token: 'USDC',
+        chain_id: BASE,
+        recipients: [{ amount: a, recipient: r, reused_from_chain_id: null }],
+      },
     ]);
     expect(summaryText(run)).toBe(
       [
@@ -129,14 +129,14 @@ recipients: [{ amount: a, recipient: r, reused_from_chain_id: null }]
       created_at: '2026-11-05T17:30:00Z',
       intents: [
         {
-intent_id: 'i',
-step: 0,
-depends_on: [],
-token: 'USDC',
-token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-chain_id: 84532,
-recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, recipient: ARADHYA_CS }]
-},
+          intent_id: 'i',
+          step: 0,
+          depends_on: [],
+          token: 'USDC',
+          token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          chain_id: 84532,
+          recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, recipient: ARADHYA_CS }],
+        },
       ],
     });
     expect(ctx.exec.submissions[0]?.idempotencyKey).toBe('req_5d1c0a9b8e7f');
@@ -167,12 +167,12 @@ recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, rec
       funds_steps: [1],
     });
     expect(p[1]).toMatchObject({
-intent_id: 'i',
-step: 1,
-depends_on: [0],
-chain_id: BASE,
-recipients: [{ amount: a, recipient: r }]
-});
+      intent_id: 'i',
+      step: 1,
+      depends_on: [0],
+      chain_id: BASE,
+      recipients: [{ amount: a, recipient: r }],
+    });
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
@@ -275,7 +275,10 @@ recipients: [{ amount: a, recipient: r }]
     );
     await s12.step(ctx);
     const env = ctx.exec.submissions[0]?.envelope;
-    expect(env?.intents.flatMap((x) => x.intent_id === 'i' ? x.recipients.map((p) => p.recipient) : [])).toEqual([ALICE_CS, BOB_CS]);
+    expect(env?.intents.flatMap((x) => (x.intent_id === 'i' ? x.recipients.map((p) => p.recipient) : []))).toEqual([
+      ALICE_CS,
+      BOB_CS,
+    ]);
     expect(JSON.stringify(env)).not.toContain('iitr');
     expect(ctx.repos.tables.db6.map((x) => [x.kind, x.amount, x.recipient_address])).toEqual([
       ['payment', '10', ALICE_CS],
@@ -334,13 +337,13 @@ recipients: [{ amount: a, recipient: r }]
     const run = await toSummary(ctx2);
     expect(plan(ctx2)).toEqual([
       {
-intent_id: 'i',
-step: 0,
-depends_on: [],
-token: 'USDC',
-chain_id: BASE,
-recipients: [{ amount: a5, recipient: prev, reused_from_chain_id: null }]
-},
+        intent_id: 'i',
+        step: 0,
+        depends_on: [],
+        token: 'USDC',
+        chain_id: BASE,
+        recipients: [{ amount: a5, recipient: prev, reused_from_chain_id: null }],
+      },
     ]);
     expect(summaryText(run)).toBe(
       [
@@ -389,11 +392,14 @@ recipients: [{ amount: a5, recipient: prev, reused_from_chain_id: null }]
     await s12.step(ctx);
     const k = ctx.exec.submissions[0]?.envelope.intents[0];
     expect(k).toMatchObject({
-      intent_id: 'k', token_address: USDC_ADDR[BASE], chain_id: BASE,
+      intent_id: 'k',
+      token_address: USDC_ADDR[BASE],
+      chain_id: BASE,
       recipients: [{ recipient: MIHIR_CS, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
       fee: { amount: { value: '0.05', base_units: '50000', decimals: 6 } },
       limits: { max_per_run: { value: '10.05' }, max_total: { value: '80.4' } },
-      schedule: { interval_seconds: 604800, max_runs: 8 }, executor: 'chainlink-cre',
+      schedule: { interval_seconds: 604800, max_runs: 8 },
+      executor: 'chainlink-cre',
     });
     expect(ctx.repos.tables.db6).toEqual([]);
     const rows = ctx.repos.db7.listByRequest(ctx.req.request_id);
@@ -414,7 +420,7 @@ recipients: [{ amount: a5, recipient: prev, reused_from_chain_id: null }]
     expect(summaryText(run)).toBe(
       [
         'Please confirm:',
-        "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
+        '1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.',
         'Confirm?',
       ].join('\n'),
     );

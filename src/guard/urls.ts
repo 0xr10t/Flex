@@ -1,7 +1,7 @@
 // Implements: §8.2 step 1 — every URL in `urls[]`, plus every `https://…` URL found in the typed text; URLs found in
 // typed text are removed from `typed_text` and replaced by `[link N]`; `http://` URLs → URL_FETCH_FAILED. I-17.
 // Link numbers: `urls[]` entries are links 1…u, typed URLs continue from u+1 in order of appearance
-// (spec-questions/B.md SQB-02).
+// (SQB-02).
 // SQ-O-06 (human, 2026-11-06): every `urls[]` entry and every redirect target is secret-scanned before it is fetched.
 // Owner: Lane B.
 

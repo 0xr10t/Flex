@@ -238,9 +238,10 @@ describe('CRE provider adapter', () => {
       }),
     ).toThrow();
   });
-  it('uses full secret URLs and rejects local URLs for a deployed DON', () => {
+  it('uses full secret URLs: https, or plain http only on loopback for local runs', () => {
     expect(simulationUrls(JSON.stringify(args.urls), 2)).toEqual(args.urls);
-    expect(() => simulationUrls('["http://127.0.0.1:8545"]', 1)).toThrow();
+    expect(simulationUrls('["http://127.0.0.1:8545"]', 1)).toEqual(['http://127.0.0.1:8545']);
+    expect(() => simulationUrls('["http://a.example"]', 1)).toThrow();
     expect(() => simulationUrls('["https://a.example","https://a.example"]', 2)).toThrow();
   });
   it('requires the exact plan and slot event before submitting a CRE report', () => {

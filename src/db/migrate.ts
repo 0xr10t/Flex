@@ -7,7 +7,7 @@ import type { Database } from './database.js';
 /** Schema version written to `PRAGMA user_version` after schema.sql has been applied. */
 export const SCHEMA_VERSION = 3;
 
-export function readSchemaSql(): string {
+function readSchemaSql(): string {
   return readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 }
 

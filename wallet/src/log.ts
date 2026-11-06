@@ -15,7 +15,7 @@ export type Logger = (code: string, fields?: LogFields) => void;
 
 const ALLOWED = ['request_id', 'step', 'chain_id', 'http_status', 'error_code', 'stage', 'attempts'] as const;
 
-export function pickLogFields(fields: LogFields): LogFields {
+function pickLogFields(fields: LogFields): LogFields {
   const out: Record<string, unknown> = {};
   for (const key of ALLOWED) if (fields[key] !== undefined) out[key] = fields[key];
   return out as LogFields;

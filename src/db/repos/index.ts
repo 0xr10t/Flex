@@ -17,7 +17,6 @@ import { createDb7 } from './db7.js';
 import { createDb8 } from './db8.js';
 import { createHandoffs } from './handoffs.js';
 
-export { nameKey } from './db2.js';
 export { PlaceholderCollisionError, MAX_PLACEHOLDER_DRAWS, type RepoOptions } from './common.js';
 
 /** §6.1 example chain display names; main() passes the configured names instead. */
@@ -28,7 +27,7 @@ const DEFAULT_CHAIN_NAMES: Record<ChainId, string> = {
 };
 
 /** §7.4 statements, in the order the spec lists them. */
-export const SESSION_CLEAR_SQL: readonly string[] = [
+const SESSION_CLEAR_SQL: readonly string[] = [
   'DELETE FROM db1_amount_placeholders',
   'DELETE FROM db3_address_placeholders',
   'DELETE FROM db8_prompts',

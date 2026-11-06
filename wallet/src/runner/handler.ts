@@ -6,7 +6,7 @@ import type { IntentResultReport } from '@flex/protocol';
 import type { Hex } from 'viem';
 import type { ChainGateway, TxReceipt, TxRequest } from '../chain/gateway.js';
 import type { Check } from '../guard/check.js';
-import type { EnvelopeIntent, HandoffEnvelope } from '../schemas/envelope.js';
+import type { EnvelopeIntent, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import type { StepResult, Store } from '../store/store.js';
 
 export interface Deployment {

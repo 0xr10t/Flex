@@ -107,21 +107,21 @@ describe('schedule dates through HTTP', () => {
       first: '2026-11-02T00:30:00-05:00',
       cron: '30 0 * * *',
     },
-  ])(
-    'B16: confirms and hands off the requested local start $start',
-    async ({ clock, start, time, first }) => {
-      await withDailySchedule(`starting ${start} for 8 payments`, clock, 'America/New_York', async (h, response) => {
-        const intent = await confirmSchedule(h, response);
-        const startAt = Date.parse(first) / 1000;
-        expect(intent.schedule).toEqual({
-          start_at: startAt, interval_seconds: 86400, max_runs: 8,
-          late_window_seconds: 3600, end_at: startAt + 7 * 86400 + 3600,
-        });
-        expect(intent.executor).toBe('chainlink-cre');
-        expect(JSON.stringify(response.body.summary)).toContain(`at ${time} (America/New_York)`);
+  ])('B16: confirms and hands off the requested local start $start', async ({ clock, start, time, first }) => {
+    await withDailySchedule(`starting ${start} for 8 payments`, clock, 'America/New_York', async (h, response) => {
+      const intent = await confirmSchedule(h, response);
+      const startAt = Date.parse(first) / 1000;
+      expect(intent.schedule).toEqual({
+        start_at: startAt,
+        interval_seconds: 86400,
+        max_runs: 8,
+        late_window_seconds: 3600,
+        end_at: startAt + 7 * 86400 + 3600,
       });
-    },
-  );
+      expect(intent.executor).toBe('chainlink-cre');
+      expect(JSON.stringify(response.body.summary)).toContain(`at ${time} (America/New_York)`);
+    });
+  });
 
   it('B16: recurrence uses fixed UTC intervals and discloses the local-time change across DST end', async () => {
     await withDailySchedule(
@@ -131,7 +131,10 @@ describe('schedule dates through HTTP', () => {
       async (h, response) => {
         const intent = await confirmSchedule(h, response);
         const occurrences = Array.from({ length: intent.schedule.max_runs }, (_, i) =>
-          DateTime.fromSeconds(intent.schedule.start_at + i * intent.schedule.interval_seconds, { zone: 'America/New_York' }));
+          DateTime.fromSeconds(intent.schedule.start_at + i * intent.schedule.interval_seconds, {
+            zone: 'America/New_York',
+          }),
+        );
         expect(occurrences).toHaveLength(8);
         expect(occurrences.slice(0, 2).map((d) => d.toISO())).toEqual([
           '2026-10-31T10:00:00.000-04:00',
@@ -167,8 +170,11 @@ describe('schedule dates through HTTP', () => {
         const intent = await confirmSchedule(h, response);
         const startAt = Date.parse('2026-11-10T10:00:00+05:30') / 1000;
         expect(intent.schedule).toEqual({
-          start_at: startAt, interval_seconds: 86400, max_runs: 11,
-          late_window_seconds: 3600, end_at: startAt + 10 * 86400 + 3600,
+          start_at: startAt,
+          interval_seconds: 86400,
+          max_runs: 11,
+          late_window_seconds: 3600,
+          end_at: startAt + 10 * 86400 + 3600,
         });
         expect(intent.limits.max_total.value).toBe('11.55');
         expect(intent).not.toHaveProperty('prefund');

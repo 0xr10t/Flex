@@ -29,7 +29,7 @@ export interface NetOptions {
 }
 
 /** 127.0.0.1 or ::1: a service on this machine, reached directly. */
-export function isLoopbackHost(hostname: string): boolean {
+function isLoopbackHost(hostname: string): boolean {
   return hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
 }
 

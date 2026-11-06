@@ -127,7 +127,7 @@ const SCHEMA = {
 
 const validate = new Ajv2020({ strict: true }).compile<WalletConfig>(SCHEMA);
 
-export const expandHome = (path: string): string => (path.startsWith('~/') ? join(homedir(), path.slice(2)) : path);
+const expandHome = (path: string): string => (path.startsWith('~/') ? join(homedir(), path.slice(2)) : path);
 
 /** http on 127.0.0.1 with no credentials in the URL. */
 const isLoopbackHttp = (u: URL): boolean =>

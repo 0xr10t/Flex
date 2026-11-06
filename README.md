@@ -1,11 +1,106 @@
 # Agent Layer — Implementation Handoff Specification
 
-> **Start at [`docs/README.md`](docs/README.md).** This file is spec v1, which the agent code was built from. The current design is
-> [`docs/spec/AGENT_SPEC_v1.1.md`](docs/spec/AGENT_SPEC_v1.1.md), plus [`docs/wallet/ARCHITECTURE_CHANGES.md`](docs/wallet/ARCHITECTURE_CHANGES.md).
+> This file is spec v1, which the agent code was built from. Unit tests read the §8.10 prompts and §12.1 schemas from
+> it, so change those only together with `src/llm/prompts/` and `src/schemas/`.
 
 > **Audience:** the coding agent (and engineers) implementing the agent layer of the Wallet Access Layer.
 > **Status:** final, v1. Every behaviour below is decided. Build exactly this.
 > **Owner of this layer:** this team. Other layers (UI, execution/signing, bridging, autopay contracts, CRE jobs) are built by other teams and appear here only as interface contracts.
+
+## Running it
+
+| Path | Package |
+| --- | --- |
+| `/` | The agent: a local HTTP service that turns a plain-language request into a plan the user confirms |
+| `wallet/` | The execution layer: checks, signs and sends what the user approved. See [`wallet/README.md`](wallet/README.md) |
+| `packages/protocol/` | `@flex/protocol`: the hand-off envelope schema and the checks both sides share |
+
+Use Node 22.12+ on the 22.x line, or Node 24+. `better-sqlite3-multiple-ciphers` and `@napi-rs/keyring` use native
+bindings, so install on the machine that runs them.
+
+```sh
+npm ci
+(cd wallet && npm ci)
+(cd wallet/cre/autopay && npm ci)   # the wallet's unit tests include the CRE workflow
+```
+
+### Check and test
+
+```sh
+npm run typecheck
+npm run lint                       # ESLint and Prettier, for every package
+npm test                           # unit + acceptance: model fixtures, temporary databases, fake execution
+npm run test:audit                 # privacy, logging, network and storage audits
+npm run test:scripts               # builds the agent, then tests scripts/
+(cd wallet && npm test)            # wallet unit tests and the CRE workflow
+(cd wallet && npm run test:chain)  # real contracts on local anvil chains; needs Foundry
+```
+
+None of these needs Ollama or a network. `LIVE_SET=all LIVE_TAG=<tag> npm run test:live` runs the acceptance prompts and
+paraphrases against the real local model (with fake RPC, ENS and execution); `node test/live/summarize.mjs <tag>` prints
+the results.
+
+### Configure and start the agent
+
+1. Run Ollama and pull the configured model: `ollama pull qwen2.5:7b-instruct`.
+2. Run Tor. The example config sends everything that leaves this machine through `socks5h://127.0.0.1:9050`; set
+   `network.socks_proxy` to `null` only when every endpoint is on this machine.
+3. Copy `config.example.json` to `~/.agent-layer/config.json` (or point `AGENT_CONFIG` at another path) and fill in your
+   public wallet address and anon-rpc URLs (https, or `http://127.0.0.1`). Missing and unknown fields are rejected.
+4. `npm run build && npm start`.
+
+The agent listens on `127.0.0.1:8787` (`server.port`). On first start it creates the three bearer-token files named in
+the config (mode 0600) and a database key in the OS keychain (service `agent-layer`, account `db-key`). Logs go to
+`~/.agent-layer/logs/agent.log`.
+
+To set up the agent, the wallet and the CRE workflow for the testnets from one file, copy `.env.example` to `.env`, fill
+it in, build both packages, and run `node scripts/setup-testnet.mjs`. It writes the three configs and the tokens to
+`.local/`.
+
+### Wallet information and the shared contract
+
+Common address and balance questions bypass Ollama and RPC, even with chat disabled or the model offline. Each
+session captures its public wallet address when it opens. Balance replies read the background-updated DB4 cache
+and current local spending reservations. Asking while a payment is open preserves its question, attempt count and
+confirmation. Cold or unreadable balances are unavailable, never zero; incomplete totals are labelled subtotals.
+Cache timestamps stay in internal balance context, outside the answer text.
+
+Weekly received-payment questions and explicit identifier explanations also bypass Ollama. Incoming history uses
+an opt-in Blockscout source and a separate background cache; unknown identifiers are inspected locally without a
+lookup or storage. See [received payments and identifiers](docs/agent/README.md) for configuration and limitations.
+With chat enabled, other contextual wallet questions select verified facts from the same local cache. Mixed
+display/payment requests still use the payment pipeline. A wallet-information reply cannot approve a payment.
+
+The current agent–wallet interface is [the shared v2 protocol](packages/protocol/README.md), including recipient
+arrays, fixed UTC schedules, execution fees and cancellation by plan ID. It supports ENS group autopays with up to
+50 selected members; confirmation fixes the recipient list and amounts. Offline contract tests cover this flow;
+live results from before the migration do not validate it. The v1 specification below remains historical context.
+
+### CRE autopay workflow (local, read-only)
+
+The local runner reads the root `.env` and needs an authenticated CRE CLI (`cre login`). Set `CRE_CLI_PATH` to the
+executable, or install it at `.local/bin/cre` (`.local/bin/cre.exe` on Windows).
+
+```sh
+npm run cre:build                 # build the workflow and record source/WASM hashes
+npm run cre:simulate              # build and qualify native providers on the three testnets
+npm run cre:simulate -- --no-build # reuse the existing artifact
+npm run cre:run                   # evaluate registered plans once
+npm run cre:watch                 # evaluate every 30 seconds
+```
+
+These commands never sign or broadcast transactions. The runner refuses a wallet config with a non-null
+`network.socks_proxy` (`CRE_LOCAL_PROXY_UNSUPPORTED`), because local CRE cannot use Tor. Runner state lives in
+`.local/cre-runner/`; keep it private because it can hold signed delegation calldata. A loopback listener on port
+8791 prevents concurrent runners.
+
+The optional native integration test needs the CRE CLI and login:
+
+```sh
+FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native.test.ts
+```
+
+It is skipped unless `FLEX_NATIVE_CRE=1` is set.
 
 ---
 

@@ -30,20 +30,27 @@ function ensAllChains(h: Harness, name: string, a: `0x${string}`): void {
 export function registerA17toA32(): void {
   describe('A-17 … A-32', () => {
     it('A-17: "what\'s my balance" -> balance answer, no intents', async () => {
-      const h = await harness('A-17');
+      const h = await harness('none');
       const r = await h.say("what's my balance");
       expect(r.body.state).toBe('done');
-      expect(h.llm.names()).toEqual(['amounts', 'request_type']);
+      expect(h.llm.names()).toEqual([]);
+      expect(h.rpc.calls).toEqual([]);
+      expect(r.body.reply_source).toBe('local');
       expect(r.body.summary).toBeUndefined();
       expect(r.body.messages).toHaveLength(1);
-      // §13.2, allowed_chain_ids order; spendable = balance minus the gas reserve (§10.1).
+      // Local display reads exact cached balances in allowed_chain_ids order.
       const t = r.body.messages[0]!.text.split('\n');
-      expect(t[0]).toBe('Your balances:');
-      expect(t[1]).toMatch(/^- Sepolia: 0\.1 ETH \(0\.09 spendable.*\), 0 USDC$/);
-      expect(t[2]).toMatch(/^- Base Sepolia: 0\.1 ETH \(0\.098 spendable.*\), 80 USDC$/);
-      expect(t[3]).toMatch(/^- Arbitrum Sepolia: 0\.1 ETH \(0\.098 spendable.*\), 60 USDC$/);
-      expect(t[4]).toBe('Total: 0.3 ETH, 140 USDC');
-      expect(t).toHaveLength(5);
+      expect(t).toEqual([
+        'Sepolia: 0.1 ETH balance.',
+        'Sepolia: 0 USDC balance.',
+        'Base Sepolia: 0.1 ETH balance.',
+        'Base Sepolia: 80 USDC balance.',
+        'Arbitrum Sepolia: 0.1 ETH balance.',
+        'Arbitrum Sepolia: 60 USDC balance.',
+        'Total balance across your allowed test networks: 0.3 ETH.',
+        'Total balance across your allowed test networks: 140 USDC.',
+      ]);
+      expect(h.count('db8_prompts')).toBe(0);
       noSubmission(h);
       expect(spend(h)).toEqual([]);
       await h.finish();

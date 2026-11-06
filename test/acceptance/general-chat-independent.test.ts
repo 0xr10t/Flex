@@ -122,8 +122,8 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
       expect(h.exec.submissions).toHaveLength(0);
       await h.confirm(summary, 'yes');
       expect(h.envelope.intents[0]).toMatchObject({
-recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
-});
+        recipients: [{ recipient: MIHIR, amount: { value: '10' } }],
+      });
     },
   );
 
@@ -157,8 +157,8 @@ recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
     expect(h.llm.recorded).toHaveLength(calls);
     expect(h.exec.submissions).toHaveLength(1);
     expect(h.envelope.intents[0]).toMatchObject({
-recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
-});
+      recipients: [{ recipient: MIHIR, amount: { value: '10' } }],
+    });
   });
 
   it.each(['chat_route', 'chat'] as const)(
@@ -484,9 +484,9 @@ recipients: [{ recipient: MIHIR, amount: { value: '10' } }]
     expect(h.exec.submissions).toHaveLength(0);
     await h.confirm(corrected, 'yes');
     expect(h.envelope.intents[0]).toMatchObject({
-chain_id: 84532,
-token: 'USDC',
-recipients: [{ recipient: MIHIR, amount: { value: '20' } }]
-});
+      chain_id: 84532,
+      token: 'USDC',
+      recipients: [{ recipient: MIHIR, amount: { value: '20' } }],
+    });
   });
 });

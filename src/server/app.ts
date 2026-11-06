@@ -6,6 +6,9 @@
 // (src/index.ts) from the validated config. Owner: Lane A.
 
 import { timingSafeEqual } from 'node:crypto';
+import { dirname, join } from 'node:path';
+import { readCreStatus } from './cre-status.js';
+import { expandHome } from '../config/load.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { DateTime, IANAZone } from 'luxon';
 import type { MessageInput } from '../contracts/types.js';
@@ -30,7 +33,7 @@ import { validateLimits } from './settings.js';
 
 /** §14.1 "Max body 20 MB". */
 export const MAX_BODY_BYTES = 20 * 1024 * 1024;
-export const REPORTS_PATH = '/v1/execution/reports';
+const REPORTS_PATH = '/v1/execution/reports';
 
 const HTTP_ERROR_NAME: Readonly<Record<number, string>> = {
   400: 'Bad Request',
@@ -164,6 +167,29 @@ export function createApp(deps: AppDeps): FastifyInstance {
   });
 
   // ── execution reports (§14.3) ──
+  const creStatus = () => readCreStatus(join(dirname(expandHome(deps.config.db.path)), 'cre-runner/status.json'));
+  app.get('/v1/cre/status', async (_request, reply) => {
+    const { results: _results, ...status } = creStatus();
+    return reply.header('cache-control', 'no-store').send(status);
+  });
+  app.get<{ Params: { id: string } }>('/v1/autopays/:id', async (request, reply) => {
+    const plan = deps.repos.db7.get(request.params.id);
+    if (!plan) return httpError(reply, 404);
+    const { results, ...status } = creStatus();
+    const observation = results.find(
+      (r) =>
+        r.chainId === plan.chain_id &&
+        r.executor.toLowerCase() === plan.executor_address?.toLowerCase() &&
+        r.planId.toLowerCase() === plan.plan_id?.toLowerCase(),
+    );
+    return reply.header('cache-control', 'no-store').send({
+      autopay_id: plan.autopay_id,
+      status: plan.status,
+      chain_id: plan.chain_id,
+      plan_id: plan.plan_id ?? null,
+      cre: { ...status, observation: plan.status === 'active' ? (observation ?? null) : null },
+    });
+  });
   app.post(REPORTS_PATH, async (request, reply) => {
     const body = request.body;
     if (!validateReport(body)) return badRequest(reply);

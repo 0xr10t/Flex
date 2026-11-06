@@ -2,7 +2,7 @@
   "name": "flex-wallet",
   "version": "0.1.0",
   "private": true,
-  "description": "Execution layer of the Wallet Access Layer (docs/spec/AGENT_SPEC_v1.1.md section 14.2, Appendix A).",
+  "description": "Execution layer of the Wallet Access Layer: checks, signs and sends the plans the agent hands off.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -19,16 +19,14 @@
     "pretest:chain": "npm --prefix ../packages/protocol run build"
   },
   "dependencies": {
+    "@flex/protocol": "file:../packages/protocol",
     "@metamask/smart-accounts-kit": "2.0.0",
     "@napi-rs/keyring": "2.1.2",
     "ajv": "8.20.0",
-    "ajv-formats": "3.0.1",
     "better-sqlite3-multiple-ciphers": "13.0.3",
     "fastify": "5.12.8",
     "socks-proxy-agent": "8.0.5",
-    "viem": "2.57.16",
-    "zod": "4.6.7",
-    "@flex/protocol": "file:../packages/protocol"
+    "viem": "2.57.16"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.6.1",

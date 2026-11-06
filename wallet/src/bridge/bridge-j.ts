@@ -25,8 +25,8 @@ import { asUpgraded, type Check } from '../guard/check.js';
 import { ETH, decodeCall, decodeExecuteBatch, describeCall, movementsOfCalls, type Movement } from '../guard/decode.js';
 import { encodeExecuteBatch } from '../payments/payment-i.js';
 import { finished, type HandlerContext, type StepHandler } from '../runner/handler.js';
-import { CCIP } from '../schemas/bridge.v2.js';
-import type { BridgeJ, ChainId } from '../schemas/envelope.js';
+import { CCIP } from '@flex/protocol/schemas/bridge.v2';
+import type { BridgeJ, ChainId } from '@flex/protocol/schemas/envelope';
 import { CCIP_V2_EVENTS } from './ccip-v2-abi.js';
 import { decodeTokenMessage } from './message-v1.js';
 

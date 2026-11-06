@@ -32,7 +32,11 @@ import {
 import { amountOf, asI, asJ, asK, chip, iPay, kSetup, run, runOk, text, usdc } from './s9-helpers.js';
 
 // The rounding regressions below explicitly use the legacy, configurable 2% buffer.
-const ctxD: typeof defaultCtxD = (...args) => { const ctx = defaultCtxD(...args); setLimits(ctx, { bridge_buffer_pct: '2' }); return ctx; };
+const ctxD: typeof defaultCtxD = (...args) => {
+  const ctx = defaultCtxD(...args);
+  setLimits(ctx, { bridge_buffer_pct: '2' });
+  return ctx;
+};
 
 describe('R4-F1 / R1-F2 pairing consent and independent attempts', () => {
   function setup() {

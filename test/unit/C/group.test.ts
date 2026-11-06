@@ -48,7 +48,12 @@ function seedIitr(ctx: ReturnType<typeof groupCtx>['ctx']) {
 
 describe('C-446 §9.6 group sends (S6)', () => {
   it('keeps untrusted group provenance on every selected member after ENS resolution', async () => {
-    const { ctx, d } = groupCtx({ parent: 'iitr.eth', marker: '@iitr.eth', chain: true, extra: { seedExampleContacts: false } });
+    const { ctx, d } = groupCtx({
+      parent: 'iitr.eth',
+      marker: '@iitr.eth',
+      chain: true,
+      extra: { seedExampleContacts: false },
+    });
     ctx.req.spans[0]!.source = 'untrusted';
     seedIitr(ctx);
     await d.start();

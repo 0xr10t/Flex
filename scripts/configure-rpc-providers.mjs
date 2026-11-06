@@ -6,7 +6,7 @@ import { parseEnv } from 'node:util';
 import process from 'node:process';
 import console from 'node:console';
 import { protectPrivateFile } from '../dist/src/util/private-file.js';
-import { agreeSimulation, checkAnchor, parseSimulation } from '../packages/protocol/dist/simulation.js';
+import { agreeSimulation, checkAnchor, parseSimulation } from '@flex/protocol/simulation';
 
 export const networks = [
   { id: 11155111, name: 'SEPOLIA', alchemy: 'eth-sepolia', infura: 'sepolia', publicnode: 'ethereum-sepolia-rpc' },

@@ -68,7 +68,10 @@ export class FakeExecution implements ExecutionClient {
   fallback: SubmitResult = { status: 'accepted' };
   async submit(envelope: HandoffEnvelope, idempotencyKey: string): Promise<SubmitResult> {
     this.submissions.push({ envelope: structuredClone(envelope), idempotencyKey });
-    const checked = checkEnvelope(envelope, { nowMs: Date.parse(envelope.created_at), delegationHashes: placeholderHashes(envelope) });
+    const checked = checkEnvelope(envelope, {
+      nowMs: Date.parse(envelope.created_at),
+      delegationHashes: placeholderHashes(envelope),
+    });
     if (!checked.ok) return { status: 'rejected', message: checked.message };
     return this.responses.shift() ?? this.fallback;
   }

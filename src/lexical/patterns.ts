@@ -4,6 +4,8 @@
 import {
   BACK_REFERENCE_WORDS,
   CANCEL_WORDS,
+  CLAUSE_SPLIT_CHARS,
+  CLAUSE_SPLIT_WORDS,
   DISTRIBUTIVE_WORDS,
   FIAT_OTHER_WORDS,
   FIAT_USD_WORDS,
@@ -35,7 +37,7 @@ const DOTTED = '[a-z0-9-]+(?:\\.[a-z0-9-]+)+';
 /**
  * §8.3 rule 4 / §6.2 group markers. Word markers ("everyone under X", "everyone in X", "all of X",
  * "all members of X") take the following dotted name as the parent; "everyone with @X", "everyone at @X" and a
- * bare "@X" (not part of an email) take the domain after "@". See spec-questions/B.md SQB-05.
+ * bare "@X" (not part of an email) take the domain after "@". See SQB-05.
  */
 export const GROUP_WORD_MARKER_RE = new RegExp(
   `(?<![A-Za-z0-9_])(?:everyone\\s+under|everyone\\s+in|all\\s+members\\s+of|all\\s+of)\\s+(${DOTTED})`,
@@ -48,12 +50,9 @@ export const GROUP_MEMBERS_MARKER_RE = new RegExp(
   'gi',
 );
 
-/** Mainnet words: §6.2 (whole words). */
-export { MAINNET_WORDS } from '../contracts/static-tables.js';
-
 /**
  * §8.3 rule 6 names `polygon` and `solana` as examples of "chain-like word after on/via that is not an alias".
- * The spec lists no other names ("…"); see spec-questions/B.md SQB-03.
+ * The spec lists no other names ("…"); see SQB-03.
  */
 export const UNSUPPORTED_CHAIN_EXAMPLES: readonly string[] = ['polygon', 'solana'];
 
@@ -104,7 +103,7 @@ export const RECURRENCE_RES: readonly RegExp[] = [
 
 /**
  * §6.2 cancel words `stop`, `cancel`, `end`, `terminate`, `turn off`, matched as whole words including their
- * inflections ("stopping", "cancelled", "turned off"); see spec-questions/B.md SQB-07.
+ * inflections ("stopping", "cancelled", "turned off"); see SQB-07.
  */
 export const CANCEL_RE = new RegExp(
   `(?<![A-Za-z0-9_])(?:${CANCEL_WORDS.filter((w) => !w.includes(' '))
@@ -131,8 +130,8 @@ export const ORDINAL_AFTER_RE = /^(?:st|nd|rd|th)(?![A-Za-z0-9_])/i;
 export const COUNT_AFTER_RE = /^\s*(?:(?:time|week|day|month|payment)s?|x)(?![A-Za-z0-9_])/i;
 
 /** Clause separators (§8.3 rule 1). */
-export const CLAUSE_CHAR_RE = /[.!?;\n,]/g;
-export const CLAUSE_WORD_RE = /(?<![A-Za-z0-9_])(?:and|then|also|plus)(?![A-Za-z0-9_])/gi;
+export const CLAUSE_CHAR_RE = new RegExp(`[${CLAUSE_SPLIT_CHARS.map(escapeRe).join('')}]`, 'g');
+export const CLAUSE_WORD_RE = wordRe(CLAUSE_SPLIT_WORDS);
 
 /**
  * Plain numbers (protected from clause splitting: "0.5", "1,000", "10,00,000"). Only separators *inside* a number

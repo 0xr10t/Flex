@@ -166,33 +166,69 @@ describe('shared agent ↔ wallet intent contract', () => {
     const executions = executionsOf(verifiedIntent(env, k.step));
     expect(executions).toHaveLength(3);
     expect(executions.every((execution) => execution.target === k.token_address && execution.value === 0n)).toBe(true);
-    expect(executions.map((execution) => decodeFunctionData({ abi: erc20Abi, data: execution.callData }).args)).toEqual([
-      [alice, 10_000_000n], [getAddress(MIHIR), 10_000_000n], [getAddress(k.fee.to), 50_000n],
-    ]);
-    store.finishStep(env.request_id, k.step, {
-      status: 'executed', tx_hash: TX, executed_at: h.nowIso,
-      report: { autopay: { autopay_id: k.autopay_id, plan_id: planId(k.step), executor_address: EXECUTOR, chain_id: BASE, token: 'USDC' } },
-    }, h.nowIso, h.clock.toMillis());
+    expect(executions.map((execution) => decodeFunctionData({ abi: erc20Abi, data: execution.callData }).args)).toEqual(
+      [
+        [alice, 10_000_000n],
+        [getAddress(MIHIR), 10_000_000n],
+        [getAddress(k.fee.to), 50_000n],
+      ],
+    );
+    store.finishStep(
+      env.request_id,
+      k.step,
+      {
+        status: 'executed',
+        tx_hash: TX,
+        executed_at: h.nowIso,
+        report: {
+          autopay: {
+            autopay_id: k.autopay_id,
+            plan_id: planId(k.step),
+            executor_address: EXECUTOR,
+            chain_id: BASE,
+            token: 'USDC',
+          },
+        },
+      },
+      h.nowIso,
+      h.clock.toMillis(),
+    );
     await sender.kick();
     const rows = h.repos.db7.findByRecipient(getAddress(MIHIR), 'active');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ amount_per_payment: '20', fee: '0.05' });
     expect(JSON.parse(rows[0]!.recipients_json!)).toEqual(k.recipients);
     const report: AutopayPaymentReport = {
-      kind: 'autopay_payment', request_id: env.request_id, status: 'executed', tx_hash: TX, executed_at: h.nowIso,
-      autopay: { autopay_id: k.autopay_id, plan_id: planId(k.step), executor_address: EXECUTOR,
-        chain_id: BASE, token: 'USDC', slot: 0, status: 'active', amount: '20', fee: '0.05' },
+      kind: 'autopay_payment',
+      request_id: env.request_id,
+      status: 'executed',
+      tx_hash: TX,
+      executed_at: h.nowIso,
+      autopay: {
+        autopay_id: k.autopay_id,
+        plan_id: planId(k.step),
+        executor_address: EXECUTOR,
+        chain_id: BASE,
+        token: 'USDC',
+        slot: 0,
+        status: 'active',
+        amount: '20',
+        fee: '0.05',
+      },
     };
     expect(await h.report({ ...report, autopay: { ...report.autopay, amount: '10' } })).toBe(400);
     expect(await h.report(report)).toBe(204);
     expect(await h.report(report)).toBe(204);
     expect(h.repos.db6.listByRequest(env.request_id).map((r) => [r.kind, r.amount])).toEqual([
-      ['autopay_payment', '20'], ['autopay_fee', '0.05'],
+      ['autopay_payment', '20'],
+      ['autopay_fee', '0.05'],
     ]);
     const stopping = await h.say('Stop paying Mihir');
     expect(stopping.body.summary?.text).toContain('This cancels the whole plan for all its recipients');
     const cancelled = await confirm(h, stopping);
-    expect(cancelled.intents).toEqual([{ intent_id: 'l', step: 0, autopay_id: k.autopay_id, chain_id: BASE, plan_id: planId(k.step) }]);
+    expect(cancelled.intents).toEqual([
+      { intent_id: 'l', step: 0, autopay_id: k.autopay_id, chain_id: BASE, plan_id: planId(k.step) },
+    ]);
   });
 
   it('hands off a real pipeline payment only after confirmation; retry is idempotent and altered content conflicts', async () => {

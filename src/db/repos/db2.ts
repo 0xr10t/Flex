@@ -5,13 +5,9 @@
 
 import type { AddContactResult, Db2AddressBook, Db2Row } from '../../contracts/repos.js';
 import type { Address, ChainId } from '../../contracts/types.js';
+import { nameKey } from '../../lexical/text.js';
 import type { Database } from '../database.js';
 import type { RepoOptions } from './common.js';
-
-/** §9.1 step 1: trim, lowercase, collapse internal whitespace. */
-export function nameKey(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
 
 interface Raw {
   id: number;

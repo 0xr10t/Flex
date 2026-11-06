@@ -42,7 +42,14 @@ function executed(envelope: HandoffEnvelope, at: string): ExecutionReport {
       ? {
           autopay: {
             autopay_id: intent.autopay_id,
-            ...(intent.intent_id === 'k' ? { plan_id: planIdFor(intent.autopay_id), executor_address: DELEGATE, chain_id: intent.chain_id, token: intent.token } : {}),
+            ...(intent.intent_id === 'k'
+              ? {
+                  plan_id: planIdFor(intent.autopay_id),
+                  executor_address: DELEGATE,
+                  chain_id: intent.chain_id,
+                  token: intent.token,
+                }
+              : {}),
           },
         }
       : {}),
@@ -403,6 +410,10 @@ describe('G01 independent prefix and suffix chain binding', () => {
   ] as Array<[string, ChainId[]]>)('accepts faithful explicit chains in %s', async (text, chains) => {
     const h = make(chainFixture(chains));
     expect((await h.sayAndConfirm(text)).body.state).toBe('done');
-    expect(h.envelope.intents.flatMap((intent) => intent.intent_id === 'i' ? intent.recipients.map(() => intent.chain_id) : [])).toEqual(chains);
+    expect(
+      h.envelope.intents.flatMap((intent) =>
+        intent.intent_id === 'i' ? intent.recipients.map(() => intent.chain_id) : [],
+      ),
+    ).toEqual(chains);
   });
 });

@@ -3,7 +3,7 @@
 // step stops: this check has no fallback. It reuses nothing from the code that built the batch.
 
 import { UPGRADED_CODE } from '../chain/addresses.js';
-import { SimulationUnavailableError, type ChainGateway, type SimBlock, type SimCallResult } from '../chain/gateway.js';
+import { type ChainGateway, type SimBlock, type SimCallResult } from '../chain/gateway.js';
 import { eventsOfLogs, movementsOfLogs, type Movement, type SeenEvent } from './decode.js';
 import type { Hex } from 'viem';
 
@@ -98,5 +98,3 @@ export async function runCheck(gateway: ChainGateway, check: Check, wallet: Hex)
   const [decoded, results] = await Promise.all([Promise.resolve().then(check.decode), gateway.simulate(check.blocks)]);
   return judge(check, decoded, results, wallet);
 }
-
-export { SimulationUnavailableError };

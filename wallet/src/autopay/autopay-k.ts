@@ -26,11 +26,11 @@ import {
   movementsOfCalls,
   type Movement,
 } from '../guard/decode.js';
-import { placeholderHashes, toPlan } from '../mapping/to-plan.js';
+import { placeholderHashes, toPlan } from '@flex/protocol/mapping/to-plan';
 import { encodeExecuteBatch, summaryOf } from '../payments/payment-i.js';
 import { finished, type HandlerContext, type StepHandler, type StepOutcome } from '../runner/handler.js';
-import type { AutopayK, HandoffEnvelope } from '../schemas/envelope.js';
-import type { Intent } from '../schemas/intent.v2.js';
+import type { AutopayK, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
+import type { Intent } from '@flex/protocol/schemas/intent.v2';
 import type { AutopayRow } from '../store/store.js';
 import { EXECUTOR_ABI } from './abi.js';
 import {
@@ -53,7 +53,7 @@ export function verifiedIntent(envelope: HandoffEnvelope, step: number): Intent 
   return found?.intent as unknown as Intent;
 }
 
-export const runTotal = (intent: AutopayK): string =>
+const runTotal = (intent: AutopayK): string =>
   formatUnits(
     intent.recipients.reduce((sum, r) => sum + BigInt(r.amount.base_units), 0n),
     DECIMALS[intent.token],
@@ -82,7 +82,13 @@ export async function readPlan(ctx: HandlerContext, executor: Hex, planId: Hex) 
 }
 
 const autopayReport = (intent: AutopayK, planId: Hex, executor: Hex) => ({
-  autopay: { autopay_id: intent.autopay_id, plan_id: planId, executor_address: executor, chain_id: intent.chain_id, token: intent.token },
+  autopay: {
+    autopay_id: intent.autopay_id,
+    plan_id: planId,
+    executor_address: executor,
+    chain_id: intent.chain_id,
+    token: intent.token,
+  },
 });
 
 /** What a run must move out of the wallet: each person, then the fee. */

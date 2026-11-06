@@ -8,6 +8,7 @@ import type { ParseAmountText, ParsedAmount } from '../contracts/step.js';
 import { FIAT_OTHER_WORDS, FIAT_USD_WORDS, TOKENS } from '../contracts/static-tables.js';
 import { TOKEN_DECIMALS, type TokenWordKind } from '../contracts/types.js';
 import { fractionDigits, fromBaseUnits, toBaseUnits } from '../contracts/money.js';
+import { escapeRe } from '../lexical/text.js';
 
 /** Internal scale used before the token precision check (more than any token's decimals). */
 const SCALE = 36;
@@ -66,10 +67,6 @@ const CURRENCY_WORDS: readonly string[] = [
 ].sort((a, b) => b.length - a.length);
 
 const CURRENCY_SYMBOLS = new Set(['$', '₹', '€', '£']);
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 const CURRENCY_WORD_RE = new RegExp(
   `(^|[^a-z])(${CURRENCY_WORDS.filter((w) => !CURRENCY_SYMBOLS.has(w))

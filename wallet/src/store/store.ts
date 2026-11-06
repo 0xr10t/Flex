@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import BetterSqlite3 from 'better-sqlite3-multiple-ciphers';
 import type { Database } from 'better-sqlite3';
-import type { HandoffEnvelope, Hex } from '../schemas/envelope.js';
+import type { HandoffEnvelope, Hex } from '@flex/protocol/schemas/envelope';
 import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
 import type { ChainId, Token, ExecutionReport, IntentResultReport } from '@flex/protocol';
 
@@ -433,7 +433,13 @@ export class Store {
   }
 
   /** Queues a report unless one with this key exists. So a rescan of the chain can't report a run twice. */
-  queueReport(requestId: string, step: number | null, dedupeKey: string, body: ExecutionReport, nowMs: number): boolean {
+  queueReport(
+    requestId: string,
+    step: number | null,
+    dedupeKey: string,
+    body: ExecutionReport,
+    nowMs: number,
+  ): boolean {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO reports (request_id, step, dedupe_key, body_json, status, next_attempt_at)

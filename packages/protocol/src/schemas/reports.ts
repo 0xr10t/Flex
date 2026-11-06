@@ -57,28 +57,60 @@ const time = { type: 'string', format: 'date-time' };
 const request = { type: 'string', pattern: '^req_[0-9a-f]{12}$' };
 const identity = {
   autopay_id: { type: 'string', pattern: '^ap_[0-9a-f]{12}$' },
-  plan_id: hash, executor_address: address, chain_id: { enum: [11155111, 84532, 421614] }, token: { enum: ['USDC', 'ETH'] },
+  plan_id: hash,
+  executor_address: address,
+  chain_id: { enum: [11155111, 84532, 421614] },
+  token: { enum: ['USDC', 'ETH'] },
 };
 const object = (properties: Record<string, unknown>, required: string[] = Object.keys(properties)) => ({
-  type: 'object', additionalProperties: false, required, properties,
+  type: 'object',
+  additionalProperties: false,
+  required,
+  properties,
 });
 
 export const executionReportSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'flex/execution-report/v2',
   oneOf: [
-    { ...object({
-      kind: { const: 'intent_result' }, request_id: request, step: { type: 'integer', minimum: 0, maximum: 15 },
-      status: { enum: ['executed', 'failed'] }, tx_hash: hash, executed_at: time,
-      autopay: object(identity, ['autopay_id']), bridge_fee_eth: decimal,
-    }, ['kind', 'request_id', 'step', 'status']),
-      allOf: [{ if: { properties: { status: { const: 'executed' } } }, then: { properties: { executed_at: time }, required: ['executed_at'] } }],
+    {
+      ...object(
+        {
+          kind: { const: 'intent_result' },
+          request_id: request,
+          step: { type: 'integer', minimum: 0, maximum: 15 },
+          status: { enum: ['executed', 'failed'] },
+          tx_hash: hash,
+          executed_at: time,
+          autopay: object(identity, ['autopay_id']),
+          bridge_fee_eth: decimal,
+        },
+        ['kind', 'request_id', 'step', 'status'],
+      ),
+      allOf: [
+        {
+          if: { properties: { status: { const: 'executed' } } },
+          then: { properties: { executed_at: time }, required: ['executed_at'] },
+        },
+      ],
     },
     object({
-      kind: { const: 'autopay_payment' }, request_id: request, status: { const: 'executed' }, tx_hash: hash, executed_at: time,
-      autopay: object({ ...identity, slot: { type: 'integer', minimum: 0, maximum: 519 }, status: { const: 'active' }, amount: decimal, fee: decimal }),
+      kind: { const: 'autopay_payment' },
+      request_id: request,
+      status: { const: 'executed' },
+      tx_hash: hash,
+      executed_at: time,
+      autopay: object({
+        ...identity,
+        slot: { type: 'integer', minimum: 0, maximum: 519 },
+        status: { const: 'active' },
+        amount: decimal,
+        fee: decimal,
+      }),
     }),
-    object({ kind: { const: 'autopay_status' }, request_id: request,
+    object({
+      kind: { const: 'autopay_status' },
+      request_id: request,
       autopay: object({ ...identity, status: { enum: ['ended', 'cancelled', 'failed'] } }),
     }),
   ],

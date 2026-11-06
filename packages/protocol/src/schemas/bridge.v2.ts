@@ -12,7 +12,7 @@ export const CCIP: Record<(typeof CHAINS)[number], { selector: bigint; router: `
 };
 export const MAX_BRIDGES_PER_PLAN = 3; // README max_bridges_per_request
 export const MAX_FEE_ETH = '0.01'; // hard ceiling for one CCIP fee paid in native ETH
-// 3 bridges + 6 one-time payments (3 chains x 2 tokens) + 7 legs of one autopay. Was 8: ARCHITECTURE_CHANGES.md C-3.
+// 3 bridges + 6 one-time payments (3 chains x 2 tokens) + 7 legs of one autopay. Was 8 (C-3).
 export const MAX_STEPS_PER_PLAN = 16;
 
 const addr = z
@@ -73,77 +73,78 @@ export const CancelSchema = z
 export type Cancel = z.infer<typeof CancelSchema>;
 
 /** Ordered steps, bridges first. A standalone self-transfer has no dependent payments. */
-export const planSchemaAt = (now: () => number = Date.now) => z
-  .object({
-    requestId: z.string().regex(/^req_[a-f0-9]{12}$/),
-    steps: z
-      .array(
-        z.discriminatedUnion('kind', [
-          z
-            .object({
-              step: z.number().int().min(0),
-              kind: z.literal('bridge'),
-              funds: z.array(z.number().int().min(0)),
-              intent: BridgeSchema,
-            })
-            .strict(),
-          z
-            .object({
-              step: z.number().int().min(0),
-              kind: z.literal('payment'),
-              dependsOn: z.array(z.number().int().min(0)),
-              intent: intentSchemaAt(now),
-            })
-            .strict(),
-          z.object({ step: z.number().int().min(0), kind: z.literal('cancel'), intent: CancelSchema }).strict(),
-        ]),
-      )
-      .min(1)
-      .max(MAX_STEPS_PER_PLAN),
-  })
-  .strict()
-  .superRefine((p, ctx) => {
-    const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message });
-    const byStep = new Map(p.steps.map((s) => [s.step, s]));
-    p.steps.forEach((s, k) => s.step !== k && bad(['steps', k, 'step'], 'steps must be numbered 0..n-1 in order'));
-    const bridges = p.steps.filter((s) => s.kind === 'bridge');
-    if (bridges.length > MAX_BRIDGES_PER_PLAN) bad(['steps'], `more than ${MAX_BRIDGES_PER_PLAN} bridges`);
-    let seenPayment = false;
-    const owner = p.steps[0]?.intent.from.toLowerCase();
-    p.steps.forEach((s, k) => {
-      if (s.intent.from.toLowerCase() !== owner)
-        bad(['steps', k, 'intent', 'from'], 'all steps must be from the same account');
-      if (s.kind !== 'bridge') {
-        seenPayment = true;
-        return;
-      }
-      if (seenPayment) bad(['steps', k], 'bridges must come before payments');
-      for (const f of s.funds) {
-        const target = byStep.get(f);
-        if (!target || target.kind !== 'payment') bad(['steps', k, 'funds'], `step ${f} is not a payment`);
-        else if (target.intent.chainId !== s.intent.destChainId)
-          bad(
-            ['steps', k, 'funds'],
-            `bridge lands on ${s.intent.destChainId} but step ${f} pays on ${target.intent.chainId}`,
-          );
-        else if (!target.dependsOn.includes(s.step))
-          bad(['steps', f, 'dependsOn'], `payment does not wait for bridge ${s.step}`);
-      }
+export const planSchemaAt = (now: () => number = Date.now) =>
+  z
+    .object({
+      requestId: z.string().regex(/^req_[a-f0-9]{12}$/),
+      steps: z
+        .array(
+          z.discriminatedUnion('kind', [
+            z
+              .object({
+                step: z.number().int().min(0),
+                kind: z.literal('bridge'),
+                funds: z.array(z.number().int().min(0)),
+                intent: BridgeSchema,
+              })
+              .strict(),
+            z
+              .object({
+                step: z.number().int().min(0),
+                kind: z.literal('payment'),
+                dependsOn: z.array(z.number().int().min(0)),
+                intent: intentSchemaAt(now),
+              })
+              .strict(),
+            z.object({ step: z.number().int().min(0), kind: z.literal('cancel'), intent: CancelSchema }).strict(),
+          ]),
+        )
+        .min(1)
+        .max(MAX_STEPS_PER_PLAN),
+    })
+    .strict()
+    .superRefine((p, ctx) => {
+      const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message });
+      const byStep = new Map(p.steps.map((s) => [s.step, s]));
+      p.steps.forEach((s, k) => s.step !== k && bad(['steps', k, 'step'], 'steps must be numbered 0..n-1 in order'));
+      const bridges = p.steps.filter((s) => s.kind === 'bridge');
+      if (bridges.length > MAX_BRIDGES_PER_PLAN) bad(['steps'], `more than ${MAX_BRIDGES_PER_PLAN} bridges`);
+      let seenPayment = false;
+      const owner = p.steps[0]?.intent.from.toLowerCase();
+      p.steps.forEach((s, k) => {
+        if (s.intent.from.toLowerCase() !== owner)
+          bad(['steps', k, 'intent', 'from'], 'all steps must be from the same account');
+        if (s.kind !== 'bridge') {
+          seenPayment = true;
+          return;
+        }
+        if (seenPayment) bad(['steps', k], 'bridges must come before payments');
+        for (const f of s.funds) {
+          const target = byStep.get(f);
+          if (!target || target.kind !== 'payment') bad(['steps', k, 'funds'], `step ${f} is not a payment`);
+          else if (target.intent.chainId !== s.intent.destChainId)
+            bad(
+              ['steps', k, 'funds'],
+              `bridge lands on ${s.intent.destChainId} but step ${f} pays on ${target.intent.chainId}`,
+            );
+          else if (!target.dependsOn.includes(s.step))
+            bad(['steps', f, 'dependsOn'], `payment does not wait for bridge ${s.step}`);
+        }
+      });
+      p.steps.forEach((s, k) => {
+        if (s.kind !== 'payment') return;
+        for (const d of s.dependsOn) {
+          const src = byStep.get(d);
+          if (!src || src.kind !== 'bridge' || d >= s.step)
+            bad(['steps', k, 'dependsOn'], `step ${d} is not an earlier bridge`);
+          else if (!src.funds.includes(s.step))
+            bad(['steps', k, 'dependsOn'], `bridge ${d} does not list this payment in funds`);
+        }
+        // v1: a bridged payment must be paid in the bridged token (USDC on the destination)
+        if (s.dependsOn.length && s.intent.asset.token?.toLowerCase() !== USDC[s.intent.chainId].toLowerCase())
+          bad(['steps', k, 'intent', 'asset'], 'bridged funds are USDC; the payment must be USDC');
+        // a recurring payment fed by a bridge must be prefunded once, not bridged per run (architecture doc §cross-chain autopay)
+      });
     });
-    p.steps.forEach((s, k) => {
-      if (s.kind !== 'payment') return;
-      for (const d of s.dependsOn) {
-        const src = byStep.get(d);
-        if (!src || src.kind !== 'bridge' || d >= s.step)
-          bad(['steps', k, 'dependsOn'], `step ${d} is not an earlier bridge`);
-        else if (!src.funds.includes(s.step))
-          bad(['steps', k, 'dependsOn'], `bridge ${d} does not list this payment in funds`);
-      }
-      // v1: a bridged payment must be paid in the bridged token (USDC on the destination)
-      if (s.dependsOn.length && s.intent.asset.token?.toLowerCase() !== USDC[s.intent.chainId].toLowerCase())
-        bad(['steps', k, 'intent', 'asset'], 'bridged funds are USDC; the payment must be USDC');
-      // a recurring payment fed by a bridge must be prefunded once, not bridged per run (architecture doc §cross-chain autopay)
-    });
-  });
 export const PlanSchema = planSchemaAt();
 export type Plan = z.infer<typeof PlanSchema>;

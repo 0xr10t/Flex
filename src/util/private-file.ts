@@ -31,22 +31,27 @@ if (-not $own) { exit 5 }
 `;
 
 function windowsAcl(path: string, action: 'protect' | 'check'): void {
-  const executable = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  execFileSync(executable, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(WINDOWS_ACL, 'utf16le').toString('base64')], {
-    env: { ...process.env, FLEX_PRIVATE_PATH: path, FLEX_PRIVATE_ACTION: action },
-    stdio: 'ignore', windowsHide: true, timeout: 15_000,
-  });
+  const executable = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+  execFileSync(
+    executable,
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(WINDOWS_ACL, 'utf16le').toString('base64')],
+    {
+      env: { ...process.env, FLEX_PRIVATE_PATH: path, FLEX_PRIVATE_ACTION: action },
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 15_000,
+    },
+  );
 }
 
 export function protectPrivateFile(path: string): void {
   if (!lstatSync(path).isFile()) throw new Error('private file must be a regular file');
   if (process.platform === 'win32') windowsAcl(path, 'protect');
   else chmodSync(path, 0o600);
-}
-
-export function assertPrivateFile(path: string): void {
-  const stat = lstatSync(path);
-  if (!stat.isFile()) throw new Error('private file must be a regular file');
-  if (process.platform === 'win32') windowsAcl(path, 'check');
-  else if ((stat.mode & 0o777) !== 0o600) throw new Error('private file must have mode 0600');
 }

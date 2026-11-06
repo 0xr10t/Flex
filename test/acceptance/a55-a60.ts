@@ -39,7 +39,17 @@ export function registerA55toA59(): void {
           status: 'executed',
           tx_hash: '0x' + 'ef'.repeat(32),
           executed_at: '2026-11-05T17:00:00Z',
-          autopay: { autopay_id: id, plan_id: planIdFor(id), executor_address: DELEGATE, slot: 0, status: 'active', amount: '5', fee: '0.05', chain_id: BASE, token: 'USDC' },
+          autopay: {
+            autopay_id: id,
+            plan_id: planIdFor(id),
+            executor_address: DELEGATE,
+            slot: 0,
+            status: 'active',
+            amount: '5',
+            fee: '0.05',
+            chain_id: BASE,
+            token: 'USDC',
+          },
         }),
       ).toBe(204);
       const r = await h.say('send 10 usdc to mihir');
@@ -93,14 +103,14 @@ export function registerA55toA59(): void {
       expectEnvelope(h, r.body.request_id, [
         usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('10'), recipient: MIHIR }),
         {
-intent_id: 'i',
-step: 1,
-depends_on: [],
-token: 'ETH',
-token_address: null,
-chain_id: BASE,
-recipients: [{ amount: eth('0.01'), recipient: MIHIR }]
-},
+          intent_id: 'i',
+          step: 1,
+          depends_on: [],
+          token: 'ETH',
+          token_address: null,
+          chain_id: BASE,
+          recipients: [{ amount: eth('0.01'), recipient: MIHIR }],
+        },
       ]);
       expect(lastHistory(h)).toHaveLength(2);
       expect(spend(h)).toEqual([

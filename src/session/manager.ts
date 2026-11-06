@@ -317,7 +317,7 @@ export class SessionManager {
         }
       }
       if (a !== null && a.req.state === 'HANDOFF_FAILED') {
-        // §17.3 has no row for a messages call while HANDOFF_FAILED (spec-questions/A.md SQ-A-03). Interim: cancel
+        // §17.3 has no row for a messages call while HANDOFF_FAILED (SQ-A-03). Interim: cancel
         // texts cancel it like the cancel endpoint; any other text → UNSUPPORTED_REQUEST (§0) and the request stays
         // HANDOFF_FAILED, so `confirm` yes can still retry it.
         if (isCancelText(input.text)) return ok(this.discard(s, a, this.cancelText(a)));
@@ -430,7 +430,11 @@ export class SessionManager {
     if (identifier !== null) return this.chatReply(s, s.active, identifier);
     const received = parseReceivedQuery(input.text);
     if (received !== null && detectSecret(input.text) === null && !extractUrls(input.text, []).links.length) {
-      return this.chatReply(s, s.active, renderReceivedQuery(received, { ...info, now: this.clock().setZone(s.timezone) }));
+      return this.chatReply(
+        s,
+        s.active,
+        renderReceivedQuery(received, { ...info, now: this.clock().setZone(s.timezone) }),
+      );
     }
     const query = parseWalletQuery(input.text);
     if (query === null || detectSecret(input.text) !== null || extractUrls(input.text, []).links.length) return null;

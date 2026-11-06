@@ -102,7 +102,10 @@ describe('§13.1 line templates', () => {
     const s = build(ctx, plan);
     expect(s.lines[1]).toBe(`2. Send 40 USDC to Aradhya (${ADDR_ARADHYA}) on Base Sepolia. After step 1.`);
     expect(s.lines[2]).toBe(`3. Send 20 USDC to Mihir (${ADDR_MIHIR}) on Arbitrum Sepolia.`);
-    expect(s.footer).toEqual(['Spent today after this: 60.2 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
+    expect(s.footer).toEqual([
+      'Spent today after this: 60.2 of 300 USDC.',
+      'Spent today after this: 0.002 of 0.15 ETH.',
+    ]);
   });
 
   it('C-280 SQ-D-03 §13.1 an i depending on several bridges → "After step 1 and 2."', () => {
@@ -128,10 +131,13 @@ describe('§13.1 line templates', () => {
     });
     const a = mintAmount(ctx, '10');
     const plan = [
-      { ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE), recipients: [
-        { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
-        { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
-      ] },
+      {
+        ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE),
+        recipients: [
+          { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+          { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+        ],
+      },
     ];
     const s = build(ctx, plan);
     expect(s.lines).toEqual([
@@ -159,10 +165,13 @@ describe('§13.1 line templates', () => {
     });
     const a = mintAmount(ctx, '10');
     const plan = [
-      { ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE), recipients: [
-        { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
-        { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
-      ] },
+      {
+        ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE),
+        recipients: [
+          { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+          { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+        ],
+      },
       planI(1, mintAmount(ctx, '5'), addMihir(ctx), BASE),
     ];
     const s = build(ctx, plan);
@@ -198,7 +207,7 @@ describe('§13.1 line templates', () => {
     const mi = addMihir(ctx);
     const s = build(ctx, [planL(0, mi, 'ap_0000000000f7')]);
     expect(s.lines).toEqual([
-      "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
+      '1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.',
     ]);
     expect(s.footer).toEqual([]);
     expect(s.text).toBe(['Please confirm:', s.lines[0], 'Confirm?'].join('\n'));
@@ -214,7 +223,7 @@ describe('§13.1 line templates', () => {
     });
     const s = build(ctx, [planL(0, addMihir(ctx), 'ap_0000000000f8', ARB)]);
     expect(s.lines[0]).toBe(
-      "1. Stop paying Mihir 25.5 USDC every 30 days on Arbitrum Sepolia. Money stays in your wallet; there is no refund transfer.",
+      '1. Stop paying Mihir 25.5 USDC every 30 days on Arbitrum Sepolia. Money stays in your wallet; there is no refund transfer.',
     );
   });
 });
@@ -311,9 +320,7 @@ describe('§13.1 {end text} forms', () => {
     );
   });
   it('C-286 until_cancelled → "until you cancel (at most {autopay_max_weeks} weeks)" using DB5', () => {
-    expect(kLine(weekly(['FRI'], first, { type: 'until_cancelled' }))).toContain(
-      'for 52 payments. Each run also pays',
-    );
+    expect(kLine(weekly(['FRI'], first, { type: 'until_cancelled' }))).toContain('for 52 payments. Each run also pays');
     const ctx = ctxD({ actions: ['k'], balances: usdc('0', '1000', '0') });
     setLimits(ctx, { autopay_max_weeks: 26 });
     const line = build(ctx, [
@@ -360,7 +367,10 @@ describe('§13.1 footer and framing', () => {
     const ctx = ctxD({ balances: usdc('0', '30', '60') });
     const j = planJ(ctx, 0, ARB, BASE, '20.4', '20', [1]);
     const i = planI(1, mintAmount(ctx, '50'), addAradhya(ctx), BASE, { depends_on: [0] });
-    expect(build(ctx, [j, i]).footer).toEqual(['Spent today after this: 50.4 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
+    expect(build(ctx, [j, i]).footer).toEqual([
+      'Spent today after this: 50.4 of 300 USDC.',
+      'Spent today after this: 0.002 of 0.15 ETH.',
+    ]);
   });
 
   it('C-288 §13.1 framing: "Please confirm:" first, numbered lines, notes as bullets, footer, "Confirm?" last', () => {

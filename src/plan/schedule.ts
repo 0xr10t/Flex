@@ -95,19 +95,27 @@ export interface Occurrences {
 }
 
 /** Convert calendar input to the exact fixed UTC intervals enforced by the wallet and CRE. */
-export function fixedSchedule(s: CalendarSchedule, maxWeeks: number, lateWindow: number): Occurrences & { legs: ExecutionSchedule[] } {
+export function fixedSchedule(
+  s: CalendarSchedule,
+  maxWeeks: number,
+  lateWindow: number,
+): Occurrences & { legs: ExecutionSchedule[] } {
   if (s.frequency === 'monthly') throw new Error('monthly needs an explicit fixed-interval choice');
   const first = DateTime.fromISO(s.first_occurrence, { setZone: true }).setZone(s.timezone);
   const interval = s.interval * (s.frequency === 'daily' ? 86400 : 604800);
   if (lateWindow < 60 || lateWindow > interval) throw new Error('late window exceeds interval');
-  const starts = s.frequency === 'daily' ? [first] : (s.days_of_week ?? []).map((day) => {
-    const delta = (WEEKDAYS.indexOf(day) - first.weekday + 8) % 7;
-    return first.plus({ days: delta });
-  });
+  const starts =
+    s.frequency === 'daily'
+      ? [first]
+      : (s.days_of_week ?? []).map((day) => {
+          const delta = (WEEKDAYS.indexOf(day) - first.weekday + 8) % 7;
+          return first.plus({ days: delta });
+        });
   const counts = starts.map(() => 0);
   const occurrences: DateTime[] = [];
   const limit = first.toSeconds() + maxWeeks * 604800;
-  const endDate = s.end.type === 'on_date' ? DateTime.fromISO(s.end.date, { zone: s.timezone }).endOf('day').toSeconds() : Infinity;
+  const endDate =
+    s.end.type === 'on_date' ? DateTime.fromISO(s.end.date, { zone: s.timezone }).endOf('day').toSeconds() : Infinity;
   let exceedsMaxWeeks = false;
   while (starts.length > 0) {
     if (s.end.type === 'after_count' && occurrences.length >= s.end.count) break;
@@ -126,8 +134,15 @@ export function fixedSchedule(s: CalendarSchedule, maxWeeks: number, lateWindow:
     const max_runs = counts[i] ?? 0;
     if (max_runs === 0) return [];
     const start_at = Math.floor(start.toSeconds());
-    return [{ start_at, interval_seconds: interval, max_runs, late_window_seconds: lateWindow,
-      end_at: start_at + interval * (max_runs - 1) + lateWindow }];
+    return [
+      {
+        start_at,
+        interval_seconds: interval,
+        max_runs,
+        late_window_seconds: lateWindow,
+        end_at: start_at + interval * (max_runs - 1) + lateWindow,
+      },
+    ];
   });
   return { legs, occurrences, exceedsMaxWeeks };
 }
@@ -202,7 +217,9 @@ export function expiresAt(last: DateTime, timezone: string): string {
 const CRON_DAY: Record<Weekday, number> = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
 
 /** §10.6 derived 9: weekly `M H * * D1,D2` (0 = SUN … 6 = SAT); daily `M H * * *`; monthly `M H DOM * *`. */
-export function cronFor(s: Pick<CalendarSchedule, 'frequency' | 'days_of_week' | 'day_of_month' | 'time_of_day'>): string {
+export function cronFor(
+  s: Pick<CalendarSchedule, 'frequency' | 'days_of_week' | 'day_of_month' | 'time_of_day'>,
+): string {
   const [h = '0', m = '0'] = s.time_of_day.split(':');
   const mh = `${Number(m)} ${Number(h)}`;
   if (s.frequency === 'daily') return `${mh} * * *`;

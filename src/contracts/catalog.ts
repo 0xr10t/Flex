@@ -4,7 +4,7 @@
 // SQ-UI-01: recipient questions explicitly request a wallet address and explain the accepted alternatives.
 // SQ-UI-02: new-recipient confirmation wording, retaining the full address and ENS chain context.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
-// Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
+// Items marked SQ-nn are interim answers to open spec questions.
 
 import type { Answer, Chip, ErrorCode, QuestionCode, QuestionId, QuestionInput, Question, Token } from './types.js';
 

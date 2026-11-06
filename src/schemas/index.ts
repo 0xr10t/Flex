@@ -45,4 +45,4 @@ export function compileEphemeral(schema: Record<string, unknown>): ValidateFunct
   return ajv.compile(rest);
 }
 
-export { buildPaymentsSchema, type PaymentsSchemaSlots } from './payments-template.js';
+export { buildPaymentsSchema } from './payments-template.js';

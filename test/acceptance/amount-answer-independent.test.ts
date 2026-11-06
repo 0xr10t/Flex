@@ -90,10 +90,10 @@ describe('amount answer currencies through HTTP', () => {
       expect(h.exec.submissions).toHaveLength(1);
       expect(h.envelope.intents).toHaveLength(1);
       expect(h.envelope.intents[0]).toMatchObject({
-intent_id: 'i',
-token: 'USDC',
-recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }]
-});
+        intent_id: 'i',
+        token: 'USDC',
+        recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
+      });
       expect(h.llm.remaining()).toEqual([]);
     } finally {
       await h.finish({ allowUnused: true });
@@ -131,10 +131,10 @@ recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', 
         expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
         expect(h.envelope.intents).toHaveLength(1);
         expect(h.envelope.intents[0]).toMatchObject({
-intent_id: 'i',
-token: 'USDC',
-recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }]
-});
+          intent_id: 'i',
+          token: 'USDC',
+          recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
+        });
         expect(h.llm.names()).toEqual(['amounts', 'request_type', 'spans', 'payments']);
         expect(h.llm.remaining()).toEqual([]);
       } finally {
@@ -164,10 +164,12 @@ recipients: [{ recipient: MIHIR, amount: { value: '10', base_units: '10000000', 
         expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
         expect(h.envelope.intents).toHaveLength(1);
         expect(h.envelope.intents[0]).toMatchObject({
-intent_id: 'i',
-token,
-recipients: [{ amount: { value: amount, base_units: units, decimals: token === 'USDC' ? 6 : 18 }, recipient: MIHIR }]
-});
+          intent_id: 'i',
+          token,
+          recipients: [
+            { amount: { value: amount, base_units: units, decimals: token === 'USDC' ? 6 : 18 }, recipient: MIHIR },
+          ],
+        });
         expect(h.llm.names()).toEqual(['amounts', 'request_type', 'spans', 'payments']);
       } finally {
         await h.finish({ allowUnused: true });
@@ -199,11 +201,11 @@ describe('real-model follow-up amount shapes', () => {
       const history = h.repos.db8.recentHistory(h.sessionId, 5);
       expect(history).toHaveLength(1);
       expect(original.intents.at(-1)).toMatchObject({
-intent_id: 'i',
-token: 'USDC',
-chain_id: BASE,
-recipients: [{ recipient: ARADHYA, amount: { value: '50' } }]
-});
+        intent_id: 'i',
+        token: 'USDC',
+        chain_id: BASE,
+        recipients: [{ recipient: ARADHYA, amount: { value: '50' } }],
+      });
       h.advance(11);
       h.setBalances({ [BASE]: { USDC: '60' }, [ARB]: { USDC: '39' } });
       const summary = await h.say('Send 5 more');
@@ -218,11 +220,11 @@ recipients: [{ recipient: ARADHYA, amount: { value: '50' } }]
       expect(h.exec.submissions[0]!.envelope).toEqual(original);
       expect(h.envelope.intents).toMatchObject([
         {
-intent_id: 'i',
-token: 'USDC',
-chain_id: BASE,
-recipients: [{ recipient: ARADHYA, amount: { value: '5', base_units: '5000000', decimals: 6 } }]
-},
+          intent_id: 'i',
+          token: 'USDC',
+          chain_id: BASE,
+          recipients: [{ recipient: ARADHYA, amount: { value: '5', base_units: '5000000', decimals: 6 } }],
+        },
       ]);
       expect(h.repos.db8.recentHistory(h.sessionId, 5)).toHaveLength(2);
       expect(h.repos.db8.recentHistory(h.sessionId, 5).find((row) => row.request_id === first.body.request_id)).toEqual(
@@ -289,14 +291,17 @@ recipients: [{ recipient: ARADHYA, amount: { value: '5', base_units: '5000000', 
       expect(summary.body.summary?.text).toContain('Send 0.005 ETH to Mihir');
       expect(h.asked).toEqual([]);
       expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
-      expect(h.exec.submissions[0]!.envelope.intents[0]).toMatchObject({ token: 'ETH', recipients: [{ amount: { value: '0.01' } }] });
+      expect(h.exec.submissions[0]!.envelope.intents[0]).toMatchObject({
+        token: 'ETH',
+        recipients: [{ amount: { value: '0.01' } }],
+      });
       expect(h.envelope.intents).toMatchObject([
         {
-intent_id: 'i',
-chain_id: ARB,
-token: 'ETH',
-recipients: [{ recipient: MIHIR, amount: { value: '0.005', base_units: '5000000000000000', decimals: 18 } }]
-},
+          intent_id: 'i',
+          chain_id: ARB,
+          token: 'ETH',
+          recipients: [{ recipient: MIHIR, amount: { value: '0.005', base_units: '5000000000000000', decimals: 18 } }],
+        },
       ]);
       expect(h.llm.remaining()).toEqual([]);
     } finally {

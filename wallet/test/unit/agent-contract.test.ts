@@ -37,22 +37,29 @@ beforeEach(async () => {
 
   chain = new FakeChain();
   vi.spyOn(gateway, 'createChainGateway').mockReturnValue(chain);
-  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const request = new Request(input, init);
-    if (request.url === 'http://agent.local/v1/execution/reports') {
-      expect(request.headers.get('authorization')).toBe('Bearer report-token');
-      const body: unknown = await request.json();
-      expect(validateReport(body)).toBe(true);
-      reports.push(body);
-      return new Response(null, { status: 204 });
-    }
-    if (request.url === 'http://wallet.local/v1/intents') {
-      const response = await service.app.inject({ method: 'POST', url: '/v1/intents',
-        headers: Object.fromEntries(request.headers), payload: await request.text() });
-      return new Response(response.body, { status: response.statusCode });
-    }
-    throw new Error('Unexpected transport call');
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.url === 'http://agent.local/v1/execution/reports') {
+        expect(request.headers.get('authorization')).toBe('Bearer report-token');
+        const body: unknown = await request.json();
+        expect(validateReport(body)).toBe(true);
+        reports.push(body);
+        return new Response(null, { status: 204 });
+      }
+      if (request.url === 'http://wallet.local/v1/intents') {
+        const response = await service.app.inject({
+          method: 'POST',
+          url: '/v1/intents',
+          headers: Object.fromEntries(request.headers),
+          payload: await request.text(),
+        });
+        return new Response(response.body, { status: response.statusCode });
+      }
+      throw new Error('Unexpected transport call');
+    }),
+  );
 
   const config: WalletConfig = {
     server: { host: '127.0.0.1', port: 0 as number },
