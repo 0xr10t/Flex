@@ -1,5 +1,11 @@
 /* global window, document, fetch, setInterval, URL, URLSearchParams */
 const names = { 11155111: 'Ethereum Sepolia', 84532: 'Base Sepolia', 421614: 'Arbitrum Sepolia' };
+// Public endpoints MetaMask uses only when the network is missing; the wallet's own RPC URLs never reach the page.
+const rpcs = {
+  11155111: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.etherscan.io'],
+  84532: ['https://sepolia.base.org', 'https://sepolia.basescan.org'],
+  421614: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://sepolia.arbiscan.io'],
+};
 const $ = (id) => document.getElementById(id);
 let state,
   provider,
@@ -76,8 +82,15 @@ function eth(wei) {
 async function connect() {
   provider = window.ethereum?.providers?.find((p) => p.isMetaMask) ?? window.ethereum;
   if (!provider?.isMetaMask) throw new Error('Open this page in a browser with MetaMask installed.');
-  const accounts = await provider.request({ method: 'eth_requestAccounts' });
-  connected = accounts.some((a) => a.toLowerCase() === state.wallet.toLowerCase());
+  const configured = (accounts) => accounts.some((a) => a.toLowerCase() === state.wallet.toLowerCase());
+  let accounts = await provider.request({ method: 'eth_requestAccounts' });
+  // A site already connected to another account gets no prompt, so ask MetaMask to choose accounts again.
+  if (!configured(accounts)) {
+    await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    accounts = await provider.request({ method: 'eth_accounts' });
+  }
+  connected = configured(accounts);
+  notify('');
   $('connection').textContent = connected
     ? `Connected: ${state.wallet}`
     : `Choose this configured account in MetaMask: ${state.wallet}`;
@@ -93,7 +106,24 @@ async function accountCheck(chainId) {
   if (!accounts.some((a) => a.toLowerCase() === state.wallet.toLowerCase()))
     throw new Error('Connect the configured wallet first.');
   const chain = `0x${chainId.toString(16)}`;
-  await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain }] });
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain }] });
+  } catch (e) {
+    if (e.code !== 4902 && e.data?.originalError?.code !== 4902) throw e;
+    const [rpc, explorer] = rpcs[chainId];
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: chain,
+          chainName: names[chainId],
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          rpcUrls: [rpc],
+          blockExplorerUrls: [explorer],
+        },
+      ],
+    });
+  }
   const actual = await provider.request({ method: 'eth_chainId' });
   if (actual !== chain) throw new Error('The wallet is on a different network.');
   return chain;
