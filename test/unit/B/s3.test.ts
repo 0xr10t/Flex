@@ -248,6 +248,27 @@ describe('S3 rule 3 (number, parse, mismatch)', () => {
     const r2 = await run('send 1.50 usdc to riya', [{ phrase: '1.50', number: '1.5', token: 'USDC' }]);
     expect(r2.ctx.req.amounts[0]?.amount).toBe('1.5');
   });
+
+  it.each(['0', 'zero', '0.000'])(
+    'B01: a typed %s cannot become a positive amount without clarification',
+    async (zero) => {
+      const typed = `send ${zero} usdc to Mihir`;
+      const amounts: A[] = [{ phrase: `${zero} usdc`, number: '5', token: 'USDC' }];
+      const r = await run(typed, amounts);
+      expect(q(r)).toMatchObject({ code: 'Q_AMOUNT_MISMATCH', text: 'Did you mean 0 or 5?' });
+      expect(r.ctx.repos.tables.db1.size).toBe(0);
+      expect(r.ctx.req.amounts).toEqual([]);
+
+      const keepZero = await run(typed, amounts, [chip('code')]);
+      expect(keepZero.questions.map((question) => question.code)).toEqual(['Q_AMOUNT_MISMATCH', 'Q_AMOUNT_MISSING']);
+      expect(q(keepZero)?.text).toContain('amount must be more than 0');
+      expect(keepZero.ctx.repos.tables.db1.size).toBe(0);
+
+      const choosePositive = await run(typed, amounts, [chip('llm')]);
+      expect(choosePositive.result).toEqual({ kind: 'continue' });
+      expect(choosePositive.ctx.req.amounts[0]).toMatchObject({ amount: '5', code_verified: false });
+    },
+  );
 });
 
 describe('S3 token inference (§8.4 step 3 (a)–(e), C-093, C-311, C-416)', () => {

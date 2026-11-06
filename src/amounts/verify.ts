@@ -325,18 +325,17 @@ export function advanceItem(ctx: StepContext, item: WorkItem): Advance {
     } else {
       const llm = canonicalDecimal(item.number);
       const parsed = item.phrase !== null ? parseAmountText(item.phrase, null) : null;
-      if (parsed !== null && parsed.ok) {
-        if (parsed.value !== llm) {
-          item.mismatch = { code: parsed.value, llm };
+      const code = parsed?.ok ? parsed.value : parsed?.reason === 'zero' ? '0' : null;
+      if (code !== null) {
+        if (code !== llm) {
+          item.mismatch = { code, llm };
           const chips: Chip[] = [
-            { id: 'code', label: parsed.value, disabled: false, detail: '' },
+            { id: 'code', label: code, disabled: false, detail: '' },
             { id: 'llm', label: llm, disabled: false, detail: '' },
           ];
-          return ask(item, 'Q_AMOUNT_MISMATCH', { params: { a: parsed.value, b: llm }, chips });
+          return ask(item, 'Q_AMOUNT_MISMATCH', { params: { a: code, b: llm }, chips });
         }
         item.code_verified = true;
-      } else if (parsed !== null && parsed.reason === 'zero') {
-        item.code_verified = isZero(llm);
       }
       item.value = llm;
       item.value_done = true;
