@@ -520,6 +520,16 @@ export class SessionManager {
       this.recordAnswer(s, a, text);
       return explicitDraftCancellation(text) ? this.discard(s, a, REPLY.CANCELLED()) : clarify();
     }
+    // "His address is …" remains an address answer even if the model calls it a recipient change.
+    // Both interpretations use exactly the supplied address, through the existing address validator.
+    if (
+      decision.intent === 'recipient' &&
+      decision.value !== null &&
+      ['Q_WHO_IS', 'Q_ADDRESS_REENTER'].includes(paused.question.code) &&
+      literalRecipientAddress(decision.value) &&
+      answerOnlyReply(text, decision.value)
+    )
+      return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
     if (decision.intent === 'recipient' && decision.value !== null && recipientOnlyReply(text, decision.value)) {
       if (paused.question.code === 'Q_NO_PAYEE')
         return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
