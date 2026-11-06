@@ -162,7 +162,7 @@ runs the money-moving ones against the real wallet.
 
 The README or `docs/spec/DECISIONS.md` lists these as out of scope or still open:
 
-- Simulating a hand-off before the summary (`/v1/simulate`). `docs/spec/DECISIONS.md` "Still open" 1; "Flex has no simulate step".
+- Simulating a hand-off at the agent's summary stage (`/v1/simulate`). `docs/spec/DECISIONS.md` "Still open" 1. The wallet does simulate before every signature; see R-3 in [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md).
 - Opening the executor to any keeper; session keys; monthly schedules; group autopays; moving ETH between chains.
 - Swaps, mainnet, tokens other than USDC and ETH (§1.5).
 - Wallet UI design. The README defines only UI ↔ agent (§14.1). See OQ-02.

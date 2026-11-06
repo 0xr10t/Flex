@@ -7,6 +7,7 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 
 ### OQ-01: How is the user's key held, and what signs?
 
+- **Direction changed (user, 6 Nov 2026):** CLI based, with MetaMask holding the key and its popup approving each step. See the tracker.
 - **DECIDED (user, 6 Nov 2026): Option A.** The wallet holds the key, encrypted on the user's device. The user approves
   each payment in the wallet, and the wallet then signs. Still open: where exactly it is encrypted, and whether the key is
   created or imported.
@@ -106,6 +107,8 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 
 ### OQ-10: Which timestamp bounds does the caveat use?
 
+- **DECIDED by test (6 Nov 2026):** `start_at - 1` and `end_at + 1`. The enforcer's bounds are exclusive, so the spec's literal values
+  refuse a run at exactly the first or last second. See `test/chain/executor.test.ts`.
 - **Conflict:** §14.2 and A.3 say `timestamp(afterThreshold: startAt, beforeThreshold: endAt)`. Every passing test
   (`register.v3.test.ts:38`, `e2e.v2.test.ts:36`) uses `afterThreshold: start - 1`.
 - **Unknown:** the `TimestampEnforcer` source is not in `~/zkApi`, so its strictness at the boundary was not read. The
@@ -164,6 +167,8 @@ sources say and what it blocks. A recommendation is a suggestion for the decider
 
 ### OQ-16: CRE access, forwarders and chain coverage
 
+- **Partly answered (6 Nov 2026):** all three chains are supported, and the real forwarders are known (F-10 in the tracker). Deploy
+  access is still open.
 - **Sources:** deploy access not enabled (`RESULTS.md`). Every CRE run so far was on Sepolia. The only forwarder value on
   disk is `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` in the old staging config, used with the simulator. Nothing
   confirms it is the production KeystoneForwarder. Nothing on disk gives one for Base Sepolia or Arbitrum Sepolia.

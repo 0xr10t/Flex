@@ -53,9 +53,9 @@ just one person. `docs/spec/DECISIONS.md` lists "autopay groups" as still open.
   pay and links them to one employer. One-time payroll also shows each payment onchain, but a registered plan shows future pay
   as well.
 
-**Not proven yet:** `register` and a CRE report with 50 recipients on `IntentExecutorV3`. The largest run through it so far is 2
-recipients. Part 6 adds this test before anything depends on it. Gas is estimated at about 2 M per run from B12's 3.91 M for
-100 transfers, which is within CRE's 10 M. This has not been measured.
+**Tested on a local chain, with a mock USDC:** 50 recipients through `register` and a run on `IntentExecutorV3`: 513 k gas to
+register, 2.15 M for the first run, 1.29 M for later runs, and a 27.9 KB report. All are within CRE's limits (F-9). Not yet run on a
+testnet, through the real forwarder, or with real USDC.
 
 **New question:** the fee is one amount per run, but gas grows with the list. See OQ-20.
 
@@ -109,6 +109,8 @@ Spec §10.2 pays every group member the same amount. Payroll needs each person's
 
 **Change:** let the agent take a list of ENS name and amount. ENS supplies only the addresses. No envelope change is needed.
 
+**Decided by the user (6 Nov 2026):** members need not get the same amount, so this is required, for ETH as well as USDC.
+
 **Not decided (OQ-21):** where the list comes from. The spec's rule that values from a document "can never fund an autopay"
 (§1.3) would block a payroll file from creating recurring payroll.
 
@@ -116,6 +118,18 @@ Amounts should not come from ENS text records: they're public, and the spec trea
 
 **Limits to expect:** `per_tx_max` is 100 USDC per payment by default and `autopay_max_per_period` is 100 USDC per 7 days. Both are
 user settings, and the agent's `Q_LIMIT_OVERRIDE` can lift a limit once (SQ-D-16), but real payroll will hit them.
+
+#### R-3: the check before signing
+
+**Change:** this replaces "Not in this plan: simulating a hand-off". A decoder and `eth_simulateV1` run together on every transaction, in the wallet, before approval. The intent, the decoded bytes and the simulated result must all match, or nothing is signed. If simulation isn't available, the payment stops.
+
+**Why:** the decoder catches a batch built wrongly. The simulation catches one that looks right and does nothing.
+
+**What we give up:** a payment now depends on the RPC offering `eth_simulateV1`, so an outage or a provider without it stops payments. It also shows the RPC what you're about to do, before you've approved it.
+
+**What it can't show:** a bridge's arrival, or a balance that drops after a check. It also still trusts the RPC's answer.
+
+**Still to do at the agent:** nothing for this check. Simulating at the summary stage would be separate work.
 
 ## Part B: changes from spec v1.1 the agent code hasn't applied
 

@@ -17,7 +17,7 @@ signs one delegation per autopay leg, and one shared CRE workflow pays each run 
 ## What doesn't change
 
 - S0–S8, the prompts and the LLM schemas. The exception is the P5 rule, in the payroll phase.
-- Recipient resolution and ENS (§9).
+- Recipient resolution and ENS (§9), apart from the indexer: this branch added `indexer_kind: "ensnode-omnigraph"` in `src/recipients/subnames.ts`, because ENSv2's indexer doesn't use the old subgraph query. The hosted endpoint currently fails TLS (F-15 in the tracker).
 - `POST {execution.url}/v1/intents`, its headers and its response codes (§14.2).
 - `src/handoff/execution-client.ts`.
 
@@ -63,6 +63,15 @@ Do these in order. This makes one-time payments, bridges, single-person autopays
 | `src/server/reports.ts:47-51` | Store `plan_id` and `executor_address` on the DB7 row. Insert `autopay_payment` and `autopay_fee` rows. Set `bridge_fee` to the actual fee |
 
 A list autopay's `autopay.amount` is the run's total paid to recipients, not counting the fee.
+
+Reports the wallet now sends, which `validateReport` must accept:
+
+| Report | Detail |
+| --- | --- |
+| A failed `k` or `l` | Carries `autopay.autopay_id` even when nothing was sent, so DB7 doesn't stay `pending` |
+| A repeated `l` | `executed` with no `tx_hash`, when the plan was already cancelled |
+| `autopay_payment` | Has no `step`. Each run is sent until the agent answers, so a lost `204` causes a resend (question 5 below) |
+| `autopay_status` | `ended`, with `autopay_id`, `plan_id`, `executor_address`, `chain_id` and `token` |
 
 ### 4. Planning (S9)
 
@@ -113,6 +122,7 @@ Start this after question 4 below is answered. Phase 1 doesn't depend on it.
 | Change | Where |
 | --- | --- |
 | Per-member amounts for a group, from a list of ENS name and amount | S8, S9. The source is question 4 |
+| **Required:** each member can have their own amount, in ETH or USDC | S8, S9, summary, `Q_GROUP_MEMBERS`. Each `recipients[]` entry already has its own amount |
 | Allow a group on `k`, up to 50 members | `src/plan/pairing-checks.ts:152`. Over 50 gives `LIMIT_GROUP_SIZE`; `GROUP_AUTOPAY_UNSUPPORTED` goes away |
 | One `k` carries the whole list. Each weekly leg still gets its own `k` | `src/pipeline/s9-plan.ts`, §10.6 |
 | V-14 per member; `per_period_cap` from the total; the summary lists everyone | `src/pipeline/s10-validate.ts`, `src/messages/` |

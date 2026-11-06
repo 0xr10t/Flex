@@ -14,7 +14,7 @@ These journeys work on the three testnets, from a typed request to a confirmed o
 | 1 | Send 10 USDC to Alex | `i` | M3 |
 | 2 | Send 10 USDC to Alex on Arbitrum | `i` | M3 |
 | 3 | Send 10 to Alex and 20 to Bob, in one batch | `i` | M3 |
-| 4 | One-time payroll to ENSv2 names, with each person's own amount | `i` | M3 + R-2 |
+| 4 | ETH or USDC to an organisation under an ENS name, with each person's own amount | `i` | M3 + R-2 + a working indexer |
 | 5 | Any of these when funds are on another chain | `j` + `i` | M4 |
 | 6 | Weekly autopay to one person | `k` | M6 |
 | 7 | Recurring payroll, up to 50 people | `k` | M6 + R-2 |
@@ -24,8 +24,13 @@ Monthly schedules are not part of this plan.
 
 ## Where things stand
 
-- **Done:** envelope schema, mapping and the two-stage check (Part 1). 137 wallet tests pass.
-- **Not started:** everything that signs or sends. No wallet code has moved money yet.
+- **Done:** envelope schema, mapping and checks (Part 1). On a local chain only, with a test key and mock USDC: the service, durable
+  store, step runner, reports, 7702 upgrade and one-time payments. See [IMPL_TRACKER.md](IMPL_TRACKER.md).
+- **Also done, on local chains only:** the executor contract's tests, autopay, cancel, run reporting, and bridges with a stand-in
+  router. The CRE workflow compiles and has run in the simulator as a dry run.
+- **Also done, in the wallet:** the decoder and `eth_simulateV1` check before every signature (R-3).
+- **ENS:** resolution works live on Sepolia. Listing an organisation is blocked by the hosted indexer's TLS problem (F-15). Per-person amounts aren't built in the agent.
+- **Not started:** the MetaMask signer, a deploy script. No transaction has run on a real testnet.
 - **Agent:** complete for v1, but still sending envelope v1, which the wallet rejects.
 
 ## Order of work
@@ -70,6 +75,8 @@ M1 and M2 can run at the same time. So can M4 and M5.
 **Exit:** a test envelope goes through the service to a signed 7702 transaction on a local chain. Killing the process at each crash
 point in Part 2 never pays twice.
 
+**Status:** met on a local chain, with a test key and automatic approval. The real key handling and approval step are still open.
+
 ### M2: agent moves to v2 ([AGENT_HANDOFF.md](AGENT_HANDOFF.md))
 
 **Needs:** an owner.
@@ -85,7 +92,7 @@ Phase 1 doesn't depend on any payroll decision. Phase 2 can follow later.
 | Build and send the `i` batch, ETH and USDC | Local chain tests pass |
 | Check the effect by balance change, not the receipt (A.5 rule 5) | A reverted or empty payment reports `failed` |
 | Run a 100-recipient batch | Gas matches B12 within reason |
-| Connect agent to wallet, local chain | Journeys 1–3 pass end to end |
+| Connect agent to wallet, local chain | Journeys 1–3 pass end to end. **Waits for M2**; the wallet side already passes from an HTTP request to a balance change |
 
 Journey 4 also needs R-2 and a live ENSv2 check. ENSv2 is on the not-yet-tested list (A.6), and the resolver and indexer settings in
 `config.example.json` are still placeholders.
@@ -163,8 +170,10 @@ Ordered by what they block first. The recommendations come from [OPEN_QUESTIONS.
 
 ## Next steps
 
-1. Review `ARCHITECTURE_CHANGES.md`, then confirm or change C-1 to C-5, R-1 and R-2.
-2. Commit this branch.
-3. Name the agent owner.
-4. Answer OQ-02, OQ-04, OQ-08 and OQ-19.
-5. Start M1 with `POST /v1/intents` and the durable store.
+1. Confirm or change C-1 to C-5, R-1 and R-2, and the provisional choices in the tracker.
+2. Send `AGENT_HANDOFF.md` to the agent team and name an owner.
+3. Decide OQ-02 (approval screen), and how the signing key is created or imported.
+4. Get a working ENS indexer (F-15), then build per-person amounts in the agent (R-2, OQ-21).
+5. Test the MetaMask popup flow (batches, delegations, large lists), then replace the signer.
+6. Fund a testnet wallet and do one real CCIP send, which settles arrival (OQ-07) and `bridge_buffer_pct`.
+7. Get CRE deploy access, choose the owner (OQ-17), and deploy the executor.
