@@ -1,17 +1,19 @@
 // Implements: §8.1 S0 — Refresh balances (code): steps 1–5 (parallel eth_getBalance + USDC balanceOf per allowed
 // chain via anon-rpc, bigint → decimal strings, DB4 upsert ok, failure → both rows unavailable + note, all
 // unavailable → BALANCES_UNAVAILABLE). §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s
-// timeout, no retries, and CCIP-Read off (privacy fix 3). FR-02, NFR-07, I-12. §13.1 note "{Chain} balance couldn't be read right now, …".
+// timeout, no retries, and CCIP-Read off (privacy fix 3); the clients share one connection pool of their own with random
+// JSON-RPC ids (privacy fix 7). FR-02, NFR-07, I-12. §13.1 note "{Chain} balance couldn't be read right now, …".
 // S0 runs only for new messages (the runner never calls it for answers; it asks no questions, so no onAnswer).
 // Owner: Lane B.
 
-import { createPublicClient, erc20Abi, http, type PublicClient, type Transport } from 'viem';
+import { createPublicClient, erc20Abi, type PublicClient, type Transport } from 'viem';
 import { NOTES, joinList } from '../contracts/catalog.js';
 import type { RpcClients } from '../contracts/io.js';
 import { fromBaseUnits } from '../contracts/money.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import { TOKEN_DECIMALS, type ChainId, type Config } from '../contracts/types.js';
 import { chainName } from '../lexical/step-util.js';
+import { isolatedHttp } from '../util/isolated-fetch.js';
 
 /** §14.5: 10 s timeout, no retries inside a request. */
 const RPC_TIMEOUT_MS = 10_000;
@@ -22,10 +24,11 @@ export const RPC_TRANSPORT_OPTIONS = { timeout: RPC_TIMEOUT_MS, retryCount: 0 } 
 /** Builds the transport for one chain; unit tests replace it (no network). */
 export type RpcTransportFactory = (rpc_url: string) => Transport;
 
-const httpTransport: RpcTransportFactory = (rpc_url) => http(rpc_url, RPC_TRANSPORT_OPTIONS);
-
 /** Production RPC clients (§14.5): one viem public client per chain. */
-export function createRpcClients(config: Config, transportFor: RpcTransportFactory = httpTransport): RpcClients {
+export function createRpcClients(
+  config: Config,
+  transportFor: RpcTransportFactory = isolatedHttp(RPC_TIMEOUT_MS),
+): RpcClients {
   const clients = new Map<ChainId, { client: PublicClient; usdc: `0x${string}` }>();
   for (const c of config.chains) {
     clients.set(c.chain_id, {

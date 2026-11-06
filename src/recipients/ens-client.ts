@@ -3,12 +3,14 @@
 // a failed or timed-out call throws EnsUnavailable (§9.4 "RPC unavailable", §14.5 "fails the ENS lookup"); a record
 // that is not a 20-byte address is "no address" (null).
 // Privacy fix 3: CCIP-Read is off. A name whose resolver answers with an offchain lookup would make viem fetch a URL the
-// resolver chose, straight from this machine and outside anon-rpc, so such a name has "no address" here.
+// resolver chose, straight from this machine and outside anon-rpc, so such a name has "no address" here. Fix 7: the ENS
+// client has its own connection pool, never shared with balance reads, and random JSON-RPC ids.
 
-import { BaseError, createPublicClient, getAddress, http, isAddress, type Transport } from 'viem';
+import { BaseError, createPublicClient, getAddress, isAddress, type Transport } from 'viem';
 import { getEnsAddress } from 'viem/actions';
 import { EnsUnavailable, type EnsClient } from '../contracts/io.js';
 import type { Address, Config } from '../contracts/types.js';
+import { isolatedHttp } from '../util/isolated-fetch.js';
 
 export const ENS_TIMEOUT_MS = 10_000;
 
@@ -55,7 +57,7 @@ export function createEnsClient(config: Config, transport?: Transport): EnsClien
   const chain = config.chains.find((c) => c.chain_id === config.ens.rpc_chain_id);
   if (!chain) throw new Error('ens.rpc_chain_id is not a configured chain');
   const pc = createPublicClient({
-    transport: transport ?? http(chain.rpc_url, { timeout: ENS_TIMEOUT_MS, retryCount: 0 }),
+    transport: transport ?? isolatedHttp(ENS_TIMEOUT_MS)(chain.rpc_url),
     ccipRead: false,
   });
   const universalResolverAddress = config.ens.universal_resolver_address;

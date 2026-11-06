@@ -1,8 +1,11 @@
 // Lane C — §14.5 ENS client with the REAL viem getEnsAddress (C-358). No network: the viem client uses a `custom`
 // transport whose `request` is controlled here. (io.test.ts mocks viem/actions; vi.mock is file-scoped, hence this file.)
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import {
   BaseError,
   custom,
+  getAddress,
   toFunctionSelector,
   decodeFunctionData,
   encodeErrorResult,
@@ -12,6 +15,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EnsUnavailable } from '../../../src/contracts/io.js';
 import { OFFCHAIN_LOOKUP_SELECTOR, createEnsClient, isOffchainLookup } from '../../../src/recipients/ens-client.js';
+import { createRpcClients } from '../../../src/pipeline/s0-balances.js';
 import { testConfig } from '../../fakes/context.js';
 import { RIYA } from './helpers.js';
 
@@ -208,5 +212,58 @@ describe('privacy fix 3: CCIP-Read is off for ENS', () => {
       ),
     ).toBe(true);
     expect(OFFCHAIN_LOOKUP_SELECTOR).toBe(toFunctionSelector('OffchainLookup(address,string[],bytes,bytes4,bytes)'));
+  });
+});
+
+describe('privacy fix 7: the ENS client has its own connections and random ids', () => {
+  it('ENS lookups and balance reads to the same anon-rpc URL never share a connection; ids are random; no global fetch', async () => {
+    const seen: Array<{ kind: 'ens' | 'balance'; id: number; port: number }> = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw) as { id: number; method: string; params: Array<{ to?: string }> };
+        const toResolver =
+          body.method === 'eth_call' &&
+          body.params[0]?.to?.toLowerCase() === testConfig().ens.universal_resolver_address.toLowerCase();
+        seen.push({ kind: toResolver ? 'ens' : 'balance', id: body.id, port: req.socket.remotePort as number });
+        const result =
+          body.method === 'eth_getBalance'
+            ? '0x1'
+            : toResolver
+              ? encodeAbiParameters(
+                  [{ type: 'bytes' }, { type: 'address' }],
+                  [RIYA.toLowerCase() as `0x${string}`, RIYA],
+                )
+              : '0x' + '1'.padStart(64, '0');
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const spy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const cfg = testConfig();
+      cfg.wallet.address = getAddress('0x00000000000000000000000000000000000000aa');
+      cfg.chains = cfg.chains.map((c) => ({ ...c, rpc_url: url }));
+      const rpc = createRpcClients(cfg);
+      const ens = createEnsClient(cfg);
+      for (let i = 0; i < 2; i++) {
+        await rpc.getEthBalance(11155111);
+        expect(await ens.getAddress('riya.eth', 60n)).toBe(RIYA);
+        await rpc.getUsdcBalance(11155111);
+      }
+      expect(spy).not.toHaveBeenCalled();
+      const ports = (k: 'ens' | 'balance') => new Set(seen.filter((s) => s.kind === k).map((s) => s.port));
+      expect(seen.filter((s) => s.kind === 'ens')).toHaveLength(2);
+      expect(seen.filter((s) => s.kind === 'balance')).toHaveLength(4);
+      for (const p of ports('ens')) expect(ports('balance').has(p)).toBe(false);
+      expect(new Set(seen.map((s) => s.id)).size).toBe(seen.length);
+    } finally {
+      spy.mockRestore();
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });

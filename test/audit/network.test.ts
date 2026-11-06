@@ -83,6 +83,8 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       'quarantine/fetch.ts',
       'quarantine/ssrf.ts',
       'recipients/subnames.ts',
+      // Privacy fix 7: the RPC transports' own connection pools (node:http / node:https).
+      'util/isolated-fetch.ts',
     ]);
   });
 
@@ -91,7 +93,7 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       .filter((f) => importsViemNetworkFactory(f.text))
       .map((f) => f.path)
       .sort();
-    expect(offenders).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
+    expect(offenders).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts', 'util/isolated-fetch.ts']);
   });
 
   it('privacy fix 3: every viem client in src is created with ccipRead: false (no offchain lookup leaves anon-rpc)', () => {
@@ -116,6 +118,36 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       visit(source);
     }
     expect(found.sort()).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
+  });
+
+  it('privacy fix 7: every call of viem http() in src passes a fetchFn, and only isolated-fetch.ts calls it', () => {
+    const callers: string[] = [];
+    for (const f of files) {
+      const source = ts.createSourceFile(f.path, f.text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const local = new Set<string>();
+      for (const st of source.statements) {
+        if (
+          !ts.isImportDeclaration(st) ||
+          !ts.isStringLiteral(st.moduleSpecifier) ||
+          st.moduleSpecifier.text !== 'viem'
+        )
+          continue;
+        const b = st.importClause?.namedBindings;
+        if (b && ts.isNamedImports(b)) {
+          for (const el of b.elements)
+            if ((el.propertyName ?? el.name).text === 'http' && !el.isTypeOnly) local.add(el.name.text);
+        }
+      }
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && local.has(node.expression.text)) {
+          callers.push(f.path);
+          expect(node.arguments[1]?.getText(source) ?? '', f.path).toMatch(/fetchFn/);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    expect(callers).toEqual(['util/isolated-fetch.ts']);
   });
 
   it('viem inventory ignores prose and types, but includes aliased and namespace network factories', () => {

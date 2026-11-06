@@ -2,6 +2,8 @@
 // strings, ETH 18 / USDC 6), C-053 (DB4 upsert ok), C-054 (failure → both rows unavailable, old values kept, note),
 // C-055 (all unavailable → BALANCES_UNAVAILABLE), C-056 (no AnswerHandler: S0 runs only for new messages),
 // C-357 (RPC clients: transport per chain, eth_getBalance, balanceOf eth_call, 10 s / no retries), C-294 (note wording), C-364 (BALANCES_UNAVAILABLE catalog message), §18 log labels.
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { custom, encodeErrorResult, encodeFunctionData, erc20Abi, getAddress, type Transport } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
@@ -157,7 +159,7 @@ describe('S0 RPC clients (§14.5, C-357)', () => {
   });
 });
 
-describe('S0 RPC clients: privacy fix 3', () => {
+describe('S0 RPC clients: privacy fixes 3 and 7', () => {
   const offchainLookup = (): never => {
     // OffchainLookup(address sender, string[] urls, bytes callData, bytes4 callbackFunction, bytes extraData)
     const data = encodeErrorResult({
@@ -194,5 +196,41 @@ describe('S0 RPC clients: privacy fix 3', () => {
     await expect(rpc.getUsdcBalance(SEP)).rejects.toThrow();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('fix 7: the production transport sends random JSON-RPC ids on its own connections, never through the global fetch', async () => {
+    const seen: Array<{ id: unknown; port: number }> = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw) as { id: unknown; method: string };
+        seen.push({ id: body.id, port: req.socket.remotePort as number });
+        const result = body.method === 'eth_getBalance' ? '0x2' : '0x' + '3'.padStart(64, '0');
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const spy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const cfg = testConfig();
+      cfg.wallet.address = getAddress('0x00000000000000000000000000000000000000aa');
+      cfg.chains = cfg.chains.map((c) => ({ ...c, rpc_url: url }));
+      const rpc = createRpcClients(cfg);
+      for (let i = 0; i < 3; i++) {
+        expect(await rpc.getEthBalance(SEP)).toBe(2n);
+        expect(await rpc.getUsdcBalance(BASE)).toBe(3n);
+      }
+      expect(spy).not.toHaveBeenCalled();
+      const ids = seen.map((s) => s.id as number);
+      expect(new Set(ids).size).toBe(6);
+      expect(ids.every((id) => id > 1000)).toBe(true); // viem's own counter would start near 0
+    } finally {
+      spy.mockRestore();
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });
