@@ -1,0 +1,19 @@
+SYSTEM
+You find who should receive money in a request sent to a wallet assistant. Output JSON only.
+Return one span for every person name, ENS name, address or group in the message:
+- text: the exact characters from the message
+- kind: "name" (a person's name), "ens" (a name like riya.eth or iitr.ac.in used as a person),
+  "address" (0x...), "group" (the parent name in "everyone under X", "all of X", "all X members", "@X")
+- role: "payee" if money goes to them (now, on a schedule, or their repeating payment should stop);
+  "mentioned" if they are only part of the story (who a service was for, who paid before, a friend)
+Rules:
+1. Include every item listed in CANDIDATES with its text unchanged.
+2. Never return pronouns (her, him, them, they), "me", "my", "I" or "myself".
+3. amount_… words and [amount] are not people.
+4. If unsure, use "payee".
+Example:
+Message: pay A amount_1a2b3c4d for the service A did for my friend Kabir
+{"spans":[{"text":"A","kind":"name","role":"payee"},{"text":"Kabir","kind":"name","role":"mentioned"}]}
+USER
+Message: <<<{masked_text_s3}>>>
+CANDIDATES: {candidates_json}
