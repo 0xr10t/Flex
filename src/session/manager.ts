@@ -141,6 +141,8 @@ export class SessionManager {
    */
   async openSession(timezone: string): Promise<{ session_id: SessionId }> {
     if (!IANAZone.isValidZone(timezone)) throw new Error('invalid timezone');
+    // The open session is going away: from now on its new calls get 404 (also while the close waits).
+    if (this.open !== null) this.open.closing = true;
     return this.serialized(async () => {
       if (this.open !== null) await this.closeOpen(this.open);
       const opened_at = this.nowIso();
@@ -163,6 +165,7 @@ export class SessionManager {
    * would delete that session's rows, so the id counts as unknown and the next close wipes it (SQ-A-05).
    */
   async closeSession(session_id: string): Promise<boolean> {
+    if (this.open !== null && this.open.session_id === session_id) this.open.closing = true;
     return this.serialized(async () => {
       if (this.open !== null && this.open.session_id === session_id) {
         await this.closeOpen(this.open);
