@@ -97,7 +97,7 @@ export function createApp(deps: AppDeps): FastifyInstance {
   app.post('/v1/sessions', async (request, reply) => {
     const body = request.body;
     if (!validateOpenSession(body) || !IANAZone.isValidZone(body.timezone)) return badRequest(reply);
-    return reply.code(200).send(manager.openSession(body.timezone));
+    return reply.code(200).send(await manager.openSession(body.timezone));
   });
 
   // §14.1: this route has no body, so a JSON content type with an empty body must not reach the JSON parser (→ 400).
@@ -105,7 +105,7 @@ export function createApp(deps: AppDeps): FastifyInstance {
     delete request.headers['content-type'];
   };
   app.delete<{ Params: { id: string } }>('/v1/sessions/:id', { onRequest: ignoreBody }, async (request, reply) => {
-    if (!manager.closeSession(request.params.id)) return httpError(reply, 404);
+    if (!(await manager.closeSession(request.params.id))) return httpError(reply, 404);
     return reply.code(204).send();
   });
 

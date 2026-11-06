@@ -98,10 +98,31 @@ function chainOfPayment(ctx: StepContext, plan: InternalIntent[], p: Payment): C
   return null;
 }
 
-function recordHandoff(ctx: StepContext, plan: InternalIntent[], envelope: HandoffEnvelope): void {
+/** What recordHandoff reads from DB3, taken before the submit is awaited (R1-F1: DB3 may not be read after it). */
+interface HandoffSnapshot {
+  /** DB7 recipient_name per envelope index of a `k`. */
+  names: Map<number, string>;
+  /** db8_history rows: S8 payments with the chain S9 assigned (SQ-C-08). */
+  history: (Payment & { chain_id: ChainId | null })[];
+}
+
+function snapshotFor(ctx: StepContext, plan: InternalIntent[]): HandoffSnapshot {
+  const names = new Map<number, string>();
+  plan.forEach((planned, n) => {
+    if (planned.intent_id === 'k') names.set(n, recipientNameOf(ctx, planned.recipient));
+  });
+  const history = (ctx.req.payments ?? []).map((p) => ({ ...p, chain_id: chainOfPayment(ctx, plan, p) }));
+  return { names, history };
+}
+
+function recordHandoff(
+  ctx: StepContext,
+  plan: InternalIntent[],
+  envelope: HandoffEnvelope,
+  snap: HandoffSnapshot,
+): void {
   const { req, repos } = ctx;
   const now = ctx.now().toUTC().toISO({ suppressMilliseconds: true }) as string;
-  const history = (req.payments ?? []).map((p) => ({ ...p, chain_id: chainOfPayment(ctx, plan, p) }));
   repos.transaction(() => {
     const rows: Db6Insert[] = [];
     envelope.intents.forEach((it, n) => {
@@ -112,7 +133,7 @@ function recordHandoff(ctx: StepContext, plan: InternalIntent[], envelope: Hando
         {
           autopay_id: it.autopay_id as AutopayId,
           request_id: req.request_id,
-          recipient_name: recipientNameOf(ctx, planned.recipient),
+          recipient_name: snap.names.get(n) ?? '',
           recipient_address: it.recipient,
           chain_id: it.chain_id,
           token: it.token,
@@ -126,7 +147,7 @@ function recordHandoff(ctx: StepContext, plan: InternalIntent[], envelope: Hando
     repos.db8.appendHistory({
       session_id: req.session_id,
       request_id: req.request_id,
-      payments_json: JSON.stringify(history),
+      payments_json: JSON.stringify(snap.history),
       handed_off_at: now,
     });
   });
@@ -150,6 +171,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
   const plan = req.plan;
   const envelope = plan ? envelopeFor(ctx, plan) : null;
   if (!plan || !envelope) return internalError(ctx, 's12', 'HANDOFF_INVALID');
+  const snap = snapshotFor(ctx, plan);
   const result = await ctx.exec.submit(envelope, req.request_id);
   if (result.status === 'rejected') {
     ctx.log.warn({
@@ -170,7 +192,18 @@ async function step(ctx: StepContext): Promise<StepResult> {
     });
     return { kind: 'error', code: 'EXECUTION_UNAVAILABLE', params: { cause: result.cause } };
   }
-  recordHandoff(ctx, plan, envelope);
+  try {
+    recordHandoff(ctx, plan, envelope, snap);
+  } catch {
+    // R5-1: the execution layer accepted the intents, so the user is told so; only the local record is missing.
+    ctx.log.error({
+      event: 'internal_error',
+      request_id: req.request_id,
+      session_id: req.session_id,
+      step: 's12',
+      rule_id: 'S12_RECORD_FAILED',
+    });
+  }
   req.state = 'HANDED_OFF';
   ctx.log.info({ event: 'handed_off', request_id: req.request_id, step: 's12', n_intents: plan.length });
   return { kind: 'answer', messages: [REPLY.HANDED_OFF()] };

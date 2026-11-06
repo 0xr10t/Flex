@@ -1,6 +1,7 @@
 // Implements: §14.3 execution reports → DB6/DB7 (intent_result: DB6 rows of request+step get status, tx_hash,
 // executed_at; `k` step → DB7 active with delegate_address + cre_job_id, or failed; `l` step → DB7 cancelled;
-// autopay_payment → DB6 `autopay_payment` row, status executed, counts 1; autopay_status → DB7 status),
+// autopay_payment → DB6 `autopay_payment` row, status executed, counts 1 (SQ-R-04: a tx_hash already in DB6 → 204,
+// nothing inserted); autopay_status → DB7 status),
 // unknown request_id/autopay_id → 404, malformed → 400, success → 204. §11.4 last row. §7 addresses EIP-55.
 // Owner: Lane A.
 //
@@ -82,6 +83,8 @@ function autopayPayment(repos: Repos, r: ExecutionReport, nowIso: string): Repor
   const row = repos.db7.get(ap.autopay_id);
   if (row === undefined) return 404;
   if (r.request_id !== undefined && !isKnownRequest(repos, r.request_id)) return 404;
+  // SQ-R-04: a repeated report of a payment already logged is accepted but never counted twice.
+  if (r.tx_hash !== undefined && r.tx_hash !== null && repos.db6.hasTxHash(r.tx_hash)) return 204;
   repos.db6.insertMany([
     {
       request_id: r.request_id ?? row.request_id,

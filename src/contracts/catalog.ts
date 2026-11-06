@@ -425,6 +425,8 @@ export const REPLY = {
   CANCELLED: () => 'Cancelled. Nothing was sent.',
   /** SQ-A-01, F-8: cancel of a HANDED_OFF request (HTTP 200, state unchanged). */
   CANCEL_AFTER_HANDOFF: () => "That was already sent to your wallet for signing, so it can't be cancelled here.",
+  /** SQ-R-06: cancel of a HANDOFF_FAILED request whose last attempt timed out (the wallet may have received it). */
+  CANCEL_AFTER_TIMEOUT: () => 'Cancelled here, but your wallet may already have received it. Check your wallet.',
   PENDING_REPLACED: () => 'I dropped the previous plan and started on your new request.',
 } as const;
 

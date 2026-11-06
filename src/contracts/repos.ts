@@ -162,6 +162,8 @@ export type Db6Insert = Omit<Db6Row, 'id'>;
 export interface Db6SpendLog {
   insertMany(rows: Db6Insert[]): void;
   hasRequest(request_id: string): boolean;
+  /** SQ-R-04: a row with this tx_hash exists (compared case-insensitively). */
+  hasTxHash(tx_hash: string): boolean;
   /** §14.3 intent_result: update rows with this request_id and step. Returns rows changed. */
   applyIntentResult(args: {
     request_id: string;
@@ -249,6 +251,8 @@ export interface Db8Session {
     created_at: string;
   }): void;
   appendHistory(row: Omit<Db8HistoryRow, 'id'>): void;
+  /** R1-F3: this request was handed off in this session (it has a db8_history row). */
+  hasHistory(session_id: string, request_id: string): boolean;
   /** §17.2 step 1: last `limit` (5) handed-off requests in this session, most recent first. */
   recentHistory(session_id: string, limit: number): Db8HistoryRow[];
 }

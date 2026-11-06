@@ -83,6 +83,8 @@ interface Active {
   req: AgentRequest;
   /** DB5 snapshot taken when the request started (StepContext.limits). */
   limits: Limits;
+  /** SQ-R-06: cause of the last failed hand-off attempt ('timeout' | 'server_error'). */
+  lastHandoffCause?: string;
 }
 
 interface OpenSession {
@@ -91,6 +93,10 @@ interface OpenSession {
   active: Active | null;
   /** §14.1: one call per session at a time. */
   busy: boolean;
+  /** The call in progress (R1-F1: closing the session waits for it). */
+  inflight: Promise<unknown> | null;
+  /** Set when a close has started: new calls get 404 while the close waits for the call in progress. */
+  closing: boolean;
   closed: boolean;
 }
 
@@ -118,6 +124,7 @@ export class SessionManager {
   private readonly clock: () => DateTime;
   private readonly newId: NewId;
   private open: OpenSession | null = null;
+  private lifecycle: Promise<unknown> = Promise.resolve();
 
   constructor(deps: SessionManagerDeps) {
     this.deps = deps;
@@ -127,38 +134,47 @@ export class SessionManager {
 
   // ───────────────────────────── sessions (§17.1) ─────────────────────────────
 
-  /** POST /v1/sessions: closes any open session (clearing DB1/DB3/DB8), opens a new one. */
-  openSession(timezone: string): { session_id: SessionId } {
+  /**
+   * POST /v1/sessions: closes any open session (clearing DB1/DB3/DB8), opens a new one. R1-F1: a call still running
+   * in the open session (e.g. S12 awaiting the execution layer) is waited for first, so it ends as it would have and
+   * the close then treats its request as usual (a HANDED_OFF request is never turned into DISCARDED).
+   */
+  async openSession(timezone: string): Promise<{ session_id: SessionId }> {
     if (!IANAZone.isValidZone(timezone)) throw new Error('invalid timezone');
-    if (this.open !== null) this.closeOpen(this.open);
-    const opened_at = this.nowIso();
-    for (let i = 0; i < MAX_PLACEHOLDER_DRAWS; i++) {
-      const session_id = this.newId('session') as SessionId;
-      if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
-      this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
-      this.open = { session_id, timezone, active: null, busy: false, closed: false };
-      this.deps.log.info({ event: 'session_opened', session_id });
-      return { session_id };
-    }
-    throw new Error('session id collision');
+    return this.serialized(async () => {
+      if (this.open !== null) await this.closeOpen(this.open);
+      const opened_at = this.nowIso();
+      for (let i = 0; i < MAX_PLACEHOLDER_DRAWS; i++) {
+        const session_id = this.newId('session') as SessionId;
+        if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
+        this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
+        this.open = { session_id, timezone, active: null, busy: false, inflight: null, closing: false, closed: false };
+        this.deps.log.info({ event: 'session_opened', session_id });
+        return { session_id };
+      }
+      throw new Error('session id collision');
+    });
   }
 
   /**
    * DELETE /v1/sessions/{id}: closes the session and clears DB1, DB3, DB8 (§7.4). Returns false for an unknown id.
+   * Waits for a call still running in that session first (R1-F1).
    * A session left in DB8 by a crashed process can be closed too (ADR-007), unless another session is open: the clear
    * would delete that session's rows, so the id counts as unknown and the next close wipes it (SQ-A-05).
    */
-  closeSession(session_id: string): boolean {
-    if (this.open !== null && this.open.session_id === session_id) {
-      this.closeOpen(this.open);
-      return true;
-    }
-    if (this.open === null && this.deps.repos.db8.getSession(session_id) !== undefined) {
-      this.deps.repos.clearSessionStores();
-      this.deps.log.info({ event: 'session_closed', session_id });
-      return true;
-    }
-    return false;
+  async closeSession(session_id: string): Promise<boolean> {
+    return this.serialized(async () => {
+      if (this.open !== null && this.open.session_id === session_id) {
+        await this.closeOpen(this.open);
+        return true;
+      }
+      if (this.open === null && this.deps.repos.db8.getSession(session_id) !== undefined) {
+        this.deps.repos.clearSessionStores();
+        this.deps.log.info({ event: 'session_closed', session_id });
+        return true;
+      }
+      return false;
+    });
   }
 
   /** The open session id, if any (one at a time, I-08). */
@@ -166,9 +182,19 @@ export class SessionManager {
     return this.open?.session_id ?? null;
   }
 
-  private closeOpen(s: OpenSession): void {
+  /** Session opens and closes run one after another (each may wait for a call in progress). */
+  private serialized<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.lifecycle.then(fn, fn);
+    this.lifecycle = run.catch(() => undefined);
+    return run;
+  }
+
+  private async closeOpen(s: OpenSession): Promise<void> {
+    s.closing = true;
+    // R1-F1: let the call in progress finish (its writes and its response) before the request is judged and cleared.
+    while (s.inflight !== null) await s.inflight.catch(() => undefined);
     s.closed = true;
-    this.open = null;
+    if (this.open === s) this.open = null;
     const a = s.active;
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
@@ -206,7 +232,7 @@ export class SessionManager {
         // §17.3 has no row for a messages call while HANDOFF_FAILED (spec-questions/A.md SQ-A-03). Interim: cancel
         // texts cancel it like the cancel endpoint; any other text → UNSUPPORTED_REQUEST (§0) and the request stays
         // HANDOFF_FAILED, so `confirm` yes can still retry it.
-        if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+        if (isCancelText(input.text)) return ok(this.discard(s, a, this.cancelText(a)));
         this.logUnsupported(s, a.req.state, 'handoff_failed:message', a.req.request_id);
         return ok(this.unsupportedReply(s, a.req.request_id));
       }
@@ -258,12 +284,23 @@ export class SessionManager {
         a !== null &&
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
-      if (cancellable) return ok(this.discard(s, a, REPLY.CANCELLED()));
+      if (cancellable) return ok(this.discard(s, a, this.cancelText(a)));
       // SQ-A-01, F-8: nothing to cancel → HTTP 200, state done, nothing changed, safe to repeat. A request already
-      // handed off gets its own reply.
-      const handedOff = a !== null && a.req.request_id === request_id && a.req.state === 'HANDED_OFF';
+      // handed off gets its own reply, also when it is no longer the active request (R1-F3: looked up in
+      // db8_history / DB6).
+      const handedOff =
+        a !== null && a.req.request_id === request_id
+          ? a.req.state === 'HANDED_OFF'
+          : this.deps.repos.db8.hasHistory(s.session_id, request_id) || this.deps.repos.db6.hasRequest(request_id);
       return ok(this.noopReply(s, request_id, handedOff ? REPLY.CANCEL_AFTER_HANDOFF() : REPLY.CANCELLED()));
     });
+  }
+
+  /** Reply to cancelling a cancellable request: SQ-R-06 after a timed-out hand-off, else CANCELLED. */
+  private cancelText(a: Active): string {
+    return a.req.state === 'HANDOFF_FAILED' && a.lastHandoffCause === 'timeout'
+      ? REPLY.CANCEL_AFTER_TIMEOUT()
+      : REPLY.CANCELLED();
   }
 
   /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
@@ -295,19 +332,25 @@ export class SessionManager {
 
   // ───────────────────────────── runner ─────────────────────────────
 
-  /** §14.1: one call per session at a time (second concurrent call → 409); unknown/closed session → 404. */
+  /**
+   * §14.1: one call per session at a time (second concurrent call → 409); unknown/closed session, or one being closed,
+   * → 404.
+   */
   private async exclusive(session_id: string, fn: (s: OpenSession) => Promise<SessionResult>): Promise<SessionResult> {
     const s = this.open;
-    if (s === null || s.session_id !== session_id) return NOT_FOUND;
+    if (s === null || s.session_id !== session_id || s.closing) return NOT_FOUND;
     if (s.busy) return CONFLICT;
     s.busy = true;
+    const call = fn(s);
+    s.inflight = call;
     try {
-      return await fn(s);
+      return await call;
     } catch (e) {
       if (e instanceof SessionClosed) return NOT_FOUND;
       throw e;
     } finally {
       s.busy = false;
+      s.inflight = null;
     }
   }
 
@@ -431,6 +474,7 @@ export class SessionManager {
       }
       case 'error': {
         if (step === 's12' && res.code === 'EXECUTION_UNAVAILABLE') {
+          a.lastHandoffCause = res.params?.cause ?? 'server_error';
           const state = req.handoff_attempts < MAX_HANDOFF_ATTEMPTS ? 'HANDOFF_FAILED' : 'FAILED';
           // SQ-A-06, F-9: the 3rd failure's cause (S12 `params.cause`) picks the final text.
           const params = state === 'FAILED' ? { final: res.params?.cause ?? 'server_error' } : undefined;

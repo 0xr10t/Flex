@@ -60,6 +60,7 @@ export function createDb6(db: Database): Db6SpendLog {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const hasReq = db.prepare('SELECT 1 FROM db6_spend_log WHERE request_id = ? LIMIT 1');
+  const hasTx = db.prepare('SELECT 1 FROM db6_spend_log WHERE lower(tx_hash) = lower(?) LIMIT 1');
   const apply = db.prepare(
     'UPDATE db6_spend_log SET status = ?, tx_hash = ?, executed_at = ? WHERE request_id = ? AND step = ?',
   );
@@ -103,6 +104,7 @@ export function createDb6(db: Database): Db6SpendLog {
   return {
     insertMany: (rows) => insertManyTx(rows),
     hasRequest: (request_id) => hasReq.get(request_id) !== undefined,
+    hasTxHash: (tx_hash) => hasTx.get(tx_hash) !== undefined,
     applyIntentResult({ request_id, step, status, tx_hash, executed_at }) {
       return apply.run(status, tx_hash, executed_at, request_id, step).changes;
     },
