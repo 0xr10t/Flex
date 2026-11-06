@@ -4,6 +4,7 @@
 // `_processReport`, and the contract checks everything again, so a bug here can only miss a run. It can't pay wrongly (D11).
 
 import {
+  decodeEventLog,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
@@ -108,16 +109,30 @@ export const onReportCall = (metadata: Hex, report: Hex): Hex =>
 export interface Simulated {
   status: string;
   gasUsed: number;
-  logs: readonly { address: string; topics?: readonly string[] }[];
+  logs: readonly { address: string; topics?: readonly string[]; data?: string }[];
 }
 
 /**
  * Worth writing only if the executor's `Executed` shows up. Looking for ETH-transfer logs instead would skip every USDC autopay.
  * That was a bug in the old workflow, whose test only used ETH.
  */
-export const simulationPaid = (sim: Simulated, executor: Hex): boolean =>
+export const simulationPaid = (sim: Simulated, executor: Hex, expected?: { id: Hex; slot: bigint }): boolean =>
   sim.status === '0x1' &&
-  sim.logs.some((l) => l.address.toLowerCase() === executor.toLowerCase() && l.topics?.[0] === EXECUTED_TOPIC);
+  sim.logs.some((l) => {
+    if (l.address.toLowerCase() !== executor.toLowerCase() || l.topics?.[0] !== EXECUTED_TOPIC) return false;
+    if (!expected) return true;
+    try {
+      const event = decodeEventLog({ abi: EVENTS, data: l.data as Hex, topics: l.topics as [Hex, ...Hex[]] });
+      return (
+        event.eventName === 'Executed' &&
+        event.args.intentId.toLowerCase() === expected.id.toLowerCase() &&
+        event.args.slot === expected.slot &&
+        event.args.paid > 0n
+      );
+    } catch {
+      return false;
+    }
+  });
 
 /** Simulated gas x2 for the forwarder's overhead, capped at CRE's 10 M, with a floor. From the tested workflow. */
 export const gasFor = (simulated: number): number => Math.min(10_000_000, Math.max(500_000, simulated * 2));

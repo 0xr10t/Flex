@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": []
   },
-  "include": ["main.ts", "lib/*.ts"]
+  "include": ["main.ts", "lib/*.ts", "test/*.ts"]
 }
