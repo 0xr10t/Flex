@@ -57,6 +57,32 @@ To set up the agent, the wallet and the CRE workflow for the testnets from one f
 it in, build both packages, and run `node scripts/setup-testnet.mjs`. It writes the three configs and the tokens to
 `.local/`.
 
+### CRE autopay workflow (local, read-only)
+
+The local runner reads the root `.env` and needs an authenticated CRE CLI (`cre login`). Set `CRE_CLI_PATH` to the
+executable, or install it at `.local/bin/cre` (`.local/bin/cre.exe` on Windows).
+
+```sh
+npm run cre:build                 # build the workflow and record source/WASM hashes
+npm run cre:simulate              # build and qualify native providers on the three testnets
+npm run cre:simulate -- --no-build # reuse the existing artifact
+npm run cre:run                   # evaluate registered plans once
+npm run cre:watch                 # evaluate every 30 seconds
+```
+
+These commands never sign or broadcast transactions. The runner refuses a wallet config with a non-null
+`network.socks_proxy` (`CRE_LOCAL_PROXY_UNSUPPORTED`), because local CRE cannot use Tor. Runner state lives in
+`.local/cre-runner/`; keep it private because it can hold signed delegation calldata. A loopback listener on port
+8791 prevents concurrent runners.
+
+The optional native integration test needs the CRE CLI and login:
+
+```sh
+FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native.test.ts
+```
+
+It is skipped unless `FLEX_NATIVE_CRE=1` is set.
+
 ---
 
 ## 0. How to read this document
