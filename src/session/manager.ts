@@ -296,11 +296,12 @@ export class SessionManager {
     });
   }
 
-  /** Reply to cancelling a cancellable request: SQ-R-06 after a timed-out hand-off, else CANCELLED. */
+  /**
+   * Reply to cancelling a cancellable request: SQ-R-06 when its last failed hand-off attempt timed out (the wallet may
+   * have received it; also after a SQ-R-05 re-plan that followed it), else CANCELLED.
+   */
   private cancelText(a: Active): string {
-    return a.req.state === 'HANDOFF_FAILED' && a.lastHandoffCause === 'timeout'
-      ? REPLY.CANCEL_AFTER_TIMEOUT()
-      : REPLY.CANCELLED();
+    return a.lastHandoffCause === 'timeout' ? REPLY.CANCEL_AFTER_TIMEOUT() : REPLY.CANCELLED();
   }
 
   /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
@@ -412,6 +413,21 @@ export class SessionManager {
 
   /** S12 hand-off (§8.14): counts attempts; EXECUTION_UNAVAILABLE → HANDOFF_FAILED until 3 attempts in total. */
   private async handoff(s: OpenSession, a: Active): Promise<AgentResponse> {
+    // SQ-R-05: an autopay whose first occurrence has passed is never handed off; S9 asks Q_AUTOPAY_START and the
+    // answer re-plans (S9 → S10 → S11) for a fresh confirmation.
+    const recheck = this.deps.registry.s9.beforeHandoff;
+    if (recheck !== undefined) {
+      const res = await this.invoke(s, a, 's9', async (ctx) => recheck(ctx) ?? { kind: 'continue' });
+      if (res.kind !== 'continue') {
+        if (res.kind === 'question') {
+          // A new plan, a new envelope and a new confirmation follow.
+          a.req.state = STATE_AFTER_STEP.s8;
+          delete a.req.envelope;
+          a.req.handoff_attempts = 0;
+        }
+        return this.finish(s, a, 's9', res);
+      }
+    }
     a.req.handoff_attempts += 1;
     const res = await this.invoke(s, a, 's12', (ctx) => this.deps.registry.s12.step(ctx));
     return this.finish(s, a, 's12', res);
