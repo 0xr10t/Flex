@@ -23,7 +23,7 @@ import {
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { AddressPh, Answer, Chip, Question, RecipientSpan, Span, SpanKind } from '../contracts/types.js';
 import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
-import { ADDRESS_FULL_RE } from '../lexical/patterns.js';
+import { ADDRESS_FULL_RE, PLACEHOLDER_TOKEN_RE } from '../lexical/patterns.js';
 import { joinNames, lastHistoryPayments, qid } from '../lexical/step-util.js';
 import { reaskPending } from '../amounts/verify.js';
 import { clauseIndexAt, findUnused, overlaps, type Range } from '../lexical/text.js';
@@ -46,7 +46,7 @@ export interface S5State {
   done: boolean;
 }
 
-const PLACEHOLDER_RE = /(?:amount|address|group)_[0-9a-f]{8}|\[amount\]|\[person\]|\[link \d+\]/;
+const PLACEHOLDER_RE = new RegExp(PLACEHOLDER_TOKEN_RE.source);
 
 function s5State(ctx: StepContext): S5State {
   let st = ctx.req.step_state.s5 as S5State | undefined;
