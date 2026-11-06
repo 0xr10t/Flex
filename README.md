@@ -24,6 +24,48 @@ npm ci
 (cd wallet/cre/autopay && npm ci)   # the wallet's unit tests include the CRE workflow
 ```
 
+### Release installer (packaging scaffold)
+
+The root `install.sh` installs a prepared release archive; it does not build this repository. Release archives and
+an automated release build are not provided yet. The current `master` branch also does not include the `flexx`
+CLI entry point. Until a complete CLI runtime is packaged and published, use the source setup below.
+
+Once releases exist, download and inspect `install.sh` from a trusted, pinned revision, then run:
+
+```sh
+bash install.sh --version v0.1.0 --sha256 '<trusted SHA-256 for your platform archive>'
+# Or install a previously downloaded release without contacting GitHub:
+bash install.sh --version v0.1.0 --sha256 '<trusted SHA-256>' --archive ./flex-release.tar.gz
+export PATH="$HOME/.flex/bin:$PATH"
+flexx --help
+```
+
+The version and digest above are placeholders, not a published release. Obtain the digest through a trusted
+release channel; a checksum downloaded alongside an archive alone does not establish publisher authenticity.
+There is no checksum bypass. Installation requires Bash and Python 3, plus curl for HTTPS downloads. Target names
+are `linux` or `darwin` and `x86_64` or `aarch64` (including Apple's `arm64`). Actual platform support depends on
+building and testing the corresponding release; the installer cannot make incompatible native bindings portable.
+
+The download URL is
+`https://github.com/0xr10t/Flex/releases/download/VERSION/flex-VERSION-OS-ARCH.tar.gz`.
+Each archive must have `bin/flexx` at its root, executable and supporting `--version` without starting services.
+Include its compatible runtime, native database/keychain dependencies, built agent/wallet/protocol code, prompts,
+schemas and browser assets. Launchers must locate bundled files relative to their installation directory, so they
+work both in staging and after installation. Archive entries may only be regular files and directories: flatten
+package-manager symlinks when preparing the archive. Never include user configuration, tokens, keys, databases or logs.
+
+The installer uses `~/.flex` by default (`--prefix /absolute/path` overrides it). Releases go into
+`versions/VERSION`, with `current` pointing at the active version and `bin/flexx` pointing through `current`.
+A failed digest or `--version` check leaves the previous release active. Rerun the installer with a new version and
+its digest to update; previous versions remain on disk and existing versions are never overwritten. Concurrent
+installs are refused using `.install-lock`; remove a stale lock only after confirming no installer is running.
+
+The installer does not use sudo, edit shell profiles, create wallet configuration, download models, start services,
+or collect telemetry. Only downloading a release contacts GitHub; `--archive` skips installer downloads (the
+release's own `--version` implementation must also avoid network activity). Add the printed `bin` directory to your
+shell's PATH yourself. Guided `flexx setup`, `flexx doctor` and a `flexup` updater are future work, not installed
+commands. Model, wallet and network-provider setup remains necessary before using Flex for payments.
+
 ### Check and test
 
 ```sh
