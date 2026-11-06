@@ -1,3 +1,4 @@
+// Privacy fix 8: S0 reads DB4; balances are read by a jittered background timer, and during a message only at a cold start.
 // Tests: §8.1 S0 refresh balances — C-051 (parallel ETH + USDC per allowed chain), C-052 (bigint → decimal
 // strings, ETH 18 / USDC 6), C-053 (DB4 upsert ok), C-054 (failure → both rows unavailable, old values kept, note),
 // C-055 (all unavailable → BALANCES_UNAVAILABLE), C-056 (no AnswerHandler: S0 runs only for new messages),
@@ -5,9 +6,15 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { custom, encodeErrorResult, encodeFunctionData, erc20Abi, getAddress, type Transport } from 'viem';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
-import { RPC_TRANSPORT_OPTIONS, createRpcClients, s0 } from '../../../src/pipeline/s0-balances.js';
+import {
+  RPC_TRANSPORT_OPTIONS,
+  createRpcClients,
+  refreshBalances,
+  s0,
+  startBalanceRefresher,
+} from '../../../src/pipeline/s0-balances.js';
 import { makeTestContext, testConfig } from '../../fakes/context.js';
 import { seedBalances } from '../../fakes/repos.js';
 import { expectLabelsOk } from './helpers.js';
@@ -16,8 +23,10 @@ const SEP = 11155111;
 const BASE = 84532;
 const ARB = 421614;
 
-describe('S0 balances (§8.1)', () => {
-  it('§8.1 steps 1-3 (C-051, C-052, C-053): queries ETH and USDC on every allowed chain, stores decimal strings', async () => {
+const ALL = { [SEP]: { ETH: '1', USDC: '10' }, [BASE]: { ETH: '1', USDC: '10' }, [ARB]: { ETH: '1', USDC: '10' } };
+
+describe('S0 balances (§8.1, privacy fix 8)', () => {
+  it('cold start (C-051, C-052, C-053): a chain never read is read now; ETH and USDC on every allowed chain as decimal strings', async () => {
     const ctx = makeTestContext();
     ctx.rpc.eth.set(SEP, 1_500_000_000_000_000_000n);
     ctx.rpc.usdc.set(SEP, 80_000_000n);
@@ -41,36 +50,50 @@ describe('S0 balances (§8.1)', () => {
     expectLabelsOk(ctx);
   });
 
-  it('§8.1 step 4 (C-054, C-294): one chain failing marks both its rows unavailable, keeps old values, adds the note, logs chain_ids_unavailable', async () => {
+  it('fix 8: once every chain has been read, a message makes no RPC call at all', async () => {
     const ctx = makeTestContext();
-    seedBalances(ctx.repos, { [BASE]: { ETH: '0.2', USDC: '55' } }, '2026-11-05T10:00:00.000Z');
-    ctx.rpc.down.add(BASE);
-    ctx.rpc.eth.set(SEP, 10n ** 18n);
-    const r = await s0.step(ctx);
-    expect(r).toEqual({ kind: 'continue' });
-    for (const token of ['ETH', 'USDC'] as const) {
-      const row = ctx.repos.db4.get(BASE, token);
-      expect(row?.status).toBe('unavailable');
-    }
-    expect(ctx.repos.db4.get(BASE, 'ETH')?.balance).toBe('0.2');
-    expect(ctx.repos.db4.get(BASE, 'USDC')?.balance).toBe('55');
-    expect(ctx.repos.db4.get(SEP, 'ETH')?.status).toBe('ok');
+    seedBalances(ctx.repos, ALL, '2026-11-05T10:00:00.000Z');
+    ctx.rpc.usdc.set(SEP, 999_000_000n);
+    expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.rpc.calls).toEqual([]);
+    // DB4 is what the step uses, not the RPC.
+    expect(ctx.repos.db4.get(SEP, 'USDC')?.balance).toBe('10');
+    expect(ctx.req.state).toBe('BALANCES_REFRESHED');
+  });
+
+  it('fix 8: only the chains that were never read are read at a cold start', async () => {
+    const ctx = makeTestContext();
+    seedBalances(ctx.repos, { [SEP]: ALL[SEP], [BASE]: ALL[BASE] });
+    await s0.step(ctx);
+    expect(new Set(ctx.rpc.calls.map((c) => c.chain_id))).toEqual(new Set([ARB]));
+  });
+
+  it('fix 8: a chain with only one token row counts as never read', async () => {
+    const ctx = makeTestContext();
+    seedBalances(ctx.repos, { [SEP]: ALL[SEP], [BASE]: ALL[BASE], [ARB]: { ETH: '1' } });
+    await s0.step(ctx);
+    expect(new Set(ctx.rpc.calls.map((c) => c.chain_id))).toEqual(new Set([ARB]));
+  });
+
+  it('§8.1 step 4 (C-054, C-294): a chain DB4 marks unavailable adds the note and the log, without an RPC call', async () => {
+    const ctx = makeTestContext();
+    seedBalances(ctx.repos, ALL, '2026-11-05T10:00:00.000Z');
+    ctx.repos.db4.markUnavailable(BASE, 'Base Sepolia', '2026-11-05T11:00:00.000Z');
+    expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.rpc.calls).toEqual([]);
     expect(ctx.req.notes).toEqual(["Base Sepolia balance couldn't be read right now, so it wasn't used."]);
     expect(ctx.log.lines.some((l) => JSON.stringify(l.chain_ids_unavailable) === JSON.stringify([BASE]))).toBe(true);
-    expect(ctx.log.lines.some((l) => l.event === 'balances_unavailable' || l.chain_ids_unavailable)).toBe(true);
+    expect(ctx.log.lines.some((l) => l.event === 'balances_unavailable')).toBe(true);
     expectLabelsOk(ctx);
   });
 
-  it('§8.1 step 4: ETH ok but USDC failing on a chain still makes that chain unavailable (both rows)', async () => {
+  it('§8.1 step 4: a cold-start read that fails marks the chain unavailable and adds the note', async () => {
     const ctx = makeTestContext();
-    const orig = ctx.rpc.getUsdcBalance.bind(ctx.rpc);
-    ctx.rpc.getUsdcBalance = async (c) => {
-      if (c === ARB) throw new Error('timeout');
-      return orig(c);
-    };
-    await s0.step(ctx);
-    expect(ctx.repos.db4.get(ARB, 'ETH')?.status).toBe('unavailable');
-    expect(ctx.repos.db4.get(ARB, 'USDC')?.status).toBe('unavailable');
+    seedBalances(ctx.repos, { [SEP]: ALL[SEP], [ARB]: ALL[ARB] });
+    ctx.rpc.down.add(BASE);
+    expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.repos.db4.get(BASE, 'ETH')?.status).toBe('unavailable');
+    expect(ctx.req.notes).toEqual(["Base Sepolia balance couldn't be read right now, so it wasn't used."]);
   });
 
   it('§8.1 step 5 (C-055, C-364): every chain unavailable → BALANCES_UNAVAILABLE naming the chains', async () => {
@@ -86,8 +109,170 @@ describe('S0 balances (§8.1)', () => {
     );
   });
 
+  it('§8.1 step 5: every chain unavailable in DB4 → BALANCES_UNAVAILABLE, still no RPC call', async () => {
+    const ctx = makeTestContext();
+    seedBalances(ctx.repos, ALL);
+    for (const c of [SEP, BASE, ARB] as const) ctx.repos.db4.markUnavailable(c, String(c), '2026-11-05T11:00:00.000Z');
+    expect((await s0.step(ctx)).kind).toBe('error');
+    expect(ctx.rpc.calls).toEqual([]);
+  });
+
+  it('only the allowed chains (DB5) are read and checked', async () => {
+    const ctx = makeTestContext();
+    ctx.limits = { ...ctx.limits, allowed_chain_ids: [BASE] };
+    ctx.rpc.down.add(SEP).add(ARB);
+    expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+    expect(new Set(ctx.rpc.calls.map((c) => c.chain_id))).toEqual(new Set([BASE]));
+    expect(ctx.req.notes).toEqual([]);
+  });
+
   it('§8.1 (C-056): S0 asks no questions and has no AnswerHandler (runs only for new messages)', () => {
     expect(s0.onAnswer).toBeUndefined();
+  });
+});
+
+describe('refreshBalances (§8.1 steps 1–4)', () => {
+  it('one chain failing marks both its rows unavailable, keeps old values, and is returned', async () => {
+    const ctx = makeTestContext();
+    seedBalances(ctx.repos, { [BASE]: { ETH: '0.2', USDC: '55' } }, '2026-11-05T10:00:00.000Z');
+    ctx.rpc.down.add(BASE);
+    ctx.rpc.eth.set(SEP, 10n ** 18n);
+    const out = await refreshBalances(ctx, [SEP, BASE, ARB], '2026-11-05T12:00:00.000Z');
+    expect(out).toEqual([BASE]);
+    for (const token of ['ETH', 'USDC'] as const) expect(ctx.repos.db4.get(BASE, token)?.status).toBe('unavailable');
+    expect(ctx.repos.db4.get(BASE, 'ETH')?.balance).toBe('0.2');
+    expect(ctx.repos.db4.get(BASE, 'USDC')?.balance).toBe('55');
+    expect(ctx.repos.db4.get(SEP, 'ETH')).toMatchObject({
+      status: 'ok',
+      balance: '1',
+      updated_at: '2026-11-05T12:00:00.000Z',
+    });
+  });
+
+  it('ETH ok but USDC failing on a chain still makes that chain unavailable (both rows)', async () => {
+    const ctx = makeTestContext();
+    const orig = ctx.rpc.getUsdcBalance.bind(ctx.rpc);
+    ctx.rpc.getUsdcBalance = async (c) => {
+      if (c === ARB) throw new Error('timeout');
+      return orig(c);
+    };
+    expect(await refreshBalances(ctx, [SEP, BASE, ARB], '2026-11-05T12:00:00.000Z')).toEqual([ARB]);
+    expect(ctx.repos.db4.get(ARB, 'ETH')?.status).toBe('unavailable');
+    expect(ctx.repos.db4.get(ARB, 'USDC')?.status).toBe('unavailable');
+  });
+
+  it('a chain that comes back is ok again', async () => {
+    const ctx = makeTestContext();
+    ctx.rpc.down.add(SEP);
+    await refreshBalances(ctx, [SEP], '2026-11-05T12:00:00.000Z');
+    ctx.rpc.down.delete(SEP);
+    ctx.rpc.usdc.set(SEP, 5_000_000n);
+    expect(await refreshBalances(ctx, [SEP], '2026-11-05T12:05:00.000Z')).toEqual([]);
+    expect(ctx.repos.db4.get(SEP, 'USDC')).toMatchObject({ status: 'ok', balance: '5' });
+  });
+});
+
+describe('startBalanceRefresher (privacy fix 8)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+
+  it('reads every allowed chain at start, then again after a jittered delay, and stops', async () => {
+    vi.useFakeTimers();
+    const ctx = makeTestContext();
+    const r = startBalanceRefresher(ctx, {
+      intervalMs: 1000,
+      random: () => 0.25,
+      nowIso: () => '2026-11-05T12:00:00.000Z',
+    });
+    await flush();
+    expect(ctx.rpc.calls).toHaveLength(6);
+    // 0.5 + 0.25 = 0.75 × 1000 ms.
+    await vi.advanceTimersByTimeAsync(749);
+    expect(ctx.rpc.calls).toHaveLength(6);
+    await vi.advanceTimersByTimeAsync(1);
+    await flush();
+    expect(ctx.rpc.calls).toHaveLength(12);
+    r.stop();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ctx.rpc.calls).toHaveLength(12);
+  });
+
+  it('the delay always stays within 0.5–1.5 × the interval', async () => {
+    vi.useFakeTimers();
+    for (const [random, ms] of [
+      [0, 500],
+      [0.999, 1499],
+    ] as const) {
+      const ctx = makeTestContext();
+      const r = startBalanceRefresher(ctx, { intervalMs: 1000, random: () => random });
+      await flush();
+      await vi.advanceTimersByTimeAsync(ms - 1);
+      expect(ctx.rpc.calls).toHaveLength(6);
+      await vi.advanceTimersByTimeAsync(1);
+      await flush();
+      expect(ctx.rpc.calls).toHaveLength(12);
+      r.stop();
+    }
+  });
+
+  it('each read uses the allowed chains in DB5 at that moment', async () => {
+    vi.useFakeTimers();
+    const ctx = makeTestContext();
+    const r = startBalanceRefresher(ctx, { intervalMs: 1000, random: () => 0 });
+    await flush();
+    ctx.repos.db5.putAll({ ...ctx.repos.db5.getAll(), allowed_chain_ids: [ARB] }, '2026-11-05T12:00:00.000Z');
+    ctx.rpc.calls.length = 0;
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(new Set(ctx.rpc.calls.map((c) => c.chain_id))).toEqual(new Set([ARB]));
+    r.stop();
+  });
+
+  it('a failing chain is logged with its id and nothing about the user; the timer keeps going', async () => {
+    vi.useFakeTimers();
+    const ctx = makeTestContext();
+    ctx.rpc.down.add(BASE);
+    const r = startBalanceRefresher(ctx, { intervalMs: 1000, random: () => 0 });
+    await flush();
+    const line = ctx.log.lines.find((l) => l.event === 'balances_unavailable');
+    expect(line).toMatchObject({ chain_ids_unavailable: [BASE] });
+    expect(line?.session_id).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(ctx.rpc.calls).toHaveLength(12);
+    r.stop();
+  });
+
+  it('a thrown error inside a read is logged and does not stop the timer', async () => {
+    vi.useFakeTimers();
+    const ctx = makeTestContext();
+    const getAll = ctx.repos.db5.getAll.bind(ctx.repos.db5);
+    let fail = true;
+    ctx.repos.db5.getAll = () => {
+      if (fail) throw new Error('db locked');
+      return getAll();
+    };
+    const r = startBalanceRefresher(ctx, { intervalMs: 1000, random: () => 0 });
+    await flush();
+    expect(ctx.log.lines.some((l) => l.event === 'balance_refresh_failed')).toBe(true);
+    fail = false;
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(ctx.rpc.calls).toHaveLength(6);
+    r.stop();
+  });
+
+  it('tick() reads on demand', async () => {
+    const ctx = makeTestContext();
+    const r = startBalanceRefresher(ctx, { intervalMs: 60_000 });
+    r.stop();
+    await flush();
+    ctx.rpc.calls.length = 0;
+    await r.tick();
+    expect(ctx.rpc.calls).toHaveLength(6);
   });
 });
 

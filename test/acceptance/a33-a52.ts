@@ -237,6 +237,7 @@ export function registerA33toA52(): void {
     it("A-47: one chain's RPC down -> chain excluded with a note; still plans on the others", async () => {
       const h = await harness('A-47');
       h.rpc.down.add(ARB);
+      await h.refreshBalances();
       const r = await h.say('Send 50 USDc to ARADHYA');
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(lines(r)).toEqual(['Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.']);
@@ -258,6 +259,7 @@ export function registerA33toA52(): void {
     it('A-48: all RPCs down -> BALANCES_UNAVAILABLE', async () => {
       const h = await harness('none');
       [SEPOLIA, BASE, ARB].forEach((c) => h.rpc.down.add(c));
+      await h.refreshBalances();
       const r = await h.say('Send 50 USDc to ARADHYA');
       expectError(
         r,

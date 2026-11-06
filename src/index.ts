@@ -26,7 +26,7 @@ import { modelReady, type StepRegistry } from './session/manager.js';
 import { createLogger, type Logger } from './util/logger.js';
 import { pathToFileURL } from 'node:url';
 import { createOllamaClient } from './llm/ollama.js';
-import { createRpcClients } from './pipeline/s0-balances.js';
+import { createRpcClients, startBalanceRefresher } from './pipeline/s0-balances.js';
 import { createContentFetcher } from './quarantine/fetch.js';
 import { createEnsClient } from './recipients/ens-client.js';
 import { createSubnameSource } from './recipients/subnames.js';
@@ -88,10 +88,13 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
   const ollama = await modelReady(llm);
   log.info({ event: ollama ? 'startup_model_ok' : 'startup_model_unavailable' });
 
+  const rpc = factories.createRpc(config);
+  // Privacy fix 8: balances are read on a jittered timer from here on, not when a message arrives.
+  const refresher = startBalanceRefresher({ rpc, repos, config, log });
   const app = createApp({
     repos,
     llm,
-    rpc: factories.createRpc(config),
+    rpc,
     ens: factories.createEns(config),
     subnames: factories.createSubnames(config),
     exec: factories.createExecution(config, tokens.outbound),
@@ -114,6 +117,7 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
     log,
     ollama,
     async close() {
+      refresher.stop();
       await app.close();
       db.close();
       log.close();
