@@ -151,4 +151,31 @@ describe('CRE local runner safety', () => {
     }));
     await expect(rpc('eth_chainId', [])).rejects.toThrow(/^RPC_REJECTED$/);
   });
+  it.each([200, 400])('recognizes provider log-range rejections returned as HTTP %s', async (status) => {
+    const rpc = rpcClient(
+      'https://secret.invalid/key',
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: 1,
+            jsonrpc: '2.0',
+            error: { code: -32600, message: 'eth_getLogs is limited to a 10 block range: https://secret.invalid/key' },
+          }),
+          { status },
+        ),
+    );
+    await expect(rpc('eth_getLogs', [{}])).rejects.toThrow(/^RPC_LOG_RANGE$/);
+    await expect(rpc('eth_chainId', [])).rejects.not.toThrow('RPC_LOG_RANGE');
+  });
+  it.each([401, 429, 503])('does not retry HTTP %s failures as smaller log ranges', async (status) => {
+    const rpc = rpcClient(
+      'https://secret.invalid/key',
+      async () =>
+        new Response(
+          JSON.stringify({ id: 1, jsonrpc: '2.0', error: { code: -32600, message: 'block range rejected' } }),
+          { status },
+        ),
+    );
+    await expect(rpc('eth_getLogs', [{}])).rejects.toThrow(/^RPC_UNAVAILABLE$/);
+  });
 });

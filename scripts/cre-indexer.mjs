@@ -11,8 +11,9 @@ const hex = (n) => `0x${BigInt(n).toString(16)}`;
 export function rpcClient(url, fetcher = globalThis.fetch, signal) {
   return async (method, params) => {
     let response;
+    let http;
     try {
-      response = await fetcher(url, {
+      http = await fetcher(url, {
         method: 'POST',
         redirect: 'error',
         signal: signal
@@ -21,21 +22,25 @@ export function rpcClient(url, fetcher = globalThis.fetch, signal) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
       });
-      if (!response.ok) throw new Error('RPC_UNAVAILABLE');
-      response = await response.json();
+      // Some providers return JSON-RPC range rejections with HTTP 400.
+      if (!http.ok && http.status !== 400) throw new Error('RPC_UNAVAILABLE');
+      response = await http.json();
     } catch {
       throw new Error('RPC_UNAVAILABLE');
     }
-    if (response?.jsonrpc !== '2.0' || response.id !== 1) throw new Error('RPC_INVALID_RESPONSE');
+    if (response?.jsonrpc !== '2.0' || response.id !== 1)
+      throw new Error(http.ok ? 'RPC_INVALID_RESPONSE' : 'RPC_UNAVAILABLE');
     if (response.error) {
       // Inspect remote text internally; never surface credentials that providers may include in their errors.
       if (
+        method === 'eth_getLogs' &&
         [-32600, -32602, -32000, -32005].includes(response.error.code) &&
         /block.{0,30}range|range.{0,30}block|limited to.{0,20}blocks/i.test(String(response.error.message))
       )
         throw new Error('RPC_LOG_RANGE');
-      throw new Error('RPC_REJECTED');
+      throw new Error(http.ok ? 'RPC_REJECTED' : 'RPC_UNAVAILABLE');
     }
+    if (!http.ok) throw new Error('RPC_UNAVAILABLE');
     if (!Object.hasOwn(response, 'result')) throw new Error('RPC_INVALID_RESPONSE');
     return response.result;
   };
