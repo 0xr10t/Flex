@@ -122,4 +122,11 @@ describe('§14.5 ENS client over the real viem getEnsAddress (custom transport)'
     const { client } = clientWith(() => encodeAbiParameters([{ type: 'bytes' }, { type: 'address' }], [bytes32, RIYA]));
     expect(await createEnsClient(testConfig(), client).getAddress('riya.eth', 0x80000000n | 84532n)).toBeNull();
   });
+
+  it('R3-4: realistic ABI-encoded 32-byte inner record → null, not InvalidAddressError', async () => {
+    const bytes32 = `0x${'ab'.repeat(32)}` as `0x${string}`;
+    const inner = encodeAbiParameters([{ type: 'bytes' }], [bytes32]);
+    const { client } = clientWith(() => encodeAbiParameters([{ type: 'bytes' }, { type: 'address' }], [inner, RIYA]));
+    expect(await createEnsClient(testConfig(), client).getAddress('riya.eth', 0x80000000n | 84532n)).toBeNull();
+  });
 });
