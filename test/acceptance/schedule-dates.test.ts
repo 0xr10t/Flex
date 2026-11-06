@@ -147,20 +147,17 @@ describe('schedule dates through HTTP', () => {
     'from 2026-11-20 to 2026-11-10',
     'starting on November 20 2026 until November 10 2026',
     'beginning on November 20 2026 until November 10 2026',
-  ])(
-    'B17: rejects the reversed explicit range %s before confirmation or handoff',
-    async (range) => {
-      await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {
-        expect(response.body.error?.code).toBe('AUTOPAY_NO_OCCURRENCES');
-        expect(response.body.state).not.toBe('awaiting_confirmation');
-        expect(response.body.summary).toBeUndefined();
-        expect(h.exec.submissions).toHaveLength(0);
-        const attempted = await h.confirm(response, 'yes');
-        expect(attempted.body.state).not.toBe('done');
-        expect(h.exec.submissions).toHaveLength(0);
-      });
-    },
-  );
+  ])('B17: rejects the reversed explicit range %s before confirmation or handoff', async (range) => {
+    await withDailySchedule(range, '2026-11-05T17:30:00Z', 'Asia/Kolkata', async (h, response) => {
+      expect(response.body.error?.code).toBe('AUTOPAY_NO_OCCURRENCES');
+      expect(response.body.state).not.toBe('awaiting_confirmation');
+      expect(response.body.summary).toBeUndefined();
+      expect(h.exec.submissions).toHaveLength(0);
+      const attempted = await h.confirm(response, 'yes');
+      expect(attempted.body.state).not.toBe('done');
+      expect(h.exec.submissions).toHaveLength(0);
+    });
+  });
 
   it.each(['starting November 10 2026 until November 20 2026', 'from 10 to 20 November 2026'])(
     'B17: still hands off the valid inclusive range %s',
