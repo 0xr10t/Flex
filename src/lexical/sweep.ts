@@ -70,7 +70,7 @@ export function sweepRepeats(
   ];
   const out: Masking[] = [];
   // Longer texts first, so a repeat of "Riya Shah" is swept whole before "Riya" could cut it.
-  for (const [key, group] of [...byKey].sort((a, b) => b[0].length - a[0].length)) {
+  for (const [, group] of [...byKey].sort((a, b) => b[0].length - a[0].length)) {
     if (new Set(group.map((g) => g.with === PERSON)).size > 1) continue; // both roles: F-12 decides
     // Several spans of one text: the earliest span's placeholder (one name is one contact, D-11).
     const first = group.reduce((a, b) => (b.start < a.start ? b : a));
