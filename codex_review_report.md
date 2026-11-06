@@ -2,6 +2,13 @@
 
 Review date: 2026-11-06. Project: `agent-layer` in `/Users/phantomxsd/Flex`.
 
+## Qwen3 and general-chat follow-up — SQ-M-01 / SQ-CHAT-01
+
+The human subsequently selected Qwen3 8B and approved general explanations with thinking on while wallet
+extraction remains off. [QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) records the new behavior, migration findings
+Q3-01–Q3-07, independent tests and current real-model verification. The original review and Qwen2.5 results below
+are retained as historical evidence; they do not describe the new chat-enabled runtime.
+
 ## Follow-up conversation review — SQ-CV-01
 
 The user's multi-turn examples exposed four additional findings, B20–B23, beyond the original 19: replies were

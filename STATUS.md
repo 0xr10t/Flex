@@ -2,6 +2,13 @@
 
 Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v4`.
 
+## Latest model and chat request — SQ-M-01 / SQ-CHAT-01
+
+The human selected Qwen3 8B and approved general chat with thinking on while wallet extraction stays off.
+[QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) is the current migration and verification record. Independent
+deterministic review is complete; final runtime verification is in progress. The sections below retain the
+earlier completed Qwen2.5 work and its evidence, rather than claiming those results for the new runtime.
+
 ## Later conversational follow-up — SQ-CV-01
 
 The user's additional multi-turn failures are tracked as B20–B23 in

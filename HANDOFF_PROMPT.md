@@ -1,5 +1,12 @@
 # Hand-off prompt for the next agent
 
+## Latest model and chat request — SQ-M-01 / SQ-CHAT-01
+
+The human subsequently selected `qwen3:8b` and explicitly approved general chat/explanations with thinking on,
+keeping wallet extraction off. [QWEN3_CHAT_REPORT.md](QWEN3_CHAT_REPORT.md) records implementation, independent
+review, new migration findings and the current verification status. That report and its latest status take
+precedence over the older Qwen2.5 totals and demo URLs below. Preserve all existing wording approvals and drafts.
+
 ## Later conversational follow-up — SQ-CV-01
 
 The human subsequently reported replies being interpreted as names or trapped in old questions, then explicitly
