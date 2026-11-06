@@ -201,6 +201,7 @@ async function runEntry(e: Json): Promise<Json> {
   const res: Json = { id: e.id, source: e.source, prompt: e.prompt, expected: e.expected };
   const asked: string[] = [];
   let r: Resp | undefined;
+  let targetTraceStart: number | null = null;
   try {
     // setup
     for (const c of setup.contacts ?? [])
@@ -259,6 +260,7 @@ async function runEntry(e: Json): Promise<Json> {
     if (setup.urls) extra.urls = setup.urls;
     if (setup.attachments) extra.attachments = setup.attachments;
     const t0 = Date.now();
+    targetTraceStart = recs.length;
     r = await h.say(text, extra);
     res.first_latency_ms = Date.now() - t0;
     const queue: Json[] = [...(e.answers ?? [])];
@@ -329,6 +331,16 @@ async function runEntry(e: Json): Promise<Json> {
     const pay = recs.filter((x) => x.name === 'payments');
     res.pairing_reached = pay.length > 0;
     res.pairing_exact = pay.length > 0 && !pay.some((x) => x.user.includes('CORRECTION:')) && !pay.some((x) => x.error);
+    res.target_trace_start = targetTraceStart;
+    const targetPay =
+      targetTraceStart === null ? null : recs.slice(targetTraceStart).filter((x) => x.name === 'payments');
+    res.target_pairing_reached = targetPay === null ? null : targetPay.length > 0;
+    res.target_pairing_exact =
+      targetPay === null
+        ? null
+        : targetPay.length > 0 &&
+          !targetPay.some((x) => x.user.includes('CORRECTION:')) &&
+          !targetPay.some((x) => x.error);
     res.llm_calls = recs.length;
     res.llm_ms = recs.map((x) => x.ms);
     res.llm_retries = logEvents.filter((x) => x.llm_retry === true).length;
