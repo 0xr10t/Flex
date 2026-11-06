@@ -132,6 +132,10 @@ function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
   }
   pay.sort((x, y) => x.r.start - y.r.start);
   for (const { r, a } of pay) {
+    // §8.4 step 3 / §16.1: a non-USD fiat marker that S2 found inside the phrase wins over the LLM's `fiat` (R2-3),
+    // so "send ₹500 to riya" asks Q_FIAT_OTHER even when LLM #1 says USD.
+    const found = fiatInside(ctx, r);
+    const fiat = found === 'OTHER' ? 'OTHER' : (a.fiat ?? found);
     st.items.push(
       newWorkItem(st.next_id++, {
         kind: 'typed',
@@ -140,7 +144,7 @@ function initState(ctx: StepContext, out: { amounts: LlmAmount[] }): S3State {
         number: a.number,
         relative: a.relative,
         llm_token: a.token,
-        fiat: a.fiat ?? fiatInside(ctx, r),
+        fiat,
       }),
     );
   }
