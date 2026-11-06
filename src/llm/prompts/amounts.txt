@@ -9,7 +9,7 @@ For every phrase that states an amount of money, return one item:
 - role: "pay" if this amount should be sent (now or on a schedule); "context" if it only tells the story
   (a past price, what someone charged before, what a friend paid)
 Rules:
-1. Copy only the amount words exactly. Leave out payment verbs, recipients and the rest of the sentence. Never merge two amounts into one phrase.
+1. Copy only the amount words exactly. Leave out payment verbs, recipients and the rest of the sentence. Never add a token or currency word absent from that exact span. Never merge two amounts into one phrase.
 2. Dates, times, counts of payments ("3 times a week", "for 10 weeks") and parts of addresses are not amounts.
 3. Write 5k as 5000, 1.2m as 1200000, "five lakh" as 500000, "two crore" as 20000000.
 4. If unsure whether an amount should be sent, use "pay".
@@ -21,6 +21,8 @@ Message: pay mihir fifty bucks, he charged 500 last time
 {"amounts":[{"phrase":"fifty bucks","number":"50","relative":null,"token":null,"fiat":"USD","role":"pay"},{"phrase":"500","number":"500","relative":null,"token":null,"fiat":null,"role":"context"}]}
 Message: send half my eth to riya
 {"amounts":[{"phrase":"half my eth","number":null,"relative":"half","token":"ETH","fiat":null,"role":"pay"}]}
+Message: Mihir lent me 100 usdc. Send him 30 back
+{"amounts":[{"phrase":"100 usdc","number":"100","relative":null,"token":"USDC","fiat":null,"role":"context"},{"phrase":"30","number":"30","relative":null,"token":null,"fiat":null,"role":"pay"}]}
 Message: stop paying riya
 {"amounts":[]}
 Message: what's my balance
