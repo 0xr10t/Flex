@@ -61,8 +61,9 @@ const POINTER_IDLE_MS = 2500;
 /** Rows the standalone splash needs before it shows its cube. */
 const SPLASH_CUBE_ROWS = 17;
 
-const ENTER_SCREEN = `${CSI}?1049h${CSI}?25l${CSI}2J`;
-const LEAVE_SCREEN = `${CSI}0m${CSI}?25h${CSI}?1049l`;
+// alternate screen, hidden cursor, bracketed paste (so a pasted newline can't send a line); undone on leaving
+const ENTER_SCREEN = `${CSI}?1049h${CSI}?25l${CSI}?2004h${CSI}2J`;
+const LEAVE_SCREEN = `${CSI}0m${CSI}?2004l${CSI}?25h${CSI}?1049l`;
 const MOUSE_ON = `${CSI}?1003h${CSI}?1006h`;
 const MOUSE_OFF = `${CSI}?1006l${CSI}?1003l`;
 const SYNC_BEGIN = `${CSI}?2026h`;
@@ -312,6 +313,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
       for (const ev of parseInput(buf.toString('utf8'))) {
         if (done) return;
         if (ev.kind === 'mouse') mouse = { col: ev.col, row: ev.row, at: performance.now() };
+        else if (ev.kind === 'wheel') repl.wheel(ev.delta);
         else if (opts.view === 'opening') openingKey(ev);
         else viewKey(ev);
       }

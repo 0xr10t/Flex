@@ -10,6 +10,35 @@ import { fileURLToPath } from 'node:url';
 import { ConfigError, configPath, expandHome, loadConfig } from '../../config/load.js';
 import type { Config } from '../../contracts/types.js';
 
+/** What /config and /doctor show about the setup: never RPC URLs (they carry provider keys) or tokens. */
+export interface AgentInfo {
+  configFile: string;
+  wallet: string;
+  chains: string[];
+  model: string;
+  ollamaUrl: string;
+  /** Tor's SOCKS address, or null for direct connections. */
+  proxy: string | null;
+  ensIndexer: boolean;
+  readLinks: boolean;
+  /** Plain conversation with the model (outside payments) is on. */
+  chat: boolean;
+}
+
+export function agentInfo(config: Config, configFile: string): AgentInfo {
+  return {
+    configFile,
+    wallet: config.wallet.address,
+    chains: config.chains.map((c) => c.name),
+    model: config.llm.model,
+    ollamaUrl: config.llm.ollama_url,
+    proxy: config.network.socks_proxy,
+    ensIndexer: config.ens.indexer_url !== null,
+    readLinks: config.fetch.enabled,
+    chat: config.chat?.enabled ?? false,
+  };
+}
+
 /** Where the agent is and how to reach it. */
 export interface AgentEndpoint {
   baseUrl: string;
@@ -18,6 +47,8 @@ export interface AgentEndpoint {
   walletUrl: string;
   /** True when this CLI started the agent (and so stops it on exit). */
   started: boolean;
+  /** The setup, for /config and /doctor; absent for endpoints made without a config (tests). */
+  info?: AgentInfo;
   stop(): void;
 }
 
@@ -126,6 +157,7 @@ export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpo
     token,
     walletUrl,
     started: running !== undefined,
+    info: agentInfo(config, file),
     stop: () => {
       if (running && running.exitCode === null) running.kill('SIGTERM');
     },

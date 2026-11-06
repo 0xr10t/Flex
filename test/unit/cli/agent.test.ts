@@ -12,8 +12,14 @@ import {
   type AgentApi,
   type AgentResponse,
 } from '../../../src/cli/agent/client.js';
-import { agentConfigFile, connectAgent, LaunchError, type AgentEndpoint } from '../../../src/cli/agent/launcher.js';
-import { answerFor, Chat, render } from '../../../src/cli/chat.js';
+import {
+  agentConfigFile,
+  agentInfo,
+  connectAgent,
+  LaunchError,
+  type AgentEndpoint,
+} from '../../../src/cli/agent/launcher.js';
+import { answerFor, Chat, nodeSupported, render } from '../../../src/cli/chat.js';
 import { openCommand, openLocalPage } from '../../../src/cli/open.js';
 import { testConfig } from '../../fakes/context.js';
 import type { Line } from '../../../src/cli/repl.js';
@@ -430,5 +436,119 @@ describe('opening the wallet page', () => {
     expect(openLocalPage('http://127.0.0.1:8788/#approve=javascript:x', fake)).toBe(false);
     expect(openLocalPage('http://127.0.0.1:8788/evil', fake)).toBe(false);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe('setup commands', () => {
+  const info = agentInfo(testConfig(), '/tmp/flex/.local/agent.config.json');
+  const chatWith = (over: Partial<ConstructorParameters<typeof Chat>[0]> = {}, api = new FakeApi()) =>
+    new Chat({
+      connect: async () => endpoint({ info }),
+      client: () => api,
+      timezone: 'UTC',
+      openPage: () => true,
+      ...over,
+    });
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+  it('knows which Node versions the project supports', () => {
+    expect(nodeSupported('22.12.0')).toBe(true);
+    expect(nodeSupported('v22.11.9')).toBe(false);
+    expect(nodeSupported('23.11.1')).toBe(false);
+    expect(nodeSupported('24.22.1')).toBe(true);
+  });
+
+  it('/config shows the setup without RPC URLs or tokens', async () => {
+    const lines = text(await chatWith().config());
+    const all = lines.join('\n');
+    expect(lines[0]).toMatch(/^config +\/tmp\/flex\/\.local\/agent\.config\.json$/);
+    expect(all).toMatch(/^wallet +0x/m);
+    expect(all).toMatch(/^networks +Sepolia, Base Sepolia, Arbitrum Sepolia$/m);
+    expect(all).toMatch(/^model +\S+ \(Ollama at http:\/\/127\.0\.0\.1:11434\)$/m);
+    expect(all).toMatch(/^approvals +http:\/\/127\.0\.0\.1:8788\/$/m);
+    for (const chain of testConfig().chains) expect(all).not.toContain(chain.rpc_url);
+    expect(all).not.toContain(TOKEN);
+  });
+
+  it('/doctor reports each check, with the fix for what fails', async () => {
+    const model = testConfig().llm.model;
+    const healthy = chatWith({
+      probe: {
+        fetch: (async (url: string) =>
+          url.endsWith('/api/tags') ? json({ models: [{ name: model }] }) : json({})) as unknown as typeof fetch,
+        port: async () => true,
+      },
+    });
+    const ok = text(await healthy.doctor());
+    expect(ok.every((l) => l.startsWith('✓') || l.startsWith('✗ node'))).toBe(true);
+    expect(ok.some((l) => l.startsWith('✓ model') && l.includes(`${model} ready`))).toBe(true);
+
+    const broken = chatWith({
+      probe: {
+        fetch: (async (url: string) => {
+          if (url.endsWith('/api/tags')) return json({ models: [{ name: 'other:1b' }] });
+          throw new TypeError('fetch failed');
+        }) as unknown as typeof fetch,
+        port: async () => false,
+      },
+    });
+    const bad = text(await broken.doctor()).join('\n');
+    expect(bad).toContain(`✗ model     ${model} isn't pulled; run: ollama pull ${model}`);
+    expect(bad).toContain(
+      '✗ wallet    not running; start it with: node wallet/dist/src/main.js .local/wallet.config.json',
+    );
+  });
+
+  it('/doctor says why the agent is unreachable', async () => {
+    const chat = new Chat({
+      connect: async () => {
+        throw new LaunchError('start');
+      },
+      timezone: 'UTC',
+      openPage: () => true,
+    });
+    const lines = text(await chat.doctor());
+    expect(lines[1]).toBe('✗ agent     not connected:');
+    expect(lines[2]).toBe("    The agent didn't start.");
+  });
+
+  it('/copy puts the last reply on the clipboard, and /version names the versions', async () => {
+    const copied: string[] = [];
+    const chat = chatWith({ copy: async (s) => (copied.push(s), true), version: '0.1.0' });
+    const copy = chat.commands().find((c) => c.name === 'copy')!;
+    expect(text((await copy.run([], { commands: [], lastReply: 'Please confirm:\n1. Send.' })) as Line[])).toEqual([
+      'Copied the last reply to the clipboard.',
+    ]);
+    expect(copied).toEqual(['Please confirm:\n1. Send.']);
+    expect(text((await copy.run([], { commands: [], lastReply: undefined })) as Line[])).toEqual([
+      'There is no reply to copy yet.',
+    ]);
+    const version = chat.commands().find((c) => c.name === 'version')!;
+    expect(text((await version.run([], { commands: [], lastReply: undefined })) as Line[])[0]).toMatch(
+      /^flexx 0\.1\.0 · node \d+\.\d+\.\d+$/,
+    );
+  });
+
+  it('offers every command with a summary, and arguments where they take some', () => {
+    const names = chatWith()
+      .commands()
+      .map((c) => c.name);
+    expect(names).toEqual([
+      'balance',
+      'limits',
+      'cancel',
+      'new',
+      'wallet',
+      'status',
+      'doctor',
+      'config',
+      'copy',
+      'version',
+    ]);
+    expect(
+      chatWith()
+        .commands()
+        .find((c) => c.name === 'limits')?.args,
+    ).toBe('[name] [token] [value]');
   });
 });

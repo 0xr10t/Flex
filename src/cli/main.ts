@@ -3,13 +3,13 @@
 // ("Flex ASCII") under FLEXX ("Flex Terminal"), turns the globe, gateway and diamond to dust, shrinks FLEXX into a bar
 // beside a small cube and opens the command box under it; the wallet commands plug into the box next.
 
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { ReadStream, WriteStream } from 'node:tty';
 import { connectAgent } from './agent/launcher.js';
 import { Chat } from './chat.js';
-import { openLocalPage } from './open.js';
+import { copyText, openLocalPage } from './open.js';
 import { isHexColor } from './render/paint.js';
 import type { SplashShape } from './render/splash.js';
 import { detectColorMode, renderStatic, runInteractive, type View, type ViewOptions } from './terminal.js';
@@ -86,6 +86,18 @@ export function parseCliArgs(argv: string[]): CliArgs {
   };
 }
 
+/** The version in this checkout's package.json (dist/src/cli → the repository root). */
+function packageVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+      version?: string;
+    };
+    return pkg.version ?? 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
 /** Runs the CLI and returns the process exit code. */
 export async function runCli(argv: string[]): Promise<number> {
   let args: CliArgs;
@@ -121,6 +133,8 @@ export async function runCli(argv: string[]): Promise<number> {
           connect: () => connectAgent(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           openPage: (url) => openLocalPage(url),
+          copy: (text) => copyText(text),
+          version: packageVersion(),
         })
       : undefined;
   const reason = await runInteractive({ ...opts, conversation: chat }, process.stdin, process.stdout);

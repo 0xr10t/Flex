@@ -1,5 +1,6 @@
-// Opens a local page (the wallet's MetaMask approval page) in the user's default browser. Only loopback http URLs
-// are opened, so nothing the agent or a message says can send the browser anywhere else.
+// Desktop helpers: opens a local page (the wallet's MetaMask approval page) in the default browser, and copies text
+// to the clipboard for /copy. Only loopback http URLs are opened, so nothing the agent or a message says can send the
+// browser anywhere else.
 
 import { spawn } from 'node:child_process';
 
@@ -24,4 +25,26 @@ export function openLocalPage(url: string, spawnImpl: typeof spawn = spawn): boo
   } catch {
     return false;
   }
+}
+
+/** The command that puts its standard input on the clipboard on this platform. */
+export function copyCommand(platform: NodeJS.Platform): [string, string[]] {
+  if (platform === 'darwin') return ['pbcopy', []];
+  if (platform === 'win32') return ['clip', []];
+  return ['xclip', ['-selection', 'clipboard']];
+}
+
+/** Puts `text` on the clipboard; resolves false when no clipboard command is available. */
+export function copyText(text: string, spawnImpl: typeof spawn = spawn): Promise<boolean> {
+  const [cmd, args] = copyCommand(process.platform);
+  return new Promise((resolve) => {
+    try {
+      const child = spawnImpl(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+      child.on('error', () => resolve(false));
+      child.on('close', (code) => resolve(code === 0));
+      child.stdin?.end(text);
+    } catch {
+      resolve(false);
+    }
+  });
 }

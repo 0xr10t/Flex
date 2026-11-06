@@ -3,6 +3,8 @@
 // its number, members by their numbers, or your own words), or a Yes/No on a summary. It renders every reply as lines
 // for the conversation, and when a plan has gone to the wallet it opens the wallet's MetaMask approval page.
 
+import { connect } from 'node:net';
+import { homedir } from 'node:os';
 import type { Question } from '../contracts/types.js';
 import {
   AgentClient,
@@ -14,7 +16,7 @@ import {
   type Limits,
 } from './agent/client.js';
 import { LaunchError, type AgentEndpoint } from './agent/launcher.js';
-import type { Command, CommandResult, Line, Segment } from './repl.js';
+import type { Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
 
 export interface ChatDeps {
   connect: () => Promise<AgentEndpoint>;
@@ -22,6 +24,32 @@ export interface ChatDeps {
   timezone: string;
   /** Opens a local page in the browser; returns false when it could not. */
   openPage: (url: string) => boolean;
+  /** Puts text on the clipboard, for /copy. */
+  copy?: (text: string) => Promise<boolean>;
+  /** flexx's version, for /version. */
+  version?: string;
+  /** How /doctor reaches Ollama and the wallet, and checks Tor's port (tests replace them). */
+  probe?: { fetch?: typeof fetch; port?: (host: string, port: number) => Promise<boolean> };
+}
+
+/** True when something listens on `host:port` (Tor's SOCKS port). */
+function portOpen(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port });
+    const done = (ok: boolean) => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(1500, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+  });
+}
+
+/** Node versions the project supports: 22.12+ on the 22 line, or 24 and later. */
+export function nodeSupported(version: string): boolean {
+  const [major = 0, minor = 0] = version.replace(/^v/, '').split('.').map(Number);
+  return (major === 22 && minor >= 12) || major >= 24;
 }
 
 const t = (text: string, tone: Segment['tone'] = 0): Segment => ({ text, tone });
@@ -238,6 +266,89 @@ export class Chat {
     ];
   }
 
+  /** `/config`: the setup flexx and the agent use, without RPC URLs (they carry provider keys) or tokens. */
+  async config(): Promise<Line[]> {
+    const status = await this.ensureSession();
+    const info = this.endpoint?.info;
+    if (!info) return status ?? [plain('No config details are available.', 1)];
+    const home = homedir();
+    const row = (k: string, v: string): Line => line(t(k.padEnd(12), 2), t(v));
+    return [
+      row('config', info.configFile.startsWith(home) ? '~' + info.configFile.slice(home.length) : info.configFile),
+      row('wallet', info.wallet),
+      row('networks', info.chains.join(', ')),
+      row('model', `${info.model} (Ollama at ${info.ollamaUrl})`),
+      row('traffic', info.proxy ? `through Tor (${info.proxy})` : 'direct, no Tor'),
+      row('ENS groups', info.ensIndexer ? 'on' : 'off (no indexer configured)'),
+      row('links', info.readLinks ? 'read links you paste' : 'links are not opened'),
+      row('agent', this.endpoint!.baseUrl + (this.endpoint!.started ? ' (started by flexx)' : '')),
+      row('approvals', this.endpoint!.walletUrl),
+      ...(status ?? []),
+    ];
+  }
+
+  /** `/doctor`: checks everything a payment needs, each with what to do when it fails. */
+  async doctor(): Promise<Line[]> {
+    const fetchImpl = this.deps.probe?.fetch ?? fetch;
+    const port = this.deps.probe?.port ?? portOpen;
+    const ok = (name: string, detail: string): Line => line(t('✓ ', 2), t(name.padEnd(10)), t(detail, 1));
+    const bad = (name: string, detail: string): Line => line(t('✗ ', 0), t(name.padEnd(10)), t(detail, 2));
+    const out: Line[] = [];
+    out.push(
+      nodeSupported(process.versions.node)
+        ? ok('node', process.versions.node)
+        : bad('node', `${process.versions.node} isn't supported; use 22.12+ or 24+ (nvm use)`),
+    );
+
+    const status = await this.ensureSession();
+    if (status) {
+      out.push(bad('agent', 'not connected:'), ...status.map((l) => [t('    '), ...l]));
+      return out;
+    }
+    const info = this.endpoint!.info;
+    const health = await this.api!.health().catch(() => undefined);
+    out.push(
+      health?.ok ? ok('agent', this.endpoint!.baseUrl) : bad('agent', 'not answering; try /new or restart flexx'),
+    );
+    out.push(health?.db ? ok('database', 'open') : bad('database', "can't be read; check the keychain prompt"));
+
+    if (info) {
+      const tags = await fetchImpl(`${info.ollamaUrl.replace(/\/+$/, '')}/api/tags`, {
+        signal: AbortSignal.timeout(3000),
+      })
+        .then((r) => r.json() as Promise<{ models?: Array<{ name: string }> }>)
+        .catch(() => undefined);
+      if (!tags) out.push(bad('ollama', `not running at ${info.ollamaUrl}; start it with: ollama serve`));
+      else if (!tags.models?.some((m) => m.name === info.model || m.name === `${info.model}:latest`))
+        out.push(bad('model', `${info.model} isn't pulled; run: ollama pull ${info.model}`));
+      else out.push(ok('model', `${info.model} ready`));
+
+      if (info.proxy) {
+        const m = /^socks5h:\/\/([^:/]+):(\d+)/.exec(info.proxy);
+        const up = m ? await port(m[1]!, Number(m[2])) : false;
+        out.push(up ? ok('tor', info.proxy) : bad('tor', 'not running; start it with: brew services start tor'));
+      } else out.push(ok('tor', 'off: connecting directly'));
+    }
+
+    const wallet = await fetchImpl(this.endpoint!.walletUrl, { signal: AbortSignal.timeout(2000) }).then(
+      () => true,
+      () => false,
+    );
+    out.push(
+      wallet
+        ? ok('wallet', this.endpoint!.walletUrl)
+        : bad('wallet', 'not running; start it with: node wallet/dist/src/main.js .local/wallet.config.json'),
+    );
+    return out;
+  }
+
+  /** `/copy`: puts the latest reply on the clipboard. */
+  async copyLast(ctx: CommandContext): Promise<Line[]> {
+    if (!ctx.lastReply) return [plain('There is no reply to copy yet.', 1)];
+    const copied = await (this.deps.copy?.(ctx.lastReply) ?? Promise.resolve(false));
+    return copied ? [plain('Copied the last reply to the clipboard.', 1)] : [plain("Couldn't reach the clipboard.", 1)];
+  }
+
   /** Closes the session (the agent clears its data) and stops an agent this CLI started. */
   async close(): Promise<void> {
     if (this.api && this.sessionId) await this.api.closeSession(this.sessionId).catch(() => undefined);
@@ -249,16 +360,34 @@ export class Chat {
   commands(): Command[] {
     const wrap = (f: () => Promise<Line[]> | Line[]) => async (): Promise<CommandResult> => f();
     return [
-      { name: 'balance', summary: 'show your balances', run: wrap(() => this.balance()) },
+      { name: 'balance', summary: 'show your balances', aliases: ['balances'], run: wrap(() => this.balance()) },
       {
         name: 'limits',
-        summary: 'show your limits, or change one: /limits <name> <value>',
+        summary: 'show your spending limits, or change one',
+        args: '[name] [token] [value]',
         run: async (args) => this.limits(args),
       },
       { name: 'cancel', summary: 'drop the request waiting on you', run: wrap(() => this.cancel()) },
-      { name: 'new', summary: 'start a new session', run: wrap(() => this.newSession()) },
+      {
+        name: 'new',
+        summary: 'start a new session (forgets this one)',
+        aliases: ['reset'],
+        run: wrap(() => this.newSession()),
+      },
       { name: 'wallet', summary: 'open the wallet to approve in MetaMask', run: wrap(() => this.wallet()) },
       { name: 'status', summary: 'check the agent, model and wallet', run: wrap(() => this.status()) },
+      {
+        name: 'doctor',
+        summary: 'diagnose the setup: node, config, model, Tor, wallet',
+        run: wrap(() => this.doctor()),
+      },
+      { name: 'config', summary: 'show the setup flexx is using', run: wrap(() => this.config()) },
+      { name: 'copy', summary: 'copy the last reply to the clipboard', run: async (_args, ctx) => this.copyLast(ctx) },
+      {
+        name: 'version',
+        summary: 'show the flexx and Node versions',
+        run: () => [line(t('flexx ', 1), t(this.deps.version ?? 'dev', 2), t(` · node ${process.versions.node}`, 1))],
+      },
     ];
   }
 }

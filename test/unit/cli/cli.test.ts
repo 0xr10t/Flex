@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameLines } from '../../../src/cli/render/frame.js';
+import { createFrame, frameLines } from '../../../src/cli/render/frame.js';
 import { paintRow, SCENE_PALETTE, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
 import { renderScene, renderSceneLayer, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
 import { stageLayout } from '../../../src/cli/render/stage.js';
@@ -177,11 +177,11 @@ describe('opening', () => {
     expect(lines[1]!.slice(18, 47)).toBe('█▀▀▀▀ █     █▀▀▀▀ █   █ █   █');
     expect(lines[6]!.slice(18)).toMatch(/^the access layer between AI and ethereum +│$/);
     // the conversation under the logo, then the box's bottom, then the input between its rules
-    expect(lines[8]).toMatch(/^ │ type a request, or \/help to see the commands +│$/);
+    expect(lines[8]).toMatch(/^ │ type a request, or \/ for commands and \? for shortcuts +│$/);
     expect(lines[44]).toMatch(/^ ╰─+╯$/);
     expect(lines[46]).toMatch(/^ ─+$/);
     expect(lines[47]).toMatch(/^ {2}❯ █ry "send 10 usdc to aradhya on base"$/);
-    expect(lines[48]).toMatch(/^ ─+$/);
+    expect(lines[48]).toMatch(/^ ─{2} \/ commands · \? shortcuts · ↑↓ history ─+$/);
     expect(lines[49]).toContain('flex.access');
   });
 
@@ -209,8 +209,9 @@ describe('opening', () => {
     expect(f.tone[10 * 160 + 2]).not.toBe(3);
     expect(lines[12]!.slice(3)).toMatch(/^● Type a request in your own words/);
     expect(lines[13]!.slice(3)).toMatch(/^ {2}\/help +list the commands/);
-    expect(lines[14]!.slice(3)).toMatch(/^ {2}\/clear +clear the conversation/);
-    expect(lines[15]!.slice(3)).toMatch(/^ {2}\/exit +leave flexx/);
+    expect(lines[14]!.slice(3)).toMatch(/^ {2}\/shortcuts +show the keyboard shortcuts/);
+    expect(lines[15]!.slice(3)).toMatch(/^ {2}\/clear +clear the conversation/);
+    expect(lines[16]!.slice(3)).toMatch(/^ {2}\/exit +leave flexx/);
     expect(lines[47]).toMatch(/^ {2}❯ pay█ *$/);
   });
 });
@@ -280,9 +281,9 @@ describe('command box', () => {
   it('reports unknown commands, and plain text when nothing takes messages', () => {
     const repl = new Repl();
     type(repl, '/pay 5 usdc\r');
-    expect(said(repl).slice(-3)).toEqual(['❯ /pay 5 usdc', '', '● unknown command: /pay · type /help']);
+    expect(said(repl).slice(-3)).toEqual(['❯ /pay 5 usdc', '', '● unknown command: /pay · type / for commands']);
     type(repl, 'pay 5 usdc\r');
-    expect(said(repl).at(-1)).toBe('● unknown command: pay · type /help');
+    expect(said(repl).at(-1)).toBe('● unknown command: pay · type / for commands');
   });
 
   it('sends plain text to onMessage, shows the working line, then the reply and its time', async () => {
@@ -383,11 +384,20 @@ describe('command box', () => {
     expect(repl.input).toBe('draft');
   });
 
-  it('clears, and leaves on exit or Ctrl-C on an empty line', () => {
-    const repl = new Repl();
+  it('clears, and leaves on exit or on Ctrl-C twice on an empty line', () => {
+    let clock = 0;
+    const repl = new Repl({ now: () => clock });
     type(repl, '/help\r/clear\r');
     expect(repl.conversation).toHaveLength(0);
+    // the first Ctrl-C arms leaving, the second within two seconds leaves; a later one starts over
+    expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBeUndefined();
+    expect(repl.exitArmed).toBe(true);
+    clock += 2500;
+    expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBeUndefined();
+    clock += 500;
     expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBe('quit');
+    expect(repl.handle({ kind: 'key', key: 'eof' })).toBeUndefined();
+    expect(repl.handle({ kind: 'key', key: 'eof' })).toBe('quit');
     type(repl, 'abc');
     expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBeUndefined();
     expect(repl.input).toBe('');
@@ -491,5 +501,156 @@ describe('arguments', () => {
     expect(() => parseCliArgs(['--shape', 'sphere'])).toThrow(UsageError);
     expect(() => parseCliArgs(['--accent', 'gold'])).toThrow(UsageError);
     expect(() => parseCliArgs(['pay'])).toThrow(UsageError);
+  });
+});
+
+describe('command palette and keys', () => {
+  const type = (repl: Repl, s: string): void => {
+    for (const ev of parseInput(s)) if (ev.kind === 'key') repl.handle(ev as KeyEvent);
+  };
+  const cmd = (name: string, extra: Partial<{ args: string; aliases: string[] }> = {}) => ({
+    name,
+    summary: `${name} things`,
+    ...extra,
+    run: () => [[{ text: `ran ${name}`, tone: 0 as const }]],
+  });
+  const make = () =>
+    new Repl({
+      commands: [cmd('balance', { aliases: ['balances'] }), cmd('limits', { args: '[name] [value]' }), cmd('doctor')],
+    });
+
+  it('opens on /, filters as you type, and finds aliases and words inside names', () => {
+    const repl = make();
+    type(repl, '/');
+    expect(repl.menu.map((c) => c.name)).toEqual(['help', 'shortcuts', 'clear', 'exit', 'balance', 'limits', 'doctor']);
+    type(repl, 'l');
+    expect(repl.menu.map((c) => c.name)).toEqual(['limits', 'help', 'clear', 'balance']);
+    type(repl, 'imits ');
+    expect(repl.menu).toEqual([]);
+    const aliased = make();
+    type(aliased, '/quit');
+    expect(aliased.menu.map((c) => c.name)).toEqual(['exit']);
+    type(aliased, '\r');
+  });
+
+  it('moves with arrows, completes with tab (leaving room for arguments) and runs with enter', () => {
+    const repl = make();
+    type(repl, '/');
+    type(repl, `${ESC}[B${ESC}[B${ESC}[A`);
+    expect(repl.selected?.name).toBe('shortcuts');
+    type(repl, `${ESC}[A${ESC}[A`);
+    expect(repl.selected?.name).toBe('doctor');
+    // clear the line, then pick by typing
+    type(repl, '\u007f');
+    type(repl, '/lim\t');
+    expect(repl.input).toBe('/limits ');
+    expect(repl.menu).toEqual([]);
+    type(repl, '\u0015/doc\r');
+    expect(repl.conversation.at(-1)).toEqual({ kind: 'reply', lines: [[{ text: 'ran doctor', tone: 0 }]] });
+  });
+
+  it('closes with esc and reopens on the next edit', () => {
+    const repl = make();
+    type(repl, '/ba');
+    expect(repl.menu).toHaveLength(1);
+    type(repl, ESC);
+    expect(repl.menu).toEqual([]);
+    expect(repl.input).toBe('/ba');
+    type(repl, 'l');
+    expect(repl.menu.map((c) => c.name)).toEqual(['balance']);
+  });
+
+  it('draws the palette above the input with the highlighted row on a bar, and the argument hint after /name', () => {
+    const repl = make();
+    type(repl, '/li');
+    const f = createFrame(80, 20);
+    repl.drawInput(f, 0, 15, 80, 0);
+    const lines = frameLines(f);
+    expect(lines[13]).toMatch(/^ {2}\/limits \[name\] \[value\] +limits things/);
+    expect(f.tone[13 * 80 + 2]).toBe(3);
+    expect(lines[16]).toMatch(/↑↓ choose · tab complete · enter run · esc close/);
+    type(repl, '\t');
+    const g = createFrame(80, 20);
+    repl.drawInput(g, 0, 15, 80, 600);
+    expect(frameLines(g)[15]).toMatch(/^ ❯ \/limits \[name\] \[value\]/);
+  });
+
+  it('shows the shortcuts on ? and closes them on any key', () => {
+    const repl = make();
+    type(repl, '?');
+    expect(repl.shortcuts).toBe(true);
+    expect(repl.input).toBe('');
+    const f = createFrame(90, 30);
+    repl.drawInput(f, 0, 25, 90, 0);
+    const all = frameLines(f).join('\n');
+    expect(all).toContain('Keyboard shortcuts');
+    expect(all).toMatch(/ctrl-c ctrl-c +leave flexx/);
+    type(repl, 'h');
+    expect(repl.shortcuts).toBe(false);
+    expect(repl.input).toBe('h');
+    type(repl, 'ow?');
+    expect(repl.input).toBe('how?');
+  });
+
+  it('edits like a readline: ctrl-a/e, ctrl-u/k/w, esc to clear, and paste as one line', () => {
+    const repl = make();
+    type(repl, 'send 10 usdc');
+    type(repl, '\u0017');
+    expect(repl.input).toBe('send 10 ');
+    type(repl, '\u0001\u000b');
+    expect(repl.input).toBe('');
+    type(repl, 'pay mihir\u0005 now');
+    expect(repl.input).toBe('pay mihir now');
+    type(repl, `${ESC}[D${ESC}[D${ESC}[D\u0015`);
+    expect(repl.input).toBe('now');
+    type(repl, ESC);
+    expect(repl.input).toBe('');
+    type(repl, `${ESC}[200~send 1 usdc\nto aradhya${ESC}[201~`);
+    expect(repl.input).toBe('send 1 usdc to aradhya');
+    expect(repl.conversation).toHaveLength(1);
+  });
+
+  it('scrolls back through the conversation and marks what is below', () => {
+    const repl = new Repl();
+    for (let i = 0; i < 30; i++) repl.notify([[{ text: `reply ${i}`, tone: 0 }]]);
+    const draw = () => {
+      const f = createFrame(60, 12);
+      repl.drawConversation(f, { x: 0, y: 0, w: 60, h: 10 });
+      return frameLines(f);
+    };
+    expect(draw()[9]).toMatch(/^● reply 29/);
+    repl.handle({ kind: 'key', key: 'page-up' });
+    const back = draw();
+    expect(back[9]).toMatch(/^↓ 9 more below · pgdn or the wheel to scroll down/);
+    repl.wheel(1);
+    repl.wheel(1);
+    repl.wheel(1);
+    expect(draw()[9]).toMatch(/^● reply 29/);
+  });
+
+  it('parses the new keys: tab, readline controls, page keys, wheel and paste', () => {
+    expect(parseInput('\t\u0001\u0005\u0015\u000b\u0017').map((e) => (e.kind === 'key' ? e.key : e.kind))).toEqual([
+      'tab',
+      'home',
+      'end',
+      'kill-start',
+      'kill-end',
+      'kill-word',
+    ]);
+    expect(parseInput(`${ESC}[5~${ESC}[6~${ESC}[Z`).map((e) => (e.kind === 'key' ? e.key : e.kind))).toEqual([
+      'page-up',
+      'page-down',
+      'backtab',
+    ]);
+    expect(parseInput(`${ESC}[<64;10;5M${ESC}[<65;10;5M${ESC}[<0;10;5M`)).toEqual([
+      { kind: 'wheel', delta: -1 },
+      { kind: 'wheel', delta: 1 },
+      { kind: 'mouse', col: 10, row: 5 },
+    ]);
+    expect(parseInput(`a${ESC}[200~x\ny${ESC}[201~b`)).toEqual([
+      { kind: 'key', key: 'char', char: 'a' },
+      { kind: 'key', key: 'paste', char: 'x\ny' },
+      { kind: 'key', key: 'char', char: 'b' },
+    ]);
   });
 });
