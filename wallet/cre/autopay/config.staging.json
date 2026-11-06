@@ -1,4 +1,5 @@
 {
+  "mode": "dry-run",
   "schedule": "*/30 * * * * *",
   "maxSimulationsPerRun": 2,
   "workflow": {

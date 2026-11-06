@@ -29,7 +29,11 @@ export function simulationUrls(secret: string, quorum: number): string[] {
   }
   if (
     !Array.isArray(urls) ||
-    urls.some((u) => typeof u !== 'string' || !/^https:\/\/[^\s#]+$/.test(u)) ||
+    urls.some(
+      (u) =>
+        typeof u !== 'string' ||
+        !/^(?:https:\/\/[^\s#]+|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?(?:\/[^\s#]*)?)$/.test(u),
+    ) ||
     new Set(urls).size !== urls.length
   )
     throw new Error('invalid simulation endpoint configuration');

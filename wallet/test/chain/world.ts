@@ -46,8 +46,8 @@ export interface Wallet {
 
 export const units = (v: string) => parseUnits(v, 6);
 
-export async function startWorld(): Promise<World> {
-  const [base, arbitrum] = await Promise.all([startChain(BASE), startChain(ARBITRUM)]);
+export async function startWorld(timestamp?: number): Promise<World> {
+  const [base, arbitrum] = await Promise.all([startChain(BASE, timestamp), startChain(ARBITRUM, timestamp)]);
   const deployments = new Map<LocalChain, { executor: Hex; forwarder: Hex; block: number; router: Hex }>();
   for (const chain of [base, arbitrum]) {
     const forwarder = await chain.deploy('TestHelpers.sol', 'MockForwarder');

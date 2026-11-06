@@ -1,9 +1,13 @@
 # CRE project settings. The RPC URLs use secrets from a local .env file, which is never committed.
+local-simulation:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${SEPOLIA_RPC_URL}
 staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
-      url: ${CRE_SECRET_RPC_SEPOLIA}
+      url: ${SEPOLIA_RPC_URL}
     - chain-name: ethereum-testnet-sepolia-base-1
-      url: ${CRE_SECRET_RPC_BASE_SEPOLIA}
+      url: ${BASE_SEPOLIA_RPC_URL}
     - chain-name: ethereum-testnet-sepolia-arbitrum-1
-      url: ${CRE_SECRET_RPC_ARBITRUM_SEPOLIA}
+      url: ${ARBITRUM_SEPOLIA_RPC_URL}
