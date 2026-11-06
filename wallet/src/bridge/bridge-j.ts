@@ -31,6 +31,7 @@ import type { BridgeJ, ChainId } from '../schemas/envelope.js';
 const ROUTER_ABI = parseAbi([
   'struct TokenAmount { address token; uint256 amount; }',
   'struct Message { bytes receiver; bytes data; TokenAmount[] tokenAmounts; address feeToken; bytes extraArgs; }',
+  'function isChainSupported(uint64 destSelector) view returns (bool)',
   'function getFee(uint64 destSelector, Message message) view returns (uint256)',
   'function ccipSend(uint64 destSelector, Message message) payable returns (bytes32)',
 ]);
@@ -113,6 +114,15 @@ export const bridgeHandler: StepHandler<BridgeJ> = {
     const router = routerOf(intent.source_chain_id).router;
     const selector = routerOf(intent.dest_chain_id).selector;
     const message = ccipMessage(intent, ctx.walletAddress);
+    const supported = decodeFunctionResult({
+      abi: ROUTER_ABI,
+      functionName: 'isChainSupported',
+      data: await ctx.gateway.call(
+        router,
+        encodeFunctionData({ abi: ROUTER_ABI, functionName: 'isChainSupported', args: [selector] }),
+      ),
+    });
+    if (!supported) return finished({ status: 'failed', error_code: 'BRIDGE_ROUTE_UNAVAILABLE' });
     // Quote the exact message that will be sent: a different one can underpay (F-3).
     const quoted = decodeFunctionResult({
       abi: ROUTER_ABI,

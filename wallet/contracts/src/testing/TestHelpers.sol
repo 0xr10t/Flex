@@ -87,6 +87,10 @@ contract MockCcipRouter {
         laneClosed = value;
     }
 
+    function isChainSupported(uint64) external view returns (bool) {
+        return !laneClosed;
+    }
+
     function getFee(uint64, Message calldata) external view returns (uint256) {
         require(!laneClosed, "lane");
         return fee;
