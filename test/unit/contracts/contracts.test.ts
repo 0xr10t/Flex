@@ -92,11 +92,13 @@ describe('contracts-v1', () => {
     expect(ERROR_CODES).toHaveLength(35);
   });
 
-  it('§0 registry stubs return UNSUPPORTED_REQUEST for every step', async () => {
-    const ctx = makeTestContext();
-    for (const s of STEP_ORDER) {
-      await expect(registry[s].step(ctx)).resolves.toEqual({ kind: 'error', code: 'UNSUPPORTED_REQUEST' });
-    }
+  it('§3.3 registry wires a real step for S0–S12 in fixed order (Phase 2)', async () => {
+    const { s0 } = await import('../../../src/pipeline/s0-balances.js');
+    const { s12 } = await import('../../../src/pipeline/s12-handoff.js');
+    expect(Object.keys(registry)).toEqual([...STEP_ORDER]);
+    for (const s of STEP_ORDER) expect(typeof registry[s].step).toBe('function');
+    expect(registry.s0).toBe(s0);
+    expect(registry.s12).toBe(s12);
   });
 
   it('§7.1 DB2 invariant in fake repos', () => {

@@ -24,6 +24,14 @@ import { createRepos } from './db/repos/index.js';
 import { createApp } from './server/app.js';
 import { modelReady, type StepRegistry } from './session/manager.js';
 import { createLogger, type Logger } from './util/logger.js';
+import { pathToFileURL } from 'node:url';
+import { createOllamaClient } from './llm/ollama.js';
+import { createRpcClients } from './pipeline/s0-balances.js';
+import { createContentFetcher } from './quarantine/fetch.js';
+import { createEnsClient } from './recipients/ens-client.js';
+import { createSubnameSource } from './recipients/subnames.js';
+import { createExecutionClient } from './handoff/execution-client.js';
+import { registry } from './pipeline/registry.js';
 
 /** Factories owned by lanes B, C and D (LANES.md "Exports the Orchestrator will wire"). */
 export interface LaneFactories {
@@ -111,4 +119,25 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
       log.close();
     },
   };
+}
+
+/** Production wiring (Phase 2, Orchestrator): the lanes' real factories and the step registry. */
+export const productionFactories: LaneFactories = {
+  createLlm: createOllamaClient,
+  createRpc: (config) => createRpcClients(config),
+  createFetcher: (config) => createContentFetcher(config),
+  createEns: (config) => createEnsClient(config),
+  createSubnames: (config) => createSubnameSource(config),
+  createExecution: createExecutionClient,
+  registry,
+};
+
+// `npm start` (node dist/src/index.js) runs the agent; importing this module (tests) does not.
+const entry = process.argv[1];
+if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
+  main(productionFactories).catch(() => {
+    // §18: no values in output; the error code alone, nothing from the error message.
+    process.stderr.write('agent-layer: startup failed\n');
+    process.exit(1);
+  });
 }
