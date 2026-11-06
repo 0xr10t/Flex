@@ -244,3 +244,31 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
 - ANSWERED (human, 2026-11-06) · **SQ-O-07** (audit O2) §16.4 "DB2 is written only by `add_contact`" vs §9.4 "Use new address (update the address on all of this name's DB2 rows)". → now §9.4's update runs. Spec wording question only.
 - ANSWERED (human, 2026-11-06) · **SQ-O-08** (audit O3) SSRF: besides the §8.2 ranges, should the fetcher refuse `100.64.0.0/10`, `64:ff9b::/96`, `2002::/16` (these two can wrap 127.0.0.1), `192.0.0.0/24`, `198.18.0.0/15`, multicast and `fec0::/10`? → now only the spec's ranges (plus `0.0.0.0/8`, `::`, SQB-12).
 - ANSWERED (human, 2026-11-06) · **SQ-O-09** (audit O5) the `EXECUTION_REJECTED` reply passes the execution layer's 4xx `message` unchanged (§8.14 step 5), with no length cap. → now unchanged. Option: cap at e.g. 200 characters and strip control characters.
+
+## Review swarm (2026-11-06): human answers and accepted gaps
+
+Six Opus reviewers checked `d5389df`. Findings are in
+`/private/tmp/…/scratchpad/review1…6/findings.md` (session scratchpad). Human answers given in chat on 2026-11-06:
+
+- **SQ-R-01, name variants** (Reviewer 6 F1): sweep only **exact** repeats of a tagged name (case-insensitive, whole
+  word). "Mihirs", "Mihir2", and a part of a multi-word name ("Riya" after "Riya Shah") are **not** swept. No code change.
+- **SQ-R-02, distributive scope** (Reviewer 4 G2): a distributive word ("each", …) relaxes P2, P4 and the
+  `Q_PAIR_AMOUNT` trigger **only for amounts in its own clause**. Other amounts are checked normally. Lane D change.
+- **SQ-R-03, short autopays** (Reviewer 4 G3): `per_period_cap` = min(amount × most payments in any 7-day window,
+  `total_cap`). "20 usdc daily for 2 payments" → 40. Lane D change.
+- **SQ-R-04, duplicate execution reports** (Reviewer 5 gap): an `autopay_payment` report whose `tx_hash` is already in
+  DB6 is accepted (204) but inserts nothing, so it never counts twice. Lane A change.
+- **SQ-R-05, late confirmation of an autopay** (Reviewer 5 gap): at confirm, if a `k`'s `first_occurrence` is no
+  longer after now, the agent asks `Q_AUTOPAY_START` ("When should this start?"), re-plans from S9 and shows a new
+  summary for a fresh confirmation; nothing is handed off with a past first occurrence. Lane A + D change.
+- **SQ-R-06, cancel after a timed-out hand-off** (Reviewer 1 gap): cancelling a `HANDOFF_FAILED` request whose last
+  failure was a timeout replies "Cancelled here, but your wallet may already have received it. Check your wallet."
+  (state `DISCARDED`). Cancel after a 5xx failure keeps "Cancelled. Nothing was sent.". Orchestrator catalog + Lane A.
+
+Accepted as currently implemented (the human may revisit any of these):
+"polygon" after on/via → `UNSUPPORTED_CHAIN`, elsewhere `MAINNET_NOT_SUPPORTED`; a person named like a ticker ("pay sol
+5 usdc") → `UNSUPPORTED_TOKEN`; token rule (d) counts token-word occurrences; balance answer before "I dropped the
+previous plan…"; after F-12 "No", rules 7–8 run before `Q_NO_PAYEE`; the 10-minute pending window measured at S9/S10;
+the group summary line has no " After step n."; an `l`-only request's `request_id` is not recorded (reports match by
+`autopay_id`); the subgraph `skip` cap (> 6000 subnames → `ENS_INDEXER_UNAVAILABLE`); `Q_ADDRESS_REENTER` for an
+untrusted payee has no "Don't pay this one" chip; `INSUFFICIENT_FUNDS` `{need}` now includes the bridge fee (fix below).
