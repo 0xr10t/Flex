@@ -4,6 +4,8 @@
 import {
   BACK_REFERENCE_WORDS,
   CANCEL_WORDS,
+  CLAUSE_SPLIT_CHARS,
+  CLAUSE_SPLIT_WORDS,
   DISTRIBUTIVE_WORDS,
   FIAT_OTHER_WORDS,
   FIAT_USD_WORDS,
@@ -131,8 +133,8 @@ export const ORDINAL_AFTER_RE = /^(?:st|nd|rd|th)(?![A-Za-z0-9_])/i;
 export const COUNT_AFTER_RE = /^\s*(?:(?:time|week|day|month|payment)s?|x)(?![A-Za-z0-9_])/i;
 
 /** Clause separators (§8.3 rule 1). */
-export const CLAUSE_CHAR_RE = /[.!?;\n,]/g;
-export const CLAUSE_WORD_RE = /(?<![A-Za-z0-9_])(?:and|then|also|plus)(?![A-Za-z0-9_])/gi;
+export const CLAUSE_CHAR_RE = new RegExp(`[${CLAUSE_SPLIT_CHARS.map(escapeRe).join('')}]`, 'g');
+export const CLAUSE_WORD_RE = wordRe(CLAUSE_SPLIT_WORDS);
 
 /**
  * Plain numbers (protected from clause splitting: "0.5", "1,000", "10,00,000"). Only separators *inside* a number
