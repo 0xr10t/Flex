@@ -152,3 +152,7 @@ Lane files: `spec-questions/A.md` (lane/a-platform), `spec-questions/B.md` (lane
 - **SQ-A-06** after the third failed hand-off the request is `FAILED`, but the only text says "Confirm again to retry" and confirm returns 409 → now the §15 text unchanged. Wording needed.
 - **SQ-A-07** an existing token file not at mode 0600 → now refused at startup, including 0400.
 - **SQ-A-08** base64 attachments → now strict RFC 4648, no whitespace; non-zero trailing bits accepted.
+- **SQ-D-15 / SQ-O-02** §10.6 rule 8 vs §19 E6 `expires_at`: rule 8 gives 23:59:59 on the last occurrence's date (E6: Fri 2026-12-25 → `2026-12-25T18:29:59Z`); E6 prints `2026-12-31T18:29:59Z` (the `on_date`). → now §10.6 rule 8.
+- **SQ-D-16** §19 E9's 120 USDC is over the default `per_tx_max` 100 (§6.3), so E9 as written ends in `LIMIT_PER_TX`. → now V-13 applies; A-15 raises the limit in its setup.
+- **SQ-O-03** §8.9 P4 vs §20.2 A-57 ("10 usdc and 0.01 eth to mihir"): the clause split at "and" puts the 10 USDC in a different clause from Mihir, whose clause holds the 0.01 ETH amount, so P4 rejects the pairing; A-57 expects two `i` intents. By §0 precedence §8 wins. → now P4 as written.
+- Lane questions added since the last batch (interim behaviour applies; full text in each lane's `spec-questions/` file, merged into `agentic_layer`): SQB-23…27 (B), SQ-D-01…18 (D).
