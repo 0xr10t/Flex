@@ -186,6 +186,14 @@ export class Store {
     return row ? (JSON.parse(row.envelope_json) as HandoffEnvelope) : null;
   }
 
+  /** A stable pass through pending requests; a settled bridge must not monopolize execution. */
+  unfinishedRequests(): HandoffEnvelope[] {
+    const rows = this.db
+      .prepare('SELECT envelope_json FROM requests WHERE finished_at IS NULL ORDER BY rowid')
+      .all() as { envelope_json: string }[];
+    return rows.map((row) => JSON.parse(row.envelope_json) as HandoffEnvelope);
+  }
+
   step(requestId: string, step: number): StepRow {
     const row = this.db.prepare('SELECT * FROM steps WHERE request_id = ? AND step = ?').get(requestId, step) as
       StepRow | undefined;

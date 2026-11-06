@@ -4,8 +4,8 @@
 // A step's state is saved before each move that can't be undone. The signed transaction is saved before it is sent, so
 // after a crash the runner looks that exact transaction up and repeats it. It never signs a second one.
 //
-// Requests run one at a time, across all chains. That keeps one transaction in flight per account (W3-05). Its cost is
-// that a request waiting for approval or a bridge holds up the next one. A bridge can wait for long, so this needs revisiting.
+// Signing and source settlement remain serialized to preserve nonce ordering. Once a source transaction settles,
+// bridge polling yields between passes so unrelated requests, including cancellation, can progress.
 
 import type { Hex } from 'viem';
 import type { Approver } from '../approval.js';
@@ -39,7 +39,7 @@ export interface RunnerDeps {
   pollMs?: number;
   /** Tries before giving up on a step that has signed nothing. A signed step keeps trying: its outcome is unknown. */
   maxTries?: number;
-  /** How long a bridge may take to arrive before its step reports failed (OQ-07). */
+  /** How long before a still-pending bridge is marked delayed; never permission to resend. */
   bridgeTimeoutMs?: number;
 }
 
@@ -71,6 +71,7 @@ export class Runner {
   /** Starts working through unfinished requests, if it isn't already. */
   kick(): Promise<void> {
     this.again = true;
+    this.wake?.();
     this.running ??= this.loop().finally(() => {
       this.running = null;
     });
@@ -88,10 +89,13 @@ export class Runner {
     try {
       while (this.again && !this.stopped) {
         this.again = false;
-        let envelope = this.deps.store.nextUnfinished();
-        while (envelope && !this.stopped) {
+        for (const envelope of this.deps.store.unfinishedRequests()) {
+          if (this.stopped) break;
           await this.runRequest(envelope);
-          envelope = this.stopped ? null : this.deps.store.nextUnfinished();
+        }
+        if (!this.stopped && this.deps.store.nextUnfinished()) {
+          this.again = true;
+          await this.pause(this.pollMs);
         }
       }
     } catch {
@@ -116,10 +120,11 @@ export class Runner {
     if (status === 'executed' || status === 'failed') return;
 
     const dependsOn = 'depends_on' in intent ? intent.depends_on : [];
-    if (dependsOn.some((d) => store.step(id, d).status !== 'executed')) {
+    if (dependsOn.some((d) => store.step(id, d).status === 'failed')) {
       this.finish(id, intent, { status: 'failed', error_code: 'DEPENDENCY_FAILED' });
       return;
     }
+    if (dependsOn.some((d) => store.step(id, d).status !== 'executed')) return;
     const handler = HANDLERS[intent.intent_id];
     const ctx = this.contextFor(envelope, handler.chainOf(intent));
 
@@ -276,18 +281,13 @@ export class Runner {
     const row = this.deps.store.step(id, intent.step);
     if (!handler.poll) throw new Error('step waits, but its handler cannot');
     const data: unknown = JSON.parse(row.data_json as string);
-    while (!this.stopped) {
-      try {
-        const outcome = await handler.poll(ctx, intent, data, row.tx_hash as Hex);
-        if (outcome) {
-          this.finish(id, intent, outcome);
-          return;
-        }
-      } catch (e) {
-        if (!(e instanceof ChainUnavailableError)) throw e;
-        this.deps.log('chain_unavailable', { request_id: id, step: intent.step, stage: 'wait' });
-      }
-      await this.pause(this.pollMs);
+    if (this.stopped) return;
+    try {
+      const outcome = await handler.poll(ctx, intent, data, row.tx_hash as Hex);
+      if (outcome) this.finish(id, intent, outcome);
+    } catch (e) {
+      if (!(e instanceof ChainUnavailableError)) throw e;
+      this.deps.log('chain_unavailable', { request_id: id, step: intent.step, stage: 'wait' });
     }
   }
 

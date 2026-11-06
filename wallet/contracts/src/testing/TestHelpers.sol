@@ -62,6 +62,7 @@ contract MockForwarder {
 /// CCIP router stand-in, with the send-time rules found in the lab: an underpaid fee reverts, an overpaid fee is kept, and
 /// the token moves by transferFrom. It delivers nothing; a test mints on the destination chain to play the network.
 contract MockCcipRouter {
+    struct Receipt { address issuer; uint32 destGasLimit; uint32 destBytesOverhead; uint256 feeTokenAmount; bytes extraArgs; }
     struct TokenAmount {
         address token;
         uint256 amount;
@@ -75,9 +76,43 @@ contract MockCcipRouter {
     }
 
     event Sent(uint64 indexed destSelector, address indexed receiver, address token, uint256 amount, uint256 feePaid);
+    event CCIPMessageSent(uint64 indexed destChainSelector, address indexed sender, bytes32 indexed messageId,
+        address feeToken, uint256 tokenAmountBeforeTokenPoolFees, bytes encodedMessage, Receipt[] receipts, bytes[] verifierBlobs);
+    event ExecutionStateChanged(uint64 indexed sourceChainSelector, uint64 indexed messageNumber,
+        bytes32 indexed messageId, uint8 state, bytes returnData);
 
     uint256 public fee;
     bool public laneClosed;
+    uint64 public sourceSelector;
+    uint64 public messageNumber;
+    mapping(uint64 => address) public remoteTokens;
+    mapping(uint64 => address) public remoteRamps;
+
+    function configure(uint64 source, uint64 dest, address token, address ramp) external {
+        sourceSelector = source;
+        remoteTokens[dest] = token;
+        remoteRamps[dest] = ramp;
+    }
+    function getOnRamp(uint64) external view returns (address) { return address(this); }
+    function isOffRamp(uint64, address ramp) external view returns (bool) { return ramp == address(this); }
+    function typeAndVersion() external pure returns (string memory) { return "OnRamp 2.0.0"; }
+
+    function deliver(uint64 source, uint64 number, bytes32 id, address token, address receiver, uint256 amount, bool success) external {
+        if (success) MockUSDC(token).mint(receiver, amount);
+        emit ExecutionStateChanged(source, number, id, success ? 2 : 3, success ? bytes("") : bytes("failed"));
+    }
+
+    function encodeMessage(uint64 dest, Message calldata message) private returns (bytes memory) {
+        address receiver = abi.decode(message.receiver, (address));
+        bytes memory token = abi.encodePacked(uint8(1), message.tokenAmounts[0].amount,
+            uint8(20), address(this), uint8(20), message.tokenAmounts[0].token,
+            uint8(20), remoteTokens[dest], uint8(20), receiver, uint16(0));
+        bytes memory header = abi.encodePacked(uint8(1), sourceSelector, dest, ++messageNumber,
+            uint32(500000), uint32(0), uint32(0), bytes32(0));
+        bytes memory addresses = abi.encodePacked(uint8(20), address(this), uint8(20), remoteRamps[dest],
+            uint8(20), msg.sender, uint8(20), receiver);
+        return bytes.concat(header, addresses, abi.encodePacked(uint16(0), uint16(token.length), token, uint16(0)));
+    }
 
     function setFee(uint256 value) external {
         fee = value;
@@ -106,6 +141,9 @@ contract MockCcipRouter {
         );
         require(ok && abi.decode(ret, (bool)), "transfer");
         emit Sent(destSelector, abi.decode(message.receiver, (address)), t.token, t.amount, msg.value);
-        return keccak256(abi.encode(destSelector, msg.sender, block.number));
+        bytes memory encoded = encodeMessage(destSelector, message);
+        bytes32 id = keccak256(encoded);
+        emit CCIPMessageSent(destSelector, msg.sender, id, address(0), t.amount, encoded, new Receipt[](0), new bytes[](0));
+        return id;
     }
 }

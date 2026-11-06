@@ -59,6 +59,18 @@ export async function startWorld(): Promise<World> {
     deployments.set(chain, { executor, forwarder, router, block: Number(await chain.pub.getBlockNumber()) });
     await chain.mintUsdc(WALLET, units('100000'));
   }
+  for (const [source, dest] of [
+    [base, arbitrum],
+    [arbitrum, base],
+  ] as const) {
+    const tx = await source.deployer.writeContract({
+      address: CCIP[source.chainId].router,
+      abi: artifact('TestHelpers.sol', 'MockCcipRouter').abi,
+      functionName: 'configure',
+      args: [CCIP[source.chainId].selector, CCIP[dest.chainId].selector, dest.usdc, CCIP[dest.chainId].router],
+    });
+    await source.pub.waitForTransactionReceipt({ hash: tx });
+  }
 
   const reports: Record<string, any>[] = [];
   const agentStatus = { code: 204 };
