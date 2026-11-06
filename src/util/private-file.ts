@@ -31,11 +31,23 @@ if (-not $own) { exit 5 }
 `;
 
 function windowsAcl(path: string, action: 'protect' | 'check'): void {
-  const executable = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  execFileSync(executable, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(WINDOWS_ACL, 'utf16le').toString('base64')], {
-    env: { ...process.env, FLEX_PRIVATE_PATH: path, FLEX_PRIVATE_ACTION: action },
-    stdio: 'ignore', windowsHide: true, timeout: 15_000,
-  });
+  const executable = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+  execFileSync(
+    executable,
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(WINDOWS_ACL, 'utf16le').toString('base64')],
+    {
+      env: { ...process.env, FLEX_PRIVATE_PATH: path, FLEX_PRIVATE_ACTION: action },
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 15_000,
+    },
+  );
 }
 
 export function protectPrivateFile(path: string): void {

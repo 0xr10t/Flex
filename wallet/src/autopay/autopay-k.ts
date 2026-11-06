@@ -82,7 +82,13 @@ export async function readPlan(ctx: HandlerContext, executor: Hex, planId: Hex) 
 }
 
 const autopayReport = (intent: AutopayK, planId: Hex, executor: Hex) => ({
-  autopay: { autopay_id: intent.autopay_id, plan_id: planId, executor_address: executor, chain_id: intent.chain_id, token: intent.token },
+  autopay: {
+    autopay_id: intent.autopay_id,
+    plan_id: planId,
+    executor_address: executor,
+    chain_id: intent.chain_id,
+    token: intent.token,
+  },
 });
 
 /** What a run must move out of the wallet: each person, then the fee. */

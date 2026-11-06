@@ -8,4 +8,7 @@ copyFileSync(
 );
 mkdirSync(new URL('../dist/src/browser', import.meta.url), { recursive: true });
 for (const file of ['ui.html', 'ui.js', 'ui.css'])
-  copyFileSync(new URL(`../src/browser/${file}`, import.meta.url), new URL(`../dist/src/browser/${file}`, import.meta.url));
+  copyFileSync(
+    new URL(`../src/browser/${file}`, import.meta.url),
+    new URL(`../dist/src/browser/${file}`, import.meta.url),
+  );

@@ -88,10 +88,9 @@ export interface HandoffEnvelope {
   intents: EnvelopeIntent[];
 }
 
-export const envelopeSchema = JSON.parse(readFileSync(new URL('./handoff-envelope.schema.json', import.meta.url), 'utf8')) as Record<
-  string,
-  unknown
->;
+export const envelopeSchema = JSON.parse(
+  readFileSync(new URL('./handoff-envelope.schema.json', import.meta.url), 'utf8'),
+) as Record<string, unknown>;
 
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 addFormats(ajv);
