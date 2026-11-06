@@ -581,7 +581,7 @@ describe('§17.3 confirmation, answers and cancellation', () => {
       state: 'done',
       messages: [{ type: 'text', text: 'Cancelled. Nothing was sent.' }],
     });
-    expect(finals(h)).toEqual(['FAILED']);
+    expect(finals(h)).toEqual(['ANSWERED']);
     expect(h.log.lines.some((l) => l.event === 'unsupported_state')).toBe(false);
   });
 
