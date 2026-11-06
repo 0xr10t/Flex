@@ -99,6 +99,7 @@ beforeEach(async () => {
       auth: { inbound_token_file: 'unused', report_token_file: 'unused' },
       db: { path: dbPath },
       approval: { mode: 'auto_approve_testnets' },
+      network: { socks_proxy: null },
       chains: [{ chain_id: BASE, rpc_url: chain.rpcUrl }],
     }),
   );

@@ -16,6 +16,9 @@
   "approval": {
     "mode": "reject_all"
   },
+  "network": {
+    "socks_proxy": "socks5h://127.0.0.1:9050"
+  },
   "chains": [
     {
       "chain_id": 11155111,

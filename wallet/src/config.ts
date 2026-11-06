@@ -1,6 +1,7 @@
 // Implements: OQ-15 (provisional): the wallet's own config file. It holds paths and URLs, never keys or tokens.
 // Privacy fixes 1 and 10: chain RPC URLs are https (the anon-rpc endpoints) or http://127.0.0.1 (your own node); there is
-// no fallback RPC. agent.url is http://127.0.0.1 only.
+// no fallback RPC. agent.url is http://127.0.0.1 only. anon-rpc over Tor: `network.socks_proxy` (Tor's SOCKS port) sends
+// every remote RPC request through Tor, one circuit per chain.
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -18,6 +19,8 @@ export interface WalletConfig {
   db: { path: string };
   approval: { mode: ApprovalMode; wallet_address?: Hex };
   bridge?: { ccip_fee_max_eth: string };
+  /** anon-rpc over Tor: `socks5h://127.0.0.1:<port>`, or null for direct connections. Required, so direct is a choice. */
+  network: { socks_proxy: string | null };
   chains: {
     chain_id: 11155111 | 84532 | 421614;
     rpc_url: string;
@@ -31,7 +34,7 @@ export interface WalletConfig {
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['server', 'agent', 'auth', 'db', 'approval', 'chains'],
+  required: ['server', 'agent', 'auth', 'db', 'approval', 'network', 'chains'],
   properties: {
     // §16.4: local only. The envelope is the user's financial data, so this can't be pointed at a network interface.
     server: {
@@ -75,6 +78,12 @@ const SCHEMA = {
       additionalProperties: false,
       required: ['ccip_fee_max_eth'],
       properties: { ccip_fee_max_eth: { type: 'string', pattern: '^(0|[1-9][0-9]*)(\\.[0-9]{1,18})?$' } },
+    },
+    network: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['socks_proxy'],
+      properties: { socks_proxy: { oneOf: [{ type: 'string', minLength: 1 }, { type: 'null' }] } },
     },
     chains: {
       type: 'array',
@@ -126,6 +135,22 @@ const isLoopbackHttp = (u: URL): boolean =>
 
 const parse = (url: string): URL | null => (URL.canParse(url) ? new URL(url) : null);
 
+/** `socks5h://127.0.0.1:<port>`: no credentials (one is set per circuit), no path. */
+const isTorSocks = (url: string): boolean => {
+  const u = parse(url);
+  return (
+    u !== null &&
+    u.protocol === 'socks5h:' &&
+    u.hostname === '127.0.0.1' &&
+    u.port !== '' &&
+    u.username === '' &&
+    u.password === '' &&
+    (u.pathname === '' || u.pathname === '/') &&
+    u.search === '' &&
+    u.hash === ''
+  );
+};
+
 export function parseConfig(raw: unknown): WalletConfig {
   if (!validate(raw)) throw new Error('wallet config is invalid');
   if (
@@ -151,6 +176,11 @@ export function parseConfig(raw: unknown): WalletConfig {
   // Privacy fix 10: reports carry tx hashes and amounts, so the agent is reached on this machine only.
   const agent = parse(raw.agent.url);
   if (!agent || !isLoopbackHttp(agent)) throw new Error('wallet config: agent.url must be http://127.0.0.1');
+  // anon-rpc over Tor: Tor's SOCKS port on this machine, with hostnames resolved by Tor.
+  const proxy = raw.network.socks_proxy;
+  if (proxy !== null && !isTorSocks(proxy)) {
+    throw new Error('wallet config: network.socks_proxy must be socks5h://127.0.0.1:<port> or null');
+  }
   // Privacy fix 1: chain traffic goes over TLS to anon-rpc, or in plain http only to a node on this machine.
   for (const c of raw.chains) {
     const u = parse(c.rpc_url);

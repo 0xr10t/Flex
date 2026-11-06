@@ -17,6 +17,7 @@ import {
 import type { SignTypedData } from '../autopay/delegation.js';
 import { EIP7702_DELEGATOR } from './addresses.js';
 import { createSimulator, type SimulationConfig } from './simulation.js';
+import { torFetch } from './tor-fetch.js';
 
 export interface TxRequest {
   to: Hex;
@@ -157,11 +158,16 @@ const ALREADY_SEEN = /already known|already imported|nonce too low|nonce has alr
 
 const textOf = (e: unknown): string => (e instanceof BaseError ? `${e.shortMessage} ${e.details ?? ''}` : String(e));
 
+/**
+ * `simulation`: separate simulation providers (default: the read RPC alone). `proxy`: Tor's SOCKS port
+ * (`network.socks_proxy`), or null for direct connections; the simulators go through it too.
+ */
 export function createChainGateway(
   chainId: number,
   rpcUrl: string,
   account: LocalAccount,
   simulation?: SimulationConfig,
+  proxy: string | null = null,
 ): ChainGateway {
   const chain = defineChain({
     id: chainId,
@@ -169,11 +175,12 @@ export function createChainGateway(
     nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   });
-  const transport = http(rpcUrl, { timeout: 10_000, retryCount: 0 });
+  // anon-rpc over Tor: one circuit per chain when a proxy is set.
+  const transport = http(rpcUrl, { timeout: 10_000, retryCount: 0, fetchFn: torFetch(proxy, `wallet-${chainId}`) });
   // Privacy fix 3: a contract that answers with an offchain lookup would make viem fetch a URL it names, outside the RPC.
   const pub = createPublicClient({ chain, transport, pollingInterval: 250, ccipRead: false });
   const wallet = createWalletClient({ account, chain, transport, ccipRead: false });
-  const simulate = createSimulator(chainId, simulation ?? { rpc_urls: [rpcUrl], quorum: 1 });
+  const simulate = createSimulator(chainId, simulation ?? { rpc_urls: [rpcUrl], quorum: 1 }, proxy);
 
   const unavailable = <T>(work: Promise<T>): Promise<T> =>
     work.catch((e: unknown) => {

@@ -112,6 +112,7 @@ export async function startWorld(): Promise<World> {
           mode: options.approval ?? 'auto_approve_testnets',
           ...(options.approval === 'metamask' ? { wallet_address: WALLET } : {}),
         },
+        network: { socks_proxy: null },
         chains: [base, arbitrum].map((chain) => {
           const d = deployments.get(chain) as { executor: Hex; block: number };
           return {
