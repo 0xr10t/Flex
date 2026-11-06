@@ -1,5 +1,7 @@
 // Implements: §6.1 config.json (path from env AGENT_CONFIG, default ~/.agent-layer/config.json; validated at
 // startup), §16.4 server bound to 127.0.0.1 only, NFR-01 Ollama on 127.0.0.1 only, §5 stack (Ajv draft 2020-12 shared instance).
+// Privacy fix 10: the execution layer on 127.0.0.1 only; RPC URLs https (anon-rpc) or http to 127.0.0.1; the indexer https
+// or null (off, fix 6); `fetch.enabled` switches link reading (fix 5).
 // Owner: Lane A.
 
 import { readFileSync } from 'node:fs';
@@ -162,12 +164,39 @@ export function validateConfig(raw: unknown): Config {
   ];
   for (const [field, url] of urls) if (!URL.canParse(url)) errors.push(`${field} not a parsable URL`);
   // NFR-01 / ADR-004 / §16.4: Ollama is reached on 127.0.0.1 only, over plain http (§6.1 example).
-  if (URL.canParse(cfg.llm.ollama_url)) {
-    const u = new URL(cfg.llm.ollama_url);
-    if (u.protocol !== 'http:' || u.hostname !== '127.0.0.1') errors.push('/llm/ollama_url must be http://127.0.0.1');
+  if (URL.canParse(cfg.llm.ollama_url) && !isLoopbackHttp(cfg.llm.ollama_url)) {
+    errors.push('/llm/ollama_url must be http://127.0.0.1');
+  }
+  // Privacy fix 10: the hand-off carries real amounts and addresses, so it never leaves this machine.
+  if (URL.canParse(cfg.execution.url) && !isLoopbackHttp(cfg.execution.url)) {
+    errors.push('/execution/url must be http://127.0.0.1');
+  }
+  // Privacy fix 10: chain reads go over TLS (anon-rpc), or in plain http only to a node on this machine.
+  cfg.chains.forEach((c, i) => {
+    if (URL.canParse(c.rpc_url) && !isHttpsOrLoopback(c.rpc_url)) {
+      errors.push(`/chains/${i}/rpc_url must be https, or http://127.0.0.1`);
+    }
+  });
+  if (
+    cfg.ens.indexer_url !== null &&
+    URL.canParse(cfg.ens.indexer_url) &&
+    new URL(cfg.ens.indexer_url).protocol !== 'https:'
+  ) {
+    errors.push('/ens/indexer_url must be https');
   }
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
+}
+
+/** http on 127.0.0.1, no credentials in the URL. */
+export function isLoopbackHttp(url: string): boolean {
+  const u = new URL(url);
+  return u.protocol === 'http:' && u.hostname === '127.0.0.1' && u.username === '' && u.password === '';
+}
+
+/** https anywhere, or plain http to 127.0.0.1 (your own node). */
+export function isHttpsOrLoopback(url: string): boolean {
+  return new URL(url).protocol === 'https:' || isLoopbackHttp(url);
 }
 
 /** Reads and validates config.json (§6.1). */

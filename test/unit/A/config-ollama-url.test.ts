@@ -1,4 +1,4 @@
-// Lane A unit tests: O6 — llm.ollama_url must be http://127.0.0.1 (NFR-01, §16.4); execution.url is unrestricted.
+// Lane A unit tests: O6 — llm.ollama_url must be http://127.0.0.1 (NFR-01, §16.4); execution.url too (privacy fix 10).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { validateConfig } from '../../../src/config/load.js';
@@ -27,11 +27,11 @@ describe('O6 llm.ollama_url must be http://127.0.0.1 (NFR-01, §16.4)', () => {
     },
   );
 
-  it('O6: execution.url is not restricted to loopback', () => {
+  it('privacy fix 10: execution.url is restricted to http://127.0.0.1 (see config-privacy.test.ts)', () => {
     const cfg = testConfig();
-    expect(() =>
-      validateConfig({ ...cfg, execution: { ...cfg.execution, url: 'https://exec.example.com' } }),
-    ).not.toThrow();
+    expect(() => validateConfig({ ...cfg, execution: { ...cfg.execution, url: 'https://exec.example.com' } })).toThrow(
+      /\/execution\/url must be http:\/\/127\.0\.0\.1/,
+    );
   });
 
   it('O6: config.example.json and testConfig() still validate', () => {
