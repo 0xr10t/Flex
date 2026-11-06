@@ -4,7 +4,7 @@ The execution layer: it receives the agent's hand-off envelope, checks it, and w
 
 **Current state:** every intent works on local chains: payments (`i`), bridges (`j`, with a stand-in router), autopays (`k`) and cancels
 (`l`), plus reports back to the agent. It runs with a test key and a mock USDC. The CRE workflow has only run in the simulator as a dry
-run. Nothing has run on a real testnet. See [the implementation plan](../docs/wallet/IMPLEMENTATION_PLAN.md).
+run. Nothing has run on a real testnet.
 
 ## Commands
 

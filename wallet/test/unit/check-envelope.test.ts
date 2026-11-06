@@ -330,7 +330,7 @@ describe('intentIdFor (provisional, OQ-09)', () => {
   });
 });
 
-describe('envelope changes (docs/wallet/ARCHITECTURE_CHANGES.md)', () => {
+describe('envelope v2 changes', () => {
   const stageOf = (envelope: unknown) => {
     const r = checkEnvelope(envelope, options);
     return r.ok ? 'ok' : r.stage;

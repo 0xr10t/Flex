@@ -255,7 +255,7 @@ export class SessionManager {
         }
       }
       if (a !== null && a.req.state === 'HANDOFF_FAILED') {
-        // §17.3 has no row for a messages call while HANDOFF_FAILED (spec-questions/A.md SQ-A-03). Interim: cancel
+        // §17.3 has no row for a messages call while HANDOFF_FAILED (SQ-A-03). Interim: cancel
         // texts cancel it like the cancel endpoint; any other text → UNSUPPORTED_REQUEST (§0) and the request stays
         // HANDOFF_FAILED, so `confirm` yes can still retry it.
         if (isCancelText(input.text)) return ok(this.discard(s, a, this.cancelText(a)));

@@ -201,7 +201,7 @@ function resolveRelative(ctx: StepContext, item: WorkItem, token: Token): Advanc
   let amount: bigint;
   if (chain !== null) {
     if (!ctx.limits.allowed_chain_ids.includes(chain)) {
-      // spec-questions/B.md SQB-20
+      // SQB-20
       return {
         kind: 'stop',
         result: { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx.config, chain) } },
@@ -317,7 +317,7 @@ export function advanceItem(ctx: StepContext, item: WorkItem): Advance {
     } else if (item.number === null) {
       return ask(item, 'Q_AMOUNT_MISSING');
     } else if (!isDecimalString(item.number)) {
-      // "number MUST match ^\d+(\.\d+)?$" — a non-null number that does not: spec-questions/B.md SQB-06.
+      // "number MUST match ^\d+(\.\d+)?$" — a non-null number that does not: SQB-06.
       return { kind: 'stop', result: unsupported(ctx, 's3', 'S3_NUMBER_PATTERN') };
     } else {
       const llm = canonicalDecimal(item.number);

@@ -3,7 +3,7 @@
 // (buildBalanceAnswer, Lane D), ANSWERED; rule 3 actions: empty → retry the call once → MODEL_FAILED; remove `l`
 // when S2 found no cancel word; recurrence cross-check → Q_RECURRING ("Yes, repeat it" / "No, just once") setting
 // k / i; i or k without pay amounts → Q_AMOUNT_MISSING (also §17.2 step 5: a follow-up needs a new amount);
-// also_balance → flag for the summary response (spec-questions/B.md SQB-15). The SPLIT_UNSUPPORTED part of rule 3
+// also_balance → flag for the summary response (SQB-15). The SPLIT_UNSUPPORTED part of rule 3
 // is decided after S5 (src/pipeline/s5-spans.ts). §8.10 LLM #2, §16.1 (sees typed words with amounts masked), I-21,
 // I-40. Re-entrant through req.step_state.s4.
 // Owner: Lane B.
@@ -131,7 +131,7 @@ async function s4Step(ctx: StepContext): Promise<StepResult> {
 
 /**
  * Q_RECURRING effect (§8.5): "Yes, repeat it" → `k` (and the amounts in the recurrence clauses are no longer `i`);
- * "No, just once" → `i` instead of `k`. spec-questions/B.md SQB-21.
+ * "No, just once" → `i` instead of `k`. SQB-21.
  */
 function applyRecurring(ctx: StepContext, repeat: boolean): void {
   const { req } = ctx;

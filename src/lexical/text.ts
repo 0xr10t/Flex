@@ -110,7 +110,7 @@ export function isIdentifierAt(source: string, r: Range): boolean {
  * Finds `needle` in `haystack` at the first occurrence that does not overlap `used` (§8.4 rule 1 "first unused
  * occurrence"). With `wholeWord`, the occurrence must not cut a word or a number: no letter next to a letter and no
  * digit next to a digit at either edge ("5" is not found inside "50", "riya" not inside "riyaz", but "50" is found in
- * "50usdc"). spec-questions/B.md SQB-26.
+ * "50usdc"). SQB-26.
  */
 export function findUnused(
   haystack: string,

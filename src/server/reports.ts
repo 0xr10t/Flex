@@ -7,7 +7,7 @@
 //
 // Which DB7 row an intent_result concerns is given by `autopay.autopay_id` (the id the envelope carried for the `k`
 // or `l` intent, §12.5): the row created by this request_id is the `k` step; a row created by an earlier request is
-// the autopay this request's `l` step stops (spec-questions/A.md SQ-A-04: an `l` step leaves no row of its own, so
+// the autopay this request's `l` step stops (SQ-A-04: an `l` step leaves no row of its own, so
 // its request_id cannot be looked up, and a failed `l` step leaves the DB7 row as it is).
 
 import { getAddress } from 'viem';

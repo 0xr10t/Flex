@@ -69,7 +69,7 @@ async function s1Step(ctx: StepContext): Promise<StepResult> {
       try {
         text = await pdfToText(bytes);
       } catch {
-        // An allowed PDF that cannot be read is not covered by the spec (spec-questions/B.md SQB-08).
+        // An allowed PDF that cannot be read is not covered by the spec (SQB-08).
         dropBuffers(ctx);
         return unsupported(ctx, 's1', 'S1_PDF_UNREADABLE');
       }

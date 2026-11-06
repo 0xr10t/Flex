@@ -2,7 +2,7 @@
   "name": "flex-wallet",
   "version": "0.1.0",
   "private": true,
-  "description": "Execution layer of the Wallet Access Layer (docs/spec/AGENT_SPEC_v1.1.md section 14.2, Appendix A).",
+  "description": "Execution layer of the Wallet Access Layer: checks, signs and sends the plans the agent hands off.",
   "type": "module",
   "engines": {
     "node": ">=22"

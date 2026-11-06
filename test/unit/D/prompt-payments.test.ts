@@ -1,5 +1,5 @@
 // Lane D tester: §8.10 LLM #4 prompt builder, §8.9 / §12.2 per-request schema slots.
-// SQ-L-01 permits reviewed system text changes; full live acceptance is recorded in PROMPT_CHANGES.md.
+// SQ-L-01 permits reviewed system text changes.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AddressPh, AmountPh, GroupPh } from '../../../src/contracts/types.js';

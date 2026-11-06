@@ -12,7 +12,7 @@ export const CCIP: Record<(typeof CHAINS)[number], { selector: bigint; router: `
 };
 export const MAX_BRIDGES_PER_PLAN = 3; // README max_bridges_per_request
 export const MAX_FEE_ETH = '0.01'; // hard ceiling for one CCIP fee paid in native ETH
-// 3 bridges + 6 one-time payments (3 chains x 2 tokens) + 7 legs of one autopay. Was 8: ARCHITECTURE_CHANGES.md C-3.
+// 3 bridges + 6 one-time payments (3 chains x 2 tokens) + 7 legs of one autopay. Was 8 (C-3).
 export const MAX_STEPS_PER_PLAN = 16;
 
 const addr = z

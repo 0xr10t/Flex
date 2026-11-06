@@ -86,7 +86,7 @@ function matches(re: RegExp, text: string): Array<Range & { text: string; m: Reg
 
 /**
  * §8.3 rule 1. Separators inside an address, ENS name, number or link are not clause separators
- * ("0.5", "1,000", "riya.eth"); see spec-questions/B.md SQB-04.
+ * ("0.5", "1,000", "riya.eth"); see SQB-04.
  */
 function splitClauses(text: string, protectedRanges: readonly Range[]): Clause[] {
   const seps: Range[] = [];

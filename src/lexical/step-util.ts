@@ -1,5 +1,5 @@
 // Implements: helpers shared by Lane B's steps S0–S5: chain display names (§6.1 config, §13.1 "Chain display
-// names from config"), name lists in messages (SQ-06 interim join format, spec-questions/B.md SQB-01), question ids
+// names from config"), name lists in messages (SQ-06 interim join format, SQB-01), question ids
 // (§7.3 `q_` + 12 hex via newId), §0 / SQ-19 "log the internal state code" for uncovered states,
 // §10.1 spendable balance (used by §8.4 step 6 relative amounts).
 // Owner: Lane B.

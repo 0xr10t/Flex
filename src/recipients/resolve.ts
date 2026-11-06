@@ -148,7 +148,7 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
     return { k: 'resolved', r: resolved };
   }
   const different = [...new Set(results.filter((a): a is Address => a !== null && !sameAddress(a, saved)))];
-  // spec-questions/C.md SQ-C-02: §9.4 has one "new address"; several differing chains are not covered.
+  // SQ-C-02: §9.4 has one "new address"; several differing chains are not covered.
   if (different.length > 1) return unsupported(ctx, 'ens_recheck_several_new_addresses');
   const fresh = different[0];
   if (fresh !== undefined) {
@@ -235,7 +235,7 @@ async function ensLookup(ctx: StepContext, name: string, origin: Origin, attempt
   try {
     found = await resolveOnChains(ctx.ens, ctx.config, name, chains);
   } catch (e) {
-    // spec-questions/C.md SQ-C-01: the spec gives no outcome for a failed ENS lookup in §9.3.
+    // SQ-C-01: the spec gives no outcome for a failed ENS lookup in §9.3.
     if (e instanceof EnsUnavailable) return unsupported(ctx, 'ens_lookup_unavailable');
     throw e;
   }
@@ -391,7 +391,7 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
       flow.chain_id = stated;
     } else {
       const allowed = okChains(ctx);
-      // spec-questions/C.md SQ-C-04: no allowed `ok` chain to offer.
+      // SQ-C-04: no allowed `ok` chain to offer.
       if (allowed.length === 0) return unsupported(ctx, 'group_chain_no_ok_chain');
       const chips = allowed.map((c) => plainChip(String(c), chainName(ctx.config, c)));
       return ask({ ...flow, stage: 'chain' }, buildQuestion({ question_id: qid(), code: 'Q_GROUP_CHAIN', chips }));
@@ -734,7 +734,7 @@ async function answerWhoIs(
   }
   const t = textOf(answer);
   if (t === null || t.length === 0) return again(st, q);
-  // The answer is typed by the user, so it is not content-sourced any more (spec-questions/C.md SQ-C-05).
+  // The answer is typed by the user, so it is not content-sourced any more (SQ-C-05).
   const typed: Origin = { ...origin, untrusted: false };
   if (looksLikeAddress(t)) {
     const check = checkAddress(t);
@@ -797,7 +797,7 @@ async function answerReenter(
 ): Promise<StepResult> {
   const t = textOf(answer);
   if (t === null || t.length === 0) return again(st, q);
-  // The answer is typed by the user, so it is not content-sourced any more (spec-questions/C.md SQ-C-05).
+  // The answer is typed by the user, so it is not content-sourced any more (SQ-C-05).
   const origin: Origin = { ...flow.origin, untrusted: false };
   if (looksLikeAddress(t)) {
     const check = checkAddress(t);
@@ -899,7 +899,7 @@ function answerEnsChanged(
     if (isSelf(flow.fresh, ctx.config.wallet.address))
       return proceed(ctx, st, stop({ kind: 'error', code: 'SELF_PAYMENT' }));
     const upd = ctx.repos.db2.updateAddressForName(flow.name_key, flow.fresh);
-    // spec-questions/C.md SQ-C-03: the new address is already saved under another name (§7.1 invariant).
+    // SQ-C-03: the new address is already saved under another name (§7.1 invariant).
     if (!upd.ok) return proceed(ctx, st, unsupported(ctx, 'ens_new_address_saved_under_other_name'));
     noteAdded(st, flow.fresh);
   }
