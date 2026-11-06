@@ -6,6 +6,36 @@ import { readCreStatus } from '../../../src/server/cre-status.js';
 import { makeServer, REPORT_TOKEN } from './server-harness.js';
 
 describe('read-only CRE observations', () => {
+  it('exposes broadcast transaction hashes as submissions, never as verified payment history', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'cre-status-')), 'status.json');
+    const tx = `0x${'ab'.repeat(32)}`;
+    writeFileSync(
+      path,
+      JSON.stringify({
+        status: 'broadcast_checked',
+        broadcast: true,
+        time: new Date().toISOString(),
+        result: {
+          mode: 'testnet-broadcast',
+          results: [
+            {
+              chainId: 84532,
+              executor: `0x${'12'.repeat(20)}`,
+              id: `0x${'34'.repeat(32)}`,
+              slot: '0',
+              status: 'mined',
+              tx,
+            },
+          ],
+        },
+      }),
+    );
+    expect(readCreStatus(path)).toMatchObject({
+      broadcast: true,
+      paymentExecuted: false,
+      results: [{ outcome: 'submitted', txHash: tx }],
+    });
+  });
   it('never exposes raw CLI fields or treats a dry run as a payment, and expires old observations', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'cre-status-')), 'status.json');
     const now = Date.now();

@@ -1,4 +1,4 @@
-// Native CRE build/simulation runner. Deliberately has no --broadcast or deployment path.
+// Native CRE build/simulation runner. Writes require the explicit testnet-only `broadcast` command.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -11,6 +11,7 @@ import console from 'node:console';
 import { setTimeout as delay } from 'node:timers/promises';
 import { protectPrivateFile } from '../dist/src/util/private-file.js';
 import { indexPlans, rpcClient } from './cre-indexer.mjs';
+import { runTestnetChain } from './cre-broadcast.mjs';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const project = join(root, 'wallet/cre');
@@ -35,7 +36,7 @@ export function optionsOf(args) {
     rebuild: true,
     config: join(root, '.local/cre.config.json'),
   };
-  if (!['build', 'qualify', 'run'].includes(options.command)) throw new Error('USAGE');
+  if (!['build', 'qualify', 'run', 'broadcast'].includes(options.command)) throw new Error('USAGE');
   for (let i = 1; i < args.length; i++) {
     const a = args[i];
     if (a === '--watch') {
@@ -103,6 +104,8 @@ function sourceHash() {
     'wallet/cre/autopay/package.json',
     'wallet/cre/autopay/package-lock.json',
     'wallet/cre/autopay/bun.lock',
+    'wallet/src/autopay/local-cre.ts',
+    'wallet/src/chain/redeem.v2.ts',
   ];
   for (const folder of ['wallet/cre/autopay/lib', 'packages/protocol/dist']) {
     const visit = (dir) => {
@@ -133,7 +136,8 @@ export function parseSimulationOutput(output) {
       let result = JSON.parse(text.slice(0, end));
       if (typeof result === 'string') result = JSON.parse(result);
       if (typeof result?.result === 'string') result = JSON.parse(result.result);
-      if (!result || !['local-simulation', 'dry-run'].includes(result.mode)) continue;
+      if (!result || !['local-simulation', 'dry-run', 'testnet-dry-run', 'testnet-broadcast'].includes(result.mode))
+        continue;
       return result;
     } catch {
       /* Ignore surrounding CLI status text; never log raw tool output. */
@@ -225,7 +229,7 @@ async function simulate(config, target, signal) {
   verifyArtifact();
   const configPath = join(local, 'invocation.json');
   privateJson(configPath, config);
-  // This allowlisted command cannot publish a workflow or broadcast a transaction.
+  // Only the separate testnet mode can add --broadcast; qualification and ordinary run stay read-only.
   const output = await cli(
     [
       'workflow',
@@ -242,6 +246,7 @@ async function simulate(config, target, signal) {
       '--non-interactive',
       '--trigger-index',
       '0',
+      ...(config.mode === 'testnet-broadcast' && target === 'staging-settings' ? ['--broadcast'] : []),
     ],
     signal,
   );
@@ -266,9 +271,10 @@ async function tick(options, signal) {
     return { status: 'qualified', results };
   }
   const config = JSON.parse(readFileSync(options.config, 'utf8'));
-  // Explicitly require read-only payment mode. A changed source config cannot escalate this runner to broadcasts.
+  // Source config stays read-only. Only the CLI command opts into testnet broadcasts.
   if (
-    config.mode !== 'dry-run' ||
+    !['dry-run', 'testnet-dry-run'].includes(config.mode) ||
+    (options.command === 'broadcast' && config.mode !== 'testnet-dry-run') ||
     !Array.isArray(config.chains) ||
     config.chains.length < 1 ||
     config.chains.length > 3 ||
@@ -278,28 +284,76 @@ async function tick(options, signal) {
   )
     throw new Error('EXECUTOR_CONFIG_REQUIRED');
   const env = { ...parseEnv(readFileSync(join(root, '.env'), 'utf8')), ...process.env };
+  if (config.mode === 'testnet-dry-run') {
+    const wallet = JSON.parse(readFileSync(join(root, '.local/wallet.config.json'), 'utf8'));
+    if (config.walletAddress?.toLowerCase() !== wallet.approval.wallet_address?.toLowerCase())
+      throw new Error('WALLET_CONFIG_MISMATCH');
+  }
   const indexPath = join(local, 'index.json');
   const index = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf8')) : { version: 1, chains: {} };
   if (index.version !== 1 || !index.chains) throw new Error('INDEX_INVALID');
   let caughtUp = true;
   const progress = [];
+  const results = [];
+  const journalPath = join(local, 'submissions.json');
+  const journal = existsSync(journalPath) ? JSON.parse(readFileSync(journalPath, 'utf8')) : { version: 1, entries: {} };
+  if (journal.version !== 1 || !journal.entries || Array.isArray(journal.entries)) throw new Error('JOURNAL_INVALID');
   for (const chain of config.chains) {
-    const url = env[rpcNames[chain.chainId]];
-    if (!url || !url.startsWith('https://')) throw new Error('RPC_CONFIG_REQUIRED');
-    const result = await indexPlans(chain, index.chains[chain.chainId], rpcClient(url, globalThis.fetch, signal), {
-      onCheckpoint: async (state) => {
-        index.chains[chain.chainId] = state;
-        privateJson(indexPath, index);
-      },
-    });
-    caughtUp &&= result.caughtUp;
-    progress.push({
-      chainId: chain.chainId,
-      caughtUp: result.caughtUp,
-      blockNumber: result.state?.snapshot.blockNumber,
-    });
-    chain.snapshot = result.state?.snapshot;
+    try {
+      const url = env[rpcNames[chain.chainId]];
+      if (!url || !url.startsWith('https://')) throw new Error('RPC_CONFIG_REQUIRED');
+      const result = await indexPlans(chain, index.chains[chain.chainId], rpcClient(url, globalThis.fetch, signal), {
+        onCheckpoint: async (state) => {
+          index.chains[chain.chainId] = state;
+          privateJson(indexPath, index);
+        },
+      });
+      caughtUp &&= result.caughtUp;
+      progress.push({
+        chainId: chain.chainId,
+        caughtUp: result.caughtUp,
+        blockNumber: result.state?.snapshot.blockNumber,
+      });
+      chain.snapshot = result.state?.snapshot;
+      if (config.mode === 'testnet-dry-run' && result.caughtUp) {
+        results.push(
+          await runTestnetChain({
+            config,
+            chain,
+            rpc: rpcClient(url, globalThis.fetch, signal),
+            transmitter: env.CRE_TRANSMITTER_ADDRESS || config.walletAddress,
+            broadcast: options.command === 'broadcast',
+            journal,
+            save: () => privateJson(journalPath, journal),
+            simulate: (invocation) => simulate(invocation, 'staging-settings', signal),
+          }),
+        );
+      }
+    } catch (error) {
+      if (config.mode !== 'testnet-dry-run' || signal.aborted) throw error;
+      results.push({
+        chainId: chain.chainId,
+        executor: chain.executor,
+        status: 'blocked',
+        code: /^[A-Z_]+$/.test(error.message) ? error.message : 'CHAIN_RUN_FAILED',
+      });
+    }
   }
+  if (config.mode === 'testnet-dry-run')
+    return {
+      status: results.some(
+        (entry) => entry.status === 'blocked' || entry.skipped || ['failed', 'receiver_failed'].includes(entry.status),
+      )
+        ? 'simulation_blocked'
+        : !caughtUp
+          ? 'catching_up'
+          : options.command === 'broadcast'
+            ? 'broadcast_checked'
+            : 'simulated',
+      broadcast: options.command === 'broadcast',
+      progress,
+      result: { mode: options.command === 'broadcast' ? 'testnet-broadcast' : 'testnet-dry-run', results },
+    };
   if (!caughtUp) return { status: 'catching_up', progress };
   const result = await simulate(config, 'staging-settings', signal);
   result.results = result.results.map((entry) => ({
@@ -322,7 +376,9 @@ export async function main(args = process.argv.slice(2)) {
   try {
     privateJson(join(local, 'status.json'), { status: 'starting', time: new Date().toISOString() });
     const manifest = options.rebuild ? await build(controller.signal) : verifyArtifact();
-    console.log(JSON.stringify({ status: 'built', wasmHash: manifest.wasmHash, broadcast: false }));
+    console.log(
+      JSON.stringify({ status: 'built', wasmHash: manifest.wasmHash, broadcast: options.command === 'broadcast' }),
+    );
     if (options.command === 'build') return;
     for (let iteration = 0; iteration < options.iterations && !controller.signal.aborted; iteration++) {
       const start = Date.now();

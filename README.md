@@ -57,7 +57,7 @@ To set up the agent, the wallet and the CRE workflow for the testnets from one f
 it in, build both packages, and run `node scripts/setup-testnet.mjs`. It writes the three configs and the tokens to
 `.local/`.
 
-### CRE autopay workflow (local, read-only)
+### CRE autopay workflow (local build and simulate)
 
 The local runner reads the root `.env` and needs an authenticated CRE CLI (`cre login`). Set `CRE_CLI_PATH` to the
 executable, or install it at `.local/bin/cre` (`.local/bin/cre.exe` on Windows).
@@ -68,10 +68,54 @@ npm run cre:simulate              # build and qualify native providers on the th
 npm run cre:simulate -- --no-build # reuse the existing artifact
 npm run cre:run                   # evaluate registered plans once
 npm run cre:watch                 # evaluate every 30 seconds
+npm run cre:broadcast             # dry run, then submit one due authorized payment per chain
+npm run cre:autopay               # keep submitting due payments locally
 ```
 
-These commands never sign or broadcast transactions. The runner refuses a wallet config with a non-null
-`network.socks_proxy` (`CRE_LOCAL_PROXY_UNSUPPORTED`), because local CRE cannot use Tor. Runner state lives in
+`cre:build`, `cre:simulate`, `cre:run` and `cre:watch` remain read-only. The explicit `cre:broadcast` and
+`cre:autopay` commands use native `cre workflow simulate autopay --target staging-settings --non-interactive --trigger-index 0 --broadcast`.
+They need `CRE_ETH_PRIVATE_KEY` in the protected root `.env`, with test ETH on Ethereum Sepolia, Base Sepolia
+and Arbitrum Sepolia. `CRE_TRANSMITTER_ADDRESS` is its public address (defaults to `FLEX_WALLET_ADDRESS`).
+The CLI consumes the key; the agent and browser wallet do not load it. No hosted workflow or deployment-access approval is needed.
+
+One-time setup:
+
+```sh
+npm run testnet:build
+npm run testnet:setup
+forge build --root wallet/contracts
+npm run testnet:onboard            # open http://127.0.0.1:8792 in your MetaMask browser
+```
+
+Setup reuses the verified public executors in `wallet/cre/deployments.testnet.json`; a partner does not need to
+redeploy them or receive anyone else's `.env`. Each operator supplies their own RPC credentials and CRE login;
+broadcasting additionally requires their own funded test transmitter key. Each payment wallet approves its own
+delegations. On the setup page, enable MetaMask smart-account transactions where needed, and deploy only if an
+executor is missing.
+Only verified deployment receipts update local executor configuration. Then restart the services with
+`npm run testnet:start -- --broadcast`, enter a recurring payment in the agent, and approve the delegation and
+registration at `http://127.0.0.1:8788`. Pasted/uploaded documents cannot grant recurring permissions; type the amounts.
+Use the agent's cancellation flow to stop a plan and revoke its delegation.
+
+Local testnet receivers pin the official **MockKeystoneForwarder** for their chain; optional DON identity checks
+remain unset because local simulation has no registered workflow identity. These mocks do not authenticate DON
+consensus. Payments remain bounded by the wallet's signed delegation and onchain registration, schedule, run limit,
+replay protection and cancellation. This configuration is for testnets only.
+
+The runner discovers finalized registrations, verifies a due payment with the configured simulation quorum, and
+runs the native broadcast invocation for that exact plan and slot. A durable journal prevents resubmission after
+a crash or ambiguous CLI exit. `SUBMISSION_UNKNOWN` requires operator reconciliation; do not delete the journal
+to force a retry. Pending transactions from the transmitter (including MetaMask submissions using that same account)
+pause broadcasts. The wallet records payment history only after finalized `Executed` events; a CLI hash or
+successful forwarder receipt alone is not a payment. `/v1/cre/status` exposes observations separately.
+
+Keep the local runner and wallet service running for recurring payments. A missed slot is skipped after its signed
+late window; there is no automatic back-payment. Initial Sepolia registration discovery may wait for chain finality,
+so allow a sufficiently long late window when creating a test plan.
+
+The runner refuses a wallet config with a non-null `network.socks_proxy` (`CRE_LOCAL_PROXY_UNSUPPORTED`),
+because native local CRE cannot use that Node SOCKS transport. Choose `FLEX_SOCKS_PROXY=direct` during setup
+for direct access to the configured providers. Runner state lives in
 `.local/cre-runner/`; keep it private because it can hold signed delegation calldata. A loopback listener on port
 8791 prevents concurrent runners.
 
@@ -79,9 +123,11 @@ The optional native integration test needs the CRE CLI and login:
 
 ```sh
 FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native.test.ts
+FLEX_NATIVE_CRE=1 npm --prefix wallet run test:chain -- test/chain/cre-native-broadcast.test.ts
 ```
 
-It is skipped unless `FLEX_NATIVE_CRE=1` is set.
+They are skipped unless `FLEX_NATIVE_CRE=1` is set. The broadcast test uses public Anvil fixture keys and local
+transactions on all three chain IDs; its only public testnet access reads the official mock forwarder runtime code.
 
 ---
 

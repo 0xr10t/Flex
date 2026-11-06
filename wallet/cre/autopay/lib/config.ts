@@ -1,5 +1,6 @@
 import { keccak256, type Hex } from 'viem';
 import type { Plan } from './due';
+import { SIMULATION_FORWARDERS } from '../../../src/autopay/local-cre';
 
 export interface ChainSource {
   chainId: number;
@@ -33,13 +34,22 @@ export interface PaymentConfig {
   workflow: { id: Hex; name: Hex; owner: Hex };
   chains: ChainConfig[];
 }
+export interface TestnetPaymentConfig {
+  mode: 'testnet-dry-run' | 'testnet-broadcast';
+  schedule: string;
+  maxSimulationsPerRun: number;
+  /** Only this wallet's registered, signed plans may spend the local transmitter's gas. */
+  walletAddress: Hex;
+  expectedRun?: { id: Hex; slot: string };
+  chains: ChainConfig[];
+}
 export interface LocalConfig {
   mode: 'local-simulation';
   schedule: string;
   /** One chain per invocation keeps the live HTTP qualification within the CRE call budget. */
   chains: [ChainSource];
 }
-export type Config = PaymentConfig | LocalConfig;
+export type Config = PaymentConfig | TestnetPaymentConfig | LocalConfig;
 
 const selectors: Record<number, string> = {
   11155111: '16015286601757825753',
@@ -65,9 +75,22 @@ const uint = (v: unknown) => {
 
 export function validateConfig(input: unknown): Config {
   const c = record(input);
-  if (!['local-simulation', 'dry-run', 'broadcast'].includes(String(c.mode))) fail();
+  if (!['local-simulation', 'dry-run', 'broadcast', 'testnet-dry-run', 'testnet-broadcast'].includes(String(c.mode)))
+    fail();
   const local = c.mode === 'local-simulation';
-  keys(c, local ? ['mode', 'schedule', 'chains'] : ['mode', 'schedule', 'maxSimulationsPerRun', 'workflow', 'chains']);
+  const testnet = c.mode === 'testnet-dry-run' || c.mode === 'testnet-broadcast';
+  keys(
+    c,
+    local
+      ? ['mode', 'schedule', 'chains']
+      : [
+          'mode',
+          'schedule',
+          'maxSimulationsPerRun',
+          ...(testnet ? ['walletAddress', 'expectedRun'] : ['workflow']),
+          'chains',
+        ],
+  );
   if (typeof c.schedule !== 'string' || !/^[0-9*,/-]+(?:\s+[0-9*,/-]+){5}$/.test(c.schedule)) fail();
   if (!Array.isArray(c.chains) || c.chains.length < 1 || c.chains.length > (local ? 1 : 3)) fail();
   if (!local) {
@@ -77,11 +100,23 @@ export function validateConfig(input: unknown): Config {
       Number(c.maxSimulationsPerRun) > 2
     )
       fail();
-    const w = record(c.workflow);
-    keys(w, ['id', 'name', 'owner']);
-    hex(w.id, 32);
-    hex(w.name, 10);
-    hex(w.owner, 20);
+    if (testnet) {
+      hex(c.walletAddress, 20);
+      // One native invocation has at most one write. The host journals that exact slot before starting it.
+      if (c.maxSimulationsPerRun !== 1 || (c.chains as unknown[]).length !== 1) fail();
+      if (c.mode === 'testnet-broadcast' || c.expectedRun !== undefined) {
+        const expected = record(c.expectedRun);
+        keys(expected, ['id', 'slot']);
+        hex(expected.id, 32);
+        uint(expected.slot);
+      }
+    } else {
+      const w = record(c.workflow);
+      keys(w, ['id', 'name', 'owner']);
+      hex(w.id, 32);
+      hex(w.name, 10);
+      hex(w.owner, 20);
+    }
   }
   const seen = new Set<number>();
   for (const raw of c.chains as unknown[]) {
@@ -107,6 +142,7 @@ export function validateConfig(input: unknown): Config {
     if (local) continue;
     hex(chain.executor, 20);
     hex(chain.forwarder, 20);
+    if (testnet && String(chain.forwarder).toLowerCase() !== SIMULATION_FORWARDERS[id]?.toLowerCase()) fail();
     uint(chain.deploymentBlock);
     if (chain.snapshot !== undefined) {
       const snapshot = record(chain.snapshot);

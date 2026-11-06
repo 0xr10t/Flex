@@ -28,7 +28,8 @@ async function available(port) {
 }
 try {
   const args = process.argv.slice(2);
-  if (args.length > 1 || (args.length === 1 && args[0] !== '--qualify')) throw new Error('USAGE');
+  if (args.length > 1 || (args.length === 1 && !['--qualify', '--broadcast'].includes(args[0])))
+    throw new Error('USAGE');
   const agent = loadAgent(agentPath);
   const wallet = loadWallet(walletPath);
   if (wallet.approval.mode !== 'metamask') throw new Error('METAMASK_CONFIG_REQUIRED');
@@ -48,7 +49,14 @@ try {
   const specs = [
     ['agent', ['dist/src/index.js']],
     ['wallet', ['wallet/dist/src/main.js', walletPath]],
-    ['cre', ['scripts/cre-local.mjs', args[0] === '--qualify' ? 'qualify' : 'run', '--watch']],
+    [
+      'cre',
+      [
+        'scripts/cre-local.mjs',
+        args[0] === '--qualify' ? 'qualify' : args[0] === '--broadcast' ? 'broadcast' : 'run',
+        '--watch',
+      ],
+    ],
   ];
   for (const [name, argv] of specs) {
     const child = spawn(process.execPath, argv, {
@@ -74,7 +82,9 @@ try {
   console.log(
     args[0] === '--qualify'
       ? 'Starting agent, MetaMask wallet and CRE provider qualification. Registered payments are not evaluated in this mode.'
-      : 'Starting agent, MetaMask wallet and CRE registered-plan dry runs. Scheduled payments are not broadcast.',
+      : args[0] === '--broadcast'
+        ? 'Starting agent, MetaMask wallet and local CRE testnet broadcasts for approved recurring plans.'
+        : 'Starting agent, MetaMask wallet and CRE registered-plan dry runs. Scheduled payments are not broadcast.',
   );
 } catch (error) {
   console.error(/^[A-Z_]+$/.test(error.message) ? error.message : 'TESTNET_CONFIG_INVALID');

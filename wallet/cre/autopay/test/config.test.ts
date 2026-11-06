@@ -1,6 +1,7 @@
 import { keccak256 } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { configSchema, snapshotPlans, validateConfig } from '../lib/config';
+import { SIMULATION_FORWARDERS } from '../../../src/autopay/local-cre';
 
 const source = {
   chainId: 11155111,
@@ -35,6 +36,24 @@ const payment = {
   ],
 };
 describe('closed CRE configuration', () => {
+  it('local testnet writes need the exact mock forwarder, one chain, wallet and pinned slot; no DON identity', () => {
+    const c = {
+      mode: 'testnet-broadcast',
+      schedule: local.schedule,
+      maxSimulationsPerRun: 1,
+      walletAddress: payment.workflow.owner,
+      expectedRun: { id: plan.id, slot: '0' },
+      chains: [{ ...payment.chains[0], forwarder: SIMULATION_FORWARDERS[11155111] }],
+    };
+    expect(validateConfig(c)).toEqual(c);
+    for (const override of [
+      { expectedRun: undefined },
+      { chains: payment.chains },
+      { workflow: payment.workflow },
+      { maxSimulationsPerRun: 2 },
+    ])
+      expect(() => validateConfig({ ...c, ...override })).toThrow();
+  });
   it('accepts the receiver-free configuration and rejects any receiver/write fields in it', () => {
     expect(validateConfig(local)).toEqual(local);
     expect(() => validateConfig({ ...local, workflow: payment.workflow })).toThrow();

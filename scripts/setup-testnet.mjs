@@ -10,6 +10,7 @@ import { ensureTokenFile } from '../dist/src/config/tokens.js';
 import { validateConfig } from '../dist/src/config/load.js';
 import { validateSimulationConfig } from '../wallet/dist/src/chain/simulation.js';
 import { parseConfig as validateWalletConfig } from '../wallet/dist/src/config.js';
+import { SIMULATION_FORWARDERS } from '../wallet/dist/src/autopay/local-cre.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const local = resolve(root, '.local');
@@ -96,7 +97,10 @@ if (missing.length) {
   cfg.bridge = { ccip_fee_max_eth: env.CCIP_FEE_MAX_ETH || cfg.bridge.ccip_fee_max_eth };
   validateConfig(cfg);
   const deploymentsPath = resolve(local, 'deployments.json');
-  const deployments = existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {};
+  const deployments = {
+    ...JSON.parse(readFileSync(resolve(root, 'wallet/cre/deployments.testnet.json'), 'utf8')),
+    ...(existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {}),
+  };
   const wallet = {
     // The wallet listens where the agent sends (execution.url) and reports to where the agent listens (server).
     server: { host: '127.0.0.1', port: Number(new URL(cfg.execution.url).port || 80) },
@@ -113,12 +117,24 @@ if (missing.length) {
       chain_id: chain.chain_id,
       rpc_url: chain.rpc_url,
       simulation: simulations[chain.chain_id],
-      ...(deployments[chain.chain_id] ? { executor: deployments[chain.chain_id] } : {}),
+      ...(deployments[chain.chain_id]
+        ? {
+            executor: {
+              address: deployments[chain.chain_id].address,
+              deployment_block: deployments[chain.chain_id].deployment_block,
+            },
+          }
+        : {}),
     })),
   };
   validateWalletConfig(wallet);
   const cre = JSON.parse(readFileSync(resolve(root, 'wallet/cre/autopay/config.staging.json'), 'utf8'));
+  cre.mode = 'testnet-dry-run';
+  cre.maxSimulationsPerRun = 1;
+  cre.walletAddress = env.FLEX_WALLET_ADDRESS;
+  delete cre.workflow;
   for (const chain of cre.chains) {
+    chain.forwarder = SIMULATION_FORWARDERS[chain.chainId];
     chain.simulation.quorum = simulations[chain.chainId].quorum;
     const deployment = deployments[chain.chainId];
     if (deployment) {
@@ -126,9 +142,6 @@ if (missing.length) {
       chain.deploymentBlock = String(deployment.deployment_block);
     }
   }
-  if (env.CRE_WORKFLOW_ID) cre.workflow.id = env.CRE_WORKFLOW_ID;
-  if (env.CRE_WORKFLOW_NAME_HEX) cre.workflow.name = env.CRE_WORKFLOW_NAME_HEX;
-  if (env.CRE_WORKFLOW_OWNER) cre.workflow.owner = env.CRE_WORKFLOW_OWNER;
   privateWrite(resolve(local, 'cre.config.json'), JSON.stringify(cre, null, 2) + '\n');
   privateWrite(resolve(local, 'agent.config.json'), JSON.stringify(cfg, null, 2) + '\n');
   privateWrite(resolve(local, 'wallet.config.json'), JSON.stringify(wallet, null, 2) + '\n');

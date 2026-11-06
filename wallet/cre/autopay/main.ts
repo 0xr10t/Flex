@@ -14,7 +14,15 @@ import {
   type Runtime,
 } from '@chainlink/cre-sdk';
 import { decodeEventLog, toEventSelector, type Hex } from 'viem';
-import { configSchema, snapshotPlans, validateConfig, type Config, type PaymentConfig } from './lib/config';
+import {
+  configSchema,
+  snapshotPlans,
+  validateConfig,
+  type Config,
+  type PaymentConfig,
+  type TestnetPaymentConfig,
+} from './lib/config';
+import { redeemIdentity } from '../../src/chain/redeem.v2';
 import { qualifyFetch, simulateFetch } from './lib/http-simulation';
 import { simulationUrls, type SimulationRequest } from './lib/simulation';
 import { successfulWriteHash } from './lib/write-result';
@@ -53,7 +61,7 @@ function eventsOf(logs: EVMLog[]): PlanEvent[] {
   });
 }
 
-function discover(runtime: Runtime<Config>, config: PaymentConfig) {
+function discover(runtime: Runtime<Config>, config: PaymentConfig | TestnetPaymentConfig) {
   const heads = config.chains.map((chain) => ({
     chain,
     reply: new EVMClient(BigInt(chain.selector)).headerByNumber(runtime, { blockNumber: blockNumber(-3n) }),
@@ -125,7 +133,31 @@ export const onCron = (runtime: Runtime<Config>): string => {
   }
 
   const chains = discover(runtime, config);
+  if ('walletAddress' in config) {
+    for (const entry of chains) {
+      entry.plans = entry.plans.filter((plan) => {
+        try {
+          const identity = redeemIdentity(plan.redeem);
+          return (
+            identity.delegator.toLowerCase() === config.walletAddress.toLowerCase() &&
+            identity.delegate.toLowerCase() === entry.chain.executor.toLowerCase()
+          );
+        } catch {
+          return false;
+        }
+      });
+    }
+  }
   const due = pickDue(chains, now, config.maxSimulationsPerRun);
+  if (
+    'expectedRun' in config &&
+    config.expectedRun &&
+    due.some(
+      ({ plan, slot }) =>
+        plan.id.toLowerCase() !== config.expectedRun!.id.toLowerCase() || String(slot) !== config.expectedRun!.slot,
+    )
+  )
+    return JSON.stringify({ mode: config.mode, due: 0, results: [] });
   runtime.log(`plans: ${chains.map((c) => c.plans.length).join('/')}; due now: ${due.length}`);
   if (due.length === 0) return JSON.stringify({ mode: config.mode, due: 0, results: [] });
   const dueChains = [...new Map(due.map(({ chain }) => [chain.selector, chain])).values()];
@@ -153,7 +185,9 @@ export const onCron = (runtime: Runtime<Config>): string => {
       },
     });
   }
-  const metadata = metadataOf(config.workflow);
+  // CLI reports have simulation metadata, not a registered DON workflow identity.
+  // Testnet receivers leave optional identity checks unset and pin their mock forwarder.
+  const metadata = 'workflow' in config ? metadataOf(config.workflow) : '0x';
   // Independent simulations start together; report writes remain sequential to avoid overlapping account nonces.
   const pending = due.map(({ plan, slot, chain }) => {
     const report = reportOf(plan.redeem);
@@ -186,7 +220,7 @@ export const onCron = (runtime: Runtime<Config>): string => {
     const identity = { chainId: chain.chainId, id: plan.id, slot: slot.toString() };
     if (!sim) return { ...identity, skipped: 'window_closed' };
     if (!simulationPaid(sim, chain.executor, { id: plan.id, slot })) return { ...identity, skipped: sim.status };
-    if (config.mode === 'dry-run')
+    if (config.mode === 'dry-run' || config.mode === 'testnet-dry-run')
       return { ...identity, status: 'would_execute', gasLimit: String(gasFor(sim.gasUsed)) };
     const signed = runtime
       .report({
