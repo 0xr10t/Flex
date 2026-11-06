@@ -18,6 +18,50 @@ function missingFixture(): FixtureFile {
 
 describe('amount answer currencies through HTTP', () => {
   it.each([
+    { number: null, relative: null, token: null, fiat: null },
+    { number: '10', relative: null, token: 'ETH', fiat: 'OTHER' },
+    { number: null, relative: 'all', token: 'USDC', fiat: null },
+  ] as const)(
+    'a malformed model amount spanning pay mihir ($number/$relative) cannot erase the action or recipient after an amount answer',
+    async (extraction) => {
+      const calls = structuredClone(loadFixture('A-55').calls);
+      calls[0] = {
+        name: 'amounts',
+        match: 'pay mihir',
+        output: {
+          amounts: [{ phrase: 'pay mihir', ...extraction, role: 'pay' }],
+        },
+      };
+      calls[1]!.match = 'pay mihir';
+      calls[2]!.match = 'pay mihir';
+      const h = new Harness('amount-answer-broad-model-phrase', { calls }, {});
+      try {
+        const pending = await h.say('pay mihir');
+        expect(pending.body.question?.code).toBe('Q_AMOUNT_MISSING');
+        const summary = await h.answer(pending, { text: '10 usd' });
+        expect(summary.body.state, JSON.stringify(summary.body)).toBe('awaiting_confirmation');
+        expect(summary.body.summary?.text).toContain('Send 10 USDC to Mihir');
+        expect(summary.body.summary?.notes).toContain("You wrote '10 usd' → 10 USDC.");
+        expect(h.llm.recorded.find((call) => call.name === 'request_type')?.user).toContain('pay mihir');
+        expect(h.llm.recorded.find((call) => call.name === 'spans')?.user).toContain('pay mihir');
+        expect(h.exec.submissions).toHaveLength(0);
+        expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
+        expect(h.envelope.intents).toHaveLength(1);
+        expect(h.envelope.intents[0]).toMatchObject({
+          intent_id: 'i',
+          token: 'USDC',
+          recipient: MIHIR,
+          amount: { value: '10', base_units: '10000000', decimals: 6 },
+        });
+        expect(h.llm.names()).toEqual(['amounts', 'request_type', 'spans', 'payments']);
+        expect(h.llm.remaining()).toEqual([]);
+      } finally {
+        await h.finish({ allowUnused: true });
+      }
+    },
+  );
+
+  it.each([
     { answer: '10 usd', amount: '10', token: 'USDC', units: '10000000' },
     { answer: '0.01 ETH', amount: '0.01', token: 'ETH', units: '10000000000000000' },
   ] as const)(
@@ -63,6 +107,87 @@ async function missingContext() {
 }
 
 describe('amount answer value and interpretation guards', () => {
+  it.each([
+    {
+      phrase: `0.${'0'.repeat(36)}1 USDC`,
+      number: `0.${'0'.repeat(36)}1`,
+      token: 'USDC',
+      fiat: null,
+      question: 'Q_AMOUNT_PRECISION',
+    },
+    {
+      phrase: `0.${'0'.repeat(36)}1 ETH`,
+      number: `0.${'0'.repeat(36)}1`,
+      token: 'ETH',
+      fiat: null,
+      question: 'Q_AMOUNT_PRECISION',
+    },
+    { phrase: 'rs. 500', number: '500', token: null, fiat: 'OTHER', question: 'Q_FIAT_OTHER' },
+    { phrase: '$50 worth of ETH', number: '50', token: 'ETH', fiat: 'USD', question: 'Q_FIAT_OTHER' },
+  ] as const)(
+    'a recognized monetary phrase $phrase retains its existing $question clarification',
+    async ({ phrase, number, token, fiat, question }) => {
+      const ctx = await scannedCtx(`send ${phrase} to mihir`, {
+        fixture: fx({
+          name: 'amounts',
+          match: '',
+          output: { amounts: [{ phrase, number, token, fiat, relative: null, role: 'pay' }] },
+        }),
+      });
+      const result = await drive(s3, ctx);
+      expect(result.result.kind).toBe('question');
+      expect(result.questions.map((pending) => pending.code)).toEqual([question]);
+      expect(ctx.req.amounts).toEqual([]);
+      expect(ctx.repos.tables.db1.size).toBe(0);
+    },
+  );
+
+  it.each(['50', null])(
+    'a broad pay phrase with number %j cannot hide its recipient or expose an unmasked amount',
+    async (number) => {
+      const ctx = await scannedCtx('pay mihir 50 usdc', {
+        fixture: fx({
+          name: 'amounts',
+          match: '',
+          output: {
+            amounts: [{ phrase: 'pay mihir 50 usdc', number, relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+          },
+        }),
+      });
+      const result = await drive(s3, ctx, number === null ? [text('10 usd')] : []);
+      if (result.result.kind === 'continue') {
+        expect(ctx.req.masked_text_s3).toMatch(/^pay mihir /);
+        expect(ctx.req.masked_text_s3).not.toMatch(/\b50\b/);
+        expect(ctx.req.amounts).toHaveLength(1);
+        expect(ctx.req.amounts[0]).toMatchObject({ amount: number ?? '10', token: 'USDC' });
+      } else {
+        // A model phrase that cannot be safely narrowed may stop or ask for clarification.
+        expect(ctx.req.amounts).toEqual([]);
+      }
+    },
+  );
+
+  it('a single broad model phrase cannot merge two separately stated payment amounts', async () => {
+    const typed = 'pay mihir 10 usdc and aradhya 20 usdc';
+    const ctx = await scannedCtx(typed, {
+      fixture: fx({
+        name: 'amounts',
+        match: '',
+        output: {
+          amounts: [{ phrase: typed, number: '10', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+        },
+      }),
+    });
+    const result = await drive(s3, ctx);
+    if (result.result.kind === 'continue') {
+      expect(ctx.req.masked_text_s3).toContain('mihir');
+      expect(ctx.req.masked_text_s3).toContain('aradhya');
+      expect(ctx.req.amounts.map((amount) => amount.amount)).toEqual(['10', '20']);
+    } else {
+      expect(ctx.req.amounts).toEqual([]);
+    }
+  });
+
   it.each([
     ['1USDC.e', '1', 'USDC'],
     ['0.000001 USD', '0.000001', 'USDC'],
