@@ -78,8 +78,8 @@ export function registerA55toA59(): void {
       const r = await h.say('send 10 usdc and 0.01 eth to mihir');
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual([
-        'Send 10 USDC to Mihir (0x91aB…77d0) on Base Sepolia.',
-        'Send 0.01 ETH to Mihir (0x91aB…77d0) on Base Sepolia.',
+        'Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.',
+        'Send 0.01 ETH to Mihir (0x91Ab…77d0) on Base Sepolia.',
       ]);
       expect(r.body.summary?.footer).toEqual([
         'Spent today after this: 10 of 300 USDC.',
@@ -113,7 +113,7 @@ export function registerA55toA59(): void {
       expect(h.asked).toEqual([]);
       expect(r.body.summary?.notes).toEqual(['Paid on the 28th, since months differ in length.']);
       expect(lines(r)[0]).toMatch(
-        /^Pay Mihir \(0x91aB…77d0\) 10 USDC on the 28th of every month at 10:00 \(Asia\/Kolkata\) on Base Sepolia, first on 28 Nov 2026, until /,
+        /^Pay Mihir \(0x91Ab…77d0\) 10 USDC on the 28th of every month at 10:00 \(Asia\/Kolkata\) on Base Sepolia, first on 28 Nov 2026, until /,
       );
       expectHandedOff(await h.confirm(r, 'yes'));
       const k = h.envelope.intents[0] as {

@@ -45,9 +45,10 @@ export const TZ = 'Asia/Kolkata';
 
 // ───────────────────────────── constants shared by tests ─────────────────────────────
 
-export const WALLET = TEST_WALLET;
-export const ARADHYA = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E' as const;
-export const MIHIR = '0x91aB2c3D4e5F60718293a4B5c6D7e8F9012377d0' as const;
+/** The spec's example addresses are not valid EIP-55; the code (correctly) checksums them, so expect that form. */
+export const WALLET = getAddress(TEST_WALLET);
+export const ARADHYA = getAddress('0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E'.toLowerCase());
+export const MIHIR = getAddress('0x91aB2c3D4e5F60718293a4B5c6D7e8F9012377d0'.toLowerCase());
 export const SEPOLIA = 11155111 as const;
 export const BASE = 84532 as const;
 export const ARB = 421614 as const;

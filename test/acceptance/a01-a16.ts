@@ -119,7 +119,7 @@ export function registerA01toA16(): void {
       expect(lines(r)).toEqual([
         'Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
         'Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
-        'Send 20 USDC to Mihir (0x91aB…77d0) on Arbitrum Sepolia.',
+        'Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
       ]);
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 60.2 of 300 USDC.']);
       expect(r.body.summary?.text).toBe(
@@ -127,7 +127,7 @@ export function registerA01toA16(): void {
           'Please confirm:',
           '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
           '2. Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
-          '3. Send 20 USDC to Mihir (0x91aB…77d0) on Arbitrum Sepolia.',
+          '3. Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
           'Spent today after this: 60.2 of 300 USDC.',
           'Confirm?',
         ].join('\n'),
@@ -315,7 +315,7 @@ export function registerA01toA16(): void {
       expect(r.body.state).toBe('awaiting_confirmation');
       expect(h.asked).toEqual([]);
       expect(lines(r)).toEqual([
-        'Pay Mihir (0x91aB…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 31 Dec 2026. Sets aside 80 USDC now; anything unused is refunded if you cancel.',
+        'Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 31 Dec 2026. Sets aside 80 USDC now; anything unused is refunded if you cancel.',
       ]);
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 0 of 300 USDC.']); // k adds 0 (D-19)
       expectHandedOff(await h.confirm(r, 'yes'));
@@ -394,7 +394,7 @@ export function registerA01toA16(): void {
       const r3 = await h.answer(r2, { text: '4' });
       expect(h.asked).toEqual(['Q_AUTOPAY_END', 'Q_AUTOPAY_COUNT']);
       expect(lines(r3)[0]).toBe(
-        'Pay Mihir (0x91aB…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 4 payments. Sets aside 40 USDC now; anything unused is refunded if you cancel.',
+        'Pay Mihir (0x91Ab…77d0) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 4 payments. Sets aside 40 USDC now; anything unused is refunded if you cancel.',
       );
       expectHandedOff(await h.confirm(r3, 'yes'));
       const k = h.envelope.intents[0] as { schedule: { end: unknown }; limits: { total_cap: unknown } };

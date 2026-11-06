@@ -61,7 +61,7 @@ export function registerA33toA52(): void {
       const h = await harness('A-36');
       const r = await h.say('send fifty bucks to mihir');
       expect(h.asked).toEqual([]);
-      expect(lines(r)).toEqual(['Send 50 USDC to Mihir (0x91aB…77d0) on Base Sepolia.']);
+      expect(lines(r)).toEqual(['Send 50 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expect(r.body.summary?.notes).toEqual(["You wrote 'fifty bucks' → 50 USDC."]);
       expectHandedOff(await h.confirm(r, 'yes'));
       expectEnvelope(h, r.body.request_id, [
@@ -81,7 +81,7 @@ export function registerA33toA52(): void {
       expect(r2.body.question?.code).toBe('Q_TOKEN');
       const r3 = await h.answer(r2, { chipLabel: 'USDC' });
       expect(r3.body.state).toBe('awaiting_confirmation');
-      expect(lines(r3)).toEqual(['Send 10 USDC to Mihir (0x91aB…77d0) on Base Sepolia.']);
+      expect(lines(r3)).toEqual(['Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       await h.finish();
     });
 
@@ -92,7 +92,7 @@ export function registerA33toA52(): void {
       const r = await h.answer(r1, { chipLabel: 'USDC' });
       expect(lines(r)).toEqual([
         'Send 10 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.',
-        'Send 10 USDC to Mihir (0x91aB…77d0) on Base Sepolia.',
+        'Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.',
       ]);
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 20 of 300 USDC.']);
       expect(h.rows('SELECT amount FROM db1_amount_placeholders')).toEqual([{ amount: '10' }]); // one placeholder
@@ -124,7 +124,7 @@ export function registerA33toA52(): void {
       const r = await h.say('send half my eth to mihir');
       expect(h.asked).toEqual([]);
       // ETH spendable: Sepolia 0.09, Base 0.098, Arbitrum 0.098 -> Base (first of the tie); half = 0.049.
-      expect(lines(r)).toEqual(['Send 0.049 ETH to Mihir (0x91aB…77d0) on Base Sepolia.']);
+      expect(lines(r)).toEqual(['Send 0.049 ETH to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expect(r.body.summary?.notes).toEqual(["You wrote 'half my eth' → 0.049 ETH."]);
       expect(r.body.summary?.footer).toEqual(['Spent today after this: 0.049 of 0.15 ETH.']);
       expect(h.rows<{ origin: string }>('SELECT origin FROM db1_amount_placeholders')).toEqual([
@@ -181,7 +181,7 @@ export function registerA33toA52(): void {
       expect(r1.body.question?.text).toBe('USDC supports up to 6 decimal places. How much exactly?');
       expect(r1.body.question?.input).toBe('number');
       const r2 = await h.answer(r1, { text: '0.123456' });
-      expect(lines(r2)).toEqual(['Send 0.123456 USDC to Mihir (0x91aB…77d0) on Base Sepolia.']);
+      expect(lines(r2)).toEqual(['Send 0.123456 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.']);
       expectHandedOff(await h.confirm(r2, 'yes'));
       expect((h.envelope.intents[0] as { amount: unknown }).amount).toEqual(usdc('0.123456'));
       await h.finish();
