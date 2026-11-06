@@ -1,4 +1,5 @@
-// Implements: §8.9 S8 code checks P1–P9 (retryable problems vs. terminal errors), §16.1 (untrusted values in a `k`).
+// Implements: §8.9 S8 code checks P1–P9 (retryable problems vs. terminal errors) with P4 relaxed per SQ-O-03 and the
+// Q_PAIR_AMOUNT trigger (F-11), §16.1 (untrusted values in a `k`).
 // Correction texts name placeholders only (never values), so the retry prompt keeps §16.1.
 
 import type { StepContext } from '../contracts/step.js';
@@ -78,13 +79,15 @@ export function retryableProblems(ctx: StepContext, pc: PairingContext, payments
     seen.add(key);
   }
 
-  // P4 clause binding.
+  // P4 clause binding, relaxed by SQ-O-03: a cross-clause pairing passes when the amount's clause holds no recipient
+  // of its own; otherwise ("10 to A and 20 to B") P4 applies as written.
   if (!distributive) {
     for (const p of payments) {
       if (p.amount === null) continue;
       const ac = amountClause(ctx, p.amount);
       const rc = recipientClause(ctx, p.recipient);
       if (ac === null || rc === null || ac === rc) continue;
+      if (!pc.recipients.some((r) => recipientClause(ctx, r) === ac)) continue;
       const other = pc.amounts.find((a) => a !== p.amount && amountClause(ctx, a) === rc);
       if (other !== undefined) {
         problems.push(
@@ -106,6 +109,40 @@ export function retryableProblems(ctx: StepContext, pc: PairingContext, payments
     }
   }
   return problems;
+}
+
+/** Index of the sentence each clause belongs to: a gap between two clauses holding ".", "!", "?" or a line break. */
+function sentenceOfClause(ctx: StepContext): Map<number, number> {
+  const { clauses } = ctx.req.scan;
+  const text = ctx.req.typed_text;
+  const out = new Map<number, number>();
+  let sentence = 0;
+  clauses.forEach((c, n) => {
+    const prev = clauses[n - 1];
+    if (prev !== undefined && /[.!?\n]/.test(text.slice(prev.end, c.start))) sentence++;
+    out.set(c.index, sentence);
+  });
+  return out;
+}
+
+/**
+ * SQ-O-03, F-11 (trigger confirmed by the human): the payments whose recipient Q_PAIR_AMOUNT must confirm, as
+ * indexes into `payments`. A payment qualifies when its amount and recipient are in different clauses and either the
+ * request has several recipients or the two are in different sentences. One recipient in one sentence ("10 usdc and
+ * 0.01 eth to mihir") and same-clause pairs ("10 to A and 20 to B") never ask.
+ */
+export function pairsToConfirm(ctx: StepContext, pc: PairingContext, payments: Payment[]): number[] {
+  if (ctx.req.scan.distributive.length > 0) return [];
+  const sentence = sentenceOfClause(ctx);
+  const out: number[] = [];
+  payments.forEach((p, n) => {
+    if (p.amount === null) return;
+    const ac = amountClause(ctx, p.amount);
+    const rc = recipientClause(ctx, p.recipient);
+    if (ac === null || rc === null || ac === rc) return;
+    if (pc.recipients.length > 1 || sentence.get(ac) !== sentence.get(rc)) out.push(n);
+  });
+  return out;
 }
 
 /** P5 (k + group), P6, P7, P9 (pin conflict): terminal errors, no retry. */

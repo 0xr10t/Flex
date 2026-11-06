@@ -123,6 +123,8 @@ export const REASK_HINT = {
   NAME_TAKEN: () => 'That name is already saved for another address. Pick another name.',
   /** §8.4 step 3 "Zero → Q_AMOUNT_MISSING ("amount must be more than 0")" — SQ-04 for casing/placement. */
   AMOUNT_ZERO: () => 'amount must be more than 0',
+  /** SQ-O-03 / F-11: Q_PAIR_AMOUNT choices that leave a payee unpaid (P3). The answers give no wording; interim. */
+  PAIR_UNPAID: (p: P) => `That would leave ${req(p, 'name')} with nothing.`,
 } as const;
 
 export function withHint(hint: string, text: string): string {
