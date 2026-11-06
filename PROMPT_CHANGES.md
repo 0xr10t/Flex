@@ -2,7 +2,7 @@
 
 Authorization: `SPEC_QUESTIONS.md` SQ-L-01 and `HANDOFF_PROMPT.md` §5.2 permit prompt edits and narrow action-label deduplication. JSON schemas and prompt slots remain unchanged; README remains the original specification.
 
-Baseline prompt text: `05e67e5`. Full live source revision: `33518a2`; the prompt bytes are unchanged on final code/toolchain revision `547a36e`. The complete 154-case run passes the SQ-L-01 retention gate: **0 wrong handoffs, 25 unexpected stops (previously 54)**. Exact expected outcomes improve from 98 to 129, including 98/119 exact plans; there are no crashes or rejected summaries. Final-toolchain repeats of all changed results plus A-15 are in progress. The nine focused probes below are supporting evidence, not a substitute for the full-set gate.
+Baseline prompt text: `05e67e5`. Full live source revision: `33518a2`; the prompt bytes are unchanged on final code/toolchain revision `547a36e`. The complete 154-case run passes the SQ-L-01 retention gate: **0 wrong handoffs, 25 unexpected stops (previously 54)**. Exact expected outcomes improve from 98 to 129, including 98/119 exact plans; there are no crashes or rejected summaries. All 53 final-toolchain repeats reproduce their primary outcome signatures. Independent review accepts retaining these prompt changes. The nine focused probes below are supporting evidence, not a substitute for the full-set gate.
 
 See [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) for raw result links, independent comparison, six baseline successes that now stop, metric definitions and the unmet latency target. The full-run gate evaluates the combined prompts and code guards; it does not isolate each wording change's causal contribution.
 
@@ -133,4 +133,8 @@ index f12a756..3283fe9 100644
 
 ## Complete live-set results
 
-Pending the integrated 154-case evaluation and independent grading. Candidate wording is retained only if the SQ-L-01 acceptance conditions pass.
+**Accepted under SQ-L-01.** The full 154-case run and independent grading pass: zero wrong handoffs and 25 unexpected
+stops versus 54 before. The separate repeat covers all 52 changed result signatures plus A-15; all 53 reproduce their
+primary result, including exact plans for P-061 and P-073. Complete metrics, raw result links, hashes, oracle limits,
+six baseline regressions to safe stops and the unmet latency requirement are recorded in
+[LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md).

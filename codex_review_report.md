@@ -15,7 +15,8 @@ including development tools.
 
 The full 154-case live-model run has **0 wrong handoffs** (previously 2), **25 unexpected stops** (previously 54), and
 129 exact expected outcomes (previously 98), with no crashes or rejected summaries. Six baseline successes now stop
-safely, and the 20-second latency target remains unmet. Final-toolchain repeats are being recorded separately.
+safely, and the 20-second latency target remains unmet. All **53 final-toolchain repeats** reproduce their primary
+outcomes, including both formerly wrong cases; no repeat has a wrong handoff, crash or rejected summary.
 See [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) for the raw results, metric definitions and remaining limits;
 [STATUS.md](STATUS.md) records the handoff checklist. Fix completion does not imply every model request succeeds.
 

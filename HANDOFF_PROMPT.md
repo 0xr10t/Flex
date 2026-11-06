@@ -1,6 +1,30 @@
 # Hand-off prompt for the next agent
 
-Give everything below the line to the next coding agent, started in `/Users/phantomxsd/Flex`.
+## Execution update — 2026-11-06
+
+The requested continuation is implemented: the core fixes branch was independently tested and merged; every finding
+and gap in `codex_review_report.md` has a fix and permanent regression coverage. The integrated suite passes 1,874 tests
+and the separate audit passes 169. Typecheck, lint, build, and the production TCP startup/report/session smoke test pass.
+`DEVELOPING.md` is written. The human approved keeping all three UI texts listed in §5.4 (SQ-CX-01).
+
+The complete 154-prompt local-model run on `33518a2` passes SQ-L-01: **0 wrong handoffs** (previously 2), **25 unexpected
+stops** (previously 54), **129 exact expected outcomes**, with no crashes or rejected summaries. All **53 final-toolchain
+repeats** of changed results plus A-15 reproduce their primary outcomes on `547a36e`; both formerly wrong cases remain
+exact, and independent review accepts the retention gate. A fresh checkout of that revision passes all deterministic
+checks. Scoped development-tool security updates are independently verified and integrated: npm audit reports zero
+vulnerabilities, including development tools; production dependencies are unchanged.
+
+[LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) records raw evidence and metric definitions. Six baseline successes
+now stop safely, and **NFR-03's 20-second latency target remains unmet**. The work closes the original review findings
+and satisfies the prompt-retention gate; it does not establish blanket compliance with every nonfunctional requirement.
+
+Keep this file and the historical instructions below as provenance. Do not repeat completed implementation work or
+delete branches, worktrees, or process documents. No push or deletion was requested or performed.
+
+## Historical handoff — written before remediation
+
+The material below describes the earlier state and explains the work requested. The execution update above and
+`STATUS.md` take precedence for current status.
 
 ---
 

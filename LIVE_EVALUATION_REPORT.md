@@ -16,9 +16,12 @@ rejected summaries. This gate does not establish complete language coverage or c
   are unchanged. The narrow document-only explicit-chain guard added after the primary revision has four new HTTP
   regressions and independent review. The existing full corpus has no document-only explicit-chain scenario; A-15 is
   included in the final-toolchain repeat.
-- Repeat evaluation is in progress on `547a36e`: all 52 cases whose `(outcome, unexpected_stop, final_code)` changed
-  from the baseline, plus A-15, for 53 cases. It includes both previously wrong cases, P-061 and P-073. Repeats are
-  separate evidence and never replace primary rows.
+- Repeat evaluation on `547a36e`: all 52 cases whose `(outcome, unexpected_stop, final_code)` changed from the baseline,
+  plus A-15, for 53 cases. **All 53 reproduce their primary signatures**, including both previously wrong cases,
+  P-061 and P-073. Raw evidence:
+  [codex-remediation-repeat-547a36e.json](test/live/results/codex-remediation-repeat-547a36e.json). Repeats are separate
+  evidence and never replace primary rows. Independent Astra/max review accepts the SQ-L-01/C-514 gate with the
+  scope and measurement limits stated here.
 
 Both live runs use local Ollama **0.40.14**, `qwen2.5:7b-instruct` (7.6B, Q4_K_M), temperature 0, seed 42, context 8192,
 and a 60-second per-call timeout. Model digest:
@@ -101,11 +104,24 @@ errors, missed recurrence/group roles and conservative guards around contextual 
 cross-sentence amount question; P-079 invokes the approved no-cancel-word guard. These remain observable limitations
 of the supported-language experience, even though none sends a wrong payment in this evaluation.
 
+## Repeat results on final code and tooling
+
+The 53-case selection produces **38 exact outcomes and 15 safe stops, zero wrong handoffs, zero rejected summaries
+and zero crashes**. Every `(outcome, unexpected_stop, final_code)` matches its primary result. Its exact cases comprise
+26/40 expected plans and 12/13 expected non-plan outcomes. Both P-061 and P-073 remain exact. A-15 remains a safe
+`Q_AMOUNT_MISSING` before S8, despite correct quarantined invoice extraction; this is not successful invoice planning
+and does not exercise the new document-chain guard. Four deterministic HTTP regressions verify that guard.
+
+There are no MODEL_FAILED outcomes or client LLM retries. Vitest 4.1.12 passes all 54 assertions, including availability.
+The selection contains 23 acceptance prompts and 30 paraphrases. It is a targeted repeat, not another full independent
+sample or a latency benchmark. One matching repeat does not establish universal determinism.
+
 ## Reproduce and verify evidence
 
 ```sh
 node test/live/summarize.mjs acceptance para-0 para-25 para-50 para-75
 node test/live/summarize.mjs codex-remediation-33518a2
+node test/live/summarize.mjs codex-remediation-repeat-547a36e
 LIVE_SET=all LIVE_TAG=your-new-unique-tag npm run test:live
 LIVE_SET=all LIVE_IDS=A-15,P-061,P-073 LIVE_TAG=your-new-repeat-tag npm run test:live
 ```
@@ -117,7 +133,13 @@ crashes and rejected summaries must also be inspected.
 | Evidence | SHA-256 |
 | --- | --- |
 | `test/live/prompts.json` | `69ba36fbdaf343f250c2c0655ab8612e449e487d8bdb8b91bcb5a53323d068c4` |
-| Primary 154-case JSON | `62165960fb8420a1c12a8f89d05c30688f904f7020caf378b7553faeb9ea7240` |
+| Primary 154-case JSON, committed formatting | `44f39bbde4411ebee08f0726a1a8d9b223c180e02226211fd8884b76dbe7f1b6` |
+| Original runner JSON, retained in the isolated checkout | `62165960fb8420a1c12a8f89d05c30688f904f7020caf378b7553faeb9ea7240` |
+| Repeat 53-case JSON, committed formatting | `d0511fde54d41aa457d1521333a11c2fa341b7c78510fd178570e8d30f9d7621` |
+| Original repeat runner JSON, retained in the final checkout | `5ee7479d04e9fcbb120846edbccc231df082d2908bca7357045fbc602523d2d2` |
+
+Repository JSON formatting changes whitespace only. Parsed rows are checked for equality with the original runner
+artifact; case order, results, traces and timing measurements are preserved.
 
 Exact prompt diffs and hashes are in [PROMPT_CHANGES.md](PROMPT_CHANGES.md). Independent grading and checklist scope
 are in [COMPLIANCE_REPORT.md](COMPLIANCE_REPORT.md). Supporting execution logs, baseline hashes, clean-checkout reports,
