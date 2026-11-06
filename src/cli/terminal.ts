@@ -1,34 +1,28 @@
-// Runs a view in the terminal: alternate screen, hidden cursor, ~30 fps redraw, SGR mouse reporting so the pointer
-// steers the splash (as hovering does in the design), and a full restore on every exit path. With `intro`, the
-// gateway scene plays first and then disintegrates (the snap) before the splash comes up. Also renders a single still
+// Runs the CLI full-screen in the terminal: alternate screen, hidden cursor, ~30 fps redraw that rewrites only the
+// rows that changed, SGR mouse reporting so the pointer steers the splash's logo, and a full restore on every exit
+// path. The opening plays the gateway scene over the starfield, snaps its objects away into dust and brings the splash
+// up under the title that stays. Everything is laid out for the terminal's current size. Also renders a single still
 // frame for pipes and `--static`.
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
-import { padFrame } from './render/frame.js';
-import { minimumSize, PAD_X, panel, place, type Placement, type View } from './render/layout.js';
-import {
-  frameRows,
-  paintRow,
-  SCENE_PALETTE,
-  SPLASH_PALETTE,
-  type ColorMode,
-  type Palette,
-  type Row,
-} from './render/paint.js';
-import { renderScene, type SceneOptions } from './render/scene.js';
+import { createFrame, overlay, type Frame } from './render/frame.js';
+import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
+import { renderScene, SCENE_COLS, SCENE_ROWS, type SceneOptions } from './render/scene.js';
 import { snap, SNAP_SECONDS } from './render/snap.js';
 import { SplashAnimation, type Pointer, type SplashOptions } from './render/splash.js';
+import { drawBackdrop, MIN_COLS, MIN_ROWS, objectsLayer, stageLayout, type StageLayout } from './render/stage.js';
+
+/** What to show: the opening into the splash, or one of them alone. */
+export type View = 'opening' | 'splash' | 'scene';
 
 export interface ViewOptions {
   view: View;
-  /** Open on the gateway scene and snap it away into the splash (interactive runs of the splash only). */
-  intro?: boolean;
   splash?: SplashOptions;
   scene?: SceneOptions;
   /** Scene speed multiplier (the splash takes its own in `splash.speed`). */
   sceneSpeed?: number;
-  /** Overrides the view's accent colour (#rrggbb). */
+  /** Overrides the accent colour (#rrggbb). */
   accent?: string;
   colorMode: ColorMode;
 }
@@ -54,7 +48,7 @@ const SYNC_END = `${CSI}?2026l`;
 /** Scene seconds the opening plays before the snap: long enough for the gateway log to fill. */
 export const INTRO_SECONDS = 5.5;
 
-type Phase = 'intro' | 'snap' | View;
+type Phase = 'intro' | 'snap' | 'splash';
 
 /** Picks a colour mode from the stream and environment (NO_COLOR wins, then FORCE_COLOR, then the TTY's depth). */
 export function detectColorMode(
@@ -94,7 +88,6 @@ export function parseInput(data: string): InputEvent[] {
       else {
         let j = i + 2;
         while (j < data.length && !/[A-Za-z~]/.test(data[j]!)) j++;
-        events.push({ kind: 'key', key: 'other' });
         i = j + 1;
         continue;
       }
@@ -110,99 +103,128 @@ export function parseInput(data: string): InputEvent[] {
   return events;
 }
 
-function viewPalette(opts: ViewOptions, view: View = opts.view): Palette {
-  const base = view === 'splash' ? SPLASH_PALETTE : SCENE_PALETTE;
+function viewPalette(opts: ViewOptions): Palette {
+  const base = opts.view === 'splash' ? SPLASH_PALETTE : SCENE_PALETTE;
   return opts.accent ? { ...base, accent: opts.accent } : base;
 }
 
-function paintPanel(rows: Row[], width: number, p: Placement, palette: Palette, mode: ColorMode): string {
-  let s = '';
-  rows.forEach((row, i) => {
-    s += `${CSI}${p.top + i};${p.left}H` + paintRow(row, width, palette, mode);
-  });
-  return s;
+/** Paints a whole-screen frame as one string per row. */
+function paintFrame(f: Frame, palette: Palette, mode: ColorMode): string[] {
+  return frameRows(f).map((row) => paintRow(row, f.cols, palette, mode));
+}
+
+/** Composes one screen of the opening (or the splash under its title) for `phase`. */
+export function composeOpening(
+  layout: StageLayout,
+  phase: Phase,
+  sceneT: number,
+  snapS: number,
+  splash: SplashAnimation,
+  now: number,
+  pointer: Pointer,
+  starfield: boolean,
+): Frame {
+  const f = createFrame(layout.cols, layout.rows);
+  drawBackdrop(f, sceneT, layout, starfield);
+  const objects = phase === 'splash' ? null : objectsLayer(sceneT, layout);
+  if (objects) overlay(f, phase === 'snap' ? snap(objects, snapS) : objects);
+  else splash.draw(f, now, pointer, layout.splash);
+  return f;
 }
 
 /** One still frame (the animation settled at `t` seconds), for pipes, `--static` and tests. */
 export function renderStatic(opts: ViewOptions, t = 6): string {
-  const palette = viewPalette(opts);
-  let frame;
-  if (opts.view === 'splash') {
+  let frame: Frame;
+  if (opts.view === 'scene') frame = renderScene(t, opts.scene);
+  else {
     const anim = new SplashAnimation(opts.splash);
+    const now = (t / (opts.splash?.speed ?? 1)) * 1000;
     anim.frame(0);
-    frame = anim.frame((t / (opts.splash?.speed ?? 1)) * 1000);
-  } else frame = renderScene(t, opts.scene);
-  const pnl = panel(opts.view, frame, true);
-  return pnl.rows.map((r) => paintRow(r, pnl.width, palette, opts.colorMode)).join('\n') + '\n';
+    if (opts.view === 'splash') frame = anim.frame(now);
+    else {
+      const layout = stageLayout(SCENE_COLS, SCENE_ROWS)!;
+      frame = composeOpening(
+        layout,
+        'splash',
+        t,
+        0,
+        anim,
+        now,
+        { x: 0, y: 0, on: false },
+        opts.scene?.starfield ?? true,
+      );
+    }
+  }
+  return paintFrame(frame, viewPalette(opts), opts.colorMode).join('\n') + '\n';
 }
 
 /** Plays the view until the user presses Enter, q, Escape or Ctrl-C. Requires TTY streams. */
 export function runInteractive(opts: ViewOptions, input: ReadStream, output: WriteStream): Promise<ExitReason> {
-  const splash = opts.view === 'splash' ? new SplashAnimation(opts.splash) : undefined;
+  const palette = viewPalette(opts);
+  const splash = new SplashAnimation(opts.splash);
   const sceneSpeed = opts.sceneSpeed ?? 1;
+  const starfield = opts.scene?.starfield ?? true;
   const t0 = performance.now();
-  let phase: Phase = opts.intro && opts.view === 'splash' ? 'intro' : opts.view;
+  let phase: Phase = opts.view === 'splash' ? 'splash' : 'intro';
   let snapAt = 0;
   let mouse: { col: number; row: number; at: number } | undefined;
-  let placement: Placement | null = null;
-  let dirty = true;
+  let painted: string[] = [];
 
-  const enter = (next: Phase): void => {
-    phase = next;
-    dirty = true;
-  };
-  const viewOf = (p: Phase): View => (p === 'intro' || p === 'snap' ? 'scene' : p);
   const sceneTime = (now: number): number => ((now - t0) / 1000) * sceneSpeed;
+  const snapTime = (now: number): number => ((now - snapAt) / 1000) * sceneSpeed;
 
-  const pointer = (now: number): Pointer => {
-    if (!mouse || !placement || now - mouse.at > POINTER_IDLE_MS) return { x: 0, y: 0, on: false };
-    const x = (mouse.col - placement.left + 0.5) / placement.width;
-    const y = (mouse.row - placement.top + 0.5) / placement.height;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return { x: 0, y: 0, on: false };
-    return { x: x * 2 - 1, y: y * 2 - 1, on: true };
+  const pointer = (now: number, cols: number, rows: number): Pointer => {
+    if (!mouse || now - mouse.at > POINTER_IDLE_MS) return { x: 0, y: 0, on: false };
+    return { x: ((mouse.col - 0.5) / cols) * 2 - 1, y: ((mouse.row - 0.5) / rows) * 2 - 1, on: true };
   };
 
-  /** The rows to paint for the current phase, after advancing it. */
-  const rowsFor = (now: number, p: Placement): { rows: Row[]; width: number } => {
-    if (phase === 'intro' && sceneTime(now) >= INTRO_SECONDS) {
-      phase = 'snap';
-      snapAt = now;
+  const skipOpening = (): void => {
+    if (opts.view === 'opening') phase = 'splash';
+  };
+
+  const frameFor = (now: number, cols: number, rows: number): Frame | string => {
+    const layout = stageLayout(cols, rows, opts.view !== 'splash');
+    const need = opts.view === 'scene' ? `${SCENE_COLS} × ${SCENE_ROWS}` : `${MIN_COLS} × ${MIN_ROWS}`;
+    if (!layout || (opts.view === 'scene' && !layout.scene))
+      return `Make the terminal at least ${need} (it is ${cols} × ${rows}) · q to exit`;
+
+    if (opts.view === 'opening') {
+      if (phase === 'intro' && sceneTime(now) >= INTRO_SECONDS) {
+        phase = 'snap';
+        snapAt = now;
+      }
+      if (phase === 'snap' && snapTime(now) >= SNAP_SECONDS) phase = 'splash';
+      // no room for the opening's objects: straight to the splash
+      if (!layout.scene) phase = 'splash';
     }
-    if (phase === 'snap') {
-      const scene = renderScene(sceneTime(now), opts.scene);
-      const framed = p.chrome ? padFrame(scene, PAD_X, 1) : scene;
-      const dust = snap(framed, ((now - snapAt) / 1000) * sceneSpeed);
-      return { rows: frameRows(dust), width: framed.cols };
+    if (opts.view === 'splash') {
+      const f = createFrame(cols, rows);
+      splash.draw(f, now, pointer(now, cols, rows), layout.splash);
+      return f;
     }
-    const view = viewOf(phase);
-    const frame = view === 'splash' ? splash!.frame(now, pointer(now)) : renderScene(sceneTime(now), opts.scene);
-    const pnl = panel(view, frame, p.chrome);
-    return { rows: pnl.rows, width: pnl.width };
+    const p = opts.view === 'scene' ? 'intro' : phase;
+    return composeOpening(layout, p, sceneTime(now), snapTime(now), splash, now, pointer(now, cols, rows), starfield);
   };
 
   const draw = (): void => {
     const now = performance.now();
     const cols = output.columns || 80;
     const rows = output.rows || 24;
-    if (phase === 'snap' && ((now - snapAt) / 1000) * sceneSpeed >= SNAP_SECONDS) enter('splash');
-    placement = place(viewOf(phase), cols, rows);
-    // a terminal too small for the opening goes straight to the splash
-    if (!placement && (phase === 'intro' || phase === 'snap')) {
-      enter('splash');
-      placement = place('splash', cols, rows);
-    }
+    const frame = frameFor(now, cols, rows);
     let s = SYNC_BEGIN;
-    if (dirty) s += `${CSI}0m${CSI}2J`;
-    if (!placement) {
-      const min = minimumSize(viewOf(phase));
-      const msg = `Make the terminal at least ${min.cols} × ${min.rows} (it is ${cols} × ${rows}) · q to exit`;
-      s += `${CSI}0m${CSI}2J${CSI}${Math.ceil(rows / 2)};${Math.max(1, Math.floor((cols - msg.length) / 2) + 1)}H${msg}`;
-      dirty = true;
+    if (typeof frame === 'string') {
+      const y = Math.ceil(rows / 2);
+      const x = Math.max(1, Math.floor((cols - frame.length) / 2) + 1);
+      s += `${CSI}0m${CSI}2J${CSI}${y};${x}H${frame}`;
+      painted = [];
     } else {
-      const { rows: painted, width } = rowsFor(now, placement);
-      const palette = viewPalette(opts, viewOf(phase));
-      s += paintPanel(painted, width, placement, palette, opts.colorMode);
-      dirty = false;
+      const next = paintFrame(frame, palette, opts.colorMode);
+      // only rewrite the rows that changed since the last frame (all of them after a resize)
+      if (next.length !== painted.length) s += `${CSI}0m${CSI}2J`;
+      next.forEach((line, y) => {
+        if (line !== painted[y] || next.length !== painted.length) s += `${CSI}${y + 1};1H${line}`;
+      });
+      painted = next;
     }
     output.write(s + SYNC_END);
   };
@@ -211,7 +233,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     let done = false;
     const wasRaw = input.isRaw;
     const restore = (): void => {
-      output.write((splash ? MOUSE_OFF : '') + LEAVE_SCREEN);
+      output.write(MOUSE_OFF + LEAVE_SCREEN);
       try {
         input.setRawMode(wasRaw);
       } catch {
@@ -236,16 +258,16 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
         else if (ev.key === 'quit') return finish('quit');
         else if (ev.key === 'interrupt') return finish('interrupt');
         // during the opening any other key skips to the splash
-        else if (phase === 'intro' || phase === 'snap') enter('splash');
+        else if (opts.view === 'opening' && phase !== 'splash') skipOpening();
         else if (ev.key === 'enter') return finish('continue');
       }
     };
     const onResize = (): void => {
-      dirty = true;
+      painted = [];
     };
     const onTerm = (): void => finish('interrupt');
 
-    output.write(ENTER_SCREEN + (splash ? MOUSE_ON : ''));
+    output.write(ENTER_SCREEN + MOUSE_ON);
     input.setRawMode(true);
     input.resume();
     input.on('data', onData);

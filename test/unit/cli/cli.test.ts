@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { frameLines } from '../../../src/cli/render/frame.js';
-import { place } from '../../../src/cli/render/layout.js';
 import { paintRow, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
-import { renderScene, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
+import { renderScene, renderSceneLayer, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
+import { stageLayout } from '../../../src/cli/render/stage.js';
 import { snap, SNAP_SECONDS } from '../../../src/cli/render/snap.js';
 import { SplashAnimation, SPLASH_COLS, SPLASH_ROWS } from '../../../src/cli/render/splash.js';
-import { detectColorMode, parseInput, renderStatic } from '../../../src/cli/terminal.js';
+import { composeOpening, detectColorMode, parseInput, renderStatic } from '../../../src/cli/terminal.js';
 import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
 
 const ESC = '\u001b';
@@ -76,88 +76,131 @@ describe('scene renderer', () => {
 });
 
 describe('snap', () => {
-  const scene = renderScene(5.5, { starfield: false });
+  const objects = renderSceneLayer(5.5, 'objects');
   const glyphs = (f: { ch: string[] }): number => f.ch.filter((c) => c !== ' ').length;
 
-  it('starts from the scene exactly as it stood', () => {
-    const f = snap(scene, 0);
-    expect(f.ch).toEqual(scene.ch);
-    expect(f.clear!.every((c) => c === 0)).toBe(true);
+  it('starts from the objects exactly as they stood', () => {
+    const f = snap(objects, 0);
+    expect(f.ch).toEqual(objects.ch);
+    expect(f.written).toEqual(objects.written);
   });
 
   it('takes the right side first', () => {
-    const f = snap(scene, 0.9);
-    const standing = (from: number, to: number): number => {
-      let n = 0;
-      for (let y = 0; y < f.rows; y++)
-        for (let x = from; x < to; x++)
-          if (scene.ch[y * f.cols + x] !== ' ' && f.ch[y * f.cols + x] === scene.ch[y * f.cols + x]) n++;
-      return n;
+    const f = snap(objects, 0.9);
+    const share = (left: boolean): number => {
+      let total = 0;
+      let kept = 0;
+      for (let i = 0; i < f.ch.length; i++) {
+        if (objects.ch[i] === ' ' || i % f.cols < f.cols / 2 !== left) continue;
+        total++;
+        if (f.ch[i] === objects.ch[i]) kept++;
+      }
+      return kept / total;
     };
-    const half = f.cols / 2;
-    const left =
-      standing(0, half) / Math.max(1, scene.ch.slice(0).filter((c, i) => c !== ' ' && i % f.cols < half).length);
-    const right =
-      standing(half, f.cols) / Math.max(1, scene.ch.filter((c, i) => c !== ' ' && i % f.cols >= half).length);
-    expect(left).toBeGreaterThan(right);
+    expect(share(true)).toBeGreaterThan(share(false));
   });
 
-  it('turns cells into drifting dust and flakes the backdrop away', () => {
-    const f = snap(scene, 1.2);
-    expect(f.ch.some((c, i) => '%#*+=-:.'.includes(c) && scene.ch[i] === ' ')).toBe(true);
-    const cleared = f.clear!.reduce((n, c) => n + c, 0);
-    expect(cleared).toBeGreaterThan(0);
-    expect(cleared).toBeLessThan(f.clear!.length);
+  it('turns cells into drifting dust', () => {
+    const f = snap(objects, 1.2);
+    expect(f.ch.some((c, i) => '%#*+=-:.'.includes(c) && !objects.written[i])).toBe(true);
   });
 
   it('leaves nothing once it is over', () => {
-    const f = snap(scene, SNAP_SECONDS + 0.01);
+    const f = snap(objects, SNAP_SECONDS + 0.01);
     expect(glyphs(f)).toBe(0);
-    expect(f.clear!.every((c) => c === 1)).toBe(true);
+    expect(f.written.every((w) => w === 0)).toBe(true);
   });
 });
 
-describe('painting and layout', () => {
+describe('opening', () => {
+  const still = { x: 0, y: 0, on: false };
+  const at = (phase: 'intro' | 'snap' | 'splash', snapS = 0): string[] => {
+    const layout = stageLayout(160, 50)!;
+    const anim = new SplashAnimation();
+    anim.frame(0);
+    return frameLines(composeOpening(layout, phase, 6, snapS, anim, 6000, still, false));
+  };
+
+  it('opens on the whole scene centred in the terminal', () => {
+    const lines = at('intro');
+    expect(lines).toHaveLength(50);
+    expect(lines[5 + 10]).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    expect(lines[5 + 17]!.indexOf('+- FLEX GATEWAY')).toBe(20 + 50);
+    expect(lines[5 + 35]).toContain('[ AI MODEL ]');
+  });
+
+  it('keeps the title and footer while the objects turn to dust', () => {
+    const all = at('snap', SNAP_SECONDS + 0.01).join('\n');
+    expect(all).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    expect(all).toContain('flex.access');
+    expect(all).not.toMatch(/FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
+  });
+
+  it('brings the splash up under the title', () => {
+    const lines = at('splash');
+    expect(lines[5 + 10]).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    const tag = lines.findIndex((l) => l.includes('the access layer between AI and ethereum'));
+    expect(tag).toBeGreaterThan(5 + 10);
+    expect(lines.findIndex((l) => l.includes('flex $ █'))).toBe(tag + 4);
+    expect(lines[5 + 38]).toContain('flex.access');
+  });
+
+  it('keeps the stars in the background', () => {
+    const layout = stageLayout(160, 50)!;
+    const anim = new SplashAnimation();
+    const f = composeOpening(layout, 'splash', 6, 0, anim, 0, still, true);
+    expect(f.ch.filter((c, i) => (c === '.' || c === '+') && f.tone[i] === 1).length).toBeGreaterThan(100);
+  });
+});
+
+describe('stage layout', () => {
+  it('centres the opening scene when it fits', () => {
+    expect(stageLayout(120, 40)).toMatchObject({ scene: { x: 0, y: 0 }, title: { x: 0, y: 0 } });
+    expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 10 } });
+  });
+
+  it('keeps the title without the scene on a mid-sized terminal', () => {
+    const l = stageLayout(100, 32)!;
+    expect(l.scene).toBeNull();
+    expect(l.title).not.toBeNull();
+    expect(l.footer).not.toBeNull();
+    expect(l.splash.objectX).not.toBeNull();
+  });
+
+  it('shows the splash alone, then without its logo, as the terminal shrinks', () => {
+    const l = stageLayout(80, 24)!;
+    expect(l.title).toBeNull();
+    expect(l.splash.objectX).toBeNull();
+    expect(stageLayout(95, 20)!.splash.objectX).not.toBeNull();
+    expect(stageLayout(95, 16)!.splash.objectX).toBeNull();
+    expect(stageLayout(55, 20)).toBeNull();
+    expect(stageLayout(60, 13)).toBeNull();
+  });
+
+  it('lays out the splash alone when asked', () => {
+    expect(stageLayout(200, 60, false)).toMatchObject({ scene: null, title: null, footer: null });
+  });
+});
+
+describe('painting', () => {
   it('maps colours to the xterm-256 palette', () => {
     expect(to256('#000000')).toBe(16);
     expect(to256('#ffffff')).toBe(231);
     expect(to256('#e1ad66')).toBe(16 + 36 * 4 + 6 * 3 + 1);
   });
 
-  it('drops the panel background for cleared cells', () => {
-    const s = paintRow(
-      [
-        { text: 'a', ink: 'fg' },
-        { text: '  ', ink: 'fg', clear: true },
-        { text: 'b', ink: 'fg' },
-      ],
-      4,
-      SPLASH_PALETTE,
-      'truecolor',
-    );
-    expect(s).toContain(`a${ESC}[49m  ${ESC}[48;2;27;25;24mb`);
-  });
-
-  it('paints truecolor rows with the panel background and resets after', () => {
+  it('paints truecolor rows on the background and resets after', () => {
     const s = paintRow([{ text: 'flex', ink: 'accent' }], 6, SPLASH_PALETTE, 'truecolor');
     expect(s.startsWith(`${ESC}[48;2;27;25;24m${ESC}[38;2;225;173;102mflex`)).toBe(true);
     expect(s.endsWith(`  ${ESC}[0m`)).toBe(true);
   });
 
   it('prints plain text without colour', () => {
-    const out = renderStatic({ view: 'splash', colorMode: 'none' });
+    const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
-    expect(out).toContain('flex — splash');
-    expect(out).toContain('96 × 24');
-    expect(out).not.toMatch(/terminal splash|steer the layer/);
-  });
-
-  it('frames the splash with chrome when it fits and bare when it only just fits', () => {
-    expect(place('splash', 120, 40)).toMatchObject({ chrome: true, width: 100, height: 28, left: 11, top: 7 });
-    expect(place('splash', 96, 24)).toMatchObject({ chrome: false, left: 1, top: 1 });
-    expect(place('splash', 95, 24)).toBeNull();
-    expect(place('scene', 124, 42)).toMatchObject({ chrome: true });
-    expect(place('scene', 100, 50)).toBeNull();
+    expect(out).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
+    expect(out).toContain('flex $');
+    expect(out.split('\n')).toHaveLength(SCENE_ROWS + 1);
   });
 });
 
@@ -171,7 +214,8 @@ describe('terminal input', () => {
     expect(parseInput('\r')).toEqual([{ kind: 'key', key: 'enter' }]);
     expect(parseInput('\u0003')).toEqual([{ kind: 'key', key: 'interrupt' }]);
     expect(parseInput(ESC)).toEqual([{ kind: 'key', key: 'quit' }]);
-    expect(parseInput(`${ESC}[A`)).toEqual([{ kind: 'key', key: 'other' }]);
+    expect(parseInput(`${ESC}[A`)).toEqual([]);
+    expect(parseInput(' ')).toEqual([{ kind: 'key', key: 'other' }]);
   });
 
   it('picks the colour mode from the environment', () => {
@@ -184,17 +228,10 @@ describe('terminal input', () => {
 });
 
 describe('arguments', () => {
-  it('defaults to the opening, then the cube splash', () => {
-    expect(parseCliArgs([])).toMatchObject({
-      view: 'splash',
-      intro: true,
-      shape: 'cube',
-      speed: 1,
-      starfield: true,
-      help: false,
-    });
-    expect(parseCliArgs(['splash'])).toMatchObject({ view: 'splash', intro: false });
-    expect(parseCliArgs(['scene'])).toMatchObject({ view: 'scene', intro: false });
+  it('defaults to the opening with the cube splash', () => {
+    expect(parseCliArgs([])).toMatchObject({ view: 'opening', shape: 'cube', speed: 1, starfield: true, help: false });
+    expect(parseCliArgs(['splash'])).toMatchObject({ view: 'splash' });
+    expect(parseCliArgs(['scene'])).toMatchObject({ view: 'scene' });
   });
 
   it('accepts the design options', () => {

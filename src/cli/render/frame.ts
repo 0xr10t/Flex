@@ -9,27 +9,36 @@ export interface Frame {
   readonly rows: number;
   readonly ch: string[];
   readonly tone: Uint8Array;
-  /** Cells drawn without the panel background (1), so the terminal's own background shows. Absent: none. */
-  readonly clear?: Uint8Array;
+  /** 1 where something was drawn, spaces included (a dark patch of the globe still hides the stars behind it). */
+  readonly written: Uint8Array;
 }
 
 export type Vec3 = readonly [number, number, number];
 
 export function createFrame(cols: number, rows: number): Frame {
-  return { cols, rows, ch: new Array<string>(cols * rows).fill(' '), tone: new Uint8Array(cols * rows) };
+  const n = cols * rows;
+  return { cols, rows, ch: new Array<string>(n).fill(' '), tone: new Uint8Array(n), written: new Uint8Array(n) };
 }
 
-/** A copy of `src` with `padX` blank columns either side and `padY` blank rows above and below. */
-export function padFrame(src: Frame, padX: number, padY: number): Frame {
-  const f = createFrame(src.cols + 2 * padX, src.rows + 2 * padY);
-  for (let y = 0; y < src.rows; y++)
+/** Draws cell `i` (an index already known to be inside the frame). */
+export function setCell(f: Frame, i: number, c: string, k: Tone): void {
+  f.ch[i] = c;
+  f.tone[i] = k;
+  f.written[i] = 1;
+}
+
+/** Copies the drawn cells of `src` onto `dst` with `src`'s origin at (ox, oy); cells falling outside are dropped. */
+export function overlay(dst: Frame, src: Frame, ox = 0, oy = 0): void {
+  for (let y = 0; y < src.rows; y++) {
+    const Y = y + oy;
+    if (Y < 0 || Y >= dst.rows) continue;
     for (let x = 0; x < src.cols; x++) {
+      const X = x + ox;
       const i = y * src.cols + x;
-      const j = (y + padY) * f.cols + x + padX;
-      f.ch[j] = src.ch[i]!;
-      f.tone[j] = src.tone[i]!;
+      if (X < 0 || X >= dst.cols || !src.written[i]) continue;
+      setCell(dst, Y * dst.cols + X, src.ch[i]!, src.tone[i]! as Tone);
     }
-  return f;
+  }
 }
 
 /** Writes one glyph at the rounded cell position; positions outside the grid are ignored. */
@@ -37,8 +46,7 @@ export function put(f: Frame, x: number, y: number, c: string, k: Tone = 0): voi
   x = Math.round(x);
   y = Math.round(y);
   if (x < 0 || y < 0 || x >= f.cols || y >= f.rows) return;
-  f.ch[y * f.cols + x] = c;
-  f.tone[y * f.cols + x] = k;
+  setCell(f, y * f.cols + x, c, k);
 }
 
 export function text(f: Frame, x: number, y: number, s: string, k: Tone = 0): void {

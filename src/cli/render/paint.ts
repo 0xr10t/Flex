@@ -5,17 +5,13 @@ import type { Frame } from './frame.js';
 
 export type ColorMode = 'truecolor' | '256' | 'basic' | 'none';
 
-export type Ink = 'fg' | 'dim' | 'accent' | 'chrome' | 'rule';
+export type Ink = 'fg' | 'dim' | 'accent';
 
 export interface Palette {
   bg: string;
   fg: string;
   dim: string;
   accent: string;
-  /** Title bar text. */
-  chrome: string;
-  /** Title bar divider. */
-  rule: string;
 }
 
 /** "Flex Terminal": window #1b1918, text #f3f2f2, dim #7d7979, accent #e1ad66, title #9b9797. */
@@ -24,9 +20,6 @@ export const SPLASH_PALETTE: Palette = {
   fg: '#f3f2f2',
   dim: '#7d7979',
   accent: '#e1ad66',
-  chrome: '#9b9797',
-  // rgba(243,242,242,0.10) over the window background
-  rule: '#312f2e',
 };
 
 /** "Flex ASCII": page #0b0c0a, text #d9d6cc, dim #5f6159, accent #f2b45a. */
@@ -35,8 +28,6 @@ export const SCENE_PALETTE: Palette = {
   fg: '#d9d6cc',
   dim: '#5f6159',
   accent: '#f2b45a',
-  chrome: '#5f6159',
-  rule: '#1d1e1b',
 };
 
 /** Accent swatches each design offers. */
@@ -46,8 +37,6 @@ export const SCENE_ACCENTS = ['#f2b45a', '#7fd1b9', '#9aa8ff', '#ff7a6b'] as con
 export interface Run {
   text: string;
   ink: Ink;
-  /** Drawn on the terminal's own background instead of the panel's. */
-  clear?: boolean;
 }
 
 export type Row = Run[];
@@ -80,7 +69,7 @@ export function to256(hex: string): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, chrome: 37, rule: 90 };
+const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33 };
 
 function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   if (mode === 'none') return '';
@@ -105,10 +94,9 @@ export function frameRows(f: Frame): Row[] {
       const i = y * f.cols + x;
       const c = f.ch[i]!;
       const ink = c === ' ' && cur ? cur.ink : TONE_INK[f.tone[i]!]!;
-      const clear = f.clear?.[i] === 1;
-      if (cur && cur.ink === ink && (cur.clear ?? false) === clear) cur.text += c;
+      if (cur && cur.ink === ink) cur.text += c;
       else {
-        cur = clear ? { text: c, ink, clear } : { text: c, ink };
+        cur = { text: c, ink };
         row.push(cur);
       }
     }
@@ -122,26 +110,18 @@ export function rowWidth(row: Row): number {
   return row.reduce((n, r) => n + [...r.text].length, 0);
 }
 
-/** Paints one row on the panel background, padded to `width` cells; ends with an attribute reset. */
+/** Paints one row on the palette background, padded to `width` cells; ends with an attribute reset. */
 export function paintRow(row: Row, width: number, palette: Palette, mode: ColorMode): string {
   const pad = Math.max(0, width - rowWidth(row));
   if (mode === 'none') return row.map((r) => r.text).join('') + ' '.repeat(pad);
-  const panelBg = bgCode(mode, palette);
-  let out = panelBg;
+  let out = bgCode(mode, palette);
   let ink: Ink | undefined;
-  let clear = false;
   for (const r of row) {
-    const c = r.clear ?? false;
-    if (c !== clear && panelBg) {
-      out += c ? `${ESC}49m` : panelBg;
-      clear = c;
-    }
     if (r.ink !== ink) {
       out += fgCode(mode, palette, r.ink);
       ink = r.ink;
     }
     out += r.text;
   }
-  if (clear && pad) out += panelBg;
   return out + ' '.repeat(pad) + `${ESC}0m`;
 }

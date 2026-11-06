@@ -1,7 +1,7 @@
 // The terminal splash: a lit cube (or Ethereum diamond) the pointer can steer on the left and, beside it, the FLEXX
-// wordmark, a typed tagline, a rule and the `flex $` prompt, the pair centred in the frame. Adapted from
-// "Flex Terminal.dc.html" in the Claude Design handoff "Flex animated ASCII art" (FLEXX instead of FLEX, status rows
-// removed, frame widened so the five-letter wordmark fits beside the logo).
+// wordmark, a typed tagline, a rule and the `flex $` prompt. Adapted from "Flex Terminal.dc.html" in the Claude Design
+// handoff "Flex animated ASCII art" (FLEXX instead of FLEX, status rows removed). It draws into any frame at a
+// placement, so it can stand alone or sit under the opening scene's title; narrow terminals drop the cube.
 
 import {
   createFrame,
@@ -9,6 +9,7 @@ import {
   drawWordmark,
   norm,
   put,
+  setCell,
   text,
   wordmarkWidth,
   type Frame,
@@ -21,7 +22,7 @@ export const SPLASH_ROWS = 24;
 
 export type SplashShape = 'cube' | 'diamond';
 
-/** Pointer position over the splash panel, each axis in [-1, 1]; `on` while the pointer is steering. */
+/** Pointer position over the screen, each axis in [-1, 1]; `on` while the pointer is steering. */
 export interface Pointer {
   x: number;
   y: number;
@@ -43,18 +44,42 @@ for (const ax of [0, 1, 2] as const) for (const s of [-1, 1] as const) CUBE_FACE
 
 const WORD: readonly WordmarkLetter[] = ['F', 'L', 'E', 'X', 'X'];
 const PITCH = 11;
-const WORD_WIDTH = wordmarkWidth(WORD.length, PITCH);
+/** Width of the text block: the FLEXX wordmark, which the rule under the tagline matches. */
+export const SPLASH_TEXT_WIDTH = wordmarkWidth(WORD.length, PITCH);
+/** Text block: wordmark (7 rows), tagline, rule and prompt two rows apart. */
+export const SPLASH_TEXT_ROWS = 13;
 /** Half the widest the spinning object gets, and the gap the design leaves between it and the text. */
 const OBJECT_REACH = 16;
 const TEXT_GAP = 3;
-/** Text block: wordmark (7 rows), tagline, rule and prompt two rows apart. */
-const TEXT_ROWS = 13;
-const GROUP_WIDTH = 2 * OBJECT_REACH + TEXT_GAP + WORD_WIDTH;
-const OBJECT_X = Math.floor((SPLASH_COLS - GROUP_WIDTH) / 2) + OBJECT_REACH;
-const TEXT_X = OBJECT_X + OBJECT_REACH + TEXT_GAP;
-const TEXT_Y = Math.floor((SPLASH_ROWS - TEXT_ROWS) / 2);
-// a row above the text's middle: the pitched-forward cube shows more face below its centre than above
-const OBJECT_Y = TEXT_Y + (TEXT_ROWS - 1) / 2 - 1;
+/** Logo and text side by side. */
+export const SPLASH_GROUP_WIDTH = 2 * OBJECT_REACH + TEXT_GAP + SPLASH_TEXT_WIDTH;
+/** Rows the cube needs: it reaches about eight rows either side of its centre. */
+export const SPLASH_GROUP_ROWS = 17;
+
+/** Where the splash goes in a frame. `objectX`/`objectY` is the logo's centre; null `objectX` means no logo. */
+export interface SplashPlacement {
+  objectX: number | null;
+  objectY: number;
+  textX: number;
+  textY: number;
+}
+
+/**
+ * Centres the splash horizontally in `cols` columns with its text block's top row at `textY`, keeping the logo only
+ * when `logo` allows and the width has room for it.
+ */
+export function placeSplash(cols: number, textY: number, logo = true): SplashPlacement {
+  // a row above the text's middle: the pitched-forward cube shows more face below its centre than above
+  const objectY = textY + (SPLASH_TEXT_ROWS - 1) / 2 - 1;
+  if (logo && cols >= SPLASH_GROUP_WIDTH) {
+    const objectX = Math.floor((cols - SPLASH_GROUP_WIDTH) / 2) + OBJECT_REACH;
+    return { objectX, objectY, textX: objectX + OBJECT_REACH + TEXT_GAP, textY };
+  }
+  return { objectX: null, objectY, textX: Math.floor((cols - SPLASH_TEXT_WIDTH) / 2), textY };
+}
+
+/** The standalone splash frame's own placement. */
+const OWN_PLACEMENT = placeSplash(SPLASH_COLS, Math.floor((SPLASH_ROWS - SPLASH_TEXT_ROWS) / 2));
 
 /** Stateful splash animation: easing of the steering angles carries from frame to frame. */
 export class SplashAnimation {
@@ -77,8 +102,15 @@ export class SplashAnimation {
     return this.hot > 0.5;
   }
 
-  /** Renders the frame for wall-clock time `nowMs` (milliseconds). */
+  /** Renders the standalone 96×24 frame for wall-clock time `nowMs` (milliseconds). */
   frame(nowMs: number, pointer: Pointer = { x: 0, y: 0, on: false }): Frame {
+    const f = createFrame(SPLASH_COLS, SPLASH_ROWS);
+    this.draw(f, nowMs, pointer, OWN_PLACEMENT);
+    return f;
+  }
+
+  /** Draws the splash into `f` at `at` for wall-clock time `nowMs`; the first call starts its reveal. */
+  draw(f: Frame, nowMs: number, pointer: Pointer, at: SplashPlacement): void {
     if (this.t0 === undefined) {
       this.t0 = nowMs;
       this.prev = nowMs;
@@ -86,7 +118,6 @@ export class SplashAnimation {
     const dt = Math.min(0.1, (nowMs - this.prev) / 1000) * this.speed;
     this.prev = nowMs;
     const t = ((nowMs - this.t0) / 1000) * this.speed;
-    const f = createFrame(SPLASH_COLS, SPLASH_ROWS);
 
     // steering
     this.hot += ((pointer.on ? 1 : 0) - this.hot) * Math.min(1, dt * 4);
@@ -96,15 +127,12 @@ export class SplashAnimation {
     this.yaw += (ty - this.yaw) * Math.min(1, dt * 5);
     this.pitch += (tp - this.pitch) * Math.min(1, dt * 5);
 
-    this.drawObject(f);
-    this.drawText(f, t);
-    return f;
+    if (at.objectX !== null) this.drawObject(f, at.objectX, at.objectY);
+    this.drawText(f, t, at.textX, at.textY);
   }
 
-  private drawObject(f: Frame): void {
+  private drawObject(f: Frame, cx: number, cy: number): void {
     const cube = this.shape === 'cube';
-    const cx = OBJECT_X;
-    const cy = OBJECT_Y;
     const sx = cube ? 8.6 : 11;
     const sy = cube ? 4.5 : 5.6;
     const cyw = Math.cos(this.yaw);
@@ -128,14 +156,11 @@ export class SplashAnimation {
       zb[i] = p[2];
       const lit = Math.max(0, dot(n, LIGHT));
       if (edge) {
-        f.ch[i] = lit > 0.55 ? '#' : lit > 0.2 ? '+' : ':';
-        f.tone[i] = 2;
+        setCell(f, i, lit > 0.55 ? '#' : lit > 0.2 ? '+' : ':', 2);
       } else if (mark) {
-        f.ch[i] = lit > 0.4 ? '=' : '-';
-        f.tone[i] = lit > 0.3 ? 2 : 1;
+        setCell(f, i, lit > 0.4 ? '=' : '-', lit > 0.3 ? 2 : 1);
       } else {
-        f.ch[i] = RAMP[Math.min(10, 1 + Math.floor(lit * 9))]!;
-        f.tone[i] = lit > 0.3 ? 0 : 1;
+        setCell(f, i, RAMP[Math.min(10, 1 + Math.floor(lit * 9))]!, lit > 0.3 ? 0 : 1);
       }
     };
 
@@ -173,19 +198,17 @@ export class SplashAnimation {
     }
   }
 
-  private drawText(f: Frame, t: number): void {
-    const wx = TEXT_X;
-    const wy = TEXT_Y;
+  private drawText(f: Frame, t: number, wx: number, wy: number): void {
     drawWordmark(f, t, {
       word: WORD,
       x: wx,
       y: wy,
       pitch: PITCH,
-      revealSpan: WORD_WIDTH,
+      revealSpan: SPLASH_TEXT_WIDTH,
       revealScale: 1.1,
       revealJitter: 0.5,
       bandPeriod: 6,
-      bandTravel: WORD_WIDTH + 27,
+      bandTravel: SPLASH_TEXT_WIDTH + 27,
       bandOffset: 14,
       bandWidth: 1.4,
       glyphs: GLYPHS,
@@ -195,7 +218,8 @@ export class SplashAnimation {
     const typed = Math.max(0, Math.floor((t - 1.8) * 28));
     text(f, wx, tagY, TAG.slice(0, typed), 0);
     if (typed < TAG.length && t > 1.8 && Math.floor(t * 3) % 2 === 0) put(f, wx + typed, tagY, '_', 2);
-    if (t > 3.2) for (let x = wx; x < wx + WORD_WIDTH; x++) if (x - wx < (t - 3.2) * 80) put(f, x, wy + 10, '─', 1);
+    if (t > 3.2)
+      for (let x = wx; x < wx + SPLASH_TEXT_WIDTH; x++) if (x - wx < (t - 3.2) * 80) put(f, x, wy + 10, '─', 1);
 
     if (t > 4) {
       text(f, wx, wy + 12, 'flex', 2);

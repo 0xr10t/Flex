@@ -1,8 +1,22 @@
 // The 120×40 gateway scene: an AI-model sphere and an Ethereum octahedron joined through the FLEX GATEWAY log box by
-// packet rails. Port of "Flex ASCII.dc.html" from the Claude Design handoff "Flex animated ASCII art". Purely a
-// function of time, so it needs no state.
+// packet rails, under the FLEX title and over a starfield. Port of "Flex ASCII.dc.html" from the Claude Design
+// handoff "Flex animated ASCII art". Drawn in layers so the opening can keep the title and stars while the objects
+// turn to dust. Purely a function of time, so it needs no state.
 
-import { createFrame, dot, drawWordmark, hash, norm, put, text, type Frame, type Tone, type Vec3 } from './frame.js';
+import {
+  createFrame,
+  dot,
+  drawWordmark,
+  hash,
+  norm,
+  overlay,
+  put,
+  setCell,
+  text,
+  type Frame,
+  type Tone,
+  type Vec3,
+} from './frame.js';
 
 export const SCENE_COLS = 120;
 export const SCENE_ROWS = 40;
@@ -15,6 +29,12 @@ export interface SceneOptions {
 const RAMP = ' .:-=+*#%@';
 const GLYPHS = '0123456789abcdef#$%&*+=<>/\\';
 const LIGHT = norm([-0.5, 0.6, 0.65]);
+const SPHERE_X = 20;
+const OCTAHEDRON_X = 100;
+/** Rows the title layer uses (wordmark top to tagline) and the row of the footer, in scene coordinates. */
+export const SCENE_TITLE_TOP = 2;
+export const SCENE_TITLE_BOTTOM = 10;
+export const SCENE_FOOTER_ROW = 38;
 const LOGS = [
   '> infer   model.req',
   '  auth    flex.key',
@@ -28,46 +48,61 @@ const LOGS = [
   '< emit    Event 0x{h}',
 ];
 
-/** Renders the scene at `t` seconds (already speed-scaled). */
-export function renderScene(t: number, opts: SceneOptions = {}): Frame {
+/** The layers of the scene, each drawn in the design's 120×40 coordinates. */
+export type SceneLayer = 'title' | 'objects' | 'footer';
+
+/** Twinkling dots over the whole frame, whatever its size. */
+export function drawStarfield(f: Frame, t: number): void {
+  for (let y = 0; y < f.rows; y++)
+    for (let x = 0; x < f.cols; x++) {
+      const r = hash(x, y, 7);
+      if (r < 0.025) put(f, x, y, hash(x, y, Math.floor(t * 0.7 + r * 50)) < 0.85 ? '.' : '+', 1);
+    }
+}
+
+/**
+ * One layer of the scene at `t` seconds: `title` is the FLEX wordmark and tagline, `objects` the globe, gateway,
+ * diamond, rails and labels, `footer` the block line.
+ */
+export function renderSceneLayer(t: number, layer: SceneLayer): Frame {
   const f = createFrame(SCENE_COLS, SCENE_ROWS);
   const center = (y: number, s: string, k: Tone): void => text(f, Math.floor((SCENE_COLS - s.length) / 2), y, s, k);
+  if (layer === 'title') {
+    drawWordmark(f, t, {
+      word: ['F', 'L', 'E', 'X'],
+      x: 37,
+      y: 2,
+      pitch: 12,
+      revealSpan: 46,
+      revealScale: 1.4,
+      revealJitter: 0.6,
+      bandPeriod: 5,
+      bandTravel: 80,
+      bandOffset: 15,
+      bandWidth: 1.6,
+      glyphs: GLYPHS,
+    });
+    if (t > 1.6) center(10, 'THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM', 1);
+  } else if (layer === 'objects') {
+    drawSphere(f, t, SPHERE_X);
+    drawOctahedron(f, t, OCTAHEDRON_X);
+    drawGateway(f, t);
+    drawRails(f, t);
+    text(f, SPHERE_X - 5, 35, '[ AI MODEL ]', 0);
+    text(f, OCTAHEDRON_X - 7, 35, '[ ETHEREUM ]', 0);
+  } else {
+    const blk = (21004200 + Math.floor(t / 1.5)).toLocaleString('en-US');
+    const ms = 18 + Math.floor(hash(Math.floor(t), 4, 4) * 30);
+    center(38, `block #${blk}   ·   ${ms}ms   ·   flex.access`, 1);
+  }
+  return f;
+}
 
-  if (opts.starfield ?? true)
-    for (let y = 0; y < SCENE_ROWS; y++)
-      for (let x = 0; x < SCENE_COLS; x++) {
-        const r = hash(x, y, 7);
-        if (r < 0.025) put(f, x, y, hash(x, y, Math.floor(t * 0.7 + r * 50)) < 0.85 ? '.' : '+', 1);
-      }
-
-  drawWordmark(f, t, {
-    word: ['F', 'L', 'E', 'X'],
-    x: 37,
-    y: 2,
-    pitch: 12,
-    revealSpan: 46,
-    revealScale: 1.4,
-    revealJitter: 0.6,
-    bandPeriod: 5,
-    bandTravel: 80,
-    bandOffset: 15,
-    bandWidth: 1.6,
-    glyphs: GLYPHS,
-  });
-  if (t > 1.6) center(10, 'THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM', 1);
-
-  const scx = 20;
-  const ocx = 100;
-  drawSphere(f, t, scx);
-  drawOctahedron(f, t, ocx);
-  drawGateway(f, t);
-  drawRails(f, t);
-
-  text(f, scx - 5, 35, '[ AI MODEL ]', 0);
-  text(f, ocx - 7, 35, '[ ETHEREUM ]', 0);
-  const blk = (21004200 + Math.floor(t / 1.5)).toLocaleString('en-US');
-  const ms = 18 + Math.floor(hash(Math.floor(t), 4, 4) * 30);
-  center(38, `block #${blk}   ·   ${ms}ms   ·   flex.access`, 1);
+/** The whole 120×40 scene at `t` seconds (already speed-scaled), exactly as the design draws it. */
+export function renderScene(t: number, opts: SceneOptions = {}): Frame {
+  const f = createFrame(SCENE_COLS, SCENE_ROWS);
+  if (opts.starfield ?? true) drawStarfield(f, t);
+  for (const layer of ['title', 'objects', 'footer'] as const) overlay(f, renderSceneLayer(t, layer));
   return f;
 }
 
@@ -135,11 +170,9 @@ function drawOctahedron(f: Frame, t: number, ocx: number): void {
             zb[i] = p[2];
             const edge = u < 0.03 || v < 0.03 || w < 0.03;
             if (edge && n[2] > -0.1) {
-              f.ch[i] = lit > 0.5 ? '#' : '+';
-              f.tone[i] = 2;
+              setCell(f, i, lit > 0.5 ? '#' : '+', 2);
             } else {
-              f.ch[i] = RAMP[Math.min(9, 1 + Math.floor(lit * 8))]!;
-              f.tone[i] = lit > 0.35 ? 0 : 1;
+              setCell(f, i, RAMP[Math.min(9, 1 + Math.floor(lit * 8))]!, lit > 0.35 ? 0 : 1);
             }
           }
       }

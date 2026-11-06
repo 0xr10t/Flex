@@ -1,9 +1,10 @@
-// The "snap": the opening scene disintegrates into dust before the splash comes up. Each cell holds on for a moment,
-// dims, then breaks off as a particle that drifts right and upward on the wind while it crumbles through finer glyphs
-// and fades out. The dark backdrop flakes away cell by cell behind it. The right side goes first, so the dust blows
-// off the edge rather than across what is still standing. A pure function of the source frame and elapsed time.
+// The "snap": the opening scene's globe, gateway and Ethereum diamond disintegrate into dust while the title and the
+// stars stay. Each drawn cell holds on for a moment, dims, then breaks off as a particle that drifts right and upward
+// on the wind while it crumbles through finer glyphs and fades out; whatever it was covering (stars) shows through
+// again. The right side goes first, so the dust blows off the edge rather than across what is still standing. A pure
+// function of the source layer and elapsed time.
 
-import { createFrame, hash, type Frame, type Tone } from './frame.js';
+import { createFrame, hash, setCell, type Frame, type Tone } from './frame.js';
 
 /** Glyphs a particle crumbles through, coarse to fine. */
 const DUST = '%#*+=-:.';
@@ -13,40 +14,47 @@ const MAX_START = 0.1 + 0.9 + 0.7;
 const MAX_LIFE = 0.55 + 0.5;
 /** How long a cell dims before it breaks off. */
 const CRACK = 0.18;
-/** How long after a cell breaks off its backdrop goes. */
-const BACKDROP_LAG = 0.2;
 
 /** Seconds from the snap to the last speck of dust. */
-export const SNAP_SECONDS = MAX_START + Math.max(MAX_LIFE, BACKDROP_LAG);
+export const SNAP_SECONDS = MAX_START + MAX_LIFE;
 
-/** When the cell at (x, y) breaks off, in seconds after the snap. */
-function breakAt(x: number, y: number, cols: number): number {
-  return 0.1 + hash(x, y, 11) * 0.9 + (1 - x / Math.max(1, cols - 1)) * 0.7;
+/** When the cell at (x, y) breaks off, in seconds after the snap; `from`..`to` is the span the sweep crosses. */
+function breakAt(x: number, y: number, from: number, to: number): number {
+  const across = to > from ? (x - from) / (to - from) : 0;
+  return 0.1 + hash(x, y, 11) * 0.9 + (1 - across) * 0.7;
 }
 
-/** `src` disintegrating, `s` seconds after the snap. The returned frame marks its vanished backdrop as clear. */
-export function snap(src: Frame, s: number): Frame {
-  const f = createFrame(src.cols, src.rows);
-  const clear = new Uint8Array(src.cols * src.rows);
-  const standing = new Uint8Array(src.cols * src.rows);
-  const dust: { i: number; x: number; y: number; age: number; life: number }[] = [];
+/**
+ * `layer` disintegrating, `s` seconds after the snap. Only the layer's own cells take part; the result is a layer too,
+ * to overlay on whatever stays.
+ */
+export function snap(layer: Frame, s: number): Frame {
+  const f = createFrame(layer.cols, layer.rows);
+  let from = layer.cols;
+  let to = 0;
+  for (let i = 0; i < layer.written.length; i++)
+    if (layer.written[i]) {
+      const x = i % layer.cols;
+      from = Math.min(from, x);
+      to = Math.max(to, x);
+    }
 
-  for (let y = 0; y < src.rows; y++)
-    for (let x = 0; x < src.cols; x++) {
-      const i = y * src.cols + x;
-      const at = breakAt(x, y, src.cols);
-      const age = s - at;
-      if (age > BACKDROP_LAG) clear[i] = 1;
-      const c = src.ch[i]!;
-      if (c === ' ') continue;
+  const standing = new Uint8Array(layer.written.length);
+  const dust: { x: number; y: number; age: number; life: number }[] = [];
+  for (let y = 0; y < layer.rows; y++)
+    for (let x = 0; x < layer.cols; x++) {
+      const i = y * layer.cols + x;
+      if (!layer.written[i]) continue;
+      const age = s - breakAt(x, y, from, to);
       if (age < 0) {
-        f.ch[i] = c;
-        f.tone[i] = age > -CRACK ? 1 : (src.tone[i]! as Tone);
-        standing[i] = 1;
+        setCell(f, i, layer.ch[i]!, age > -CRACK ? 1 : (layer.tone[i]! as Tone));
+        if (layer.ch[i] !== ' ') standing[i] = 1;
         continue;
       }
+      // a blank cell (a dark patch of the globe) simply goes; only glyphs leave dust
+      if (layer.ch[i] === ' ') continue;
       const life = 0.55 + hash(x, y, 13) * 0.5;
-      if (age < life) dust.push({ i, x, y, age, life });
+      if (age < life) dust.push({ x, y, age, life });
     }
 
   for (const p of dust) {
@@ -60,8 +68,7 @@ export function snap(src: Frame, s: number): Frame {
     // dust never paints over what is still standing
     if (standing[j]) continue;
     const progress = p.age / p.life;
-    f.ch[j] = DUST[Math.min(DUST.length - 1, Math.floor(progress * DUST.length))]!;
-    f.tone[j] = progress < 0.25 ? 0 : 1;
+    setCell(f, j, DUST[Math.min(DUST.length - 1, Math.floor(progress * DUST.length))]!, progress < 0.25 ? 0 : 1);
   }
-  return { ...f, clear };
+  return f;
 }
