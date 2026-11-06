@@ -57,7 +57,12 @@ export function chainBindingProblems(ctx: StepContext, payments: Payment[]): str
         scope.add(next);
     }
     const local = [...new Set(req.scan.chains.filter((c) => scope.has(c.clause_index)).map((c) => c.chain_id))];
-    const chains = local.length > 0 ? local : [...new Set([...own].flatMap(globalFor))];
+    const global = [...new Set([...own].flatMap(globalFor))];
+    // Document-only payments have no typed amount or recipient span. A sole explicit typed chain still binds
+    // that request; do not silently fall back to automatic chain selection for the quarantined items.
+    const documentChain = entitySpans.length === 0 ? [...new Set(req.scan.chains.map((c) => c.chain_id))] : [];
+    const chains =
+      local.length > 0 ? local : global.length > 0 ? global : documentChain.length === 1 ? documentChain : [];
     if (chains.length === 1 && p.chain !== chains[0]) {
       problems.push(
         `Payment ${i + 1}: its clause explicitly names chain ${chains[0]}; use that chain, not "unstated" or a different payment's chain.`,
