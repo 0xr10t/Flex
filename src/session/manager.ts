@@ -43,6 +43,7 @@ import type {
 } from '../contracts/types.js';
 import { MAX_PLACEHOLDER_DRAWS } from '../db/repos/common.js';
 import { detectSecret } from '../guard/secrets.js';
+import { extractUrls, urlHasSecret } from '../guard/urls.js';
 import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
@@ -407,7 +408,8 @@ export class SessionManager {
     const paused = a.req.paused_at;
     if (paused === undefined) return this.unsupported(s, a, 'answer:not_paused');
     // Answers enter through both /answers and /messages. Screen them before DB8 or any step/model sees them.
-    if (detectSecret(answerText(answer)) !== null) {
+    const text = answerText(answer);
+    if (detectSecret(text) !== null || extractUrls(text, []).links.some((link) => urlHasSecret(link.url))) {
       return this.finish(s, a, paused.step, { kind: 'error', code: 'SECRET_DETECTED' });
     }
     // §7.2: the session manager writes answers to DB8.
