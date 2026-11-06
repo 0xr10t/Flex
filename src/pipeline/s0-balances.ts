@@ -1,7 +1,7 @@
 // Implements: §8.1 S0 — Refresh balances (code): steps 1–5 (parallel eth_getBalance + USDC balanceOf per allowed
 // chain via anon-rpc, bigint → decimal strings, DB4 upsert ok, failure → both rows unavailable + note, all
 // unavailable → BALANCES_UNAVAILABLE). §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s
-// timeout, no retries. FR-02, NFR-07, I-12. §13.1 note "{Chain} balance couldn't be read right now, …".
+// timeout, no retries, and CCIP-Read off (privacy fix 3). FR-02, NFR-07, I-12. §13.1 note "{Chain} balance couldn't be read right now, …".
 // S0 runs only for new messages (the runner never calls it for answers; it asks no questions, so no onAnswer).
 // Owner: Lane B.
 
@@ -29,7 +29,8 @@ export function createRpcClients(config: Config, transportFor: RpcTransportFacto
   const clients = new Map<ChainId, { client: PublicClient; usdc: `0x${string}` }>();
   for (const c of config.chains) {
     clients.set(c.chain_id, {
-      client: createPublicClient({ transport: transportFor(c.rpc_url) }),
+      // Fix 3: a contract that answers with an offchain lookup would make viem fetch a URL it names, outside anon-rpc.
+      client: createPublicClient({ transport: transportFor(c.rpc_url), ccipRead: false }),
       usdc: c.usdc_address,
     });
   }

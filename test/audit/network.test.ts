@@ -94,6 +94,30 @@ describe('§16.4 outbound network calls (static inventory)', () => {
     expect(offenders).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
   });
 
+  it('privacy fix 3: every viem client in src is created with ccipRead: false (no offchain lookup leaves anon-rpc)', () => {
+    const FACTORIES = new Set(['createPublicClient', 'createWalletClient', 'createClient']);
+    const found: string[] = [];
+    for (const f of files) {
+      const source = ts.createSourceFile(f.path, f.text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && FACTORIES.has(node.expression.text)) {
+          found.push(f.path);
+          const arg = node.arguments[0];
+          const ccip =
+            arg !== undefined && ts.isObjectLiteralExpression(arg)
+              ? arg.properties.find((p) => ts.isPropertyAssignment(p) && p.name.getText(source) === 'ccipRead')
+              : undefined;
+          expect(ccip && ts.isPropertyAssignment(ccip) ? ccip.initializer.kind : null, f.path).toBe(
+            ts.SyntaxKind.FalseKeyword,
+          );
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    expect(found.sort()).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
+  });
+
   it('viem inventory ignores prose and types, but includes aliased and namespace network factories', () => {
     expect(
       importsViemNetworkFactory(

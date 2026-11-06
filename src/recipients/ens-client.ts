@@ -2,13 +2,18 @@
 // retries), `getEnsAddress({ name, coinType, universalResolverAddress })` with the Universal Resolver from config;
 // a failed or timed-out call throws EnsUnavailable (§9.4 "RPC unavailable", §14.5 "fails the ENS lookup"); a record
 // that is not a 20-byte address is "no address" (null).
+// Privacy fix 3: CCIP-Read is off. A name whose resolver answers with an offchain lookup would make viem fetch a URL the
+// resolver chose, straight from this machine and outside anon-rpc, so such a name has "no address" here.
 
-import { createPublicClient, getAddress, http, isAddress, type PublicClient } from 'viem';
+import { BaseError, createPublicClient, getAddress, http, isAddress, type Transport } from 'viem';
 import { getEnsAddress } from 'viem/actions';
 import { EnsUnavailable, type EnsClient } from '../contracts/io.js';
 import type { Address, Config } from '../contracts/types.js';
 
 export const ENS_TIMEOUT_MS = 10_000;
+
+/** Selector of EIP-3668 `OffchainLookup(address,string[],bytes,bytes4,bytes)`. */
+export const OFFCHAIN_LOOKUP_SELECTOR = '0x556f1830';
 
 /**
  * viem errors thrown while decoding the resolver's record, after the call succeeded (getEnsAddress decodes the
@@ -30,12 +35,29 @@ function isRecordDecodeError(e: unknown): boolean {
   return e instanceof Error && RECORD_DECODE_ERRORS.has(e.name);
 }
 
-/** Optional seam for tests: a prebuilt viem client (no network in unit tests). */
-export function createEnsClient(config: Config, client?: PublicClient): EnsClient {
+/** True when the call reverted with an EIP-3668 offchain lookup (the revert data, raw or decoded, anywhere in the cause chain). */
+export function isOffchainLookup(e: unknown): boolean {
+  if (!(e instanceof BaseError)) return false;
+  return (
+    e.walk((c) => {
+      const err = c as { data?: unknown; raw?: unknown };
+      const hex = [err.data, err.raw].find((v): v is string => typeof v === 'string');
+      const decoded = err.data as { errorName?: unknown } | undefined;
+      return (
+        hex?.toLowerCase().startsWith(OFFCHAIN_LOOKUP_SELECTOR) === true || decoded?.errorName === 'OffchainLookup'
+      );
+    }) !== null
+  );
+}
+
+/** Optional seam for tests: the transport (no network in unit tests). The client options stay the production ones. */
+export function createEnsClient(config: Config, transport?: Transport): EnsClient {
   const chain = config.chains.find((c) => c.chain_id === config.ens.rpc_chain_id);
   if (!chain) throw new Error('ens.rpc_chain_id is not a configured chain');
-  const pc =
-    client ?? createPublicClient({ transport: http(chain.rpc_url, { timeout: ENS_TIMEOUT_MS, retryCount: 0 }) });
+  const pc = createPublicClient({
+    transport: transport ?? http(chain.rpc_url, { timeout: ENS_TIMEOUT_MS, retryCount: 0 }),
+    ccipRead: false,
+  });
   const universalResolverAddress = config.ens.universal_resolver_address;
   return {
     async getAddress(name: string, coinType: bigint): Promise<Address | null> {
@@ -45,6 +67,8 @@ export function createEnsClient(config: Config, client?: PublicClient): EnsClien
       } catch (e) {
         // The resolver answered, but its record could not be decoded as an address (R3-4): no address.
         if (isRecordDecodeError(e)) return null;
+        // Fix 3: the record lives offchain, and following it would leave anon-rpc: no address here.
+        if (isOffchainLookup(e)) return null;
         throw new EnsUnavailable();
       }
       if (found === null) return null;

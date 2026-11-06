@@ -2,8 +2,8 @@
 // strings, ETH 18 / USDC 6), C-053 (DB4 upsert ok), C-054 (failure → both rows unavailable, old values kept, note),
 // C-055 (all unavailable → BALANCES_UNAVAILABLE), C-056 (no AnswerHandler: S0 runs only for new messages),
 // C-357 (RPC clients: transport per chain, eth_getBalance, balanceOf eth_call, 10 s / no retries), C-294 (note wording), C-364 (BALANCES_UNAVAILABLE catalog message), §18 log labels.
-import { custom, encodeFunctionData, erc20Abi, getAddress, type Transport } from 'viem';
-import { describe, expect, it } from 'vitest';
+import { custom, encodeErrorResult, encodeFunctionData, erc20Abi, getAddress, type Transport } from 'viem';
+import { describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
 import { RPC_TRANSPORT_OPTIONS, createRpcClients, s0 } from '../../../src/pipeline/s0-balances.js';
 import { makeTestContext, testConfig } from '../../fakes/context.js';
@@ -154,5 +154,45 @@ describe('S0 RPC clients (§14.5, C-357)', () => {
 
   it('RPC_TRANSPORT_OPTIONS = { timeout: 10000, retryCount: 0 }', () => {
     expect(RPC_TRANSPORT_OPTIONS).toEqual({ timeout: 10000, retryCount: 0 });
+  });
+});
+
+describe('S0 RPC clients: privacy fix 3', () => {
+  const offchainLookup = (): never => {
+    // OffchainLookup(address sender, string[] urls, bytes callData, bytes4 callbackFunction, bytes extraData)
+    const data = encodeErrorResult({
+      abi: [
+        {
+          type: 'error',
+          name: 'OffchainLookup',
+          inputs: [
+            { name: 'sender', type: 'address' },
+            { name: 'urls', type: 'string[]' },
+            { name: 'callData', type: 'bytes' },
+            { name: 'callbackFunction', type: 'bytes4' },
+            { name: 'extraData', type: 'bytes' },
+          ],
+        },
+      ],
+      errorName: 'OffchainLookup',
+      args: [
+        testConfig().chains[0]!.usdc_address,
+        ['https://gateway.invalid/{sender}/{data}'],
+        '0x',
+        '0x12345678',
+        '0x',
+      ],
+    });
+    throw Object.assign(new Error('execution reverted'), { code: 3, data });
+  };
+
+  it('fix 3: a balanceOf that answers with an offchain lookup fails; no gateway URL is fetched', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    const cfg = testConfig();
+    cfg.wallet.address = getAddress('0x00000000000000000000000000000000000000aa');
+    const rpc = createRpcClients(cfg, () => custom({ request: async () => offchainLookup() }, { retryCount: 0 }));
+    await expect(rpc.getUsdcBalance(SEP)).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
