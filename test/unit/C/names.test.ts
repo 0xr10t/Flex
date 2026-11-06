@@ -57,11 +57,13 @@ describe('C-446 §9.1 names', () => {
     const d = new Driver(ctx);
     await d.start();
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`riya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
     expect(ctx.ens.calls.length).toBeGreaterThan(0);
   });
 
-  it('C-160 A-20 §9.1 step 4: unknown name → Q_WHO_IS "Who is \\"riya\\"?" with ≤3 close contacts by distance then alphabetically', async () => {
+  it('C-160 A-20 §9.1 step 4: unknown name asks for a wallet address/ENS with ≤3 close contacts by distance then alphabetically', async () => {
     const ctx = makeCtx({ text: 'send amount_aa to riya', spans: [{ text: 'riya', kind: 'name' }] });
     contact(ctx, 'Riyaa', '0x1111111111111111111111111111111111111111', [BASE]); // d=1
     contact(ctx, 'Rita', '0x2222222222222222222222222222222222222222', [BASE]); // d=1
@@ -70,7 +72,7 @@ describe('C-446 §9.1 names', () => {
     const d = new Driver(ctx);
     await d.start();
     const q = expectQuestion(d, 'Q_WHO_IS', 1);
-    expect(q.text).toBe('Who is "riya"?');
+    expect(q.text).toBe('What is the wallet address for "riya"? You can also enter an ENS name.');
     expect(q.input).toBe('chips');
     expect(q.chips.map((c) => c.label)).toEqual(['Priya', 'Rita', 'Riyaa']);
     expect(q.chips.map((c) => c.id)).toEqual(['contact:priya', 'contact:rita', 'contact:riyaa']);
@@ -120,7 +122,7 @@ describe('C-446 §9.1 names', () => {
     const { ctx, d } = await start({ text: 'pay riya', spans: [{ text: 'riya', kind: 'name' }] });
     await d.text(NEWADDR.toLowerCase());
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${NEWADDR} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`);
     await d.chip('yes');
     const n = expectQuestion(d, 'Q_NAME_FOR_ADDRESS', 1);
     expect(n.prefill).toBe('riya');
@@ -131,7 +133,9 @@ describe('C-446 §9.1 names', () => {
     const { d } = await start({ text: 'pay riya', spans: [{ text: 'riya', kind: 'name' }] });
     await d.text(typo(NEWADDR));
     const q = expectQuestion(d, 'Q_WHO_IS', 2);
-    expect(q.text).toBe(`${REASK_HINT.CHECKSUM_TYPO()} Who is "riya"?`);
+    expect(q.text).toBe(
+      `${REASK_HINT.CHECKSUM_TYPO()} What is the wallet address for "riya"? You can also enter an ENS name.`,
+    );
   });
 
   it('C-163 §9.1 step 4c: ENS name typed → ENS flow (§9.3)', async () => {
@@ -141,13 +145,17 @@ describe('C-446 §9.1 names', () => {
     await d.start();
     await d.text('Riya.eth');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT');
-    expect(q.text).toBe(`riya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
   });
 
   it('C-164 §9.1 step 4d / §9.7: anything else → re-ask (attempt+1); the 4th failure → TOO_MANY_RETRIES', async () => {
     const { d } = await start({ text: 'pay riya', spans: [{ text: 'riya', kind: 'name' }] });
     await d.text('my friend from school');
-    expect(expectQuestion(d, 'Q_WHO_IS', 2).text).toBe('Who is "riya"?');
+    expect(expectQuestion(d, 'Q_WHO_IS', 2).text).toBe(
+      'What is the wallet address for "riya"? You can also enter an ENS name.',
+    );
     await d.text('???');
     expectQuestion(d, 'Q_WHO_IS', 3);
     await d.chip('contact:nobody');

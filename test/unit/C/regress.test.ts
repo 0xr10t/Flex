@@ -41,7 +41,7 @@ describe('SQ-C-05 §16.1: an answer typed at Q_WHO_IS is not content-sourced', (
     expectQuestion(d, 'Q_WHO_IS', 1);
     await d.text(NEWADDR);
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`Is ${NEWADDR} correct?`);
+    expect(q.text).toBe(`You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`);
     expect(q.text).not.toMatch(/attached content|not from you/);
     expect(q.chips.map((c) => c.id)).toEqual(['yes', 'no_reenter']);
     expect(q.chips.map((c) => c.label)).not.toContain("Don't pay this one");
@@ -62,7 +62,9 @@ describe('SQ-C-05 §16.1: an answer typed at Q_WHO_IS is not content-sourced', (
     expectQuestion(d, 'Q_WHO_IS', 1);
     await d.text('riya.eth');
     const q = expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
-    expect(q.text).toBe(`riya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia. Correct?`);
+    expect(q.text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia, Base Sepolia and Arbitrum Sepolia.`,
+    );
     expect(q.text).not.toMatch(/attached content|not from you/);
     expect(q.chips.map((c) => c.id)).toEqual(['yes', 'no_reenter']);
     await d.chip('yes');
@@ -337,7 +339,7 @@ describe('C-172 C-118 S6 → S7 alignment after "Don\'t pay this one"', () => {
     await d.chip('dont_pay');
     await d.chip('dont_pay');
     const q = expectQuestion(d, 'Q_NO_PAYEE', 1);
-    expect(q.text).toBe('Who should receive this?');
+    expect(q.text).toBe('Who should receive this? Enter their wallet address, ENS name or saved contact name.');
     await d.text('mihir');
     expect(d.last).toEqual({ kind: 'continue' });
     expect(ctx.req.spans).toHaveLength(1);

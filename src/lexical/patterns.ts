@@ -42,6 +42,11 @@ export const GROUP_WORD_MARKER_RE = new RegExp(
   'gi',
 );
 export const GROUP_AT_MARKER_RE = new RegExp(`(?<![A-Za-z0-9._%+-])@(${DOTTED})`, 'gi');
+/** Handoff LIVE-P084/P085: the same parent group expressed as "all X members". */
+export const GROUP_MEMBERS_MARKER_RE = new RegExp(
+  `(?<![A-Za-z0-9_])all\\s+(${DOTTED})\\s+members(?![A-Za-z0-9_])`,
+  'gi',
+);
 
 /** Mainnet words: §6.2 (whole words). */
 export { MAINNET_WORDS } from '../contracts/static-tables.js';
@@ -72,7 +77,11 @@ export function tokenPatternRe(p: TokenPattern): RegExp {
   return SYMBOLS.has(p.word) ? new RegExp(escapeRe(p.word), 'g') : wordRe([p.word]);
 }
 
-export const UNSUPPORTED_TOKEN_RE = wordRe(UNSUPPORTED_TOKEN_EXAMPLES);
+/** A ticker may follow digits without whitespace ("100usdt"), but cannot cut a letter/underscore identifier. */
+export const UNSUPPORTED_TOKEN_RE = new RegExp(
+  `(?<![\\p{L}\\p{M}_])(?:${UNSUPPORTED_TOKEN_EXAMPLES.map(escapeRe).join('|')})(?![\\p{L}\\p{M}\\p{N}_])`,
+  'giu',
+);
 
 /**
  * §6.2 recurrence words: `every`, `each (day|week|month|monday…)`, `daily`, `weekly`, `monthly`,
@@ -85,6 +94,7 @@ export const RECURRENCE_RES: readonly RegExp[] = [
   /(?<![A-Za-z0-9_])every(?!\s+one(?![A-Za-z0-9_]))(?![A-Za-z0-9_])/gi,
   new RegExp(`(?<![A-Za-z0-9_])each\\s+(?:day|week|month|${WEEKDAYS})s?(?![A-Za-z0-9_])`, 'gi'),
   /(?<![A-Za-z0-9_])(?:daily|weekly|monthly|fortnightly)(?![A-Za-z0-9_])/gi,
+  /(?<![A-Za-z0-9_])(?:once|twice)\s+(?:a|per)\s+(?:week|day|month)(?![A-Za-z0-9_])/gi,
   /(?<![A-Za-z0-9_])per\s+(?:day|week|month)(?![A-Za-z0-9_])/gi,
   new RegExp(
     `(?<![A-Za-z0-9_])(?:\\d+|${SMALL_NUMBER_WORDS})\\s+times\\s+a\\s+(?:week|day|month)(?![A-Za-z0-9_])`,

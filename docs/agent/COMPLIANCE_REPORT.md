@@ -1,81 +1,199 @@
-# COMPLIANCE_REPORT (Phase 3, section 3.3)
+# Compliance and privacy review — 2026-11-06
 
-Reviewed commit: `69bbbf1` (`agentic_layer`, four lanes merged). Baseline: `npm run typecheck` clean, `npm test` 48 files / 1,416 tests green.
+The checklist has 511 rows implemented and tested, plus three explicitly approved and tested differences from
+worked examples. C-514 is accepted for the documented live gate: the complete 154-case evaluation meets SQ-L-01's
+zero-wrong-handoff and reduced-stop conditions, and all 53 selected outcomes reproduce on the final source/toolchain.
+The 514-row inventory covers the listed §§5–20 contracts; its coverage is not blanket specification compliance.
+The three approved differences remain visible, and the NFR-03 latency requirement is not met by this evidence.
 
-## Summary
+Production reviewed through `33518a2`, plus the narrow document-only chain guard `ef69e31`, including the merged
+core, understanding, schedule, durable-handoff, secret-screening, chain-binding and confirmation changes. The independent reviewer authored tests and this report,
+not those production changes. The review uses `README.md` together with the binding answers in
+[SPEC_QUESTIONS.md](SPEC_QUESTIONS.md) and [SPEC_ANSWERS_FOLLOWUP.md](SPEC_ANSWERS_FOLLOWUP.md).
+The later human answers and the current request to fix all review findings govern the differences below.
+`README.md` is unchanged. Node 25.9.0 is accepted by SQ-11. The final verification checkout is `547a36e`, which also
+includes the development dependency fixes in `791124c` and the explicit live-case selection harness.
 
-| Owner | Items | implemented + tested | implemented, no test | missing | deviates |
-| --- | --- | --- | --- | --- | --- |
-| Lane A | 81 | 81 | 0 | 0 | 0 |
-| Lane B | 123 | 123 | 0 | 0 | 0 |
-| Lane C | 73 | 73 | 0 | 0 | 0 |
-| Lane D | 152 | 152 | 0 | 0 | 0 |
-| Orchestrator | 85 | 74 | 6 | 1 | 4 |
-| **Total** | **514** | **503** | **6** | **1** | **4** |
+## Checklist accounting
 
-27 of the "implemented + tested" rows carry an `(interim SQ-xx)` tag: the code follows a binding interim answer in `SPEC_QUESTIONS.md`.
-
-Method and its limits:
-
-- A row is `implemented + tested` when a passing test names its id (`C-nnn`) in `test/**`. 437 of the 514 ids are named. The other 77 are 60 acceptance rows (C-454..C-513), which the suite names `A-01`..`A-60` (mapping `C-453 + n`; all 60 names present, A-57 is an `it.fails`), C-514 (missing) and 16 Orchestrator rows handled individually below.
-- The two exact-text artefacts that a test would have to enforce (catalog texts, DDL, static tables) were verified by script instead (next section).
-- I did not independently re-read every rule's implementation. Beyond the test evidence, the code was checked directly for: the four known conflicts, the verbatim artefacts, the section 14.1 settings ranges, log rotation, token-file mode, the 127.0.0.1 bind, the section 13.1 and 13.2 templates (identical to `src/messages/templates.ts`), and the 10 s RPC timeout.
-- No test is skipped (`grep` for `skip`, `todo`, `xit`: none). The only `it.fails` is A-57.
-- Production code was not changed.
-
-## Deviations (4)
-
-All four are known conflicts between the section 8 / 10 text and a worked example or acceptance row. Each is open with the human.
-
-| Row | Spec | Code location | Difference | Lane |
+| Owner | Items | implemented + tested | approved deviation + tested | live acceptance pending |
 | --- | --- | --- | --- | --- |
-| C-437 (E6 reproduced) | SQ-D-15. Section 19 E6 prints `expires_at` `2026-12-31T18:29:59Z` (the `on_date`) | `src/plan/schedule.ts:139-145` (`expiresAt`) | Code follows section 10.6 rule 8 (23:59:59 on the last occurrence's date) and emits `2026-12-25T18:29:59Z`. `test/unit/D/examples.test.ts:397` and `test/acceptance/a01-a16.ts:347` assert the code value and cite the conflict. A-08 (C-461) passes on the code value, tagged interim. | D (Orchestrator-owned row) |
-| C-440 (E9 reproduced) | SQ-D-16. E9 uses 120 USDC; default `per_tx_max` is 100 (section 6.3) | `src/plan/limits.ts:40-42` (V-13) | As written E9 ends in `LIMIT_PER_TX`. A-15 (C-468) passes only because its setup raises the limit. | D / Orchestrator |
-| C-497 (A-44) | SQ-O-05. Section 20.2 A-44: "send 10 usdc to me" gives `SELF_PAYMENT` | `src/pipeline/s5-spans.ts:76` (`droppedWords` includes `SELF_WORDS`, section 8.6 rule 2) | "me" is dropped as a span, so the request reaches `Q_NO_PAYEE`. The own-address variant gives `SELF_PAYMENT` (`test/acceptance/a33-a52.ts:190`). The "me" variant is tested as `Q_NO_PAYEE` (`a33-a52.ts:203`). | B / Orchestrator |
-| C-510 (A-57) | SQ-O-03. Section 20.2 A-57: "10 usdc and 0.01 eth to mihir" gives two `i` intents | `src/plan/pairing-checks.ts:81-` (P4 clause binding) | Clause split at "and" puts the 10 USDC in another clause than Mihir, so P4 rejects the pairing: `PAIRING_FAILED`. `test/acceptance/a55-a60.ts:79` is `it.fails`. Row C-135 (P4 as written) is `implemented + tested`. | D / Orchestrator |
+| Lane A | 81 | 81 | 0 | 0 |
+| Lane B | 123 | 123 | 0 | 0 |
+| Lane C | 73 | 73 | 0 | 0 |
+| Lane D | 152 | 152 | 0 | 0 |
+| Orchestrator | 85 | 82 | 3 | 0 |
+| **Total** | **514** | **511** | **3** | **0** |
 
-## Missing (1)
+Every checklist row and the resolved question sets were inspected. The evidence inventory maps 503 rows to explicit
+`C-nnn` or `A-nn` references in test sources. Ten others map to section-based assertions or direct artifact checks:
+C-004 (config), C-267–270 (four LLM schemas), C-272 (payments template), C-273 (internal plan schema), C-274 (handoff
+schema), C-440 (E9/A-15), and C-441 (E10/A-16). C-514 has the live evidence below. This is traceability evidence, not a proof that
+every conceivable input is covered; comments and test names were supplemented with source and assertion review
+for the changed behavior and privacy boundaries.
 
-| Row | Spec | Note | Lane |
-| --- | --- | --- | --- |
-| C-514 | Section 20.3 live-model evaluation (acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0) | `vitest.live.config.ts` and `npm run test:live` exist, but `test/live/` is empty. Needs a real Ollama model, so it is not part of the green run. | Orchestrator |
+All six former untested contracts now have passing guard tests: static tables (C-005), DDL constraints (C-026),
+request states and fresh fields (C-049), Ajv strict/allErrors/formats (C-271), question shape/chip matching (C-306),
+and the 35 error codes and messages (C-395). See [test/unit/contracts](test/unit/contracts).
+No skipped, todo, or expected-failure test definitions remain in `test/`; selection of a focused test subset does
+not alter this statement.
 
-## Implemented, no test (6, all Orchestrator-owned frozen contracts)
+The original four open deviations are now resolved:
 
-| Row | Item | Status of the content |
+| Row | Approved behavior | Evidence |
 | --- | --- | --- |
-| C-005 | `src/contracts/static-tables.ts` (section 6.2 tables) | Word lists checked by eye against section 6.2 (identical). Only `TOKENS` and the cancel/confirm texts are asserted by other tests (`test/unit/A/config.test.ts:213`, `session.test.ts:11`). No test compares the lists. |
-| C-026 | `src/db/schema.sql` = section 7.1 | Identical (below). Used by the DB tests, but no test asserts equality with the spec. |
-| C-049 | `RequestState` and `AgentRequest` (section 8.0) | Identical state union and fields. Extra internal fields (`input`, `masked_text_s3`, `resolved`, `mentioned_spans`, ...) are additive (contracts-v3). No test. |
-| C-271 | Shared Ajv: 2020, `strict`, `allErrors`, formats | `src/schemas/index.ts:26` (also `allowUnionTypes: true`). Used by every schema test, never asserted directly. |
-| C-306 | Question shape, catalog texts, fixed chips, `matchChip` | Texts identical (below). `matchChip` is exercised only indirectly through the pipeline question tests. `test/unit/contracts/contracts.test.ts:85` checks code coverage only. |
-| C-395 | All 35 section 15 messages in the catalog | Identical (below). The same test only checks that every code has a function. |
+| C-437, E6 | SQ-D-15: expiry is 23:59:59 on the last occurrence's date; the example's later end date does not replace it. | `test/unit/D/examples.test.ts`, A-08 |
+| C-440, E9 | SQ-D-16: the default 100 USDC limit rejects the 120 USDC invoice; A-15 raises its fixture limit to exercise content confirmation. Attached-content amounts cannot receive a one-request override. | `test/unit/D/examples.test.ts`, A-15 |
+| C-497, A-44 | SQ-O-05: “me” asks Q_NO_PAYEE; an explicit own address yields SELF_PAYMENT. The approved deviation remains labeled as such. | `test/acceptance/a33-a52.ts` |
+| C-510, A-57 | SQ-O-03/F-11: relaxed clause binding permits both amounts to the one recipient; ambiguous multi-recipient requests ask per-amount questions. A-57 is a normal passing test. | `test/acceptance/a55-a60.ts`, `test/unit/D/core-review.test.ts` |
 
-Minor test-labelling issue: the E8 test in `test/unit/D/examples.test.ts:439` is titled `C-440 E8`. The checklist has E8 = C-439 and E9 = C-440. E8 is also covered by A-14, so C-439 is `implemented + tested`.
+## Authorized differences from the original specification
 
-## Interim-answer rows (not deviations)
+These differences are recorded rather than presented as literal compliance with superseded wording.
 
-C-461 (SQ-D-15), C-468 (SQ-D-16), C-239 (SQ-D-15), C-135 (SQ-O-03), C-110 (SQ-O-05), C-101 and C-368 (SQ-01), C-169 and C-318 (SQ-06), C-171 and C-320 (SQ-03), C-195 (SQ-07: no duplicate-skip note yet), C-197 (SQ-05: Q_GROUP_MEMBERS text has no total), C-214 and C-381 (SQ-08: section 15 template used, not per-chain lines), C-155 and C-426 (SQ-A-06), C-322 and C-326 (SQ-15), C-424 and C-422 (SQ-18), C-307, C-312, C-317 and C-160 (SQ-09), C-363 and C-073 (SQ-22). The tags are by keyword match on the row, so a lane should confirm them.
-
-## Verbatim checks
-
-Script (kept out of the repo, in the session scratchpad, not committed): extracts the fenced blocks from `README.md` by line range and language, compares them with the source file, and prints the first differing character. Catalog texts were compared by calling `QUESTION_TEXT` and `ERROR_MESSAGE` with a proxy that returns `{slot}` for every parameter, against the table text column.
-
-| Artefact | Result |
+| Authority | Behavior and affected contract |
 | --- | --- |
-| Prompts, section 8.10 (5 fences) vs `src/llm/prompts/{amounts,requestType,spans,payments,quarantine}.txt` | Identical, including the `SYSTEM` and `USER` header lines, for amounts, requestType, spans and quarantine. `payments.txt` is identical after removing the trailing `// ...` remarks from the five slot lines (`AMOUNTS:`, `RECIPIENTS:`, `DOCUMENT ITEMS:`, `SESSION:`, `{correction_line}`) and the spaces before them: this is the allowed difference SQ-21. Spec line 32 (`AMOUNTS: {amounts_json}            // [...]`) is `AMOUNTS: {amounts_json}` in code, and so on. No other difference. |
-| Schemas, section 12.1 (4 fences) vs `llm-amounts`, `llm-request-type`, `llm-recipient-spans`, `llm-quarantine` `.schema.json` | Identical, byte for byte (text) and parsed. |
-| Hand-off envelope, section 12.5 vs `handoff-envelope.schema.json` | Identical, byte for byte. |
-| Section 12.2 template (`payments-template.ts`) and 12.3 internal plan schema | Not a verbatim copy by nature (slots filled by code; schema generated by `scripts/gen-internal-plan-schema.mjs`). Behaviour covered by `test/unit/contracts/contracts.test.ts:22,70` and the D tests. |
-| Section 13.4 question texts (26 codes) vs `QUESTION_TEXT` | Identical. Slot notation differs only where the spec writes an optional slot: `{ to Name}` and `{ for name}` are built as ` to ${name}` and ` for ${name}` only when `name` is given; `{USDC or ETH}` is the literal when no token is known. `Q_ENS_CHANGED` is identical to the section 9.4 text ("riya.eth now points to 0xNEW... (saved: 0xOLD...). Use the new address?"). `Q_ADDRESS_CORRECT` base text identical; ENS and untrusted variants are in `QUESTION_VARIANT` (checked against sections 9.2, 9.3). |
-| Section 15 error messages (35 codes) vs `ERROR_MESSAGE` | 34 identical, `UNSUPPORTED_REQUEST` human-approved difference (SQ-01, F-7) (the table's markdown-escaped `\"` in `SPLIT_UNSUPPORTED` is `"` in code). |
-| DDL, section 7.1 vs `src/db/schema.sql` | Identical after the first line of the file, which is an added comment: `-- Implements: section 7.1 DDL (verbatim). Owned by the Orchestrator; lanes must not edit.` (character for character: it is an extra line before spec's first line `-- DB1: amount placeholders (session-scoped)`). The pragmas fence (6 lines) is applied in `src/db/open.ts`, tested by `test/unit/A/db-pragmas.test.ts`. |
-| Config, section 6.1 vs `config.example.json` | Identical as parsed JSON (key order and values). Text differs in whitespace only: the spec has some chain objects on one line (`"name": "Sepolia", "is_l2": false,` on one line), the file has one key per line. |
-| Defaults, section 6.3 vs `src/config/defaults.ts` `DB5_DEFAULTS` | Identical (8 keys, values and types: strings for amounts and `bridge_buffer_pct`, numbers for ids and counts). |
-| Static tables, section 6.2 vs `src/contracts/static-tables.ts` | Identical word lists (compared by eye). The "+ autopay/recurring/subscription context" note on cancel words is not part of the list and is handled in the lexical scan. |
-| Section 13.1 and 13.2 templates vs `src/messages/templates.ts` | Identical (compared by eye). |
+| SQ-L-01 | The system text of amounts, requestType, spans and payments may change, subject to the full live gate, now passed. All USER slots and §12 schemas remain unchanged. Only repeated valid action kinds are deduplicated before normal schema validation; invalid kinds, missing fields and extra fields still fail. Exact old/new text, reasons and live evidence are in [PROMPT_CHANGES.md](PROMPT_CHANGES.md). Retention is accepted on the evidence and limits below. |
+| Current request, B03/B04/B19/G02 | An additive encrypted `handoff_journal` migration records the confirmed envelope and original idempotency key, with DB6/DB7 reservations committed before submission. This changes the old post-2xx write timing. Timeout/5xx retain identity and reservations; definite rejection releases reservations. Reports are checked against request, step, intent and autopay identity. Executed spend and terminal autopays cannot be rolled back by stale reports. |
+| Current request, G01 | Explicit chain choices are checked independently of the model, including document-only payments with no typed amount/recipient spans. One unique typed chain binds those payments; an omitted chain triggers correction and then PAIRING_FAILED. Existing clause/sentence binding governs payments with typed spans. |
+| Current request, G03 and B19 | Before the first submission, balances and settings are refreshed and funding/limits revalidated. Changed settings or newly broken limits require replanning or renewed consent. After an ambiguous submission, retry preserves the original envelope/key; late-start replanning applies before first submission. This supersedes the original “S0 only on new messages” rule and clarifies SQ-R-05. |
+| SQ-R-01/02, SQ-O-01/F-12, SQ-O-03/F-11 | Exact repeated tagged names are masked with Unicode identifier boundaries; mixed payee/story roles ask Q_NAME_ROLE. Distributive scope is local to the amount's clause. Ambiguous pairing asks for every affected amount, with independent attempt counters. |
+| SQ-D-16/F-1–F-6, R4-F2 | Q_LIMIT_OVERRIDE replaces Q_GROUP_OVER_LIMIT. Only the named limits are lifted for that request; new breaches ask again. Attached-content amounts retain the error. DB5 is not changed. |
+| SQ-R-03/04/05/06 | Short schedules cap `per_period_cap` at `total_cap`; duplicate autopay hashes are ignored; late initial confirmation asks for a fresh start and summary; cancellation after timeout states that the wallet may already have received the request. |
+| SQ-08/F-10, R4-F4 | Insufficient-funds text lists positive spendable balances in configured chain order, and need includes separately rounded bridge padding. The empty-balance case has its approved shorter wording. |
+| SQ-O-06/08/09, F-13 | Secrets are checked in URL inputs and redirects, including malformed percent encoding, and in answer channels before storage. Additional SSRF ranges are refused. Wallet refusal text is capped and control/format characters are stripped. |
+| SQ-01/F-7, SQ-A-06/F-9, F-8 | UNSUPPORTED_REQUEST mentions automatic bridging. The third handoff failure distinguishes timeout from server error. Cancellation of an already handed-off request uses its approved wallet-signing reply. |
+| SQ-03/05/06/07/09/15/18/22, SQ-O-07/10 | The accepted question/reply details, group text, retries, ENS update path, silent-reuse chain list and document-size wording follow the resolved answers. Former interim tags are now marked approved. |
+| SQ-CX-01, human approval in the current session | “That would leave {name} with nothing.”, “Yes, this once” / “Yes, set it up” / “No”, and “today's limit of {daily_max} (only {remaining} is left)” are approved text, with no wording decision outstanding. |
 
-## Not done
+The additive journal retains submission data across sessions. Its temporary `history_json` is erased on session
+clear alongside DB1/DB3/DB8, and accepted history is consumed once. Persistent submission identity contains the
+validated execution envelope, not prompts, documents, names, ENS names or summaries. This retention is an explicit
+part of the authorized report-correlation fix; it is not described as session-only storage.
 
-- A per-rule re-read of all 514 implementations; status relies on named, passing tests for 503 rows. A named test does not prove the assertion is complete; the lane test titles were not individually audited.
-- The Node 22 question (SQ-11) is out of scope; the suite ran on Node 25.9.0.
+## Artifact checks
+
+| Artifact | Demonstrated result |
+| --- | --- |
+| Four §12.1 LLM schemas | Byte-for-byte equality with the README fenced JSON, also parsed equality. |
+| §12.5 handoff envelope schema | Byte-for-byte equality with the README fenced JSON. |
+| §12.2 payments schema / §12.3 internal plan | Passing schema tests enforce request-specific enums, limits, foreign-placeholder rejection and internal placeholder formats. |
+| Five prompts | Four changed system texts equal independently reviewed golden fixtures. Q-LLM remains identical to README. All five USER portions remain equal, with only SQ-21's documented removal of inline explanatory comments for payments. |
+| §7.1 DDL | Original `schema.sql` is identical except its header comment. The separate v2 migration adds the authorized journal; it does not rewrite that DDL. Guard tests check all ten original tables, constraints, keys and DB2 index. |
+| §6.1 config / §6.3 defaults | Parsed config equality; all eight default keys, values and types equal the spec. |
+| §6.2 static tables | Exact arrays/token metadata asserted by ten passing guard cases. Added recognition of explicit recurrence/group forms is in lexical patterns, not a silent rewrite of the tables. |
+| §13.4 questions | 25 quoted baseline rows compared: 24 retained texts match with optional-slot notation resolved; the old group-limit row is replaced as approved. Q_ENS_CHANGED is checked against §9.4. The catalogue has 28 codes and tested new question text/chips. |
+| §15 errors | All 35 codes checked: 34 base templates remain literal; UNSUPPORTED_REQUEST is the approved F-7 difference. F-9 final-attempt and F-10 empty-balance variants are separately tested. |
+| §13.1–13.2 summaries/balances | Templates and exact-output tests reviewed; approved generalized override and silent-reuse notes are recorded above. Group punctuation and ordinal wording follow the resolved SQ-D answers. |
+
+Machine-readable inventory and comparison results are saved in
+`/private/tmp/flex-codex-fixes/compliance-evidence.json` and `compliance-catalog-evidence.json`.
+
+## Independent verification and privacy sweep
+
+- Understanding, date and contract checks: 512/512 passed. The reviewer then found two uncovered variants, added
+  failing regressions, and asked a different author to fix them: `.0`/`.000` must not turn into a positive amount,
+  and “starting on”/“beginning on” must preserve reversed explicit dates. Corrected S3/date/HTTP checks pass 104/104;
+  parser checks pass 8/8. Additional probes preserve local fields across Lord Howe, Chatham and Dublin DST changes.
+- An adjacent G01 probe found that “pay this invoice on arbitrum” could confirm on Base when both amount and
+  recipient came from content and the model returned unstated. Root fixed the missing binding in `ef69e31`; four
+  independent HTTP regressions cover rejection, correction, an accurate first response and no-chain automatic
+  selection. The combined chain/S8 rerun passes **48/48**. This source change followed the live freeze: the unchanged
+  154-case manifest has content only in A-15, A-45 and A-46, none with a typed chain. A-45/A-46 stop before S8.
+  Corpus hashes and scope evidence are in `document-chain-live-scope.json`; the final-toolchain A-15 repeat also
+  completes with the same safe pre-S8 stop. It does not exercise the new chain guard; the four HTTP regressions do.
+- Prompt checks pass 15/15; S8 and the independent LIVE-P061/LIVE-P073 interval regressions pass 52/52. Wrong-twice
+  duration-as-interval output stops; wrong-then-right and explicit every-other/every-two/fortnightly controls pass.
+- The separate durable-handoff reviewer reports 42/42 HTTP checks, 207/207 adapted legacy checks, and 6/6 error-audit
+  checks after the independently discovered answer-URL and chain-scope fixes. Typecheck and scoped lint/format
+  checks pass. The final integrated deterministic run passes **1,874/1,874 tests across 66 files**; the final audit
+  passes **169/169 across six files**, with no pending or todo tests. The independent reviewer checked the JSON
+  results and clean install, typecheck, lint and build logs. A fresh clean checkout of `547a36e` repeats those same
+  passing counts using Vitest 4.1.12; its status log is empty. `npm audit` reports **zero vulnerabilities**, including
+  development dependencies; production dependencies are unchanged. Artifacts under `/private/tmp/flex-codex-fixes/`
+  are `final-tests.json`, `final-audit.json`, `final-npm-audit.json`, `clean-tests.json`, `clean-audit.json`, and the
+  corresponding `final-*` / `clean-*` logs. The final runtime smoke result, `runtime-final-result.json`, also passes
+  real local TCP, production clients and SQLCipher against fixture servers; no public-chain submission occurs.
+- Reviewed privacy boundaries: local-only Ollama with redirect refusal; quarantined content reaches P-LLM only as
+  validated placeholders; S7 verifies and masks exact repeated recipient spans; the execution envelope excludes
+  names, ENS, summaries and free text; session clear deletes prompt/history stores and truncates the WAL.
+- The network audit now reads TypeScript syntax for viem runtime capabilities, including aliases and namespaces.
+  A prose comment about transport no longer counts as a network client. The same two allowed viem client modules
+  remain enforced; the full audit and TypeScript check passed after this test-only correction.
+- Reviewed every production logging call site against the allowlist/value-shape checks. Event labels are constants,
+  rule IDs use fixed labels or closed step values, and no console/stdout output exists. The only stderr output is
+  the fixed startup-failure sentence. Raw external errors are not logged.
+- Outbound inventory remains Ollama, configured RPC/ENS services, the HTTPS content fetcher, and the configured
+  execution client. The fetcher checks every redirect and pins DNS checks at connection time. Existing audit tests
+  cover rebinding, SSRF ranges, authentication separation, encrypted stores, and prompt isolation.
+
+The source and fixture checks use fake chain/execution services and do not sign or send real payments. No new
+Ollama calls were made by this independent reviewer. The live metrics below come from the coordinator's separate
+local-model run and independent review of its results, not from the deterministic suite.
+
+## Live evaluation and acceptance limits
+
+The primary run uses frozen source `33518a2`, Ollama 0.40.14 and `qwen2.5:7b-instruct` at temperature 0, seed 42,
+with 8,192 context tokens. The model digest starts `845dbda0ea48`. The baseline is exactly `acceptance.json`,
+`para-0.json`, `para-25.json`, `para-50.json` and `para-75.json`; earlier recheck files are excluded. Both sets contain
+the same 154 unique IDs, prompts and expected outcomes: 54 acceptance cases and 100 paraphrases. The primary result
+is [codex-remediation-33518a2.json](test/live/results/codex-remediation-33518a2.json). Its committed formatted JSON
+has SHA-256 `44f39bbde4411ebee08f0726a1a8d9b223c180e02226211fd8884b76dbe7f1b6`; the original isolated-run bytes have
+SHA-256 `62165960fb8420a1c12a8f89d05c30688f904f7020caf378b7553faeb9ea7240`. Parsed deep equality was independently
+asserted after formatting. The prompt manifest and comparison oracle were unchanged; `547a36e` adds only explicit
+case selection for repeats. Only model calls are live in this evaluation; chain and execution services are fixtures.
+
+| Measure | Baseline | Primary full run |
+| --- | --- | --- |
+| Wrong handoffs | 2/154 | **0/154** |
+| Exact expected outcomes | 98/154 | 129/154 |
+| Exact expected plans | 77/119 (64.7%) | 98/119 (82.4%) |
+| Matched confirmed main-request envelopes | 77/79 | 98/98 |
+| Exact expected non-plan outcomes | 21/35 | 31/35 |
+| Unexpected stops recorded by the harness | 54/154 | **25/154** |
+| Rejected summaries | 0 | 0 |
+| Crashes | 0 | 0 |
+| Cases with at least one question | 63/154 (40.9%) | 61/154 (39.6%) |
+| First-pass S8 validation proxy | 81/82 (98.8%) | 106/107 (99.1%) |
+| MODEL_FAILED outcomes / client retries | 9 / 9 | 0 / 0 |
+
+The semantic plan and envelope counts compare recipient, intent kind and payment amount/token. They check chain
+only when the expected plan specifies one, and recurring frequency/interval plus specified days, day of month and
+end fields. They reject extra or missing non-bridge intents. They do not compare `j` bridge intents, complete
+schedule timing, caps, prefunding, delegate/job IDs or persistence; those rely on the deterministic and HTTP suites.
+The simulated user checks summaries before confirming. The existing `pairing_exact` field is a first-pass S8
+validation proxy, which can include a setup's prior request. It is **not raw semantic S8 exact-match**; that rate
+over all intermediate model candidates was not captured. Semantic evidence for completed plans is reported
+separately above. The zero-wrong claim is bounded by these explicit oracle checks.
+
+All 25 stop traces were inspected. They include missing or fabricated amount spans, omitted context numbers,
+recipient/group extraction failures, recurrence misclassification and the rejected unsupported `times_per_week`
+field in P-072. Some stops are intended guards without a scripted answer: cross-sentence Q_PAIR_AMOUNT (F-11),
+numeric coverage questions, and the SQB-14 cancellation-word check. The count is the unchanged harness metric,
+not a claim that every stop was unnecessary. Six previously exact cases now stop safely: A-01, A-18, A-47, P-022,
+P-058 and P-097. P-061 and P-073, the two baseline wrong handoffs, both produce the expected recurring plans.
+
+The no-question initial-response latency remains a limitation: baseline median 13.567 s, p95 30.832 s, maximum
+33.857 s across 91 cases; primary median 14.056 s, p95 30.331 s, maximum 50.204 s across 93. In the primary run,
+23/93 exceed 20 s, compared with 14/91 in the baseline. These measurements end at the initial HTTP response and do
+not include the later confirmation/submission round trip. **The NFR-03 requirement of at most 20 s end to end is
+not established and the observed slower responses exceed it.** No latency improvement or universal live-model
+success is claimed.
+
+The final-source repeat at `547a36e` covers all 52 changed outcome/code signatures plus A-15, including P-061 and
+P-073. All 53 outcome/unexpected-stop/code signatures reproduce the primary run: **38 exact, 15 safe stops, zero
+wrong handoffs, rejected summaries, crashes, MODEL_FAILED outcomes or client retries**. It contains 26/40 exact
+expected plans and 12/13 exact expected non-plan outcomes; 26 cases ask a question and the S8 first-pass proxy is
+34/35. The selection and unchanged prompt/expected objects were independently checked. The log reports 54/54
+Vitest assertions, including model availability. A-15 still asks Q_AMOUNT_MISSING before S8, so its repeat confirms
+the safe outcome rather than successful invoice planning. P-061 and P-073 remain exact.
+
+These repeats are separate reproducibility evidence; they do not replace primary outcomes or change its denominator.
+The original repeat artifact under `/private/tmp/flex-codex-fixes/final/test/live/results/` is
+`codex-remediation-repeat-547a36e.json`, SHA-256 `5ee7479d04e9fcbb120846edbccc231df082d2908bca7357045fbc602523d2d2`.
+The [committed formatted repeat](test/live/results/codex-remediation-repeat-547a36e.json) has SHA-256
+`d0511fde54d41aa457d1521333a11c2fa341b7c78510fd178570e8d30f9d7621`; parsed deep equality was independently asserted.
+C-514 and retention of the SQ-L-01 candidates are accepted for the stated gate. No additional unresolved production
+defect was found in this review's assigned scope after `ef69e31`; residual live usability, measurement limits and
+latency are recorded above. This is not a claim of complete performance acceptance or literal compliance with every
+original specification sentence.

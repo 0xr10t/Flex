@@ -74,6 +74,12 @@ export function ctxD(o: CtxOptions = {}): TestContext {
     ...(o.now !== undefined ? { now: o.now } : {}),
     ...(o.timezone !== undefined ? { timezone: o.timezone } : {}),
   });
+  // Lane D runs within an open session; durable handoffs append history only while that session exists.
+  ctx.repos.db8.insertSession({
+    session_id: ctx.req.session_id,
+    timezone: ctx.timezone,
+    opened_at: ctx.now().toUTC().toISO() as string,
+  });
   if (o.contacts !== false) {
     seedContact(ctx.repos, 'Aradhya', ARADHYA_CS, [BASE, ARB]);
     seedContact(ctx.repos, 'Mihir', MIHIR_CS, [SEPOLIA, BASE, ARB]);

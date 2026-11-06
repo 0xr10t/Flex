@@ -180,6 +180,29 @@ describe('§14.3 intent_result', () => {
         { status: 'active', delegate_address: DELEGATE_EIP55 as Address, cre_job_id: 'job-1' },
         NOW,
       );
+      // B03: l-only requests have no spend row, but must prove the exact submitted cancellation identity.
+      t.repos.handoffs.insert({
+        request_id: 'req_00000000000c',
+        status: 'accepted',
+        history: null,
+        envelope: {
+          version: '1',
+          request_id: 'req_00000000000c',
+          wallet_address: getAddress('0x00000000000000000000000000000000000000aa'),
+          created_at: NOW,
+          intents: [
+            {
+              intent_id: 'l',
+              step: 0,
+              autopay_id: 'ap_00000000000b',
+              chain_id: 84532,
+              delegate_address: DELEGATE_EIP55,
+              recipient: getAddress(RECIPIENT.toLowerCase()),
+              refund_remaining: true,
+            },
+          ],
+        },
+      });
     });
 
     it('C-351 l / SQ-A-04: executed → DB7 row of the earlier request cancelled; no DB6 row for the l request is fine → 204', async () => {

@@ -770,13 +770,16 @@ describe('§13.4 Q_LIMIT_OVERRIDE (C-326, SQ-D-16, F-1…F-6)', () => {
     expectError(await validateContent(ctx, plan), 'LIMIT_DAILY', { remaining: '10' });
   });
 
-  it('SQ-D-16 F-2 once overridden, every limit of the request is lifted (per-payment too)', async () => {
+  it('R4-F2 SQ-D-16 F-2 one Yes lifts all limits named in its question', async () => {
     const { ctx, r } = base({ balances: usdc('0', '5000', '0') });
-    ctx.req.limit_override = true;
     ctx.repos.db6.insertMany([
       db6Row({ kind: 'payment', amount: '290', status: 'pending', created_at: '2026-11-05T10:00:00.000Z' }),
     ]);
-    expect(await validate(ctx, [iOf(ctx, '101', r)])).toEqual({ kind: 'continue' });
+    const q = expectQuestion(await validate(ctx, [iOf(ctx, '101', r)]), 'Q_LIMIT_OVERRIDE');
+    expect(q.text).toContain('per-payment limit of 100');
+    expect(q.text).toContain("today's limit of 300");
+    expect(await s10.onAnswer?.(ctx, q, chip('override'))).toEqual({ kind: 'continue' });
+    expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
     expect(ctx.req.notes).toContain('A limit was lifted once for this request.');
   });
 

@@ -479,7 +479,7 @@ describe('§19 worked examples end to end', () => {
     expect(JSON.stringify(ctx.exec.submissions[0]?.envelope)).not.toContain('Vendor');
   });
 
-  it('E-flow guard: a rejected hand-off leaves the request unconfirmed and all stores untouched (E1 shape)', async () => {
+  it('E-flow guard: a rejected hand-off releases its reservation without adding accepted history (E1 shape)', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '60') });
     const a = addAmount(ctx, '50');
     const r = addAradhya(ctx);
@@ -491,7 +491,10 @@ describe('§19 worked examples end to end', () => {
     expect(expectError(res, 'EXECUTION_REJECTED', { message: 'wallet locked' })).toBe(
       "Your wallet couldn't accept this: wallet locked",
     );
-    expect(ctx.repos.tables.db6).toEqual([]);
+    expect(ctx.repos.tables.db6).toHaveLength(1);
+    expect(ctx.repos.tables.db6[0]).toMatchObject({ status: 'failed', amount: '50' });
+    expect(ctx.repos.db6.pendingRecent(BASE, 'USDC', ctx.now().toISO() as string)).toEqual([]);
+    expect(ctx.repos.handoffs.get(ctx.req.request_id)).toMatchObject({ status: 'rejected', history: null });
     expect(ctx.repos.tables.db8_history).toEqual([]);
   });
 });

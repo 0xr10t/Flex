@@ -6,7 +6,7 @@
 
 import type { ParseAmountText, ParsedAmount } from '../contracts/step.js';
 import { FIAT_OTHER_WORDS, FIAT_USD_WORDS, TOKENS } from '../contracts/static-tables.js';
-import { TOKEN_DECIMALS } from '../contracts/types.js';
+import { TOKEN_DECIMALS, type TokenWordKind } from '../contracts/types.js';
 import { fractionDigits, fromBaseUnits, toBaseUnits } from '../contracts/money.js';
 
 /** Internal scale used before the token precision check (more than any token's decimals). */
@@ -72,11 +72,25 @@ function escapeRe(s: string): string {
 }
 
 const CURRENCY_WORD_RE = new RegExp(
-  `(^|[^a-z0-9])(?:${CURRENCY_WORDS.filter((w) => !CURRENCY_SYMBOLS.has(w))
+  `(^|[^a-z])(${CURRENCY_WORDS.filter((w) => !CURRENCY_SYMBOLS.has(w))
     .map(escapeRe)
     .join('|')})(?=$|[^a-z0-9])`,
   'g',
 );
+
+/** Currency markers removed by the numeric parser; callers must still validate the complete amount text. */
+export function amountCurrencyKinds(text: string): ReadonlySet<TokenWordKind> {
+  const lower = text.toLowerCase();
+  const kinds = new Set<TokenWordKind>();
+  const add = (word: string): void => {
+    if (FIAT_USD_WORDS.includes(word)) kinds.add('FIAT_USD');
+    else if (FIAT_OTHER_WORDS.includes(word)) kinds.add('FIAT_OTHER');
+    else kinds.add(TOKENS.USDC.aliases.includes(word) ? 'USDC' : 'ETH');
+  };
+  for (const symbol of CURRENCY_SYMBOLS) if (lower.includes(symbol)) add(symbol);
+  for (const match of lower.matchAll(CURRENCY_WORD_RE)) if (match[2] !== undefined) add(match[2]);
+  return kinds;
+}
 
 /** Removes currency words/symbols; returns the remaining numeric core (lower-cased, trimmed). */
 function stripCurrency(text: string): string {
@@ -102,7 +116,8 @@ function digitsCore(s: string): string | null {
 
 function parseDigits(core: string): bigint | null {
   // number, optional space, optional suffix
-  const m = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(core);
+  const numeric = core.replace(/^\.(?=\d)/, '0.');
+  const m = /^([\d,]+(?:\.\d+)?)\s*(k|m|lakhs?|crores?)?$/.exec(numeric);
   if (!m) return null;
   const plain = digitsCore(m[1] ?? '');
   if (plain === null) return null;

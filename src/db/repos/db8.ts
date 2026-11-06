@@ -14,6 +14,7 @@ export function createDb8(db: Database): Db8Session {
   const appendHistory = db.prepare(
     'INSERT INTO db8_history (session_id, request_id, payments_json, handed_off_at) VALUES (?, ?, ?, ?)',
   );
+  const hasHistory = db.prepare('SELECT 1 FROM db8_history WHERE session_id = ? AND request_id = ? LIMIT 1');
   const recent = db.prepare('SELECT * FROM db8_history WHERE session_id = ? ORDER BY id DESC LIMIT ?');
 
   return {
@@ -28,6 +29,9 @@ export function createDb8(db: Database): Db8Session {
     },
     appendHistory(row) {
       appendHistory.run(row.session_id, row.request_id, row.payments_json, row.handed_off_at);
+    },
+    hasHistory(session_id, request_id) {
+      return hasHistory.get(session_id, request_id) !== undefined;
     },
     recentHistory(session_id, limit) {
       return recent.all(session_id, limit) as Db8HistoryRow[];

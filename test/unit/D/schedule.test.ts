@@ -581,16 +581,21 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it.each([
     ['weekly ×3 days', { times_per_week: 3, days_of_week: null }, '10', '30'],
-    ['daily', { frequency: 'daily' as const, days_of_week: null }, '10', '70'],
+    ['daily', { frequency: 'daily' as const, days_of_week: null }, '10', '40'],
     ['daily every 2', { frequency: 'daily' as const, days_of_week: null, interval: 2 }, '10', '40'],
     ['monthly', { frequency: 'monthly' as const, days_of_week: null, day_of_month: 10 }, '10', '10'],
-  ])('C-235 §10.6 derived 4: per_period_cap %s = amount × max payments in 7 days', async (_n, o, amount, cap) => {
-    const { ctx, k } = await getK({ ...o, amount });
-    expect(amountOf(ctx, k.limits.per_period_cap)).toBe(cap);
-  });
+  ])(
+    'C-235 §10.6 derived 4: SQ-R-03 per_period_cap %s = amount × max scheduled payments in 7 days',
+    async (_n, o, amount, cap) => {
+      const { ctx, k } = await getK({ ...o, amount });
+      expect(amountOf(ctx, k.limits.per_period_cap)).toBe(cap);
+    },
+  );
 
   it('SQ-D-16 F-5 content amount: C-235 §10.6 derived 4: per_period_cap above autopay_max_per_period → LIMIT_AUTOPAY_PERIOD {cap, token, max}', async () => {
-    const { ctx, payment } = kSetup(withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }));
+    const { ctx, payment } = kSetup(
+      withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }, 'for 7 payments'),
+    );
     markContent(ctx);
     const before = db1Count(ctx);
     expectError(await run(ctx, [payment]), 'LIMIT_AUTOPAY_PERIOD', { cap: '140', token: 'USDC', max: '100' });
@@ -630,9 +635,9 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(asK(plan[1]).depends_on).toEqual([0]);
   });
 
-  it('C-237 C-214 §10.4 prefund 80 with 30 + 50 spendable cannot be bridged with the 2% pad → INSUFFICIENT_FUNDS {need 80, have 80}', async () => {
+  it('C-237 C-214 §10.4 prefund 80 with 30 + 50 spendable cannot be bridged with the 2% pad → INSUFFICIENT_FUNDS {need 80.6, have 80}', async () => {
     const { ctx, payment } = kSetup(withEnd({ balances: usdc('0', '30', '50') }, 'for 8 payments'));
-    expectError(await run(ctx, [payment]), 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '80', have: '80' });
+    expectError(await run(ctx, [payment]), 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '80.6', have: '80' });
   });
 
   it('C-238 §10.6 derived 7: both caps are minted in DB1 (source derived, origins, confirmed, token)', async () => {
@@ -848,7 +853,9 @@ describe('SQ-D-16 F-5 typed amounts: S9 lets the limit through (S10 asks)', () =
   });
 
   it('SQ-D-16 F-3 S9 a per-period cap over the autopay limit passes S9 for typed amounts', async () => {
-    const { ctx, payment } = kSetup(withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }));
+    const { ctx, payment } = kSetup(
+      withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }, 'for 7 payments'),
+    );
     const plan = await runOk(ctx, [payment]);
     expect(plan.map((p) => p.intent_id)).toEqual(['k']);
   });

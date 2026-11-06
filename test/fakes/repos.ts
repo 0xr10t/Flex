@@ -23,6 +23,7 @@ import type {
   Db8HistoryRow,
   Db8Session,
   Db8SessionRow,
+  HandoffJournalRow,
   Repos,
 } from '../../src/contracts/repos.js';
 import type { Address, AmountPh, ChainId, GroupPh, Limits, RecipientPh, Token } from '../../src/contracts/types.js';
@@ -62,6 +63,7 @@ export interface FakeRepos extends Repos {
     db8_sessions: Map<string, Db8SessionRow>;
     db8_prompts: Array<{ session_id: string; request_id: string; kind: string; text: string; created_at: string }>;
     db8_history: Db8HistoryRow[];
+    handoffs: Map<string, HandoffJournalRow>;
   };
   vacuumCount: number;
 }
@@ -78,6 +80,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     db8_sessions: new Map(),
     db8_prompts: [],
     db8_history: [],
+    handoffs: new Map(),
   };
   let db2Id = 1;
   let db6Id = 1;
@@ -206,10 +209,12 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
       for (const r of rows) t.db6.push({ ...r, id: db6Id++ });
     },
     hasRequest: (rid) => t.db6.some((r) => r.request_id === rid),
+    listByRequest: (rid) => t.db6.filter((r) => r.request_id === rid).map(clone),
+    hasTxHash: (h) => t.db6.some((r) => r.tx_hash !== null && r.tx_hash.toLowerCase() === h.toLowerCase()),
     applyIntentResult({ request_id, step, status, tx_hash, executed_at }) {
       let n = 0;
       for (const r of t.db6) {
-        if (r.request_id === request_id && r.step === step) {
+        if (r.request_id === request_id && r.step === step && r.status !== 'executed') {
           r.status = status;
           r.tx_hash = tx_hash;
           r.executed_at = executed_at;
@@ -276,6 +281,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     getSession: (id) => clone(t.db8_sessions.get(id)),
     insertPrompt: (row) => void t.db8_prompts.push(clone(row)),
     appendHistory: (row) => void t.db8_history.push({ ...row, id: db8hId++ }),
+    hasHistory: (sid, rid) => t.db8_history.some((r) => r.session_id === sid && r.request_id === rid),
     recentHistory: (sid, limit) =>
       t.db8_history
         .filter((r) => r.session_id === sid)
@@ -293,6 +299,17 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     db6,
     db7,
     db8,
+    handoffs: {
+      insert(row) {
+        if (t.handoffs.has(row.request_id)) throw new Error('duplicate handoff');
+        t.handoffs.set(row.request_id, clone(row));
+      },
+      get: (id) => clone(t.handoffs.get(id)),
+      update(id, patch) {
+        const row = t.handoffs.get(id);
+        if (row) Object.assign(row, clone(patch));
+      },
+    },
     tables: t,
     vacuumCount: 0,
     clearSessionStores() {
@@ -301,6 +318,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
       t.db8_prompts.length = 0;
       t.db8_history.length = 0;
       t.db8_sessions.clear();
+      for (const row of t.handoffs.values()) row.history = null;
       fake.vacuumCount++;
     },
     transaction: <T>(fn: () => T): T => fn(),

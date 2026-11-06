@@ -1,5 +1,6 @@
 // Implements: §8.0 request object, §12.3 internal plan types, §12.5 hand-off envelope types,
 // §13.4 question shape + codes, §14.1 AgentResponse, §14.3 ExecutionReport, §15 error codes, §6.1 Config, §6.3 Limits.
+// SQ-S-01 / SQ-S-02: in-memory failed-payment context for a fresh amount correction or back-reference.
 // Owned by the Orchestrator (frozen contract). Lanes must not edit; send a CCR (ORCHESTRATOR_PROMPT §7).
 //
 // Fields marked "internal addition" are not named in the spec text but are needed to carry state between
@@ -617,6 +618,16 @@ export type RequestState =
 
 export type StepNameRef = 's0' | 's1' | 's2' | 's3' | 's4' | 's5' | 's6' | 's7' | 's8' | 's9' | 's10' | 's11' | 's12';
 
+/** SQ-S-01: in-memory context for an amount correction after a pre-submission funding failure. */
+export interface FailedPaymentContext {
+  request_id: RequestId;
+  recipient: AddressPh;
+  token: Token;
+  chain_id: ChainId | null;
+  /** Preserve the original ENS chain restrictions when reusing a resolved recipient. */
+  ens_chain_ids: ChainId[];
+}
+
 export interface AgentRequest {
   request_id: RequestId;
   session_id: SessionId;
@@ -654,6 +665,10 @@ export interface AgentRequest {
   handoff_attempts: number;
 
   // ── internal additions ──
+  /** SQ-S-02: S2 decides whether this plain typed message refers to the immediately previous failed payment. */
+  failed_payment_candidate?: FailedPaymentContext;
+  /** SQ-S-01: only the immediately previous failed payment; never appended to DB8 history. */
+  retry_context?: FailedPaymentContext;
   /** Raw message as received; S1 consumes it and sets it to undefined (dropped on SECRET_DETECTED). */
   input?: MessageInput;
   /** S3 output text (pay phrases → placeholders, context phrases → [amount]). */
@@ -674,9 +689,10 @@ export interface AgentRequest {
   prepend_messages: string[];
   /**
    * Per-step resumable progress (e.g. S6: which payee is being resolved, sub-flow, counters).
-   * Each step owns its own slot and its own shape; the runner never reads it.
+   * Each step owns its own slot and its own shape; the runner never reads it. `s9_answers` (SQ-R-05): S9's answers kept
+   * after planning, so a re-plan at confirm time does not ask them again.
    */
-  step_state: Partial<Record<StepNameRef, unknown>>;
+  step_state: Partial<Record<StepNameRef | 's9_answers', unknown>>;
 }
 
 // ───────────────────────────── §13.1 summary, §14.1 AgentResponse ─────────────────────────────

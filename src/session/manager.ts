@@ -7,6 +7,7 @@
 // AgentResponse, §14.4 MODEL_FAILED when the model is unavailable, §15 error responses, §0 / SQ-19 uncovered states
 // → UNSUPPORTED_REQUEST with an `unsupported_state` log line (SQ-A-03 message while HANDOFF_FAILED), SQ-A-01 / F-8
 // cancel without a cancellable request, SQ-A-06 / F-9 final hand-off text by cause, §18 metrics as log events.
+// SQ-S-01 / SQ-S-02: retain an unsubmitted failed payment for the next follow-up, without adding DB8 history.
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
@@ -35,6 +36,7 @@ import type {
   Answer,
   Config,
   ErrorCode,
+  FailedPaymentContext,
   Limits,
   MessageInput,
   RequestId,
@@ -42,9 +44,22 @@ import type {
   SessionId,
 } from '../contracts/types.js';
 import { MAX_PLACEHOLDER_DRAWS } from '../db/repos/common.js';
+import { detectSecret } from '../guard/secrets.js';
+import { extractUrls, urlHasSecret } from '../guard/urls.js';
 import { newId as defaultNewId } from '../util/ids.js';
 import { isAwaitingAnswer, isTerminal, newAgentRequest, STATE_AFTER_STEP } from './request.js';
 import { classifyConfirmationText, isCancelText } from './texts.js';
+import { failedPaymentContext } from './failed-payment.js';
+import {
+  answerOnlyReply,
+  interpretReply,
+  needsConversation,
+  recipientOnlyReply,
+  replyGuidance,
+  simpleRecipient,
+  type ConversationTurn,
+} from './conversation.js';
+import { canCorrectPendingRecipient, correctPendingRecipient } from '../recipients/resolve.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -83,6 +98,12 @@ interface Active {
   req: AgentRequest;
   /** DB5 snapshot taken when the request started (StepContext.limits). */
   limits: Limits;
+  /** SQ-R-06: cause of the last failed hand-off attempt ('timeout' | 'server_error'). */
+  lastHandoffCause?: string;
+  /** SQ-S-01: consumed by the next message, cleared on cancellation; never persisted. */
+  failedPayment?: FailedPaymentContext;
+  /** SQ-CV-01: bounded, guarded user replies for the current draft only; cleared with its in-memory state. */
+  conversation?: ConversationTurn[];
 }
 
 interface OpenSession {
@@ -91,6 +112,10 @@ interface OpenSession {
   active: Active | null;
   /** §14.1: one call per session at a time. */
   busy: boolean;
+  /** The call in progress (R1-F1: closing the session waits for it). */
+  inflight: Promise<unknown> | null;
+  /** Set when a close has started: new calls get 404 while the close waits for the call in progress. */
+  closing: boolean;
   closed: boolean;
 }
 
@@ -118,6 +143,7 @@ export class SessionManager {
   private readonly clock: () => DateTime;
   private readonly newId: NewId;
   private open: OpenSession | null = null;
+  private lifecycle: Promise<unknown> = Promise.resolve();
 
   constructor(deps: SessionManagerDeps) {
     this.deps = deps;
@@ -127,38 +153,50 @@ export class SessionManager {
 
   // ───────────────────────────── sessions (§17.1) ─────────────────────────────
 
-  /** POST /v1/sessions: closes any open session (clearing DB1/DB3/DB8), opens a new one. */
-  openSession(timezone: string): { session_id: SessionId } {
+  /**
+   * POST /v1/sessions: closes any open session (clearing DB1/DB3/DB8), opens a new one. R1-F1: a call still running
+   * in the open session (e.g. S12 awaiting the execution layer) is waited for first, so it ends as it would have and
+   * the close then treats its request as usual (a HANDED_OFF request is never turned into DISCARDED).
+   */
+  async openSession(timezone: string): Promise<{ session_id: SessionId }> {
     if (!IANAZone.isValidZone(timezone)) throw new Error('invalid timezone');
-    if (this.open !== null) this.closeOpen(this.open);
-    const opened_at = this.nowIso();
-    for (let i = 0; i < MAX_PLACEHOLDER_DRAWS; i++) {
-      const session_id = this.newId('session') as SessionId;
-      if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
-      this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
-      this.open = { session_id, timezone, active: null, busy: false, closed: false };
-      this.deps.log.info({ event: 'session_opened', session_id });
-      return { session_id };
-    }
-    throw new Error('session id collision');
+    // The open session is going away: from now on its new calls get 404 (also while the close waits).
+    if (this.open !== null) this.open.closing = true;
+    return this.serialized(async () => {
+      if (this.open !== null) await this.closeOpen(this.open);
+      const opened_at = this.nowIso();
+      for (let i = 0; i < MAX_PLACEHOLDER_DRAWS; i++) {
+        const session_id = this.newId('session') as SessionId;
+        if (this.deps.repos.db8.getSession(session_id) !== undefined) continue;
+        this.deps.repos.db8.insertSession({ session_id, timezone, opened_at });
+        this.open = { session_id, timezone, active: null, busy: false, inflight: null, closing: false, closed: false };
+        this.deps.log.info({ event: 'session_opened', session_id });
+        return { session_id };
+      }
+      throw new Error('session id collision');
+    });
   }
 
   /**
    * DELETE /v1/sessions/{id}: closes the session and clears DB1, DB3, DB8 (§7.4). Returns false for an unknown id.
+   * Waits for a call still running in that session first (R1-F1).
    * A session left in DB8 by a crashed process can be closed too (ADR-007), unless another session is open: the clear
    * would delete that session's rows, so the id counts as unknown and the next close wipes it (SQ-A-05).
    */
-  closeSession(session_id: string): boolean {
-    if (this.open !== null && this.open.session_id === session_id) {
-      this.closeOpen(this.open);
-      return true;
-    }
-    if (this.open === null && this.deps.repos.db8.getSession(session_id) !== undefined) {
-      this.deps.repos.clearSessionStores();
-      this.deps.log.info({ event: 'session_closed', session_id });
-      return true;
-    }
-    return false;
+  async closeSession(session_id: string): Promise<boolean> {
+    if (this.open !== null && this.open.session_id === session_id) this.open.closing = true;
+    return this.serialized(async () => {
+      if (this.open !== null && this.open.session_id === session_id) {
+        await this.closeOpen(this.open);
+        return true;
+      }
+      if (this.open === null && this.deps.repos.db8.getSession(session_id) !== undefined) {
+        this.deps.repos.clearSessionStores();
+        this.deps.log.info({ event: 'session_closed', session_id });
+        return true;
+      }
+      return false;
+    });
   }
 
   /** The open session id, if any (one at a time, I-08). */
@@ -166,9 +204,19 @@ export class SessionManager {
     return this.open?.session_id ?? null;
   }
 
-  private closeOpen(s: OpenSession): void {
+  /** Session opens and closes run one after another (each may wait for a call in progress). */
+  private serialized<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.lifecycle.then(fn, fn);
+    this.lifecycle = run.catch(() => undefined);
+    return run;
+  }
+
+  private async closeOpen(s: OpenSession): Promise<void> {
+    s.closing = true;
+    // R1-F1: let the call in progress finish (its writes and its response) before the request is judged and cleared.
+    while (s.inflight !== null) await s.inflight.catch(() => undefined);
     s.closed = true;
-    this.open = null;
+    if (this.open === s) this.open = null;
     const a = s.active;
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
@@ -182,10 +230,14 @@ export class SessionManager {
   async handleMessage(session_id: string, input: MessageInput): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
       const a = s.active;
+      if (a?.failedPayment !== undefined && isCancelText(input.text)) {
+        delete a.failedPayment;
+        return ok(this.noopReply(s, a.req.request_id, REPLY.CANCELLED()));
+      }
       if (a !== null && isAwaitingAnswer(a.req)) {
-        // §17.3: cancel texts drop the request; any other text is a free-text answer to the pending question.
+        // SQ-CV-01 supersedes §17.3's unconditional field-answer routing for conversational replies.
         if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
-        return ok(await this.answer(s, a, { kind: 'text', text: input.text }));
+        return ok(await this.answer(s, a, { kind: 'text', text: input.text }, input));
       }
       if (a !== null && a.req.state === 'AWAITING_CONFIRMATION') {
         switch (classifyConfirmationText(input.text)) {
@@ -206,7 +258,7 @@ export class SessionManager {
         // §17.3 has no row for a messages call while HANDOFF_FAILED (spec-questions/A.md SQ-A-03). Interim: cancel
         // texts cancel it like the cancel endpoint; any other text → UNSUPPORTED_REQUEST (§0) and the request stays
         // HANDOFF_FAILED, so `confirm` yes can still retry it.
-        if (isCancelText(input.text)) return ok(this.discard(s, a, REPLY.CANCELLED()));
+        if (isCancelText(input.text)) return ok(this.discard(s, a, this.cancelText(a)));
         this.logUnsupported(s, a.req.state, 'handoff_failed:message', a.req.request_id);
         return ok(this.unsupportedReply(s, a.req.request_id));
       }
@@ -254,16 +306,39 @@ export class SessionManager {
   async handleCancel(session_id: string, request_id: string): Promise<SessionResult> {
     return this.exclusive(session_id, async (s) => {
       const a = s.active;
+      if (a?.req.request_id === request_id) delete a.failedPayment;
       const cancellable =
         a !== null &&
         a.req.request_id === request_id &&
         (isAwaitingAnswer(a.req) || a.req.state === 'AWAITING_CONFIRMATION' || a.req.state === 'HANDOFF_FAILED');
-      if (cancellable) return ok(this.discard(s, a, REPLY.CANCELLED()));
+      if (cancellable) return ok(this.discard(s, a, this.cancelText(a)));
+      const submitted = this.deps.repos.handoffs.get(request_id);
+      if (submitted !== undefined) {
+        const text =
+          submitted.status === 'accepted'
+            ? REPLY.CANCEL_AFTER_HANDOFF()
+            : submitted.status === 'submitted'
+              ? REPLY.CANCEL_AFTER_TIMEOUT()
+              : REPLY.CANCELLED();
+        return ok(this.noopReply(s, request_id, text));
+      }
       // SQ-A-01, F-8: nothing to cancel → HTTP 200, state done, nothing changed, safe to repeat. A request already
-      // handed off gets its own reply.
-      const handedOff = a !== null && a.req.request_id === request_id && a.req.state === 'HANDED_OFF';
+      // handed off gets its own reply, also when it is no longer the active request (R1-F3: looked up in
+      // db8_history / DB6).
+      const handedOff =
+        a !== null && a.req.request_id === request_id
+          ? a.req.state === 'HANDED_OFF'
+          : this.deps.repos.db8.hasHistory(s.session_id, request_id) || this.deps.repos.db6.hasRequest(request_id);
       return ok(this.noopReply(s, request_id, handedOff ? REPLY.CANCEL_AFTER_HANDOFF() : REPLY.CANCELLED()));
     });
+  }
+
+  /**
+   * Reply to cancelling a cancellable request: SQ-R-06 when its last failed hand-off attempt timed out (the wallet may
+   * have received it; also after a SQ-R-05 re-plan that followed it), else CANCELLED.
+   */
+  private cancelText(a: Active): string {
+    return a.lastHandoffCause === 'timeout' ? REPLY.CANCEL_AFTER_TIMEOUT() : REPLY.CANCELLED();
   }
 
   /** A `done` reply that leaves the active request as it is (SQ-A-01, F-8). */
@@ -295,24 +370,43 @@ export class SessionManager {
 
   // ───────────────────────────── runner ─────────────────────────────
 
-  /** §14.1: one call per session at a time (second concurrent call → 409); unknown/closed session → 404. */
+  /**
+   * §14.1: one call per session at a time (second concurrent call → 409); unknown/closed session, or one being closed,
+   * → 404.
+   */
   private async exclusive(session_id: string, fn: (s: OpenSession) => Promise<SessionResult>): Promise<SessionResult> {
     const s = this.open;
-    if (s === null || s.session_id !== session_id) return NOT_FOUND;
+    if (s === null || s.session_id !== session_id || s.closing) return NOT_FOUND;
     if (s.busy) return CONFLICT;
     s.busy = true;
+    const call = fn(s);
+    s.inflight = call;
     try {
-      return await fn(s);
+      return await call;
     } catch (e) {
       if (e instanceof SessionClosed) return NOT_FOUND;
       throw e;
     } finally {
       s.busy = false;
+      s.inflight = null;
     }
   }
 
   private async newRequest(s: OpenSession, input: MessageInput, prepend: string[]): Promise<AgentResponse> {
     const req = newAgentRequest(this.newId('request') as RequestId, s.session_id, input);
+    const previous = s.active;
+    if (
+      previous?.req.state === 'FAILED' &&
+      previous.failedPayment !== undefined &&
+      input.pasted_blocks.length === 0 &&
+      input.attachments.length === 0 &&
+      extractUrls(input.text, input.urls).links.length === 0
+    ) {
+      req.failed_payment_candidate = {
+        ...previous.failedPayment,
+        ens_chain_ids: [...previous.failedPayment.ens_chain_ids],
+      };
+    }
     req.prepend_messages.push(...prepend);
     const a: Active = { req, limits: this.deps.repos.db5.getAll() };
     s.active = a;
@@ -345,17 +439,129 @@ export class SessionManager {
   }
 
   /** Answer to the pending question → the asking step's AnswerHandler (§13.4, step.ts runner semantics). */
-  private async answer(s: OpenSession, a: Active, answer: Answer): Promise<AgentResponse> {
+  private async answer(s: OpenSession, a: Active, answer: Answer, input?: MessageInput): Promise<AgentResponse> {
     const paused = a.req.paused_at;
     if (paused === undefined) return this.unsupported(s, a, 'answer:not_paused');
+    // Answers enter through both /answers and /messages. Screen them before DB8 or any step/model sees them.
+    const text = answerText(answer);
+    if (detectSecret(text) !== null || extractUrls(text, []).links.some((link) => urlHasSecret(link.url))) {
+      return this.finish(s, a, paused.step, { kind: 'error', code: 'SECRET_DETECTED' });
+    }
+    // New content cannot be silently consumed as a field answer. Its full input goes through S1, before any
+    // conversational model call could see it; attachments and extracted document values never enter the router.
+    if (input && (input.attachments.length || input.pasted_blocks.length || input.urls.length)) {
+      if (this.deps.repos.handoffs.get(a.req.request_id) !== undefined)
+        return this.respond(s, a, 'awaiting_answer', [replyGuidance(this.context(s, a), paused.question)], {
+          question: paused.question,
+        });
+      this.markDiscarded(a.req);
+      return this.newRequest(s, input, [REPLY.PENDING_REPLACED()]);
+    }
+    if (
+      answer.kind === 'text' &&
+      this.deps.repos.handoffs.get(a.req.request_id) === undefined &&
+      needsConversation(this.context(s, a), paused.question, text)
+    )
+      return this.conversationalAnswer(s, a, text, input);
+    return this.applyFieldAnswer(s, a, answer, text);
+  }
+
+  private recordAnswer(s: OpenSession, a: Active, text: string, typed = true): void {
+    const question = a.req.paused_at?.question;
     // §7.2: the session manager writes answers to DB8.
     this.deps.repos.db8.insertPrompt({
       session_id: s.session_id,
       request_id: a.req.request_id,
       kind: 'answer',
-      text: answerText(answer),
+      text,
       created_at: this.nowIso(),
     });
+    if (typed && question) {
+      a.conversation ??= [];
+      a.conversation.push({ question: question.code, reply: text });
+      if (a.conversation.length > 6) a.conversation.shift();
+    }
+  }
+
+  private async conversationalAnswer(
+    s: OpenSession,
+    a: Active,
+    text: string,
+    input?: MessageInput,
+  ): Promise<AgentResponse> {
+    const paused = a.req.paused_at;
+    if (!paused) return this.unsupported(s, a, 'conversation:not_paused');
+    const ctx = this.context(s, a);
+    const clarify = (message = replyGuidance(ctx, paused.question)): AgentResponse =>
+      this.respond(s, a, 'awaiting_answer', [message], { question: paused.question });
+    let decision;
+    try {
+      decision = await interpretReply(ctx, paused.question, text, a.conversation ?? []);
+    } catch (error) {
+      if (!(error instanceof LlmFailed)) throw error;
+      this.assertOpen(s);
+      this.recordAnswer(s, a, text);
+      return clarify(
+        'I could not interpret that reply. Your request is still open; you can answer the displayed question or try again.',
+      );
+    }
+    this.assertOpen(s);
+    if (decision.intent === 'new_request') {
+      // The model classifies intent only. It never writes a replacement prompt or transfers old consent.
+      this.recordAnswer(s, a, text);
+      this.markDiscarded(a.req);
+      return this.newRequest(s, input ?? { text, pasted_blocks: [], attachments: [], urls: [] }, [
+        REPLY.PENDING_REPLACED(),
+      ]);
+    }
+    if (decision.intent === 'cancel') {
+      this.recordAnswer(s, a, text);
+      return /\b(?:cancel|stop|abort|drop|forget|never\s*mind)\b/i.test(text) &&
+        !/\b(?:not|don't|dont|why|how|what)\b/i.test(text)
+        ? this.discard(s, a, REPLY.CANCELLED())
+        : clarify();
+    }
+    if (decision.intent === 'recipient' && decision.value !== null && recipientOnlyReply(text, decision.value)) {
+      if (paused.question.code === 'Q_NO_PAYEE')
+        return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
+      this.recordAnswer(s, a, text);
+      if (!canCorrectPendingRecipient(ctx)) return clarify();
+      // Re-read current settings/balances. The normal S6 → S11 path resolves, validates and summarizes the change.
+      a.limits = this.deps.repos.db5.getAll();
+      const balances = await this.invoke(s, a, 's0', (current) => this.deps.registry.s0.step(current));
+      if (balances.kind !== 'continue') return this.finish(s, a, 's0', balances);
+      const result = await correctPendingRecipient(this.context(s, a), decision.value);
+      this.assertOpen(s);
+      if (result === null) return clarify();
+      a.req.paused_at = undefined;
+      if (result.kind !== 'continue') return this.finish(s, a, 's6', result);
+      return this.run(s, a, STEP_ORDER.indexOf('s6'));
+    }
+    if (decision.intent === 'answer' && decision.value !== null && answerOnlyReply(text, decision.value)) {
+      const q = paused.question;
+      // Model interpretation cannot select consent, price/amount choices, contacts, or limit overrides.
+      // Discrete choices continue to require the existing native whole-reply match or an explicit chip.
+      const freeValue =
+        q.input === 'number' ||
+        q.input === 'date' ||
+        ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_NAME_FOR_ADDRESS', 'Q_GROUP_PARENT'].includes(q.code);
+      if (freeValue && (!['Q_NO_PAYEE', 'Q_NAME_FOR_ADDRESS'].includes(q.code) || simpleRecipient(decision.value)))
+        return this.applyFieldAnswer(s, a, { kind: 'text', text: decision.value }, text);
+    }
+    this.recordAnswer(s, a, text);
+    return clarify();
+  }
+
+  /** Validated routing ends here; the original field handler remains responsible for value validation. */
+  private async applyFieldAnswer(
+    s: OpenSession,
+    a: Active,
+    answer: Answer,
+    originalText: string,
+  ): Promise<AgentResponse> {
+    const paused = a.req.paused_at;
+    if (!paused) return this.unsupported(s, a, 'answer:not_paused');
+    this.recordAnswer(s, a, originalText, answer.kind === 'text');
     const entry = this.deps.registry[paused.step];
     const handler = entry.onAnswer;
     if (handler === undefined) return this.unsupported(s, a, `${paused.step}:no_answer_handler`);
@@ -369,6 +575,49 @@ export class SessionManager {
 
   /** S12 hand-off (§8.14): counts attempts; EXECUTION_UNAVAILABLE → HANDOFF_FAILED until 3 attempts in total. */
   private async handoff(s: OpenSession, a: Active): Promise<AgentResponse> {
+    // G03: fresh limits and balances gate the first submission. Retries must preserve the submitted envelope.
+    const firstSubmission = this.deps.repos.handoffs.get(a.req.request_id) === undefined;
+    const oldSummary = JSON.stringify(a.req.summary);
+    let limitsChanged = false;
+    if (firstSubmission && a.req.plan !== undefined) {
+      const current = this.deps.repos.db5.getAll();
+      limitsChanged = JSON.stringify(current) !== JSON.stringify(a.limits);
+      a.limits = current;
+      if (limitsChanged) {
+        a.req.limit_override = false;
+        delete a.req.step_state.s10;
+        delete a.req.envelope;
+      }
+      const refreshed = await this.invoke(s, a, 's0', (ctx) => this.deps.registry.s0.step(ctx));
+      if (refreshed.kind !== 'continue') return this.finish(s, a, 's0', refreshed);
+      a.req.notes = [...new Set(a.req.notes)];
+    }
+    // SQ-R-05: an autopay whose first occurrence has passed is never handed off; S9 asks Q_AUTOPAY_START and the
+    // answer re-plans (S9 → S10 → S11) for a fresh confirmation.
+    const recheck = this.deps.registry.s9.beforeHandoff;
+    if (firstSubmission && recheck !== undefined) {
+      const res = await this.invoke(s, a, 's9', async (ctx) => recheck(ctx) ?? { kind: 'continue' });
+      if (res.kind !== 'continue') {
+        if (res.kind === 'question') {
+          // A new plan, a new envelope and a new confirmation follow.
+          a.req.state = STATE_AFTER_STEP.s8;
+          delete a.req.envelope;
+          a.req.handoff_attempts = 0;
+        }
+        return this.finish(s, a, 's9', res);
+      }
+    }
+    if (firstSubmission && a.req.plan !== undefined) {
+      // Changed settings may alter chain selection, bridge padding, caps, or consent. Always show the new plan.
+      if (limitsChanged) return this.run(s, a, STEP_ORDER.indexOf('s9'));
+      const checked = await this.invoke(s, a, 's10', (ctx) => this.deps.registry.s10.step(ctx));
+      if (checked.kind !== 'continue') return this.finish(s, a, 's10', checked);
+      const prepend = [...a.req.prepend_messages];
+      const summary = await this.invoke(s, a, 's11', (ctx) => this.deps.registry.s11.step(ctx));
+      if (summary.kind !== 'summary') return this.finish(s, a, 's11', summary);
+      if (JSON.stringify(summary.summary) !== oldSummary) return this.finish(s, a, 's11', summary);
+      a.req.prepend_messages = prepend;
+    }
     a.req.handoff_attempts += 1;
     const res = await this.invoke(s, a, 's12', (ctx) => this.deps.registry.s12.step(ctx));
     return this.finish(s, a, 's12', res);
@@ -431,6 +680,7 @@ export class SessionManager {
       }
       case 'error': {
         if (step === 's12' && res.code === 'EXECUTION_UNAVAILABLE') {
+          a.lastHandoffCause = res.params?.cause ?? 'server_error';
           const state = req.handoff_attempts < MAX_HANDOFF_ATTEMPTS ? 'HANDOFF_FAILED' : 'FAILED';
           // SQ-A-06, F-9: the 3rd failure's cause (S12 `params.cause`) picks the final text.
           const params = state === 'FAILED' ? { final: res.params?.cause ?? 'server_error' } : undefined;
@@ -483,6 +733,8 @@ export class SessionManager {
     }
     a.req.state = state;
     a.req.paused_at = undefined;
+    a.failedPayment =
+      state === 'FAILED' && errCode === 'INSUFFICIENT_FUNDS' ? failedPaymentContext(a.req, this.deps.repos) : undefined;
     if (state !== 'HANDOFF_FAILED') this.logFinal(a.req, errCode);
     return this.respond(s, a, 'error', [], { error: { code: errCode, message } });
   }

@@ -1,5 +1,8 @@
 // Implements: §13.4 question texts + fixed chips, §15 error messages, §13.1 notes, §13.3 fixed replies,
 // re-ask / variant wordings quoted in §8.4, §9.1–§9.6. Verbatim from the spec.
+// SQ-S-01: summary note for a correction to an insufficient-funds request.
+// SQ-UI-01: recipient questions explicitly request a wallet address and explain the accepted alternatives.
+// SQ-UI-02: new-recipient confirmation wording, retaining the full address and ENS chain context.
 // Owned by the Orchestrator (frozen contract). No lane writes user-facing text inline; use these.
 // Items marked SQ-nn have an open entry in SPEC_QUESTIONS.md.
 
@@ -21,6 +24,8 @@ export function joinList(items: readonly string[]): string {
 
 // ───────────────────────────── §13.4 question texts ─────────────────────────────
 
+const NEW_RECIPIENT_CONFIRMATION = 'You have not paid this recipient before. Do you want to proceed?';
+
 /** Default text per code. Variants below. Params named after the spec's `{…}` slots. */
 export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   // "How much should I send{ to Name}?" — `name` optional.
@@ -33,10 +38,10 @@ export const QUESTION_TEXT: Record<QuestionCode, (p: P) => string> = {
   Q_FIAT_OTHER: (p) => `I can't convert ${req(p, 'phrase')}. How much in ${p.token ?? 'USDC or ETH'}?`,
   Q_UNTRUSTED_AMOUNT: (p) => `The attached content says ${req(p, 'amount')} ${req(p, 'token')}. Use this amount?`,
   Q_RECURRING: () => 'Should this payment repeat?',
-  Q_NO_PAYEE: () => 'Who should receive this?',
+  Q_NO_PAYEE: () => 'Who should receive this? Enter their wallet address, ENS name or saved contact name.',
   Q_FOLLOWUP_WHO: (p) => `Who should get this: ${req(p, 'names')}?`,
-  Q_WHO_IS: (p) => `Who is "${req(p, 'name')}"?`,
-  Q_ADDRESS_CORRECT: (p) => `Is ${req(p, 'addr')} correct?`,
+  Q_WHO_IS: (p) => `What is the wallet address for "${req(p, 'name')}"? You can also enter an ENS name.`,
+  Q_ADDRESS_CORRECT: (p) => `${NEW_RECIPIENT_CONFIRMATION}\nWallet address: ${req(p, 'addr')}`,
   // "Paste the address{ for name}." — `name` optional.
   Q_ADDRESS_REENTER: (p) => `Paste the address${p.name !== undefined ? ` for ${p.name}` : ''}.`,
   Q_NAME_FOR_ADDRESS: () => 'Save this address as?',
@@ -97,11 +102,12 @@ export const QUESTION_INPUT: Record<QuestionCode, QuestionInput> = {
 /** Variant wordings quoted in §8.4 / §9. */
 export const QUESTION_VARIANT = {
   /** §9.3 step 1: ENS normalize failure → Q_WHO_IS. */
-  WHO_IS_INVALID_ENS: () => "That isn't a valid ENS name. Who is it?",
+  WHO_IS_INVALID_ENS: () => "That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.",
   /** §9.3 step 4: ENS has no address on any queried chain → Q_ADDRESS_REENTER. */
   REENTER_ENS_NO_ADDRESS: (p: P) => `${req(p, 'ens')} has no address for these chains. Paste an address instead?`,
   /** §9.3 step 7: Q_ADDRESS_CORRECT for an ENS-resolved address. SQ-06: `chains` join format when several match. */
-  ADDRESS_CORRECT_ENS: (p: P) => `${req(p, 'ens')} → ${req(p, 'addr')} on ${req(p, 'chains')}. Correct?`,
+  ADDRESS_CORRECT_ENS: (p: P) =>
+    `${NEW_RECIPIENT_CONFIRMATION}\n${req(p, 'ens')} → ${req(p, 'addr')} on ${req(p, 'chains')}.`,
   /** §9.2 step 5: suffix for untrusted addresses (appended after a space). */
   ADDRESS_CORRECT_UNTRUSTED_SUFFIX: () => 'This address comes from the attached content, not from you.',
   /** §9.4 "No address now" variant of Q_ENS_CHANGED. */
@@ -388,6 +394,8 @@ export const NOTES = {
   /** SQ-O-10: `chains` = joinList of every chain whose DB2 row for the contact holds the reused address. */
   SILENT_REUSE: (p: P) => `Same address as on ${req(p, 'chains')}.`,
   FOLLOWUP: () => 'Recipient and chain from your last payment.',
+  /** SQ-S-01: an insufficient-funds failure is not a previous payment. */
+  PAYMENT_CORRECTION: () => 'Continuing your previous request with a new amount.',
   YOU_WROTE: (p: P) => `You wrote '${req(p, 'phrase')}' → ${req(p, 'amount')} ${req(p, 'token')}.`,
   FROM_CONTENT: (p: P) => `From attached content: ${req(p, 'what')}. You confirmed it.`,
   CHAIN_UNREADABLE: (p: P) => `${req(p, 'chain')} balance couldn't be read right now, so it wasn't used.`,
@@ -425,6 +433,8 @@ export const REPLY = {
   CANCELLED: () => 'Cancelled. Nothing was sent.',
   /** SQ-A-01, F-8: cancel of a HANDED_OFF request (HTTP 200, state unchanged). */
   CANCEL_AFTER_HANDOFF: () => "That was already sent to your wallet for signing, so it can't be cancelled here.",
+  /** SQ-R-06: cancel of a HANDOFF_FAILED request whose last attempt timed out (the wallet may have received it). */
+  CANCEL_AFTER_TIMEOUT: () => 'Cancelled here, but your wallet may already have received it. Check your wallet.',
   PENDING_REPLACED: () => 'I dropped the previous plan and started on your new request.',
 } as const;
 

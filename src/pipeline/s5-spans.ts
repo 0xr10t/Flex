@@ -11,6 +11,9 @@
 // occurrences go, S7 sweeps them to the payee placeholder), "No, they're only mentioned" turns its payee spans into
 // mentioned ones (all become [person]; with no payee left the normal no-payee flow follows). One name is one contact
 // (D-11), so the answer covers every occurrence. Re-entrant through req.step_state.s5.
+// SQ-S-01: an amount correction with no new payee reuses the immediately previous failed payment's recipient.
+// SQ-S-02: explanatory prose is allowed, but a mentioned person makes the reference ambiguous; ask instead.
+// An explicit new payee takes the ordinary resolution path and does not inherit the old recipient's chain.
 // Owner: Lane B.
 
 import { normalize } from 'viem/ens';
@@ -86,7 +89,7 @@ function normalizes(text: string): boolean {
 
 /** Rule 2 word list: chain aliases (config, plus `eth`), token aliases (§6.2, incl. fiat words), back-references, me/my/I. */
 function droppedWords(ctx: StepContext): Set<string> {
-  const words = new Set<string>(['eth']);
+  const words = new Set<string>(['eth', 'myself']); // Handoff LIVE-P046: self references are never payees.
   for (const c of ctx.config.chains) for (const a of c.aliases) words.add(a.toLowerCase());
   for (const t of [...TOKENS.USDC.aliases, ...TOKENS.ETH.aliases, ...FIAT_USD_WORDS, ...FIAT_OTHER_WORDS]) {
     words.add(t.toLowerCase());
@@ -126,7 +129,7 @@ function filterSpans(
   const usedByText = new Map<string, Range[]>();
   const claim = (text: string): Range | null => {
     const used = usedByText.get(text) ?? [];
-    const range = findUnused(masked, text, used, true);
+    const range = findUnused(masked, text, used, 'identifier');
     if (range !== null) usedByText.set(text, [...used, range]);
     return range;
   };
@@ -276,9 +279,32 @@ async function s5Step(ctx: StepContext): Promise<StepResult> {
     // rule 6: mentioned spans are dropped silently (no lookup, no placeholder); S7 masks them as [person].
     req.mentioned_spans = tagged.filter((t) => t.role === 'mentioned').map((t) => maskedSpan(ctx, t.range, t.text));
     st.tagged = true;
+    if (req.spans.length > 0) delete req.retry_context;
 
     if (req.spans.length === 0) {
-      if (req.scan.back_reference.length > 0) {
+      if (req.retry_context !== undefined) {
+        const amount = req.amounts.length === 1 ? req.amounts[0] : undefined;
+        if (
+          req.mentioned_spans.length > 0 ||
+          req.actions?.length !== 1 ||
+          req.actions[0] !== 'i' ||
+          amount === undefined ||
+          amount.source !== 'user' ||
+          !amount.confirmed ||
+          amount.relative !== null
+        ) {
+          delete req.retry_context;
+          return noPayeeQuestion(st);
+        }
+        const row = ctx.repos.db3.get(req.retry_context.recipient);
+        if (!row || row.kind !== 'single' || row.address === null) return { kind: 'error', code: 'INTERNAL_ERROR' };
+        req.spans = [
+          followupSpan({
+            placeholder: req.retry_context.recipient,
+            label: row.name ?? row.ens_name ?? shortAddress(row.address),
+          }),
+        ];
+      } else if (req.scan.back_reference.length > 0) {
         // rule 7 / §17.2 steps 2–3: follow-up
         const prev = previousPayees(ctx);
         const only = prev.length === 1 ? prev[0] : undefined;

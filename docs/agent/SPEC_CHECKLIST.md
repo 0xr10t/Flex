@@ -1,29 +1,40 @@
 # SPEC_CHECKLIST
 
 One line per numbered rule / table row / test ID in spec §§5–20. Every item has exactly one owner.
-Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`, `deviates (…)`.
+Reviewed 2026-11-06 against the resolved answers in `SPEC_QUESTIONS.md`, `SPEC_ANSWERS_FOLLOWUP.md`, and the
+current request to fix all review findings. See `COMPLIANCE_REPORT.md` for evidence and authorized differences.
 
+Status values: `implemented + tested` (deterministic or stated live evidence) and
+`deviates (human-approved; tested)`. Prompt retention under SQ-L-01 is accepted by the C-514 evidence below.
 
 ## Totals
 
-| Owner | Items | implemented + tested | implemented, no test | missing | deviates |
-| --- | --- | --- | --- | --- | --- |
-| Lane A | 81 | 81 | 0 | 0 | 0 |
-| Lane B | 123 | 123 | 0 | 0 | 0 |
-| Lane C | 73 | 73 | 0 | 0 | 0 |
-| Lane D | 152 | 152 | 0 | 0 | 0 |
-| Orchestrator | 85 | 74 | 6 | 1 | 4 |
-| **Total** | **514** | **503** | **6** | **1** | **4** |
+| Owner | Items | implemented + tested | approved deviation + tested | live acceptance pending |
+| --- | --- | --- | --- | --- |
+| Lane A | 81 | 81 | 0 | 0 |
+| Lane B | 123 | 123 | 0 | 0 |
+| Lane C | 73 | 73 | 0 | 0 |
+| Lane D | 152 | 152 | 0 | 0 |
+| Orchestrator | 85 | 82 | 3 | 0 |
+| **Total** | **514** | **511** | **3** | **0** |
+
+The three retained deviations describe approved differences from worked examples/acceptance prose, not open
+questions. All six former “implemented, no test” contracts now have passing guard tests. C-514's full 154-case run
+meets the zero-wrong-handoff and reduced-stop conditions (0 wrong; 25 stops versus 54); all 53 selected outcomes
+reproduce on the final source/toolchain. This evidence is separate from the 1,874 deterministic tests and 169 audit
+checks, which also pass in the clean `547a36e` checkout. This §§5–20 inventory is not blanket specification
+compliance: the live oracle's scope, uncaptured raw S8 semantic metric and unmet NFR-03 latency requirement are
+recorded in `COMPLIANCE_REPORT.md`.
 
 ## Items
 
 | ID | Section | Item | Owner | Status |
 | --- | --- | --- | --- | --- |
-| C-001 | §5 | Stack exactly as §5 (Node 22 ESM strict TS, fastify, SQLCipher, keyring, ajv, viem, chrono, luxon, scure, levenshtein, pdf-parse, html-to-text, pino, vitest) | A | implemented + tested |
+| C-001 | §5 | Stack exactly as §5 (Node 22 ESM strict TS, fastify, SQLCipher, keyring, ajv, viem, chrono, luxon, scure, levenshtein, pdf-parse, html-to-text, pino, vitest) | A | implemented + tested (Node 25 accepted, SQ-11) |
 | C-002 | §6.1 | Config read from env AGENT_CONFIG, default ~/.agent-layer/config.json; validated | A | implemented + tested |
 | C-003 | §6.1 | Token files: one random 32-byte hex token each, mode 0600, generated on first run if missing | A | implemented + tested |
 | C-004 | §6.1 | config.example.json = §6.1 verbatim | O | implemented + tested |
-| C-005 | §6.2 | Static tables transcribed verbatim (src/contracts/static-tables.ts) | O | implemented, no test |
+| C-005 | §6.2 | Static tables transcribed verbatim (src/contracts/static-tables.ts) | O | implemented + tested |
 | C-006 | §6.2 | Tokens table used (USDC 6 decimals, ETH 18 native, aliases) | B | implemented + tested |
 | C-007 | §6.2 | Unsupported tokens → UNSUPPORTED_TOKEN | B | implemented + tested |
 | C-008 | §6.2 | Mainnet words used | B | implemented + tested |
@@ -44,7 +55,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-023 | §7 | SQLCipher open with the five pragmas (cipher, key, secure_delete, foreign_keys, WAL) | A | implemented + tested |
 | C-024 | §7 | Amounts stored as decimal strings, addresses EIP-55, timestamps ISO-8601 UTC | A | implemented + tested |
 | C-025 | §7 | Key: 32 random bytes hex in OS keychain (service agent-layer, account db-key), generated on first run | A | implemented + tested |
-| C-026 | §7.1 | schema.sql = §7.1 DDL verbatim | O | implemented, no test |
+| C-026 | §7.1 | schema.sql = §7.1 DDL verbatim | O | implemented + tested (v1 DDL unchanged; authorized additive encrypted journal migration) |
 | C-027 | §7.1 | DB1 repository implements src/contracts/repos.ts | A | implemented + tested |
 | C-028 | §7.1 | DB2 repository implements src/contracts/repos.ts | A | implemented + tested |
 | C-029 | §7.1 | DB3 repository implements src/contracts/repos.ts | A | implemented + tested |
@@ -58,7 +69,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-037 | §7.1 | Migrations run schema.sql (src/db/migrate.ts) | A | implemented + tested |
 | C-038 | §7.2 | DB5 written only by PUT /v1/settings/limits | A | implemented + tested |
 | C-039 | §7.2 | DB8 written by session manager (prompts, answers, history) | A | implemented + tested |
-| C-040 | §7.2 | DB2 written only by add_contact after explicit "Yes" + name | C | implemented + tested |
+| C-040 | §7.2 | DB2 written only by add_contact after explicit "Yes" + name | C | implemented + tested (ENS contact updates approved, SQ-O-07) |
 | C-041 | §7.3 | Rule 1: Random source crypto.randomBytes hex lowercase | A | implemented + tested |
 | C-042 | §7.3 | Rule 2: Formats amount_/address_/group_ 8 hex; req_/ap_/ses_/q_ 12 hex | A | implemented + tested |
 | C-043 | §7.3 | Rule 3: Uniqueness: redraw on PK violation, max 5 tries, then internal error | A | implemented + tested |
@@ -66,15 +77,15 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-045 | §7.3 | Rule 5: One placeholder per phrase/span per request (two amounts → two placeholders; payee twice → two address placeholders) | C | implemented + tested |
 | C-046 | §7.3 | Rule 6: Never reused across requests except follow-up refs via history | C | implemented + tested |
 | C-047 | §7.3 | Rule 7: Not counters | A | implemented + tested |
-| C-048 | §7.4 | Session close: one transaction deletes all rows of DB1, DB3, db8_prompts, db8_history, db8_sessions, then VACUUM; DB2, DB4–DB7 untouched | A | implemented + tested |
-| C-049 | §8.0 | RequestState and AgentRequest transcribed (src/contracts/types.ts) | O | implemented, no test |
+| C-048 | §7.4 | Session close: one transaction deletes all rows of DB1, DB3, db8_prompts, db8_history, db8_sessions, then VACUUM; DB2, DB4–DB7 untouched | A | implemented + tested (DB1/DB3/DB8 and journal session history cleared; submission identity persists) |
+| C-049 | §8.0 | RequestState and AgentRequest transcribed (src/contracts/types.ts) | O | implemented + tested (additive internal fields; limit_override per SQ-D-16) |
 | C-050 | §8.0 | Request lives in memory in session manager; one active request per session; raw texts written to DB8 after S1 passes | A | implemented + tested |
 | C-051 | §8.1 | S0 step 1: Parallel eth_getBalance + USDC balanceOf per allowed chain, 10 s timeout | B | implemented + tested |
 | C-052 | §8.1 | S0 step 2: Base units → decimal strings with bigint (ETH 18, USDC 6) | B | implemented + tested |
 | C-053 | §8.1 | S0 step 3: Upsert DB4 status ok, updated_at now | B | implemented + tested |
 | C-054 | §8.1 | S0 step 4: Failure/timeout → both rows unavailable (old values kept, unused) + note | B | implemented + tested |
 | C-055 | §8.1 | S0 step 5: All chains unavailable → BALANCES_UNAVAILABLE, FAILED | B | implemented + tested |
-| C-056 | §8.1 | S0 runs only for new messages (not answers/confirmations) | B | implemented + tested |
+| C-056 | §8.1 | S0 runs only for new messages (not answers/confirmations) | B | implemented + tested (also refreshed before first submission, authorized G03) |
 | C-057 | §8.2 | S1.1 every pasted block is untrusted content | B | implemented + tested |
 | C-058 | §8.2 | S1.1 attachments: text/plain, text/markdown, text/csv (UTF-8), application/pdf (pdf-parse); other → ATTACHMENT_UNSUPPORTED naming file; whole request stops | B | implemented + tested |
 | C-059 | §8.2 | S1.1 urls[] plus https URLs in typed text; typed URLs removed and replaced by [link N] | B | implemented + tested |
@@ -85,13 +96,13 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-064 | §8.2 | S1.2 secret detector: Solana-style secret regex + 64 bytes | B | implemented + tested |
 | C-065 | §8.2 | S1.2 secret detector: Seed phrase: run of ≥12 consecutive BIP-39 words, checksum or not | B | implemented + tested |
 | C-066 | §8.2 | S1.2 secret detector: Keystore JSON (crypto/Crypto, ciphertext, kdf) | B | implemented + tested |
-| C-067 | §8.2 | S1.2 scan covers typed_text, pasted blocks, attachment text (not fetched pages) | B | implemented + tested |
+| C-067 | §8.2 | S1.2 scan covers typed_text, pasted blocks, attachment text (not fetched pages) | B | implemented + tested (SQ-O-06: URL/redirect/answer screening; B15 malformed escapes) |
 | C-068 | §8.2 | S1.2 hit → SECRET_DETECTED; nothing written to DB8/DB1/DB3/logs; buffers dropped | B | implemented + tested |
 | C-069 | §8.2 | S1.3 fetch only after scan passes: https GET, timeout, max_redirects each https, max_bytes | B | implemented + tested |
 | C-070 | §8.2 | S1.3 refuse private/loopback/link-local ranges (8 ranges listed) | B | implemented + tested |
 | C-071 | §8.2 | S1.3 accept text/html (html-to-text), text/plain, application/pdf | B | implemented + tested |
 | C-072 | §8.2 | S1.3 any failure → URL_FETCH_FAILED with link number; URLs inside fetched content never fetched | B | implemented + tested |
-| C-073 | §8.2 | S1.4 each item ≤ 20,000 chars else DOCUMENT_TOO_LARGE | B | implemented + tested (interim SQ-22) |
+| C-073 | §8.2 | S1.4 each item ≤ 20,000 chars else DOCUMENT_TOO_LARGE | B | implemented + tested (human-approved SQ-22) |
 | C-074 | §8.2 | S1.5 one Q-LLM call per item; invalid → retry once → item yields nothing + note | B | implemented + tested |
 | C-075 | §8.2 | S1.5 QItem mapping; bad address/amount → null; all-null entries dropped | B | implemented + tested |
 | C-076 | §8.2 | S1.6 persist typed_text (typed) and pasted blocks (pasted) to db8_prompts; attachments/pages not stored | B | implemented + tested |
@@ -99,18 +110,18 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-078 | §8.3 | S2 rule 1: Clause split at . ! ? ; newline , and words and/then/also/plus with offsets | B | implemented + tested |
 | C-079 | §8.3 | S2 rule 2: Address regex candidates | B | implemented + tested |
 | C-080 | §8.3 | S2 rule 3: ENS regex candidates not in email/URL; normalize() failures dropped | B | implemented + tested |
-| C-081 | §8.3 | S2 rule 4: Group markers incl. @<domain> and "everyone under X" | B | implemented + tested |
+| C-081 | §8.3 | S2 rule 4: Group markers incl. @<domain> and "everyone under X" | B | implemented + tested (also recognizes all X members) |
 | C-082 | §8.3 | S2 rule 5: Chain aliases whole-word; eth/ethereum chain only with on/via/over/using or chain/network/l1 | B | implemented + tested |
 | C-083 | §8.3 | S2 rule 6: Mainnet word → MAINNET_NOT_SUPPORTED; unknown chain after on/via → UNSUPPORTED_CHAIN | B | implemented + tested |
-| C-084 | §8.3 | S2 rule 7: Tokens: usdc aliases, eth/ether/ethereum, fiat USD, fiat OTHER; unsupported token next to number → UNSUPPORTED_TOKEN | B | implemented + tested |
-| C-085 | §8.3 | S2 rule 8: chrono.parse with forwardDate in session tz → spans with kind | B | implemented + tested |
-| C-086 | §8.3 | S2 rule 9: Recurrence/cancel/back-ref/distributive/split flags; distributive inside recurrence not distributive | B | implemented + tested |
+| C-084 | §8.3 | S2 rule 7: Tokens: usdc aliases, eth/ether/ethereum, fiat USD, fiat OTHER; unsupported token next to number → UNSUPPORTED_TOKEN | B | implemented + tested (B12: digit-glued and complete number-word amounts) |
+| C-085 | §8.3 | S2 rule 8: chrono.parse with forwardDate in session tz → spans with kind | B | implemented + tested (B16 local calendar fields; B17 typed range direction) |
+| C-086 | §8.3 | S2 rule 9: Recurrence/cancel/back-ref/distributive/split flags; distributive inside recurrence not distributive | B | implemented + tested (also explicit once/twice recurrence forms) |
 | C-087 | §8.3 | S2 rule 10: Numeric candidates excluding addresses, ENS, chrono spans, ordinals, counts (times\|weeks\|days\|months\|payments\|x) | B | implemented + tested |
 | C-088 | §8.4 | S3 prompt input is unmasked typed_text | B | implemented + tested |
 | C-089 | §8.4 | S3.1 phrase must occur verbatim (case-sensitive, first unused occurrence) else dropped | B | implemented + tested |
-| C-090 | §8.4 | S3.2 role=context dropped silently; phrase → [amount] in masked texts | B | implemented + tested |
+| C-090 | §8.4 | S3.2 role=context dropped silently; phrase → [amount] in masked texts | B | implemented + tested (B13: context masking requires textual amount evidence) |
 | C-091 | §8.4 | S3.3 number must match ^\d+(\.\d+)?$; null → Q_AMOUNT_MISSING | B | implemented + tested |
-| C-092 | §8.4 | S3.3 code parse equality; mismatch → Q_AMOUNT_MISMATCH with both values | B | implemented + tested |
+| C-092 | §8.4 | S3.3 code parse equality; mismatch → Q_AMOUNT_MISMATCH with both values | B | implemented + tested (B01: code zero is compared before minting) |
 | C-093 | §8.4 | S3.3 token inference order (a)–(e); fiat OTHER → Q_FIAT_OTHER; fiat USD with ETH → Q_FIAT_OTHER | B | implemented + tested |
 | C-094 | §8.4 | S3.3 precision > token decimals → Q_AMOUNT_PRECISION; zero → Q_AMOUNT_MISSING | B | implemented + tested |
 | C-095 | §8.4 | S3.4 uncovered numeric candidates → Q_AMOUNT_UNCOVERED (Yes → pay, No → ignore) | B | implemented + tested |
@@ -119,7 +130,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-098 | §8.4 | S3.7 document amounts only when zero typed pay amounts; Q_UNTRUSTED_AMOUNT each; null token → Q_TOKEN; typed amounts present → note | B | implemented + tested |
 | C-099 | §8.4 | S3.8 no pay amounts → continue | B | implemented + tested |
 | C-100 | §8.4 | S3 output masked_text_s3 | B | implemented + tested |
-| C-101 | §8.5 | S4.1 unsupported → UNSUPPORTED_REQUEST, ANSWERED | B | implemented + tested (interim SQ-01) |
+| C-101 | §8.5 | S4.1 unsupported → UNSUPPORTED_REQUEST, ANSWERED | B | implemented + tested (human-approved SQ-01) |
 | C-102 | §8.5 | S4.2 balance → §13.2 answer, ANSWERED | B | implemented + tested |
 | C-103 | §8.5 | S4.3 actions empty → retry once → MODEL_FAILED | B | implemented + tested |
 | C-104 | §8.5 | S4.3 remove l if no cancel word | B | implemented + tested |
@@ -127,8 +138,8 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-106 | §8.5 | S4.3 i/k without pay amounts → Q_AMOUNT_MISSING | B | implemented + tested |
 | C-107 | §8.5 | S4.3 also_balance → balance answer first message of summary response | B | implemented + tested |
 | C-108 | §8.5 | S4.3 split words + one amount + ≥2 recipients → SPLIT_UNSUPPORTED (after S5) | B | implemented + tested |
-| C-109 | §8.6 | S5 rule 1: span text verbatim in masked_text_s3 else drop | B | implemented + tested |
-| C-110 | §8.6 | S5 rule 2: drop chain/token alias, back-ref word, placeholder, me/my/I | B | implemented + tested (interim SQ-O-05) |
+| C-109 | §8.6 | S5 rule 1: span text verbatim in masked_text_s3 else drop | B | implemented + tested (B11 Unicode identifier boundaries) |
+| C-110 | §8.6 | S5 rule 2: drop chain/token alias, back-ref word, placeholder, me/my/I | B | implemented + tested (human-approved SQ-O-05; myself also excluded) |
 | C-111 | §8.6 | S5 rule 3: address regex; ens/group normalize() else drop | B | implemented + tested |
 | C-112 | §8.6 | S5 rule 4: missing S2 candidates added as payee | B | implemented + tested |
 | C-113 | §8.6 | S5 rule 5: overlapping spans keep longest | B | implemented + tested |
@@ -140,7 +151,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-119 | §8.8 | S7 single → mint address_ + DB3 single row (chain_id pinned or NULL, source) | C | implemented + tested |
 | C-120 | §8.8 | S7 group → reuse group_ placeholder from §9.6 | C | implemented + tested |
 | C-121 | §8.8 | S7 follow-up refs reuse earlier placeholder (no new row) | C | implemented + tested |
-| C-122 | §8.8 | S7 masked_text_s8 (payees → placeholders, mentioned → [person]) | C | implemented + tested |
+| C-122 | §8.8 | S7 masked_text_s8 (payees → placeholders, mentioned → [person]) | C | implemented + tested (human-approved repeat masking and Q_NAME_ROLE, SQ-O-01/F-12) |
 | C-123 | §8.9 | S8 schema: kind enum = actions | D | implemented + tested |
 | C-124 | §8.9 | S8 schema: amount enum = confirmed pay placeholders + null | D | implemented + tested |
 | C-125 | §8.9 | S8 schema: recipient enum = this request placeholders (single, group, follow-up) | D | implemented + tested |
@@ -148,37 +159,37 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-127 | §8.9 | S8 schema: schedule fields enums | D | implemented + tested |
 | C-128 | §8.9 | S8 schema: maxItems = min(50, A×R+R) | D | implemented + tested |
 | C-129 | §8.9 | S8 token = DB1 token of amount placeholder | D | implemented + tested |
-| C-130 | §8.9 | S8 retry once with CORRECTION: line; second failure → PAIRING_FAILED | D | implemented + tested |
+| C-130 | §8.9 | S8 retry once with CORRECTION: line; second failure → PAIRING_FAILED | D | implemented + tested (G01 explicit chain checks include document-only payments) |
 | C-131 | §8.9 | S8 output payments[] in model order | D | implemented + tested |
 | C-132 | §8.9 | P1 kind fields | D | implemented + tested |
-| C-133 | §8.9 | P2 amount coverage / distributive reuse | D | implemented + tested |
+| C-133 | §8.9 | P2 amount coverage / distributive reuse | D | implemented + tested (human-approved distributive scope, SQ-R-02) |
 | C-134 | §8.9 | P3 recipient coverage; no duplicate (amount, recipient) | D | implemented + tested |
-| C-135 | §8.9 | P4 clause binding | D | implemented + tested (interim SQ-O-03) |
+| C-135 | §8.9 | P4 clause binding | D | implemented + tested (human-approved relaxed P4 and per-amount questions, SQ-O-03/F-11) |
 | C-136 | §8.9 | P5 groups only with i; k+group → GROUP_AUTOPAY_UNSUPPORTED (no retry) | D | implemented + tested |
 | C-137 | §8.9 | P6 relative only i/single/once → RELATIVE_AMOUNT_NOT_ALLOWED (no retry) | D | implemented + tested |
 | C-138 | §8.9 | P7 untrusted in k → UNTRUSTED_IN_AUTOPAY (no retry) | D | implemented + tested |
 | C-139 | §8.9 | P8 split → SPLIT_UNSUPPORTED (no retry) | D | implemented + tested |
 | C-140 | §8.9 | P9 chain stated/pinned conflict → CHAIN_CONFLICT (no retry) | D | implemented + tested |
 | C-141 | §8.10 | Prompt builder: one function per call returning {system,user,schema}; slots only; fresh chat | B | implemented + tested |
-| C-142 | §8.10 | LLM #1 Amounts prompt verbatim | B | implemented + tested |
-| C-143 | §8.10 | LLM #2 Request type prompt verbatim | B | implemented + tested |
-| C-144 | §8.10 | LLM #3 Recipient spans prompt verbatim (CANDIDATES) | B | implemented + tested |
+| C-142 | §8.10 | LLM #1 Amounts prompt verbatim | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
+| C-143 | §8.10 | LLM #2 Request type prompt verbatim | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
+| C-144 | §8.10 | LLM #3 Recipient spans prompt verbatim (CANDIDATES) | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
 | C-145 | §8.10 | Q-LLM prompt verbatim | B | implemented + tested |
 | C-146 | §8.10 | Call options temperature 0, seed, format schema, stream false | B | implemented + tested |
 | C-147 | §8.10 | Retries: error/timeout/invalid → one retry; second → MODEL_FAILED (Q-LLM: item yields nothing) | B | implemented + tested |
-| C-148 | §8.10 | LLM #4 Pair payments prompt verbatim with AMOUNTS/RECIPIENTS/DOCUMENT ITEMS/CHAINS/ACTION KINDS/SESSION/correction slots | D | implemented + tested |
+| C-148 | §8.10 | LLM #4 Pair payments prompt verbatim with AMOUNTS/RECIPIENTS/DOCUMENT ITEMS/CHAINS/ACTION KINDS/SESSION/correction slots | D | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
 | C-149 | §8.13 | S11 builds summary from real DB1/DB3/DB4 values, returns awaiting_confirmation | D | implemented + tested |
 | C-150 | §8.14 | S12 step 1: swap_back allowlist; amount_ → {value,base_units,decimals}; address_ → checksummed | D | implemented + tested |
 | C-151 | §8.14 | S12 step 2: validate against hand-off schema; failure → HANDOFF_INVALID/internal error, FAILED | D | implemented + tested |
 | C-152 | §8.14 | S12 step 3: POST /v1/intents with Idempotency-Key = request_id | D | implemented + tested |
-| C-153 | §8.14 | S12 step 4: 2xx → DB6 pending rows, DB7 pending per k, db8_history append, HANDED_OFF, reply | D | implemented + tested |
+| C-153 | §8.14 | S12 step 4: 2xx → DB6 pending rows, DB7 pending per k, db8_history append, HANDED_OFF, reply | D | implemented + tested (authorized journal and DB6/DB7 reservation before external submission) |
 | C-154 | §8.14 | S12 step 5: 4xx → EXECUTION_REJECTED with message, FAILED | D | implemented + tested |
-| C-155 | §8.14 | S12 step 6: 5xx/timeout → EXECUTION_UNAVAILABLE, HANDOFF_FAILED; same envelope + key; ≤3 attempts then FAILED | A | implemented + tested (interim SQ-A-06) |
+| C-155 | §8.14 | S12 step 6: 5xx/timeout → EXECUTION_UNAVAILABLE, HANDOFF_FAILED; same envelope + key; ≤3 attempts then FAILED | A | implemented + tested (F-9 variants; submitted retries preserve durable envelope and key) |
 | C-156 | §9 | Every path ends at exactly one address or stops; only loop is "No, re-enter" | C | implemented + tested |
 | C-157 | §9.1 | Names 1: name_key normalisation | C | implemented + tested |
 | C-158 | §9.1 | Names 2: DB2 hit → contact (stored name, source contact, chains) + ENS re-check when ens_name | C | implemented + tested |
 | C-159 | §9.1 | Names 3: no rows + contains "." → ENS flow | C | implemented + tested |
-| C-160 | §9.1 | Names 4: no rows → Q_WHO_IS with ≤3 Levenshtein ≤2 chips (distance, then alpha) + free input | C | implemented + tested (interim SQ-09) |
+| C-160 | §9.1 | Names 4: no rows → Q_WHO_IS with ≤3 Levenshtein ≤2 chips (distance, then alpha) + free input | C | implemented + tested (human-approved SQ-09) |
 | C-161 | §9.1 | Names 4a: contact chip → resolved, no alias saved | C | implemented + tested |
 | C-162 | §9.1 | Names 4b: address typed → §9.2 with suggested name | C | implemented + tested |
 | C-163 | §9.1 | Names 4c: ENS typed → §9.3 | C | implemented + tested |
@@ -187,9 +198,9 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-166 | §9.2 | Addresses 2: zero address → re-ask | C | implemented + tested |
 | C-167 | §9.2 | Addresses 3: wallet.address → SELF_PAYMENT | C | implemented + tested |
 | C-168 | §9.2 | Addresses 4: in DB2 → known contact | C | implemented + tested |
-| C-169 | §9.2 | Addresses 5: not in DB2 → Q_ADDRESS_CORRECT with emphasis; untrusted wording | C | implemented + tested (interim SQ-06) |
+| C-169 | §9.2 | Addresses 5: not in DB2 → Q_ADDRESS_CORRECT with emphasis; untrusted wording | C | implemented + tested (human-approved SQ-06) |
 | C-170 | §9.2 | Addresses 5a: No, re-enter → Q_ADDRESS_REENTER → step 1 | C | implemented + tested |
-| C-171 | §9.2 | Addresses 5b: Yes → Q_NAME_FOR_ADDRESS prefilled | C | implemented + tested (interim SQ-03) |
+| C-171 | §9.2 | Addresses 5b: Yes → Q_NAME_FOR_ADDRESS prefilled | C | implemented + tested (human-approved SQ-03) |
 | C-172 | §9.2 | Addresses 5c: untrusted only: "Don't pay this one" removes payee; none left → Q_NO_PAYEE | C | implemented + tested |
 | C-173 | §9.2 | Addresses 6: name rules (1–32 chars, charset, not alias/back-ref/0x, unique) | C | implemented + tested |
 | C-174 | §9.2 | Addresses 7: add_contact rows for every allowed chain, ens_name NULL; source user/untrusted | C | implemented + tested |
@@ -213,9 +224,9 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-192 | §9.6 | Group 4: parent not in ENS → Q_GROUP_PARENT not-in-ENS wording | C | implemented + tested |
 | C-193 | §9.6 | Group 5: zero subnames → GROUP_EMPTY | C | implemented + tested |
 | C-194 | §9.6 | Group 6: resolve members 8 in parallel, 10 s each; unresolvable → can't pay | C | implemented + tested |
-| C-195 | §9.6 | Group 7: exclude self (note); dedupe by address keep alphabetically first (note) | C | implemented + tested (interim SQ-07) |
+| C-195 | §9.6 | Group 7: exclude self (note); dedupe by address keep alphabetically first (note) | C | implemented + tested (human-approved SQ-07) |
 | C-196 | §9.6 | Group 8: no payable → GROUP_EMPTY | C | implemented + tested |
-| C-197 | §9.6 | Group 9: Q_GROUP_MEMBERS multiselect, preselected, disabled unpayable, count/total; zero → re-ask | C | implemented + tested (interim SQ-05) |
+| C-197 | §9.6 | Group 9: Q_GROUP_MEMBERS multiselect, preselected, disabled unpayable, count/total; zero → re-ask | C | implemented + tested (human-approved SQ-05) |
 | C-198 | §9.6 | Group 10: DB3 group row + member rows; never DB2 | C | implemented + tested |
 | C-199 | §9.6 | Group 11: no size cap | C | implemented + tested |
 | C-200 | §9.7 | Questions one at a time in payee order | C | implemented + tested |
@@ -232,8 +243,8 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-211 | §10.3 | Chain 5: still none → largest spendable−assigned; shortfall bridged | D | implemented + tested |
 | C-212 | §10.3 | Chain 6: add need to assigned; mark silent reuse | D | implemented + tested |
 | C-213 | §10.4 | Bridge algorithm (short/surplus, deliverable floor, padded ceil, DB1 bridge_padded mint) | D | implemented + tested |
-| C-214 | §10.4 | INSUFFICIENT_FUNDS lists per-chain spendable vs needed | D | implemented + tested (interim SQ-08) |
-| C-215 | §10.4 | > max_bridges_per_request → LIMIT_BRIDGES | D | implemented + tested |
+| C-214 | §10.4 | INSUFFICIENT_FUNDS lists per-chain spendable vs needed | D | implemented + tested (SQ-08/F-10: positive chain balances; R4-F4: need includes per-bridge padding) |
+| C-215 | §10.4 | > max_bridges_per_request → LIMIT_BRIDGES | D | implemented + tested (human-approved named one-request limit consent, SQ-D-16/F-1…F-6) |
 | C-216 | §10.4 | j buffer counts toward daily limit | D | implemented + tested |
 | C-217 | §10.4 | Gas check per touched chain → NO_GAS | D | implemented + tested |
 | C-218 | §10.5 | Order 1: steps from 0, no gaps | D | implemented + tested |
@@ -248,16 +259,16 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-227 | §10.6 | Schedule field: day_of_month (S8 else today; 29–31 → 28 + note) | D | implemented + tested |
 | C-228 | §10.6 | Schedule field: time_of_day (chrono in clause else default 10:00) | D | implemented + tested |
 | C-229 | §10.6 | Schedule field: timezone = session | D | implemented + tested |
-| C-230 | §10.6 | Schedule field: start_date (chrono start else today; past → Q_AUTOPAY_START); first occurrence ≥ start and strictly after now | D | implemented + tested |
+| C-230 | §10.6 | Schedule field: start_date (chrono start else today; past → Q_AUTOPAY_START); first occurrence ≥ start and strictly after now | D | implemented + tested (SQ-R-05: late start asks again before first submission) |
 | C-231 | §10.6 | Schedule field: end (after_count / on_date N units −1 day / until / until_cancelled; nothing → Q_AUTOPAY_END → COUNT/DATE) | D | implemented + tested |
 | C-232 | §10.6 | Derived 1: occurrences enumeration with interval and end | D | implemented + tested |
 | C-233 | §10.6 | Derived 2: zero → AUTOPAY_NO_OCCURRENCES | D | implemented + tested |
 | C-234 | §10.6 | Derived 3: beyond max weeks → LIMIT_AUTOPAY_DURATION | D | implemented + tested |
-| C-235 | §10.6 | Derived 4: per_period_cap and LIMIT_AUTOPAY_PERIOD | D | implemented + tested |
+| C-235 | §10.6 | Derived 4: per_period_cap and LIMIT_AUTOPAY_PERIOD | D | implemented + tested (human-approved short cap min(window cap, total cap), SQ-R-03) |
 | C-236 | §10.6 | Derived 5: amount_per_payment ≤ per_tx_max → LIMIT_PER_TX | D | implemented + tested |
 | C-237 | §10.6 | Derived 6: total_cap = amount × occurrences = prefund | D | implemented + tested |
 | C-238 | §10.6 | Derived 7: caps minted in DB1 derived | D | implemented + tested |
-| C-239 | §10.6 | Derived 8: expires_at 23:59:59 last date in tz as UTC | D | implemented + tested (interim SQ-D-15) |
+| C-239 | §10.6 | Derived 8: expires_at 23:59:59 last date in tz as UTC | D | implemented + tested (human-approved SQ-D-15) |
 | C-240 | §10.6 | Derived 9: cron strings daily/weekly/monthly | D | implemented + tested |
 | C-241 | §10.6 | Derived 10: autopay_id minted | D | implemented + tested |
 | C-242 | §10.7 | Cancel 1: find_autopays by recipient active | D | implemented + tested |
@@ -283,13 +294,13 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-262 | §11.4 | DB6 at hand-off: i → payment row counts 1 | D | implemented + tested |
 | C-263 | §11.4 | DB6 at hand-off: j → bridge_out (0) + bridge_buffer (1) | D | implemented + tested |
 | C-264 | §11.4 | DB6 at hand-off: k → autopay_prefund (0) | D | implemented + tested |
-| C-265 | §11.4 | DB6 at hand-off: l → none | D | implemented + tested |
-| C-266 | §11.4 | autopay_payment reports inserted executed, counts 1 | A | implemented + tested |
+| C-265 | §11.4 | DB6 at hand-off: l → none | D | implemented + tested (no DB6 spend for l; authorized durable journal records l identity) |
+| C-266 | §11.4 | autopay_payment reports inserted executed, counts 1 | A | implemented + tested (SQ-R-04 duplicate hashes ignored; authorized report correlation) |
 | C-267 | §12.1 | amounts schema verbatim | O | implemented + tested |
 | C-268 | §12.1 | request-type schema verbatim | O | implemented + tested |
 | C-269 | §12.1 | recipient-spans schema verbatim | O | implemented + tested |
 | C-270 | §12.1 | quarantine schema verbatim | O | implemented + tested |
-| C-271 | §12.1 | Shared Ajv 2020 strict allErrors + formats | O | implemented, no test |
+| C-271 | §12.1 | Shared Ajv 2020 strict allErrors + formats | O | implemented + tested |
 | C-272 | §12.2 | S8 template builder (slots) | O | implemented + tested |
 | C-273 | §12.3 | Internal plan types + generated internal-plan.schema.json | O | implemented + tested |
 | C-274 | §12.5 | Hand-off envelope schema verbatim | O | implemented + tested |
@@ -316,35 +327,35 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-295 | §13.1 | Note emitted: Couldn't re-check {ens} … | C | implemented + tested |
 | C-296 | §13.1 | Note emitted: Paid on the 28th … | D | implemented + tested |
 | C-297 | §13.1 | Note emitted: Skipped {name}: … | C | implemented + tested |
-| C-298 | §13.1 | Note emitted: Today's limit was lifted once … | D | implemented + tested |
+| C-298 | §13.1 | Note emitted: Today's limit was lifted once … | D | implemented + tested (human-approved generalized override note, SQ-D-16/F-2) |
 | C-299 | §13.1 | Note emitted: Amounts in the attached content weren't used | B | implemented + tested |
 | C-300 | §13.1 | Note emitted: Couldn't read anything usable from {item} | B | implemented + tested |
 | C-301 | §13.2 | Balance answer format; every allowed chain in order; raw ETH + spendable; totals | D | implemented + tested |
 | C-302 | §13.3 | Reply: Sent to your wallet for signing. | D | implemented + tested |
 | C-303 | §13.3 | Reply: OK, I've dropped that… | A | implemented + tested |
-| C-304 | §13.3 | Reply: Cancelled. Nothing was sent. | A | implemented + tested |
+| C-304 | §13.3 | Reply: Cancelled. Nothing was sent. | A | implemented + tested (F-8 old handoff reply; SQ-R-06 ambiguous timeout cancellation) |
 | C-305 | §13.3 | Reply: I dropped the previous plan… (prepended) | A | implemented + tested |
-| C-306 | §13.4 | Question JSON shape; texts and fixed chips in catalog; chip answer parsing (matchChip) | O | implemented, no test |
-| C-307 | §13.4 | Q_AMOUNT_MISSING: asked when specified; answer validated; effect applied | B | implemented + tested (interim SQ-09) |
+| C-306 | §13.4 | Question JSON shape; texts and fixed chips in catalog; chip answer parsing (matchChip) | O | implemented + tested (28 codes; approved Q_LIMIT_OVERRIDE/Q_PAIR_AMOUNT/Q_NAME_ROLE and SQ-CX-01 copy) |
+| C-307 | §13.4 | Q_AMOUNT_MISSING: asked when specified; answer validated; effect applied | B | implemented + tested (human-approved SQ-09) |
 | C-308 | §13.4 | Q_AMOUNT_MISMATCH: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-309 | §13.4 | Q_AMOUNT_UNCOVERED: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-310 | §13.4 | Q_AMOUNT_PRECISION: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-311 | §13.4 | Q_TOKEN: asked when specified; answer validated; effect applied | B | implemented + tested |
-| C-312 | §13.4 | Q_FIAT_OTHER: asked when specified; answer validated; effect applied | B | implemented + tested (interim SQ-09) |
+| C-312 | §13.4 | Q_FIAT_OTHER: asked when specified; answer validated; effect applied | B | implemented + tested (human-approved SQ-09) |
 | C-313 | §13.4 | Q_UNTRUSTED_AMOUNT: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-314 | §13.4 | Q_RECURRING: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-315 | §13.4 | Q_NO_PAYEE: asked when specified; answer validated; effect applied | B | implemented + tested |
 | C-316 | §13.4 | Q_FOLLOWUP_WHO: asked when specified; answer validated; effect applied | B | implemented + tested |
-| C-317 | §13.4 | Q_WHO_IS: asked when specified; answer validated; effect applied | C | implemented + tested (interim SQ-09) |
-| C-318 | §13.4 | Q_ADDRESS_CORRECT: asked when specified; answer validated; effect applied | C | implemented + tested (interim SQ-06) |
+| C-317 | §13.4 | Q_WHO_IS: asked when specified; answer validated; effect applied | C | implemented + tested (human-approved SQ-09) |
+| C-318 | §13.4 | Q_ADDRESS_CORRECT: asked when specified; answer validated; effect applied | C | implemented + tested (human-approved SQ-06) |
 | C-319 | §13.4 | Q_ADDRESS_REENTER: asked when specified; answer validated; effect applied | C | implemented + tested |
-| C-320 | §13.4 | Q_NAME_FOR_ADDRESS: asked when specified; answer validated; effect applied | C | implemented + tested (interim SQ-03) |
+| C-320 | §13.4 | Q_NAME_FOR_ADDRESS: asked when specified; answer validated; effect applied | C | implemented + tested (human-approved SQ-03) |
 | C-321 | §13.4 | Q_ENS_CHAIN: asked when specified; answer validated; effect applied | C | implemented + tested |
-| C-322 | §13.4 | Q_ENS_CHANGED: asked when specified; answer validated; effect applied | C | implemented + tested (interim SQ-15) |
+| C-322 | §13.4 | Q_ENS_CHANGED: asked when specified; answer validated; effect applied | C | implemented + tested (human-approved SQ-15) |
 | C-323 | §13.4 | Q_GROUP_PARENT: asked when specified; answer validated; effect applied | C | implemented + tested |
 | C-324 | §13.4 | Q_GROUP_CHAIN: asked when specified; answer validated; effect applied | C | implemented + tested |
 | C-325 | §13.4 | Q_GROUP_MEMBERS: asked when specified; answer validated; effect applied | C | implemented + tested |
-| C-326 | §13.4 | Q_GROUP_OVER_LIMIT: asked when specified; answer validated; effect applied | D | implemented + tested (interim SQ-15) |
+| C-326 | §13.4 | Q_GROUP_OVER_LIMIT: asked when specified; answer validated; effect applied | D | implemented + tested (human-approved replacement by Q_LIMIT_OVERRIDE, SQ-D-16/F-2/SQ-CX-01) |
 | C-327 | §13.4 | Q_AUTOPAY_FREQUENCY: asked when specified; answer validated; effect applied | D | implemented + tested |
 | C-328 | §13.4 | Q_AUTOPAY_START: asked when specified; answer validated; effect applied | D | implemented + tested |
 | C-329 | §13.4 | Q_AUTOPAY_END: asked when specified; answer validated; effect applied | D | implemented + tested |
@@ -373,7 +384,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-352 | §14.3 | Reports: autopay_payment inserts DB6 row | A | implemented + tested |
 | C-353 | §14.3 | Reports: autopay_status updates DB7 | A | implemented + tested |
 | C-354 | §14.3 | Reports: unknown id → 404; malformed → 400; success → 204 | A | implemented + tested |
-| C-355 | §14.4 | Ollama /api/chat request shape; parse message.content; Ajv validate | B | implemented + tested |
+| C-355 | §14.4 | Ollama /api/chat request shape; parse message.content; Ajv validate | B | implemented + tested (SQ-L-01 valid action-kind deduplication before unchanged schema validation) |
 | C-356 | §14.4 | Startup GET /api/tags check; missing model → health ollama false and every request MODEL_FAILED | B | implemented + tested |
 | C-357 | §14.5 | One viem public client per chain, http(rpc_url), 10 s, no retries | B | implemented + tested |
 | C-358 | §14.5 | ENS client on ens.rpc_chain_id with universalResolverAddress | C | implemented + tested |
@@ -381,12 +392,12 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-360 | §15 | SECRET_DETECTED raised in its stated case with catalog message | B | implemented + tested |
 | C-361 | §15 | ATTACHMENT_UNSUPPORTED raised in its stated case with catalog message | B | implemented + tested |
 | C-362 | §15 | URL_FETCH_FAILED raised in its stated case with catalog message | B | implemented + tested |
-| C-363 | §15 | DOCUMENT_TOO_LARGE raised in its stated case with catalog message | B | implemented + tested (interim SQ-22) |
+| C-363 | §15 | DOCUMENT_TOO_LARGE raised in its stated case with catalog message | B | implemented + tested (human-approved SQ-22) |
 | C-364 | §15 | BALANCES_UNAVAILABLE raised in its stated case with catalog message | B | implemented + tested |
 | C-365 | §15 | MAINNET_NOT_SUPPORTED raised in its stated case with catalog message | B | implemented + tested |
 | C-366 | §15 | UNSUPPORTED_CHAIN raised in its stated case with catalog message | B | implemented + tested |
 | C-367 | §15 | UNSUPPORTED_TOKEN raised in its stated case with catalog message | B | implemented + tested |
-| C-368 | §15 | UNSUPPORTED_REQUEST raised in its stated case with catalog message | B | implemented + tested (interim SQ-01) |
+| C-368 | §15 | UNSUPPORTED_REQUEST raised in its stated case with catalog message | B | implemented + tested (human-approved SQ-01) |
 | C-369 | §15 | SPLIT_UNSUPPORTED raised in its stated case with catalog message | D | implemented + tested |
 | C-370 | §15 | RELATIVE_AMOUNT_NOT_ALLOWED raised in its stated case with catalog message | D | implemented + tested |
 | C-371 | §15 | GROUP_AUTOPAY_UNSUPPORTED raised in its stated case with catalog message | D | implemented + tested |
@@ -399,7 +410,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-378 | §15 | NO_ACTIVE_AUTOPAY raised in its stated case with catalog message | D | implemented + tested |
 | C-379 | §15 | AUTOPAY_NOT_READY raised in its stated case with catalog message | D | implemented + tested |
 | C-380 | §15 | AUTOPAY_NO_OCCURRENCES raised in its stated case with catalog message | D | implemented + tested |
-| C-381 | §15 | INSUFFICIENT_FUNDS raised in its stated case with catalog message | D | implemented + tested (interim SQ-08) |
+| C-381 | §15 | INSUFFICIENT_FUNDS raised in its stated case with catalog message | D | implemented + tested (SQ-08/F-10 positive chain list; per-bridge padded need) |
 | C-382 | §15 | NO_GAS raised in its stated case with catalog message | D | implemented + tested |
 | C-383 | §15 | CHAIN_NOT_ALLOWED raised in its stated case with catalog message | D | implemented + tested |
 | C-384 | §15 | LIMIT_PER_TX raised in its stated case with catalog message | D | implemented + tested |
@@ -410,10 +421,10 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-389 | §15 | TOO_MANY_RETRIES raised in its stated case with catalog message | A | implemented + tested |
 | C-390 | §15 | MODEL_FAILED raised in its stated case with catalog message | B | implemented + tested |
 | C-391 | §15 | EXECUTION_REJECTED raised in its stated case with catalog message | D | implemented + tested |
-| C-392 | §15 | EXECUTION_UNAVAILABLE raised in its stated case with catalog message | D | implemented + tested |
+| C-392 | §15 | EXECUTION_UNAVAILABLE raised in its stated case with catalog message | D | implemented + tested (human-approved third-attempt variants, SQ-A-06/F-9) |
 | C-393 | §15 | INTERNAL_ERROR raised in its stated case with catalog message | D | implemented + tested |
 | C-394 | §15 | CANCELLED raised in its stated case with catalog message | A | implemented + tested |
-| C-395 | §15 | All 35 error messages verbatim in catalog | O | implemented, no test |
+| C-395 | §15 | All 35 error messages verbatim in catalog | O | implemented + tested (34 literal base messages; approved F-7/F-9/F-10 variants) |
 | C-396 | §15 | Errors returned in AgentResponse.error with state "error"; FAILED or ANSWERED for refusals | A | implemented + tested |
 | C-397 | §16.1 | Q-LLM values used only when typed text has no amounts / no payees | B | implemented + tested |
 | C-398 | §16.1 | Each untrusted amount needs Q_UNTRUSTED_AMOUNT | B | implemented + tested |
@@ -440,11 +451,11 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-419 | §17.2 | Step 7: follow-up summary note | D | implemented + tested |
 | C-420 | §17.3 | Table: Awaiting answer + answers call → validate, attempt+1, TOO_MANY_RETRIES after 4th | A | implemented + tested |
 | C-421 | §17.3 | Table: Awaiting answer + messages call → free-text answer | A | implemented + tested |
-| C-422 | §17.3 | Table: Cancel texts or cancel endpoint → DISCARDED, CANCELLED | A | implemented + tested (interim SQ-18) |
-| C-423 | §17.3 | Table: Awaiting confirmation + yes texts/confirm yes → S12 | A | implemented + tested |
-| C-424 | §17.3 | Table: Awaiting confirmation + no texts/confirm no → DISCARDED + reply | A | implemented + tested (interim SQ-18) |
+| C-422 | §17.3 | Table: Cancel texts or cancel endpoint → DISCARDED, CANCELLED | A | implemented + tested (human-approved SQ-18) |
+| C-423 | §17.3 | Table: Awaiting confirmation + yes texts/confirm yes → S12 | A | implemented + tested (authorized pre-submit balance/settings/limit revalidation, G03) |
+| C-424 | §17.3 | Table: Awaiting confirmation + no texts/confirm no → DISCARDED + reply | A | implemented + tested (human-approved SQ-18) |
 | C-425 | §17.3 | Table: Awaiting confirmation + other text → discard + new request + prepend line | A | implemented + tested |
-| C-426 | §17.3 | Table: HANDOFF_FAILED + confirm yes → retry S12 ≤3 total | A | implemented + tested (interim SQ-A-06) |
+| C-426 | §17.3 | Table: HANDOFF_FAILED + confirm yes → retry S12 ≤3 total | A | implemented + tested (authorized immutable retry after ambiguous submission, B19) |
 | C-427 | §17.3 | Discarded/cancelled requests keep DB1/DB3 rows but are never written to db8_history | A | implemented + tested |
 | C-428 | §18 | pino JSON to ~/.agent-layer/logs/agent.log, rotate 10 MB × 5, level info | A | implemented + tested |
 | C-429 | §18 | Allowlist serializer drops every other field; no debug mode | A | implemented + tested |
@@ -455,10 +466,10 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-434 | §19 | E3 reproduced by acceptance tests | O | implemented + tested |
 | C-435 | §19 | E4 reproduced by acceptance tests | O | implemented + tested |
 | C-436 | §19 | E5 reproduced by acceptance tests | O | implemented + tested |
-| C-437 | §19 | E6 reproduced by acceptance tests | O | deviates (SQ-D-15, open with the human) |
+| C-437 | §19 | E6 reproduced by acceptance tests | O | deviates (human-approved SQ-D-15: expiry on last occurrence date; tested) |
 | C-438 | §19 | E7 reproduced by acceptance tests | O | implemented + tested |
 | C-439 | §19 | E8 reproduced by acceptance tests | O | implemented + tested |
-| C-440 | §19 | E9 reproduced by acceptance tests | O | deviates (SQ-D-16, open with the human) |
+| C-440 | §19 | E9 reproduced by acceptance tests | O | deviates (human-approved SQ-D-16: default invoice limit applies; A-15 raises fixture limit; tested) |
 | C-441 | §19 | E10 reproduced by acceptance tests | O | implemented + tested |
 | C-442 | §20.1 | Unit tests: guard/secrets (every "must cover" item) | B | implemented + tested |
 | C-443 | §20.1 | Unit tests: lexical (every "must cover" item) | B | implemented + tested |
@@ -479,14 +490,14 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-458 | §20.2 | A-05 | O | implemented + tested |
 | C-459 | §20.2 | A-06 | O | implemented + tested |
 | C-460 | §20.2 | A-07 | O | implemented + tested |
-| C-461 | §20.2 | A-08 | O | implemented + tested (interim SQ-D-15) |
+| C-461 | §20.2 | A-08 | O | implemented + tested (human-approved SQ-D-15) |
 | C-462 | §20.2 | A-09 | O | implemented + tested |
 | C-463 | §20.2 | A-10 | O | implemented + tested |
 | C-464 | §20.2 | A-11 | O | implemented + tested |
 | C-465 | §20.2 | A-12 | O | implemented + tested |
 | C-466 | §20.2 | A-13 | O | implemented + tested |
 | C-467 | §20.2 | A-14 | O | implemented + tested |
-| C-468 | §20.2 | A-15 | O | implemented + tested (interim SQ-D-16) |
+| C-468 | §20.2 | A-15 | O | implemented + tested (human-approved SQ-D-16) |
 | C-469 | §20.2 | A-16 | O | implemented + tested |
 | C-470 | §20.2 | A-17 | O | implemented + tested |
 | C-471 | §20.2 | A-18 | O | implemented + tested |
@@ -515,7 +526,7 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-494 | §20.2 | A-41 | O | implemented + tested |
 | C-495 | §20.2 | A-42 | O | implemented + tested |
 | C-496 | §20.2 | A-43 | O | implemented + tested |
-| C-497 | §20.2 | A-44 | O | deviates (SQ-O-05, open with the human) |
+| C-497 | §20.2 | A-44 | O | deviates (human-approved SQ-O-05: me gives Q_NO_PAYEE, own address gives SELF_PAYMENT; tested) |
 | C-498 | §20.2 | A-45 | O | implemented + tested |
 | C-499 | §20.2 | A-46 | O | implemented + tested |
 | C-500 | §20.2 | A-47 | O | implemented + tested |
@@ -528,8 +539,8 @@ Status values: `open`, `implemented + tested`, `implemented, no test`, `missing`
 | C-507 | §20.2 | A-54 | O | implemented + tested |
 | C-508 | §20.2 | A-55 | O | implemented + tested |
 | C-509 | §20.2 | A-56 | O | implemented + tested |
-| C-510 | §20.2 | A-57 | O | deviates (SQ-O-03, open with the human) |
+| C-510 | §20.2 | A-57 | O | implemented + tested (human-approved relaxed P4, SQ-O-03/F-11) |
 | C-511 | §20.2 | A-58 | O | implemented + tested |
 | C-512 | §20.2 | A-59 | O | implemented + tested |
 | C-513 | §20.2 | A-60 | O | implemented + tested |
-| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | missing |
+| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | implemented + tested (154 cases: 0 wrong, 25 stops; 53 final-source repeats reproduce; semantic plan counts and S8 proxy/measurement limits in COMPLIANCE_REPORT) |

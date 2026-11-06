@@ -6,8 +6,9 @@
 // §10.7 cancel (Q_AUTOPAY_PICK, AUTOPAY_NOT_READY, NO_ACTIVE_AUTOPAY), §17.2 step 4 (follow-up chain reuse) and
 // step 7 note, §12.4 fill rules. Re-entrant: answers are kept in req.step_state.s9 and every derived DB1 row and
 // autopay_id is minted only in the final phase, which asks no question.
+// SQ-S-01: an amount correction keeps the failed request's chain and uses its own summary note.
 
-import type { DateTime } from 'luxon';
+import { DateTime } from 'luxon';
 import { CHIPS, NOTES, buildQuestion, joinList, matchChip, reask } from '../contracts/catalog.js';
 import type { Db7Row } from '../contracts/repos.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
@@ -30,7 +31,7 @@ import type {
 import { toBaseUnits } from '../contracts/money.js';
 import { newId } from '../util/ids.js';
 import { answerText, parseCount, parseDateAnswer } from '../plan/answers.js';
-import { planBridges, type PlannedBridge } from '../plan/bridges.js';
+import { neededWithPadding, planBridges, type PlannedBridge } from '../plan/bridges.js';
 import {
   chainName,
   decimalsOf,
@@ -49,9 +50,9 @@ import {
   enumerateOccurrences,
   expiresAt,
   firstOccurrence,
+  mostInAnyWeek,
   onDateForDuration,
   parseEnd,
-  paymentsPerWeek,
   sortDays,
   weekdayOf,
   type ScheduleCore,
@@ -85,12 +86,20 @@ interface S9State {
   end: Record<string, ScheduleEnd>;
   pick: Record<string, string>;
   pending?: { code: QuestionCode; index: number; first_date?: string };
+  /** SQ-R-05: further `k` payments (indexes) whose start date must be asked again after the pending one. */
+  late?: number[];
 }
+
+/** SQ-R-05: the answers of a finished S9 run, kept so a re-plan at confirm time does not ask them again. */
+const ANSWERS_KEY = 's9_answers';
 
 function stateOf(ctx: StepContext): S9State {
   const existing = ctx.req.step_state.s9 as S9State | undefined;
   if (existing) return existing;
-  const st: S9State = { freq: {}, start: {}, end: {}, pick: {} };
+  const kept = ctx.req.step_state[ANSWERS_KEY] as Omit<S9State, 'pending' | 'late'> | undefined;
+  const st: S9State = kept
+    ? { freq: { ...kept.freq }, start: { ...kept.start }, end: { ...kept.end }, pick: { ...kept.pick } }
+    : { freq: {}, start: {}, end: {}, pick: {} };
   ctx.req.step_state.s9 = st;
   return st;
 }
@@ -238,12 +247,15 @@ function resolveK(
   if (!row) return { kind: 'result', result: internalError(ctx, 's9', 'S9_K_AMOUNT_MISSING') };
   const token = row.token;
   const amount = toBaseUnits(row.amount, decimalsOf(token));
-  const perPeriod = amount * paymentsPerWeek(schedule);
+  const count = BigInt(occ.occurrences.length);
+  const total = amount * count;
+  // SQ-R-03: per_period_cap = min(amount × most payments in any 7-day window, total_cap).
+  const inWeek = amount * BigInt(mostInAnyWeek(occ.occurrences));
+  const perPeriod = inWeek < total ? inWeek : total;
   const overLimit = autopayPeriodBreach(ctx, perPeriod, token) ?? perTxBreach(ctx, amount, token, true);
   if (overLimit && !liftable) return { kind: 'result', result: overLimit.error };
-  const count = BigInt(occ.occurrences.length);
   const last = occ.occurrences[occ.occurrences.length - 1] as DateTime;
-  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total: amount * count, day28, last } };
+  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total, day28, last } };
 }
 
 function scheduleLabel(s: Schedule): string {
@@ -356,8 +368,14 @@ function pickChain(
   // row for this address.
   const isContact = row.source === 'contact';
   const contactChains = limits.allowed_chain_ids.filter((c) => contactRows.some((r) => r.chain_id === c));
+  // R3-2, §10.3 rule 3: a payee resolved through ENS in this request (source 'ens', or 'untrusted' / 'user' with an ENS
+  // record) is paid only on chains whose record returned its address, and never by silent reuse.
+  const ref = req.recipients.find((r) => r.placeholder === p.recipient);
+  const resolved = ref ? req.resolved[ref.span_index] : undefined;
+  const ensChains = !isContact && row.kind === 'single' ? (resolved?.ens_chain_ids ?? []) : [];
+  const ensLimited = ensChains.length > 0;
   const reuseFrom = (c: ChainId): ChainId | null =>
-    contactRows.length > 0 && !contactRows.some((r) => r.chain_id === c)
+    !ensLimited && contactRows.length > 0 && !contactRows.some((r) => r.chain_id === c)
       ? (contactChains[0] ?? contactRows[0]?.chain_id ?? null)
       : null;
 
@@ -372,7 +390,6 @@ function pickChain(
 
   // §17.2 step 4: a follow-up payee with "unstated" chain uses its previous chain as if stated.
   let stated = p.chain;
-  const ref = req.recipients.find((r) => r.placeholder === p.recipient);
   if (stated === 'unstated' && ref?.followup && ref.last_chain_id !== null) stated = ref.last_chain_id;
 
   if (pin !== null) {
@@ -391,6 +408,9 @@ function pickChain(
         },
       };
     }
+    if (ensLimited && !ensChains.includes(pin)) {
+      return { kind: 'result', result: unsupported(ctx, 's9', 'S9_PIN_NOT_IN_ENS') };
+    }
     const bad = checkChain(ctx, balances, pin);
     if (bad) return { kind: 'result', result: bad };
     // §9.5: a recipient pinned by ENS (§9.3 step 6) is never reused; its ENS record returned this address on `pin`.
@@ -404,6 +424,10 @@ function pickChain(
     return { kind: 'ok', chain: groupChain, reused: null };
   }
   if (stated !== 'unstated') {
+    // R3-2: never pay an ENS payee on a chain its record did not return the address for.
+    if (ensLimited && !ensChains.includes(stated)) {
+      return { kind: 'result', result: unsupported(ctx, 's9', 'S9_STATED_CHAIN_NOT_IN_ENS') };
+    }
     const bad = checkChain(ctx, balances, stated);
     if (bad) return { kind: 'result', result: bad };
     return { kind: 'ok', chain: stated, reused: reuseFrom(stated) };
@@ -411,12 +435,11 @@ function pickChain(
 
   // §10.3 rule 3: candidates by recipient source.
   let base: ChainId[];
-  if (row.source === 'user' || row.source === 'untrusted') base = [...limits.allowed_chain_ids];
+  if (ensLimited) base = limits.allowed_chain_ids.filter((c) => ensChains.includes(c));
+  else if (row.source === 'user' || row.source === 'untrusted') base = [...limits.allowed_chain_ids];
   else if (isContact) base = contactChains;
   else if (row.source === 'ens') {
-    const resolved = ref ? req.resolved[ref.span_index] : undefined;
-    base = limits.allowed_chain_ids.filter((c) => resolved?.ens_chain_ids.includes(c));
-    if (base.length === 0) base = contactChains; // a follow-up has no ENS lookup; add_contact saved the same chains
+    base = contactChains; // a follow-up has no ENS lookup; add_contact saved the same chains
   } else base = [...limits.allowed_chain_ids];
   const cands = base.filter((c) => okAllowed.includes(c));
   const best = (set: ChainId[], requireNeed: boolean): ChainId | null => {
@@ -545,7 +568,8 @@ async function step(ctx: StepContext): Promise<StepResult> {
     );
     const planned = planBridges(token, okChains, spendable, need, limits.bridge_buffer_pct);
     if (planned === null) {
-      return { kind: 'error', code: 'INSUFFICIENT_FUNDS', params: insufficientParams(ctx, token, balances, total) };
+      const needed = neededWithPadding(okChains, spendable, need, limits.bridge_buffer_pct);
+      return { kind: 'error', code: 'INSUFFICIENT_FUNDS', params: insufficientParams(ctx, token, balances, needed) };
     }
     bridges.push(...planned);
   }
@@ -664,10 +688,11 @@ async function step(ctx: StepContext): Promise<StepResult> {
   }
   // §17.2 step 7: every follow-up payee gets the note (SQ-D-07 for a follow-up with a typed chain).
   if (payments.some((p) => req.recipients.some((r) => r.placeholder === p.recipient && r.followup))) {
-    pushNote(ctx, NOTES.FOLLOWUP());
+    pushNote(ctx, req.retry_context !== undefined ? NOTES.PAYMENT_CORRECTION() : NOTES.FOLLOWUP());
   }
   req.plan = plan;
   req.state = 'PLANNED';
+  req.step_state[ANSWERS_KEY] = { freq: st.freq, start: st.start, end: st.end, pick: st.pick };
   delete req.step_state.s9;
   ctx.log.info({ event: 'planned', request_id: req.request_id, step: 's9', n_intents: plan.length });
   return { kind: 'continue' };
@@ -697,6 +722,9 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
       const d = text === null ? null : parseDateAnswer(text, ctx.now());
       if (d === null || d < today) return again();
       st.start[key] = d;
+      // SQ-R-05: one question per late autopay, in payment order.
+      const next = st.late?.shift();
+      if (next !== undefined) return ask(ctx, st, 'Q_AUTOPAY_START', next);
       break;
     }
     case 'Q_AUTOPAY_END': {
@@ -735,4 +763,41 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
   return { kind: 'continue' };
 };
 
-export const s9: StepEntry = { step, onAnswer };
+// ───────────────────────────── SQ-R-05: late confirmation ─────────────────────────────
+
+/** The S8 payment a planned `k` comes from (same amount placeholder and recipient). */
+function paymentOfK(ctx: StepContext, payments: Payment[], it: Extract<InternalIntent, { intent_id: 'k' }>): number {
+  return payments.findIndex(
+    (p) =>
+      p.kind === 'k' &&
+      p.amount === it.amount_per_payment &&
+      (p.recipient === it.recipient || ctx.repos.db3.get(it.recipient)?.group_placeholder === p.recipient),
+  );
+}
+
+/**
+ * SQ-R-05: on "yes", a planned autopay whose first occurrence is no longer after now is never handed off. Asks
+ * Q_AUTOPAY_START for each such `k` (in payment order); the answers re-plan from S9, and S10/S11 show a new summary.
+ */
+function beforeHandoff(ctx: StepContext): StepResult | null {
+  const { req } = ctx;
+  const payments = req.payments ?? [];
+  const now = ctx.now();
+  const late: number[] = [];
+  for (const it of req.plan ?? []) {
+    if (it.intent_id !== 'k') continue;
+    const occurrence = DateTime.fromISO(it.schedule.first_occurrence, { setZone: true });
+    if (occurrence.isValid && occurrence > now) continue;
+    const i = paymentOfK(ctx, payments, it);
+    if (i < 0) return internalError(ctx, 's9', 'S9_LATE_K_UNMATCHED');
+    if (!late.includes(i)) late.push(i);
+  }
+  const first = late.shift();
+  if (first === undefined) return null;
+  const st = stateOf(ctx);
+  for (const i of [first, ...late]) delete st.start[String(i)];
+  st.late = late;
+  return ask(ctx, st, 'Q_AUTOPAY_START', first);
+}
+
+export const s9: StepEntry = { step, onAnswer, beforeHandoff };

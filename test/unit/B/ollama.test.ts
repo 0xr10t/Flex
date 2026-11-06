@@ -45,6 +45,45 @@ function setup(handler: (url: string, init: RequestInit) => Response | Promise<R
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Ollama client call (§14.4, §8.10)', () => {
+  it('B14 / SQ-L-01: repeated valid action kinds are deduplicated before unchanged schema validation', async () => {
+    const { client, calls, log } = setup(() =>
+      chatOk({ request_type: 'actions', actions: ['i', 'i', 'k', 'l', 'k'], also_balance: false }),
+    );
+    expect(await client.call({ ...args, name: 'request_type', schema: SCHEMA.requestType })).toEqual({
+      request_type: 'actions',
+      actions: ['i', 'k', 'l'],
+      also_balance: false,
+    });
+    expect(calls).toHaveLength(1);
+    expect(log.lines.filter((line) => line.event === 'llm_call_failed')).toEqual([]);
+    expect(JSON.parse(String(calls[0]?.init.body)).format).toEqual(SCHEMA.requestType);
+  });
+
+  it.each([
+    { request_type: 'actions', actions: ['i', 'i', 'swap'], also_balance: false },
+    { request_type: 'actions', actions: ['i', 'i', null], also_balance: false },
+    { request_type: 'actions', actions: ['i', 'i'], also_balance: 'false' },
+    { request_type: 'actions', actions: ['i', 'i'], also_balance: false, extra: true },
+    { request_type: 'actions', actions: ['i', 'i'] },
+    { request_type: 'balance', actions: ['i', 'i'], also_balance: false },
+  ])('B14: other invalid request-type output still fails both attempts: %j', async (output) => {
+    const { client, calls } = setup(() => chatOk(output));
+    await expect(client.call({ ...args, name: 'request_type', schema: SCHEMA.requestType })).rejects.toBeInstanceOf(
+      LlmFailed,
+    );
+    expect(calls).toHaveLength(2);
+  });
+
+  it('B14: normalization is restricted to the request_type call', async () => {
+    const { client, calls } = setup(() =>
+      chatOk({ request_type: 'actions', actions: ['i', 'i'], also_balance: false }),
+    );
+    await expect(client.call({ ...args, name: 'payments', schema: SCHEMA.requestType })).rejects.toBeInstanceOf(
+      LlmFailed,
+    );
+    expect(calls).toHaveLength(2);
+  });
+
   it('C-355/C-146: POST {ollama_url}/api/chat with model, [system,user], format=schema, stream false, options', async () => {
     const { client, calls, cfg } = setup(() => chatOk(VALID));
     const out = await client.call<typeof VALID>(args);

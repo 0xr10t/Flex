@@ -31,6 +31,7 @@ import {
   DISTRIBUTIVE_RE,
   ENS_SCAN_RE,
   GROUP_AT_MARKER_RE,
+  GROUP_MEMBERS_MARKER_RE,
   GROUP_WORD_MARKER_RE,
   LINK_MARKER_RE,
   NUMBER_WORD_RE,
@@ -185,7 +186,7 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
 
   // ── rule 4: group markers ──
   const groups: GroupCandidate[] = [];
-  for (const re of [GROUP_WORD_MARKER_RE, GROUP_AT_MARKER_RE]) {
+  for (const re of [GROUP_WORD_MARKER_RE, GROUP_AT_MARKER_RE, GROUP_MEMBERS_MARKER_RE]) {
     for (const m of matches(re, text)) {
       const parent = m.m[1] ?? '';
       const start = m.start + m.text.lastIndexOf(parent);
@@ -270,7 +271,13 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
   tokens.sort((a, b) => a.start - b.start);
   for (const m of matches(UNSUPPORTED_TOKEN_RE, text)) {
     if (overlapsAny(m, nameRanges)) continue;
-    if (isNumberToken(tokenBefore(text, m.start)) || isNumberToken(tokenAfter(text, m.end))) {
+    // A compound number may end in "hundred" or "thousand", neither of which parses on its own (B12).
+    const adjacentNumberWords = numberWords.some(
+      (n) =>
+        (n.end <= m.start && text.slice(n.end, m.start).trim() === '') ||
+        (n.start >= m.end && text.slice(m.end, n.start).trim() === ''),
+    );
+    if (adjacentNumberWords || isNumberToken(tokenBefore(text, m.start)) || isNumberToken(tokenAfter(text, m.end))) {
       return { ok: false, code: 'UNSUPPORTED_TOKEN' };
     }
   }

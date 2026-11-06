@@ -15,6 +15,7 @@ import { createDb5 } from './db5.js';
 import { createDb6 } from './db6.js';
 import { createDb7 } from './db7.js';
 import { createDb8 } from './db8.js';
+import { createHandoffs } from './handoffs.js';
 
 export { nameKey } from './db2.js';
 export { PlaceholderCollisionError, MAX_PLACEHOLDER_DRAWS, type RepoOptions } from './common.js';
@@ -44,6 +45,7 @@ export function createRepos(db: Database, options: Partial<RepoOptions> = {}): R
   const clearStmts = SESSION_CLEAR_SQL.map((sql) => db.prepare(sql));
   const clearTx = db.transaction(() => {
     for (const s of clearStmts) s.run();
+    db.prepare('UPDATE handoff_journal SET history_json = NULL WHERE history_json IS NOT NULL').run();
   });
 
   return {
@@ -55,6 +57,7 @@ export function createRepos(db: Database, options: Partial<RepoOptions> = {}): R
     db6: createDb6(db),
     db7: createDb7(db),
     db8: createDb8(db),
+    handoffs: createHandoffs(db),
     clearSessionStores() {
       // secure_delete is ON for the connection (§7), so deleted content is overwritten; VACUUM then rebuilds the file.
       // With journal_mode=WAL, deleted pages can linger in the -wal file, so checkpoint and truncate it (§16.4).

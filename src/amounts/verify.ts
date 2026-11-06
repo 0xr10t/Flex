@@ -7,6 +7,7 @@
 // Q_TOKEN), §13.4 answer validation for these questions (number answers via the S3 code parser, chips via
 // matchChip), §9.7 re-asks (attempt + 1), I-19, I-41, I-42, I-43. NFR-06: values are decimal strings / bigint only.
 // Shared by S3 (src/pipeline/s3-amounts.ts) and S4's Q_AMOUNT_MISSING (src/pipeline/s4-type.ts).
+// SQ-S-01: an eligible amount correction can also inherit the failed payment's token.
 // Owner: Lane B.
 
 import {
@@ -35,7 +36,7 @@ import {
   type TokenWordKind,
 } from '../contracts/types.js';
 import { chainName, lastHistoryPayments, qid, spendable, unsupported } from '../lexical/step-util.js';
-import { parseAmountText } from './parse.js';
+import { amountCurrencyKinds, parseAmountText } from './parse.js';
 
 /** One amount being verified. Lives in `req.step_state` (S3 / S4), so it must stay JSON-serialisable. */
 export interface WorkItem {
@@ -154,6 +155,7 @@ function mapKind(k: TokenWordKind): Token | 'FIAT_OTHER' {
 
 /** §17.2 step 6: the token of the previous payment (most recent history entry), when it names exactly one. */
 export function previousToken(ctx: StepContext): Token | null {
+  if (ctx.req.retry_context !== undefined) return ctx.req.retry_context.token;
   if (ctx.req.scan.back_reference.length === 0) return null;
   const tokens = new Set<Token>();
   for (const p of lastHistoryPayments(ctx)) {
@@ -306,17 +308,17 @@ export function toAmountItem(item: WorkItem): AmountItem {
 export function advanceItem(ctx: StepContext, item: WorkItem): Advance {
   // ── value ──
   if (!item.value_done && item.relative === null) {
-    if (item.kind === 'document') {
+    const knownToken = item.token ?? item.llm_token;
+    if (item.fiat === 'OTHER' || (item.fiat === 'USD' && knownToken === 'ETH')) {
+      // I-41: a fiat answer also needs a crypto amount, including a retyped document amount.
+      const params: Record<string, string> = { phrase: item.phrase ?? item.number ?? '' };
+      if (knownToken !== null) params.token = knownToken;
+      return ask(item, 'Q_FIAT_OTHER', { params, token: knownToken });
+    } else if (item.kind === 'document') {
       if (item.number === null || !isDecimalString(item.number)) return ask(item, 'Q_AMOUNT_MISSING');
       item.value = canonicalDecimal(item.number);
       item.value_done = true;
       item.code_verified = true; // a document value is shown with the "From attached content" note, not "You wrote"
-    } else if (item.fiat === 'OTHER' || (item.fiat === 'USD' && item.llm_token === 'ETH')) {
-      // I-41: no price feed. "{USDC or ETH}" names the token when it is known.
-      const token = item.fiat === 'USD' ? 'ETH' : item.llm_token;
-      const params: Record<string, string> = { phrase: item.phrase ?? item.number ?? '' };
-      if (token !== null) params.token = token;
-      return ask(item, 'Q_FIAT_OTHER', { params, token });
     } else if (item.number === null) {
       return ask(item, 'Q_AMOUNT_MISSING');
     } else if (!isDecimalString(item.number)) {
@@ -325,18 +327,17 @@ export function advanceItem(ctx: StepContext, item: WorkItem): Advance {
     } else {
       const llm = canonicalDecimal(item.number);
       const parsed = item.phrase !== null ? parseAmountText(item.phrase, null) : null;
-      if (parsed !== null && parsed.ok) {
-        if (parsed.value !== llm) {
-          item.mismatch = { code: parsed.value, llm };
+      const code = parsed?.ok ? parsed.value : parsed?.reason === 'zero' ? '0' : null;
+      if (code !== null) {
+        if (code !== llm) {
+          item.mismatch = { code, llm };
           const chips: Chip[] = [
-            { id: 'code', label: parsed.value, disabled: false, detail: '' },
+            { id: 'code', label: code, disabled: false, detail: '' },
             { id: 'llm', label: llm, disabled: false, detail: '' },
           ];
-          return ask(item, 'Q_AMOUNT_MISMATCH', { params: { a: parsed.value, b: llm }, chips });
+          return ask(item, 'Q_AMOUNT_MISMATCH', { params: { a: code, b: llm }, chips });
         }
         item.code_verified = true;
-      } else if (parsed !== null && parsed.reason === 'zero') {
-        item.code_verified = isZero(llm);
       }
       item.value = llm;
       item.value_done = true;
@@ -428,16 +429,45 @@ export function applyAnswer(
     case 'Q_AMOUNT_PRECISION': {
       const t = textOf(answer);
       if (t === null) return reaskPending(q, pending);
-      const token = item.token ?? pending.token;
-      const p = parseAmountText(t, token);
+      const kinds = amountCurrencyKinds(t);
+      const tokens = [...kinds].filter((kind): kind is Token => kind === 'USDC' || kind === 'ETH');
+      if (tokens.length > 1 || (kinds.has('FIAT_USD') && kinds.has('FIAT_OTHER'))) return reaskPending(q, pending);
+      const fiat = kinds.has('FIAT_OTHER') ? 'OTHER' : kinds.has('FIAT_USD') ? 'USD' : null;
+      const explicitToken = tokens[0] ?? (fiat === 'USD' ? 'USDC' : null);
+      const needsConversion = fiat === 'OTHER' || (fiat === 'USD' && explicitToken === 'ETH');
+      // A general amount answer can name its currency; a token-specific question must keep that token.
+      const fixedToken =
+        pending.code === 'Q_AMOUNT_PRECISION' ? item.token : pending.code === 'Q_FIAT_OTHER' ? pending.token : null;
+      if (
+        (needsConversion && pending.code !== 'Q_AMOUNT_MISSING') ||
+        (fixedToken !== null && explicitToken !== null && fixedToken !== explicitToken)
+      ) {
+        return reaskPending(q, pending);
+      }
+      const token = fixedToken ?? explicitToken ?? item.token ?? pending.token;
+      const p = parseAmountText(t, needsConversion ? null : token);
       if (!p.ok) return reaskPending(q, pending, p.reason === 'zero' ? REASK_HINT.AMOUNT_ZERO() : undefined);
+      if (needsConversion) {
+        // Preserve the typed fiat expression for the next question; no crypto value or trusted row exists yet.
+        item.phrase = t;
+        item.number = p.value;
+        item.value = null;
+        item.value_done = false;
+        item.code_verified = false;
+        item.mismatch = null;
+        item.fiat = fiat;
+        if (tokens[0] !== undefined) item.token = tokens[0];
+        return null;
+      }
       item.value = p.value;
       item.value_done = true;
       item.code_verified = true;
       item.mismatch = null;
+      if (explicitToken !== null) item.token = explicitToken;
+      if (kinds.size > 0) item.fiat = fiat;
       if (pending.code === 'Q_FIAT_OTHER') {
-        item.fiat = null;
-        item.token = pending.token;
+        item.fiat = fiat;
+        item.token = fixedToken ?? explicitToken;
         item.token_direct = true;
       }
       userTyped(ctx, item);

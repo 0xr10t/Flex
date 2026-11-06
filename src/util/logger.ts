@@ -24,7 +24,7 @@ const LABEL_RE = /^[A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z0-9_-]+)*$/;
 const LONG_HEX_RE = /[0-9a-fA-F]{16}/;
 const SESSION_ID_RE = /^ses_[0-9a-f]{12}$/;
 const REQUEST_ID_RE = /^req_[0-9a-f]{12}$/;
-const LLM_CALLS = new Set(['amounts', 'request_type', 'spans', 'payments', 'quarantine']);
+const LLM_CALLS = new Set(['amounts', 'request_type', 'spans', 'payments', 'quarantine', 'conversation']);
 
 type Check = (v: unknown) => boolean;
 const matches =

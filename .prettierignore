@@ -8,3 +8,4 @@ src/schemas/*.json
 src/db/schema.sql
 *.md
 .claude
+test_frontend

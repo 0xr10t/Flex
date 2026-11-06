@@ -37,6 +37,19 @@ function baseUrl(config: Config): string {
   return config.llm.ollama_url.replace(/\/+$/, '');
 }
 
+/** SQ-L-01 / B14: actions are kinds, so repeated valid labels are semantically identical. Validate everything else. */
+function normalizeActionKinds(name: LlmCallName, parsed: unknown): unknown {
+  if (name !== 'request_type' || parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed;
+  const record = parsed as Record<string, unknown>;
+  if (
+    record.request_type !== 'actions' ||
+    !Array.isArray(record.actions) ||
+    !record.actions.every((action: unknown) => action === 'i' || action === 'k' || action === 'l')
+  )
+    return parsed;
+  return { ...record, actions: [...new Set(record.actions)] };
+}
+
 class OllamaLlmClient implements LlmClient {
   /** Result of the last §14.4 model check; `false` makes every call fail (MODEL_FAILED). */
   private modelOk: boolean | null = null;
@@ -89,7 +102,7 @@ class OllamaLlmClient implements LlmClient {
     const body = (await res.json()) as { message?: { content?: unknown } };
     const content = body.message?.content;
     if (typeof content !== 'string') throw new Error('ollama response without content');
-    const parsed = JSON.parse(content) as unknown;
+    const parsed = normalizeActionKinds(args.name, JSON.parse(content) as unknown);
     if (!validate(parsed)) throw new Error('schema validation failed');
     return parsed;
   }

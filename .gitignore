@@ -9,3 +9,4 @@ config.json
 logs/
 .env
 .claude/
+test_frontend/

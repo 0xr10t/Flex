@@ -280,3 +280,87 @@ LLM output in code where the model's answer is reasonable but fails a strict sch
 deduplicated). Conditions: every change is re-tested on the full live set (`test/live`, 154 prompts); it is kept only if
 the wrong-hand-off count stays 0 and the number of unnecessary stops falls; every changed prompt is recorded as a
 human-approved difference from §8.10 (the compliance check reports it as such). `README.md` stays unchanged.
+
+## Codex review remediation (2026-11-06)
+
+The human requested fixing every finding and gap in `codex_review_report.md` and completing `HANDOFF_PROMPT.md`.
+The following are implementation decisions made under that request, rather than quotations of the original spec:
+
+- **B03/B04/B19/G02:** add an encrypted, persistent submission journal and commit the confirmed envelope plus DB6/DB7
+  reservations before submitting it. Reports must match the actual request, step, intent kind and autopay ID. This
+  supersedes the earlier accepted gap for an unrecorded `l`-only request. Timeouts/5xx keep reservations; definite
+  rejections mark them failed. Execution cannot be undone by an older report, and terminal autopays cannot be revived.
+  Session history held temporarily by the journal is erased on session clear.
+- **G03:** refresh balances and settings before the first submission. Changed settings require replanning and a new
+  confirmation; newly broken limits require consent. Revalidate current funding and spend accounting before sending.
+- **B19 retry identity / SQ-R-05 boundary:** late-start replanning applies before the first external submission.
+  After an ambiguous submission, a retry uses the original envelope and idempotency key, even if its scheduled start
+  has since passed. Replacing an already-submitted payload under the same key could create an inconsistent or duplicate
+  autopay. The user can cancel locally with the existing uncertainty warning and check the wallet.
+- **G01:** independently enforce explicit chain binding to payment clauses, including a global leading/trailing chain.
+  A model omission or swap triggers the existing correction retry and then `PAIRING_FAILED` if still wrong.
+
+**SQ-CX-01 — interim copy: ANSWERED (human, 2026-11-06).** The human selected “Keep these texts” in response to the
+`HANDOFF_PROMPT.md` §5.4 wording check. Approved exactly: “That would leave {name} with nothing.”;
+“Yes, this once” / “Yes, set it up” / “No”; and “today's limit of {daily_max} (only {remaining} is left)”.
+These texts no longer await approval. This does not authorize pushing or deleting branches, worktrees or process files.
+
+## Failed-payment corrections (2026-11-06)
+
+**SQ-S-01 — requested by the human in chat.** After an insufficient-funds rejection of “send 100 USDC on Arbitrum
+to abhivansh sir”, “ok no worries, send 70” in the same session should retain the recipient, token and chain.
+This extends §17.2 beyond handed-off history. The implementation uses the immediately preceding failed request's
+resolved details in memory; failed requests are still never appended to `db8_history`.
+
+Implementation scope under this request: one resolved, trusted, absolute-amount, one-time payment that failed with
+`INSUFFICIENT_FUNDS` before any hand-off attempt or submission. A correction is an optional acknowledgement followed
+by `send`, `pay` or `transfer` and one new code-parseable amount, optionally a token, `on`/`via` a configured chain,
+or `instead`/`please`/`then`. Explicit token and chain choices take precedence. New payee text, multiple payments,
+recurrence, relative amounts and attached/URL content do not use this implicit fallback. An intervening request,
+cancellation or session close clears it. Repeated insufficient-funds corrections may retain the most recent details.
+Every correction has a fresh request ID and amount placeholder, runs balances, pairing, planning and validation again,
+and requires a fresh summary confirmation. Its summary notes “Continuing your previous request with a new amount.”
+
+**SQ-S-02 — follow-up correction from the human in chat.** The human reproduced: “Pay 200 dollars to Riya” →
+`INSUFFICIENT_FUNDS`, then “okay, send 50 instead. I want to send her some funds for the medicine she bought me” →
+`Q_TOKEN` and `Q_NO_PAYEE`. The added explanation must not break the reference to Riya or the earlier USDC token.
+
+The eligible failed payment is now also the nearest context for S2 back-reference words under §17.2, independent
+of the prose accompanying them. S3 uses its token only as a fallback; explicit current tokens retain precedence.
+S5 reuses its recipient only for one fresh, confirmed, absolute user amount in a one-time payment, with no explicit
+payee and no other mentioned person. An explicit new payee goes through ordinary resolution without the prior
+recipient's chain or correction note; a mentioned-person ambiguity asks `Q_NO_PAYEE`. Missing amounts still ask
+`Q_AMOUNT_MISSING`; the previous amount is never copied. Repeating/cancel/group/split requests, conflicting tokens
+and messages with attachments, pasted content or URLs do not receive this implicit failed-payment reference.
+The prior eligibility, session lifetime, submission safety and fresh-confirmation requirements remain in force.
+
+## Recipient-question wording (2026-11-06)
+
+**SQ-UI-01 — requested by the human in chat.** When the agent asks about a person, it should explicitly say that
+it needs an address. `Q_WHO_IS` now asks “What is the wallet address for \"{name}\"? You can also enter an ENS name.”
+`Q_NO_PAYEE` says “Who should receive this? Enter their wallet address, ENS name or saved contact name.” The
+invalid-ENS variant says “That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.”
+These wording changes override the corresponding §9 / §13.4 texts; accepted inputs, saved-contact chips, validation
+and confirmation requirements are unchanged. `README.md` remains unchanged.
+
+**SQ-UI-02 — requested by the human in chat.** Replace the new-recipient `Q_ADDRESS_CORRECT` wording with
+“You have not paid this recipient before. Do you want to proceed?” (using “paid”). The full checksummed wallet address
+remains visible on the next line; the ENS variant retains its ENS name, full address and chain names below the same
+question. The attached-content provenance suffix and the existing Yes / No, re-enter / Don't pay this one choices
+remain. This is a wording change to the existing §9.2 / §9.3 address-confirmation step; its trigger, validation,
+contact-saving flow and later final payment confirmation are unchanged.
+
+## Extended private-key protection (2026-11-06)
+
+**SQ-SG-01 — requested bug fix from the human in chat.** An extended private-key string prefixed with `0x`
+escaped S1 and reached amount parsing. It must instead produce `SECRET_DETECTED` before model calls, URL fetches
+or persistence of the message. The pasted value is deliberately not recorded here.
+
+Implementation decision under this request: recognize `xprv`, `yprv`, `zprv`, `tprv`, `uprv` and `vprv`, ignoring
+case, followed by at least 100 ASCII alphanumeric characters. Adjoining characters do not suppress detection;
+checksum failures and mistyped non-base58 alphanumerics do not make private material safe to retain. This overrides
+the §8.2 extended-key detector's word boundaries, strict base58 alphabet and checksum gate. The prefix family covers
+the Bitcoin mainnet/testnet private variants in [SLIP-132](https://github.com/satoshilabs/slips/blob/master/slip-0132.md).
+Short prefix mentions and extended public keys do not match this detector. The shared scan applies to message text,
+pasted blocks, decoded attachments, URLs (including percent decoding), and question answers. Existing secret-error,
+buffer-clearing and no-storage/no-model-call behavior remains in force; other secret detectors are unchanged.

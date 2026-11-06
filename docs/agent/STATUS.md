@@ -1,6 +1,58 @@
 # STATUS
 
-Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v3`.
+Integration branch: `agentic_layer` (plays the role of `main` in ORCHESTRATOR_PROMPT.md). Contracts tag: `contracts-v4`.
+
+## Current status — Codex remediation, 2026-11-06
+
+All 19 findings and 3 gaps from `codex_review_report.md` are fixed with permanent regression tests. The formerly pending core
+branch and the additional understanding/date fixes are merged. Three Astra/max workers implemented or independently
+reviewed the fixes, with production authors and acceptance reviewers separated. The original review used nine Astra/max
+reviewers; their evidence remains in the report and `/private/tmp/flex-codex-review/`.
+
+| Check | Current verified result |
+| --- | --- |
+| Unit + acceptance | **1,874 / 1,874**, 66 files; includes **148 HTTP acceptance cases** in 6 files |
+| Separate privacy/security audit | **169 / 169**, including an AST inventory of actual viem network capabilities |
+| Typecheck, lint and production build | Passed |
+| Production startup and TCP round trip | Passed using real SQLCipher and local fixture RPC/model/executor servers |
+| Independent remediation review | No unresolved findings in the assigned B01–B19/G01–G03 scope |
+| Full local-model evaluation | **154 cases: 0 wrong handoffs, 25 unexpected stops, 129 exact outcomes; 0 crashes/rejected summaries** on `33518a2`. All **53 final-toolchain repeats** reproduce primary outcomes; gate independently accepted |
+| Dependency advisories | **0**, including development dependencies; scoped tooling updates independently reviewed; production package artifacts unchanged |
+| UI copy approval | Human selected “Keep these texts”; recorded as SQ-CX-01 |
+| Documentation | `DEVELOPING.md`, exact prompt diffs, remediation table, spec decisions and `LIVE_EVALUATION_REPORT.md` written |
+
+Latest verification artifacts are under `/private/tmp/flex-codex-fixes/`: `final-tests.json`, `final-audit.json`,
+`final-npm-audit.json`, `runtime-final-result.json`, and the independent review reports. Fresh-checkout verification at
+`547a36e` also passes all 1,874 tests and 169 audit checks after `npm ci`, typecheck, lint and build; its tracked tree is
+clean (`clean-*.log/json`). The full live run kept production inputs frozen. Raw live results are in
+`test/live/results/codex-remediation-33518a2.json`.
+
+The prompt-retention criterion passes: wrong handoffs **2 → 0**, unexpected stops **54 → 25**. Six formerly exact
+cases now stop safely. No-question initial-response latency is median 14.056 s, p95 30.331 s; 23/93 exceed 20 s.
+**The NFR-03 latency target remains unmet.** The S8 first-pass metric is a validation proxy; raw intermediate S8
+semantic exact-match was not captured. [LIVE_EVALUATION_REPORT.md](LIVE_EVALUATION_REPORT.md) explains these limits.
+
+### Handoff acceptance checklist (§10)
+
+| Item | Evidence / disposition |
+| --- | --- |
+| 1. Integration and clean-checkout checks | All four lanes and reviewed fixes are on `agentic_layer`, the local integration branch. Fresh checkout `547a36e` passes install, typecheck, lint, build and tests. |
+| 2. Spec checklist | **511 implemented/tested +3 approved/tested differences**, including C-514's independently accepted live gate. The 514-row inventory is not blanket compliance with every README requirement. |
+| 3. A-01 through A-60 | All original acceptance IDs and A-60 privacy assertions pass; the expanded HTTP acceptance suite has 148 passing assertions. |
+| 4. Privacy/security | No unresolved original review findings; 169 audit checks and final TCP log-privacy checks pass. Dependency audit reports zero vulnerabilities. |
+| 5. Spec/verbatim review | Independent review reconciles the binding human answers, approved prompt text, golden artifacts and three approved example differences. The separate NFR-03 performance limitation remains explicit. |
+| 6. Live evaluation | Full 154-case gate passes with zero wrong handoffs; questions, plan accuracy, S8 proxy and latency reported. All 53 final-toolchain repeats match primary outcomes; P-061/P-073 remain exact. |
+| 7. Spec questions | Human/spec answers are indexed in `SPEC_QUESTIONS.md`; no question is pending. SQ-CX-01 confirms the three UI texts. |
+| 8. Specification and setup | README remains unchanged. `DEVELOPING.md` covers native modules, keychain, token files, config, Ollama, all suites and server startup. |
+
+The original README, four LLM schemas, handoff schema, and v1 DDL remain unchanged. The encrypted submission journal
+is an additive v2 migration. `SPEC_QUESTIONS.md` documents report correlation, monotonic updates, confirmation-time
+validation, and why retries cannot change an already-submitted autopay envelope.
+
+`HANDOFF_PROMPT.md` records the work performed and is retained. No branch/tag has been pushed and no worktree or process file has
+been deleted. Concurrent `test_frontend` ignore/config edits belong to other work and are intentionally unstaged.
+
+The lane board and session logs below are historical records. They do not supersede this current status.
 
 ## Lane board
 

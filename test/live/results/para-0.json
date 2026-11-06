@@ -1,1003 +1,875 @@
 [
- {
-  "id": "P-001",
-  "source": "paraphrase",
-  "prompt": "yo send 25 usdc to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "25",
-     "to": "Mihir",
-     "chain": "base"
-    }
-   ]
+  {
+    "id": "P-001",
+    "source": "paraphrase",
+    "prompt": "yo send 25 usdc to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "25",
+          "to": "Mihir",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 15112,
+    "questions": [],
+    "total_ms": 15358,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 25 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3635, 2680, 2326, 6406],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 15112,
-  "questions": [],
-  "total_ms": 15358,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 25 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3635,
-   2680,
-   2326,
-   6406
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-002",
-  "source": "paraphrase",
-  "prompt": "pls send aradhya 30 usdc",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "30",
-     "to": "Aradhya",
-     "chain": "base"
-    }
-   ]
+  {
+    "id": "P-002",
+    "source": "paraphrase",
+    "prompt": "pls send aradhya 30 usdc",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "30",
+          "to": "Aradhya",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 13430,
+    "questions": [],
+    "total_ms": 13609,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 30 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3387, 2031, 2112, 5854],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 13430,
-  "questions": [],
-  "total_ms": 13609,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 30 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3387,
-   2031,
-   2112,
-   5854
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-003",
-  "source": "paraphrase",
-  "prompt": "Transfer 15 USDC to Mihir on arbitrum",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "15",
-     "to": "Mihir",
-     "chain": "arb"
-    }
-   ]
+  {
+    "id": "P-003",
+    "source": "paraphrase",
+    "prompt": "Transfer 15 USDC to Mihir on arbitrum",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "15",
+          "to": "Mihir",
+          "chain": "arb"
+        }
+      ]
+    },
+    "first_latency_ms": 15175,
+    "questions": [],
+    "total_ms": 15363,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 15 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.\nSpent today after this: 15 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3446, 2038, 2047, 7620],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 15175,
-  "questions": [],
-  "total_ms": 15363,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 15 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.\nSpent today after this: 15 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3446,
-   2038,
-   2047,
-   7620
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-004",
-  "source": "paraphrase",
-  "prompt": "can u pay mihir 12.5 usdc",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "12.5",
-     "to": "Mihir",
-     "chain": "base"
-    }
-   ]
+  {
+    "id": "P-004",
+    "source": "paraphrase",
+    "prompt": "can u pay mihir 12.5 usdc",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "12.5",
+          "to": "Mihir",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 15630,
+    "questions": [],
+    "total_ms": 15830,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 12.5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 12.5 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [4237, 2322, 2352, 6706],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 15630,
-  "questions": [],
-  "total_ms": 15830,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 12.5 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 12.5 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   4237,
-   2322,
-   2352,
-   6706
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-005",
-  "source": "paraphrase",
-  "prompt": "mihir 20 usdc send",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "20",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-005",
+    "source": "paraphrase",
+    "prompt": "mihir 20 usdc send",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "20",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 14072,
+    "questions": [],
+    "total_ms": 14252,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 20 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 20 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3413, 2154, 2316, 6179],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 14072,
-  "questions": [],
-  "total_ms": 14252,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 20 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 20 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3413,
-   2154,
-   2316,
-   6179
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-006",
-  "source": "paraphrase",
-  "prompt": "sned 40 usdc to aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "40",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-006",
+    "source": "paraphrase",
+    "prompt": "sned 40 usdc to aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "40",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 14182,
+    "questions": [],
+    "total_ms": 14353,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 40 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3803, 2084, 2216, 6070],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 14182,
-  "questions": [],
-  "total_ms": 14353,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 40 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3803,
-   2084,
-   2216,
-   6070
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-007",
-  "source": "paraphrase",
-  "prompt": "send 7 usdc 2 mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "7",
-     "to": "Mihir"
-    }
-   ]
-  },
-  "first_latency_ms": 3033,
-  "questions": [
-   "Q_AMOUNT_UNCOVERED"
-  ],
-  "total_ms": 3229,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_AMOUNT_UNCOVERED",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 1,
-  "llm_ms": [
-   3031
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3031,
-    "user": "Message: <<<send 7 usdc 2 mihir>>>",
-    "output": {
-     "amounts": [
+  {
+    "id": "P-007",
+    "source": "paraphrase",
+    "prompt": "send 7 usdc 2 mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "7",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 3033,
+    "questions": ["Q_AMOUNT_UNCOVERED"],
+    "total_ms": 3229,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_AMOUNT_UNCOVERED",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 1,
+    "llm_ms": [3031],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "phrase": "7 usdc",
-       "number": "7",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
+        "name": "amounts",
+        "ms": 3031,
+        "user": "Message: <<<send 7 usdc 2 mihir>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "7 usdc",
+              "number": "7",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
       }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-008",
-  "source": "paraphrase",
-  "prompt": "Give Aradhya 18 USDC on base",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "18",
-     "to": "Aradhya",
-     "chain": "base"
-    }
-   ]
+    ]
   },
-  "first_latency_ms": 13340,
-  "questions": [],
-  "total_ms": 13510,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 18 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 18 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3400,
-   1828,
-   2293,
-   5808
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-009",
-  "source": "paraphrase",
-  "prompt": "i want to send 0.01 eth to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "ETH",
-     "amt": "0.01",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-008",
+    "source": "paraphrase",
+    "prompt": "Give Aradhya 18 USDC on base",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "18",
+          "to": "Aradhya",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 13340,
+    "questions": [],
+    "total_ms": 13510,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 18 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 18 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3400, 1828, 2293, 5808],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 12968,
-  "questions": [],
-  "total_ms": 13143,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 0.01 ETH to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 0.01 of 0.15 ETH.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3437,
-   1906,
-   1970,
-   5650
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-010",
-  "source": "paraphrase",
-  "prompt": "send 0.02 ETH to aradhya on arbitrum",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "ETH",
-     "amt": "0.02",
-     "to": "Aradhya",
-     "chain": "arb"
-    }
-   ]
+  {
+    "id": "P-009",
+    "source": "paraphrase",
+    "prompt": "i want to send 0.01 eth to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "ETH",
+          "amt": "0.01",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 12968,
+    "questions": [],
+    "total_ms": 13143,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 0.01 ETH to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 0.01 of 0.15 ETH.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3437, 1906, 1970, 5650],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 13647,
-  "questions": [],
-  "total_ms": 13824,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 0.02 ETH to Aradhya (0x3fA9…c21E) on Arbitrum Sepolia.\nSpent today after this: 0.02 of 0.15 ETH.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3453,
-   1984,
-   1970,
-   6231
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-011",
-  "source": "paraphrase",
-  "prompt": "Please send ten dollars to Mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-010",
+    "source": "paraphrase",
+    "prompt": "send 0.02 ETH to aradhya on arbitrum",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "ETH",
+          "amt": "0.02",
+          "to": "Aradhya",
+          "chain": "arb"
+        }
+      ]
+    },
+    "first_latency_ms": 13647,
+    "questions": [],
+    "total_ms": 13824,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 0.02 ETH to Aradhya (0x3fA9…c21E) on Arbitrum Sepolia.\nSpent today after this: 0.02 of 0.15 ETH.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3453, 1984, 1970, 6231],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 12717,
-  "questions": [],
-  "total_ms": 12895,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote 'ten dollars' → 10 USDC.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   2825,
-   2050,
-   2046,
-   5790
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-012",
-  "source": "paraphrase",
-  "prompt": "send 20 bucks to aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "20",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-011",
+    "source": "paraphrase",
+    "prompt": "Please send ten dollars to Mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 12717,
+    "questions": [],
+    "total_ms": 12895,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote 'ten dollars' → 10 USDC.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [2825, 2050, 2046, 5790],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 12048,
-  "questions": [],
-  "total_ms": 12219,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 20 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- You wrote '20 bucks' → 20 USDC.\nSpent today after this: 20 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   2793,
-   1815,
-   1913,
-   5519
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-013",
-  "source": "paraphrase",
-  "prompt": "mihir ko 30 usdc bhej do",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "30",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-012",
+    "source": "paraphrase",
+    "prompt": "send 20 bucks to aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "20",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 12048,
+    "questions": [],
+    "total_ms": 12219,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 20 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\n- You wrote '20 bucks' → 20 USDC.\nSpent today after this: 20 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [2793, 1815, 1913, 5519],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 12820,
-  "questions": [],
-  "total_ms": 12990,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 30 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3161,
-   1889,
-   2001,
-   5765
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-014",
-  "source": "paraphrase",
-  "prompt": "send twenty five usdc to mihir",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "25",
-     "to": "Mihir"
-    }
-   ]
+  {
+    "id": "P-013",
+    "source": "paraphrase",
+    "prompt": "mihir ko 30 usdc bhej do",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "30",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 12820,
+    "questions": [],
+    "total_ms": 12990,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 30 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 30 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3161, 1889, 2001, 5765],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 12670,
-  "questions": [],
-  "total_ms": 12843,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 25 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3012,
-   1859,
-   1981,
-   5814
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-015",
-  "source": "paraphrase",
-  "prompt": "send $45 to aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "45",
-     "to": "Aradhya"
-    }
-   ]
+  {
+    "id": "P-014",
+    "source": "paraphrase",
+    "prompt": "send twenty five usdc to mihir",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "25",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 12670,
+    "questions": [],
+    "total_ms": 12843,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 25 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3012, 1859, 1981, 5814],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
   },
-  "first_latency_ms": 5704,
-  "questions": [
-   "Q_NO_PAYEE"
-  ],
-  "total_ms": 5874,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_NO_PAYEE",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 3,
-  "llm_ms": [
-   3183,
-   1740,
-   778
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3183,
-    "user": "Message: <<<send $45 to aradhya>>>",
-    "output": {
-     "amounts": [
+  {
+    "id": "P-015",
+    "source": "paraphrase",
+    "prompt": "send $45 to aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "45",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 5704,
+    "questions": ["Q_NO_PAYEE"],
+    "total_ms": 5874,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_NO_PAYEE",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 3,
+    "llm_ms": [3183, 1740, 778],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
       {
-       "phrase": "$45 to aradhya",
-       "number": "45",
-       "relative": null,
-       "token": null,
-       "fiat": "USD",
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 1740,
-    "user": "Message: <<<send amount_a677d10d>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "i"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 778,
-    "user": "Message: <<<send amount_a677d10d>>>\nCANDIDATES: []",
-    "output": {
-     "spans": []
-    }
-   }
-  ]
- },
- {
-  "id": "P-016",
-  "source": "paraphrase",
-  "prompt": "SEND 35 USDC TO MIHIR ON SEPOLIA",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "35",
-     "to": "Mihir",
-     "chain": "sepolia"
-    }
-   ]
-  },
-  "first_latency_ms": 13259,
-  "questions": [],
-  "total_ms": 13429,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 35 USDC to Mihir (0x91Ab…77d0) on Sepolia.\nSpent today after this: 35 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3221,
-   1905,
-   1886,
-   6242
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-017",
-  "source": "paraphrase",
-  "prompt": "Send 50 USDC to Aradhya on Base Sepolia",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "50",
-     "to": "Aradhya",
-     "chain": "base"
-    }
-   ]
-  },
-  "first_latency_ms": 13095,
-  "questions": [],
-  "total_ms": 13265,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 50 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3327,
-   1883,
-   1978,
-   5901
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-018",
-  "source": "paraphrase",
-  "prompt": "send mihir 5.25 usdc please, thanks!",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "5.25",
-     "to": "Mihir"
-    }
-   ]
-  },
-  "first_latency_ms": 6713,
-  "questions": [
-   "Q_NO_PAYEE"
-  ],
-  "total_ms": 6883,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_NO_PAYEE",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 3,
-  "llm_ms": [
-   4210,
-   1723,
-   778
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 4210,
-    "user": "Message: <<<send mihir 5.25 usdc please, thanks!>>>",
-    "output": {
-     "amounts": [
-      {
-       "phrase": "send mihir 5.25 usdc please, thanks!",
-       "number": "5.25",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   },
-   {
-    "name": "request_type",
-    "ms": 1723,
-    "user": "Message: <<<amount_0b050d80>>>",
-    "output": {
-     "request_type": "actions",
-     "actions": [
-      "i"
-     ],
-     "also_balance": false
-    }
-   },
-   {
-    "name": "spans",
-    "ms": 778,
-    "user": "Message: <<<amount_0b050d80>>>\nCANDIDATES: []",
-    "output": {
-     "spans": []
-    }
-   }
-  ]
- },
- {
-  "id": "P-019",
-  "source": "paraphrase",
-  "prompt": "hey could you transfer 22 usdc over to Aradhya",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "22",
-     "to": "Aradhya"
-    }
-   ]
-  },
-  "first_latency_ms": 12811,
-  "questions": [],
-  "total_ms": 12982,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 22 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 22 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3165,
-   1891,
-   1957,
-   5794
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-020",
-  "source": "paraphrase",
-  "prompt": "pay 9 usdc to mihir on arb",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "9",
-     "to": "Mihir",
-     "chain": "arb"
-    }
-   ]
-  },
-  "first_latency_ms": 12890,
-  "questions": [],
-  "total_ms": 13060,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 9 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.\nSpent today after this: 9 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3034,
-   1875,
-   1975,
-   6000
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-021",
-  "source": "paraphrase",
-  "prompt": "Hey, Aradhya's wedding is tomorrow. Please send 60 usdc to Mihir for the gift",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "60",
-     "to": "Mihir"
-    }
-   ]
-  },
-  "first_latency_ms": 14960,
-  "questions": [],
-  "total_ms": 15132,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 60 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote '60 usdc' → 60 USDC.\nSpent today after this: 60 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3381,
-   2061,
-   3378,
-   6131
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-022",
-  "source": "paraphrase",
-  "prompt": "Pay Aradhya 25 usdc for lunch, it was 40 total but I'll cover her half",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "25",
-     "to": "Aradhya"
-    }
-   ]
-  },
-  "first_latency_ms": 18530,
-  "questions": [],
-  "total_ms": 18704,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 25 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   5781,
-   2022,
-   2105,
-   8615
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-023",
-  "source": "paraphrase",
-  "prompt": "Mihir lent me 100 usdc last month. Send him 30 back",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "30",
-     "to": "Mihir"
-    }
-   ]
-  },
-  "first_latency_ms": 5949,
-  "questions": [
-   "Q_AMOUNT_UNCOVERED"
-  ],
-  "total_ms": 6136,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_AMOUNT_UNCOVERED",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 1,
-  "llm_ms": [
-   5945
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 5945,
-    "user": "Message: <<<Mihir lent me 100 usdc last month. Send him 30 back>>>",
-    "output": {
-     "amounts": [
-      {
-       "phrase": "100 usdc",
-       "number": "100",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "context"
+        "name": "amounts",
+        "ms": 3183,
+        "user": "Message: <<<send $45 to aradhya>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "$45 to aradhya",
+              "number": "45",
+              "relative": null,
+              "token": null,
+              "fiat": "USD",
+              "role": "pay"
+            }
+          ]
+        }
       },
       {
-       "phrase": "30 usdc",
-       "number": "30",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
-      }
-     ]
-    }
-   }
-  ]
- },
- {
-  "id": "P-024",
-  "source": "paraphrase",
-  "prompt": "send 10 usdc to mihir at 5pm",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "10",
-     "to": "Mihir"
-    }
-   ]
-  },
-  "first_latency_ms": 13234,
-  "questions": [],
-  "total_ms": 13412,
-  "final_state": "awaiting_confirmation",
-  "final_code": null,
-  "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
-  "outcome": "exact",
-  "pairing_reached": true,
-  "pairing_exact": true,
-  "llm_calls": 4,
-  "llm_ms": [
-   3287,
-   1902,
-   2035,
-   6003
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false
- },
- {
-  "id": "P-025",
-  "source": "paraphrase",
-  "prompt": "Mihir asked me to pay Aradhya 25 usdc for the 3 tickets",
-  "expected": {
-   "plan": [
-    {
-     "t": "i",
-     "tok": "USDC",
-     "amt": "25",
-     "to": "Aradhya"
-    }
-   ]
-  },
-  "first_latency_ms": 3231,
-  "questions": [
-   "Q_AMOUNT_UNCOVERED"
-  ],
-  "total_ms": 3406,
-  "final_state": "awaiting_answer",
-  "final_code": "Q_AMOUNT_UNCOVERED",
-  "outcome": "acceptable_stop",
-  "unexpected_stop": true,
-  "pairing_reached": false,
-  "pairing_exact": false,
-  "llm_calls": 1,
-  "llm_ms": [
-   3229
-  ],
-  "llm_retries": 0,
-  "llm_failures": 0,
-  "model_failed": false,
-  "llm_trace": [
-   {
-    "name": "amounts",
-    "ms": 3229,
-    "user": "Message: <<<Mihir asked me to pay Aradhya 25 usdc for the 3 tickets>>>",
-    "output": {
-     "amounts": [
+        "name": "request_type",
+        "ms": 1740,
+        "user": "Message: <<<send amount_a677d10d>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["i"],
+          "also_balance": false
+        }
+      },
       {
-       "phrase": "25 usdc",
-       "number": "25",
-       "relative": null,
-       "token": "USDC",
-       "fiat": null,
-       "role": "pay"
+        "name": "spans",
+        "ms": 778,
+        "user": "Message: <<<send amount_a677d10d>>>\nCANDIDATES: []",
+        "output": {
+          "spans": []
+        }
       }
-     ]
-    }
-   }
-  ]
- }
+    ]
+  },
+  {
+    "id": "P-016",
+    "source": "paraphrase",
+    "prompt": "SEND 35 USDC TO MIHIR ON SEPOLIA",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "35",
+          "to": "Mihir",
+          "chain": "sepolia"
+        }
+      ]
+    },
+    "first_latency_ms": 13259,
+    "questions": [],
+    "total_ms": 13429,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 35 USDC to Mihir (0x91Ab…77d0) on Sepolia.\nSpent today after this: 35 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3221, 1905, 1886, 6242],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-017",
+    "source": "paraphrase",
+    "prompt": "Send 50 USDC to Aradhya on Base Sepolia",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "50",
+          "to": "Aradhya",
+          "chain": "base"
+        }
+      ]
+    },
+    "first_latency_ms": 13095,
+    "questions": [],
+    "total_ms": 13265,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 50 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 50 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3327, 1883, 1978, 5901],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-018",
+    "source": "paraphrase",
+    "prompt": "send mihir 5.25 usdc please, thanks!",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "5.25",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 6713,
+    "questions": ["Q_NO_PAYEE"],
+    "total_ms": 6883,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_NO_PAYEE",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 3,
+    "llm_ms": [4210, 1723, 778],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 4210,
+        "user": "Message: <<<send mihir 5.25 usdc please, thanks!>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "send mihir 5.25 usdc please, thanks!",
+              "number": "5.25",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      },
+      {
+        "name": "request_type",
+        "ms": 1723,
+        "user": "Message: <<<amount_0b050d80>>>",
+        "output": {
+          "request_type": "actions",
+          "actions": ["i"],
+          "also_balance": false
+        }
+      },
+      {
+        "name": "spans",
+        "ms": 778,
+        "user": "Message: <<<amount_0b050d80>>>\nCANDIDATES: []",
+        "output": {
+          "spans": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "P-019",
+    "source": "paraphrase",
+    "prompt": "hey could you transfer 22 usdc over to Aradhya",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "22",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 12811,
+    "questions": [],
+    "total_ms": 12982,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 22 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 22 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3165, 1891, 1957, 5794],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-020",
+    "source": "paraphrase",
+    "prompt": "pay 9 usdc to mihir on arb",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "9",
+          "to": "Mihir",
+          "chain": "arb"
+        }
+      ]
+    },
+    "first_latency_ms": 12890,
+    "questions": [],
+    "total_ms": 13060,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 9 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.\nSpent today after this: 9 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3034, 1875, 1975, 6000],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-021",
+    "source": "paraphrase",
+    "prompt": "Hey, Aradhya's wedding is tomorrow. Please send 60 usdc to Mihir for the gift",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "60",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 14960,
+    "questions": [],
+    "total_ms": 15132,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 60 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote '60 usdc' → 60 USDC.\nSpent today after this: 60 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3381, 2061, 3378, 6131],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-022",
+    "source": "paraphrase",
+    "prompt": "Pay Aradhya 25 usdc for lunch, it was 40 total but I'll cover her half",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "25",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 18530,
+    "questions": [],
+    "total_ms": 18704,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 25 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 25 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [5781, 2022, 2105, 8615],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-023",
+    "source": "paraphrase",
+    "prompt": "Mihir lent me 100 usdc last month. Send him 30 back",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "30",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 5949,
+    "questions": ["Q_AMOUNT_UNCOVERED"],
+    "total_ms": 6136,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_AMOUNT_UNCOVERED",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 1,
+    "llm_ms": [5945],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 5945,
+        "user": "Message: <<<Mihir lent me 100 usdc last month. Send him 30 back>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "100 usdc",
+              "number": "100",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "context"
+            },
+            {
+              "phrase": "30 usdc",
+              "number": "30",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "P-024",
+    "source": "paraphrase",
+    "prompt": "send 10 usdc to mihir at 5pm",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "10",
+          "to": "Mihir"
+        }
+      ]
+    },
+    "first_latency_ms": 13234,
+    "questions": [],
+    "total_ms": 13412,
+    "final_state": "awaiting_confirmation",
+    "final_code": null,
+    "summary": "Please confirm:\n1. Send 10 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+    "outcome": "exact",
+    "pairing_reached": true,
+    "pairing_exact": true,
+    "llm_calls": 4,
+    "llm_ms": [3287, 1902, 2035, 6003],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false
+  },
+  {
+    "id": "P-025",
+    "source": "paraphrase",
+    "prompt": "Mihir asked me to pay Aradhya 25 usdc for the 3 tickets",
+    "expected": {
+      "plan": [
+        {
+          "t": "i",
+          "tok": "USDC",
+          "amt": "25",
+          "to": "Aradhya"
+        }
+      ]
+    },
+    "first_latency_ms": 3231,
+    "questions": ["Q_AMOUNT_UNCOVERED"],
+    "total_ms": 3406,
+    "final_state": "awaiting_answer",
+    "final_code": "Q_AMOUNT_UNCOVERED",
+    "outcome": "acceptable_stop",
+    "unexpected_stop": true,
+    "pairing_reached": false,
+    "pairing_exact": false,
+    "llm_calls": 1,
+    "llm_ms": [3229],
+    "llm_retries": 0,
+    "llm_failures": 0,
+    "model_failed": false,
+    "llm_trace": [
+      {
+        "name": "amounts",
+        "ms": 3229,
+        "user": "Message: <<<Mihir asked me to pay Aradhya 25 usdc for the 3 tickets>>>",
+        "output": {
+          "amounts": [
+            {
+              "phrase": "25 usdc",
+              "number": "25",
+              "relative": null,
+              "token": "USDC",
+              "fiat": null,
+              "role": "pay"
+            }
+          ]
+        }
+      }
+    ]
+  }
 ]

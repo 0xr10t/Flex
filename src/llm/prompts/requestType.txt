@@ -5,11 +5,17 @@ request_type:
 - "balance" if the user only asks about their balance
 - "unsupported" if the user asks for anything else (swaps, approvals, buying, NFTs, staking, history,
   other tokens), even when they also ask for something supported
-actions (only when request_type is "actions"); include each that applies:
+actions (only when request_type is "actions"); list each kind at most once, even for several recipients or payments:
 - "i" a one-time payment
-- "k" a repeating payment (every week, monthly, 3 times a week, ...)
+- "k" a repeating payment (every day, every week, monthly, twice a week, 3 times a week, ...)
 - "l" stopping or cancelling an existing repeating payment
 also_balance: true if the user also asks about their balance, else false.
 amount_… words are amounts that were already found.
+"split amount_… between people" is a payment request: classify it as "actions" with ["i"].
+Examples:
+Message: send amount_1a2b3c4d to mihir and amount_5e6f7a8b to aradhya
+{"request_type":"actions","actions":["i"],"also_balance":false}
+Message: pay mihir amount_1a2b3c4d twice a week
+{"request_type":"actions","actions":["k"],"also_balance":false}
 USER
 Message: <<<{masked_text_s3}>>>

@@ -69,11 +69,11 @@ describe('§9.3 helpers', () => {
 });
 
 describe('C-446 §9.3 ENS flow (S6)', () => {
-  it('C-175 §9.3 step 1: normalize failure → Q_WHO_IS "That isn\'t a valid ENS name. Who is it?"', async () => {
+  it('C-175 §9.3 step 1: normalize failure asks for a wallet address or valid ENS name', async () => {
     const { ctx, d } = await run(ensSpan('bad..eth'), []);
     const q = expectQuestion(d, 'Q_WHO_IS', 1);
     expect(q.text).toBe(QUESTION_VARIANT.WHO_IS_INVALID_ENS());
-    expect(q.text).toBe("That isn't a valid ENS name. Who is it?");
+    expect(q.text).toBe("That isn't a valid ENS name. Paste the recipient's wallet address or a valid ENS name.");
     expect(ctx.ens.calls).toEqual([]);
     await d.text(NEWADDR);
     expectQuestion(d, 'Q_ADDRESS_CORRECT', 1);
@@ -103,7 +103,9 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
       ['riya.eth', COIN[ARB], OTHER],
     ]);
     expect(ctx.ens.calls.map((c) => c.coinType)).toEqual([COIN[BASE]]);
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(`riya.eth → ${RIYA} on Base Sepolia. Correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Base Sepolia.`,
+    );
   });
 
   it('C-177 §9.3 step 3a: no chain word in the clause, exactly one in the whole prompt → that chain', async () => {
@@ -150,7 +152,9 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
     const d = new Driver(ctx);
     await d.start();
     expect(ctx.ens.calls.map((c) => c.coinType)).toEqual([COIN[BASE], COIN.DEFAULT]);
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(`riya.eth → ${RIYA} on Base Sepolia. Correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Base Sepolia.`,
+    );
   });
 
   it('C-180 §9.3 step 4: no address on any queried chain → Q_ADDRESS_REENTER in the ENS wording', async () => {
@@ -159,7 +163,9 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
     expect(q.text).toBe('riya.eth has no address for these chains. Paste an address instead?');
     expect(q.input).toBe('address');
     await d.text(NEWADDR);
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 1).text).toBe(`Is ${NEWADDR} correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 1).text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`,
+    );
   });
 
   it('C-181 §9.3 step 5: all found addresses equal → one address, valid on exactly those chains', async () => {
@@ -168,7 +174,7 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
       ['riya.eth', COIN[ARB], RIYA],
     ]);
     expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(
-      `riya.eth → ${RIYA} on Sepolia and Arbitrum Sepolia. Correct?`,
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${RIYA} on Sepolia and Arbitrum Sepolia.`,
     );
     await d.chip('yes');
     await d.text('Riya');
@@ -199,7 +205,9 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
     await d.text('which?');
     expectQuestion(d, 'Q_ENS_CHAIN', 2);
     await d.text(`base sepolia (${shortAddress(OTHER)})`);
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(`riya.eth → ${OTHER} on Base Sepolia. Correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT').text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nriya.eth → ${OTHER} on Base Sepolia.`,
+    );
     await d.chip('yes');
     await d.text('Riya');
     expect(ctx.req.resolved[0]).toMatchObject({ pinned_chain_id: BASE, ens_chain_ids: [BASE], source: 'ens' });
@@ -267,7 +275,9 @@ describe('C-446 §9.3 ENS flow (S6)', () => {
     const { ctx, d } = await run(ensSpan('riya.eth'), [['riya.eth', COIN[BASE], RIYA]]);
     await d.chip('no_reenter');
     await d.text(NEWADDR);
-    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(`Is ${NEWADDR} correct?`);
+    expect(expectQuestion(d, 'Q_ADDRESS_CORRECT', 2).text).toBe(
+      `You have not paid this recipient before. Do you want to proceed?\nWallet address: ${NEWADDR}`,
+    );
     await d.chip('yes');
     await d.text('Riya');
     expect(ctx.repos.db2.findByAddress(NEWADDR)).toHaveLength(3);

@@ -98,9 +98,10 @@ describe('C-447 §20.1 pairing/checks: S8 call and output (§8.9)', () => {
     }).group;
     const s = addFollowup(ctx, { name: 'Aradhya', address: ARADHYA_CS, last_chain_id: BASE });
     addChainMention(ctx, 'base', BASE);
-    ctx.req.masked_text_s8 = `send ${a1} each to ${g} and ${s}`;
+    ctx.req.masked_text_s8 = `send ${a1} each to ${g} and ${s} on base`;
     addWord(ctx, 'distributive', 'each');
-    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, g, BASE), llmItem('i', a1, s)])]);
+    // G01: both payments preserve the explicitly named chain; the schema still also permits "unstated".
+    const llm = useFixture(ctx, [paymentsCall(a1, [llmItem('i', a1, g, BASE), llmItem('i', a1, s, BASE)])]);
     expect((await s8.step(ctx)).kind).toBe('continue');
     const call = llm.recorded[0];
     const props = (
@@ -318,6 +319,7 @@ describe('S8 retry path (P1–P4, C-130)', () => {
 describe('S8 checks without retry (P5–P9)', () => {
   it('C-136 C-371 P5 k with a group → GROUP_AUTOPAY_UNSUPPORTED, no retry', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay iitr.eth 10 usdc every friday']);
     const a1 = addAmount(ctx, '10');
     const g = addGroup(ctx, {
       parent: 'iitr.eth',
@@ -333,6 +335,7 @@ describe('S8 checks without retry (P5–P9)', () => {
 
   it('C-137 C-370 P6 relative amount in a k → RELATIVE_AMOUNT_NOT_ALLOWED, no retry', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay aradhya half my usdc every friday']);
     const a1 = addAmount(ctx, '40', { relative: 'half', pinned_chain_id: BASE, phrase: 'half my usdc' });
     const r1 = addAradhya(ctx);
     ctx.req.masked_text_s8 = `pay ${r1} ${a1} every friday`;
@@ -378,6 +381,7 @@ describe('S8 checks without retry (P5–P9)', () => {
 
   it('C-138 C-372 C-401 P7 k with an untrusted amount → UNTRUSTED_IN_AUTOPAY, no retry', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay aradhya every friday']);
     const a1 = addAmount(ctx, '10', { source: 'untrusted', confirmed: true, untrusted_item_index: 0 });
     const r1 = addAradhya(ctx);
     ctx.req.masked_text_s8 = `pay ${r1} every friday`;
@@ -389,6 +393,7 @@ describe('S8 checks without retry (P5–P9)', () => {
 
   it('C-138 P7 k with an untrusted non-contact recipient → UNTRUSTED_IN_AUTOPAY', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay 10 usdc every friday']);
     const a1 = addAmount(ctx, '10');
     const r1 = addRecipient(ctx, { name: null, address: STRANGER_CS, source: 'untrusted', untrusted_item_index: 0 });
     ctx.req.masked_text_s8 = `pay ${a1} every friday`;
@@ -398,6 +403,7 @@ describe('S8 checks without retry (P5–P9)', () => {
 
   it('C-138 C-401 P7 §9.2 step 7 k with a recipient whose DB3 source is contact (pre-existing contact) → allowed', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay aradhya 10 usdc every friday']);
     const a1 = addAmount(ctx, '10');
     const r1 = addRecipient(ctx, { name: 'Aradhya', address: ARADHYA_CS, source: 'contact' });
     ctx.req.masked_text_s8 = `pay ${a1} every friday`;
@@ -407,6 +413,7 @@ describe('S8 checks without retry (P5–P9)', () => {
 
   it('C-138 C-401 P7 §9.2 step 7 §16.1 k with DB3 source untrusted even though a DB2 row exists (add_contact just wrote it) → UNTRUSTED_IN_AUTOPAY', async () => {
     const ctx = ctxD({ actions: ['k'] });
+    setClauses(ctx, ['pay aradhya 10 usdc every friday']);
     const a1 = addAmount(ctx, '10');
     const r1 = addRecipient(ctx, {
       name: 'Aradhya',
@@ -554,7 +561,7 @@ describe('SQ-O-03 F-11 Q_PAIR_AMOUNT', () => {
     await s8.onAnswer?.(ctx, q2, chip(r1)); // both amounts to Mihir: Aradhya left with nothing
     const q3 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
     expect(q3.text).toBe('That would leave Aradhya with nothing. Who should get 10 USDC?');
-    expect(q3.attempt).toBe(2);
+    expect(q3.attempt).toBe(1); // R1-F2: the new round starts each amount's own attempt counter
   });
 
   it('SQ-O-03 F-11 "send 10 usdc. send 20 usdc to Mihir": payee in another sentence than the first amount -> asks', async () => {
@@ -570,7 +577,10 @@ describe('SQ-O-03 F-11 Q_PAIR_AMOUNT', () => {
     expect(q1.text).toBe('Who should get 10 USDC?');
     expect(q1.chips.map((c) => c.label)).toEqual(['Mihir']);
     expect((await s8.onAnswer?.(ctx, q1, chip(r1)))?.kind).toBe('continue');
-    expect((await s8.step(ctx)).kind).toBe('continue'); // the 20 sits in the payee's clause: no second question
+    const q2 = expectQuestion(await s8.step(ctx), 'Q_PAIR_AMOUNT');
+    expect(q2.text).toBe('Who should get 20 USDC?'); // R4-F1: once triggered, confirm every amount
+    expect((await s8.onAnswer?.(ctx, q2, chip(r1)))?.kind).toBe('continue');
+    expect((await s8.step(ctx)).kind).toBe('continue');
     expect(ctx.req.payments).toHaveLength(2);
   });
 

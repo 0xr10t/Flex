@@ -174,7 +174,7 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
     const ctx = ctxD({ balances: usdc('0', '10', '20') });
     const r = addAradhya(ctx);
     const res = await run(ctx, [iPay(ctx, '50', r)]);
-    expectError(res, 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '50', have: '30' });
+    expectError(res, 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '50.6', have: '30' });
     if (res.kind === 'error') expect(res.params?.chains).toContain('Base Sepolia');
     expect(ctx.req.plan).toBeUndefined();
   });
@@ -183,7 +183,7 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
     // E6 shape: need 80, Base 30 + Arbitrum 50 = 80 spendable, but the bridge needs 30 / 1.02 deliverable only
     const ctx = ctxD({ balances: usdc('0', '30', '50') });
     const r = addAradhya(ctx);
-    expectError(await run(ctx, [iPay(ctx, '80', r)]), 'INSUFFICIENT_FUNDS', { need: '80', have: '80' });
+    expectError(await run(ctx, [iPay(ctx, '80', r)]), 'INSUFFICIENT_FUNDS', { need: '80.6', have: '80' });
   });
 
   it('C-214 §10.1 §10.4 pending spend reduces what counts as have (floored at 0 per chain)', async () => {
@@ -191,7 +191,7 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
     ctx.repos.db6.insertMany([db6Row({ kind: 'payment', amount: '30', created_at: PENDING_RECENT })]);
     const r = addAradhya(ctx);
     const res = await run(ctx, [iPay(ctx, '50', r)]);
-    expectError(res, 'INSUFFICIENT_FUNDS', { need: '50', have: '20' });
+    expectError(res, 'INSUFFICIENT_FUNDS', { need: '50.6', have: '20' });
   });
 
   it('SQ-D-16 F-5 content amount: C-215 §10.4 more j intents than max_bridges_per_request → LIMIT_BRIDGES {n, max}', async () => {
@@ -294,7 +294,7 @@ describe('S9 bridges end to end (§10.4, §10.5)', () => {
   it('C-211 §10.3 rule 5: a bridge never uses the destination as its own source', async () => {
     const ctx = ctxD({ balances: usdc('0', '45', '0') });
     const a = addAradhya(ctx);
-    expectError(await run(ctx, [iPay(ctx, '50', a)]), 'INSUFFICIENT_FUNDS', { need: '50', have: '45' });
+    expectError(await run(ctx, [iPay(ctx, '50', a)]), 'INSUFFICIENT_FUNDS', { need: '50.1', have: '45' });
   });
 
   it('C-213 §10.2 no DB1 mint happens when the request fails on a bridge check', async () => {

@@ -78,20 +78,49 @@ export function isWholeWordAt(haystack: string, r: Range): boolean {
   );
 }
 
+/** A recipient identifier keeps letters, combining marks, digits and underscores together (B11, SQ-R-01). */
+const IDENTIFIER_CHAR = /[\p{L}\p{M}\p{N}_]/u;
+
+function charBefore(s: string, i: number): string {
+  if (i <= 0) return '';
+  const lo = s.charCodeAt(i - 1);
+  return lo >= 0xdc00 && lo <= 0xdfff && i >= 2 ? s.slice(i - 2, i) : s.slice(i - 1, i);
+}
+
+function charAt(s: string, i: number): string {
+  const cp = s.codePointAt(i);
+  return cp === undefined ? '' : String.fromCodePoint(cp);
+}
+
+/** Unicode identifier boundaries, including letter–digit transitions; unlike amount-word boundaries. */
+export function isIdentifierAt(source: string, r: Range): boolean {
+  const joins = (a: string, b: string): boolean => IDENTIFIER_CHAR.test(a) && IDENTIFIER_CHAR.test(b);
+  return (
+    !joins(charBefore(source, r.start), charAt(source, r.start)) &&
+    !joins(charBefore(source, r.end), charAt(source, r.end))
+  );
+}
+
 /**
  * Finds `needle` in `haystack` at the first occurrence that does not overlap `used` (§8.4 rule 1 "first unused
  * occurrence"). With `wholeWord`, the occurrence must not cut a word or a number: no letter next to a letter and no
  * digit next to a digit at either edge ("5" is not found inside "50", "riya" not inside "riyaz", but "50" is found in
  * "50usdc"). spec-questions/B.md SQB-26.
  */
-export function findUnused(haystack: string, needle: string, used: readonly Range[], wholeWord = false): Range | null {
+export function findUnused(
+  haystack: string,
+  needle: string,
+  used: readonly Range[],
+  wholeWord: boolean | 'identifier' = false,
+): Range | null {
   if (needle.length === 0) return null;
   let from = 0;
   for (;;) {
     const i = haystack.indexOf(needle, from);
     if (i < 0) return null;
     const r = { start: i, end: i + needle.length };
-    if ((!wholeWord || isWholeWordAt(haystack, r)) && !overlapsAny(r, used)) return r;
+    const whole = wholeWord === 'identifier' ? isIdentifierAt(haystack, r) : !wholeWord || isWholeWordAt(haystack, r);
+    if (whole && !overlapsAny(r, used)) return r;
     from = i + 1;
   }
 }

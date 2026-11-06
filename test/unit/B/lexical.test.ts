@@ -24,6 +24,25 @@ function err(text: string): string {
 const ADDR = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E';
 
 describe('lexical (§8.3, C-443)', () => {
+  it('LIVE-P084/P085: all iitr.eth members is a group, with the parent span preserved', () => {
+    const typed = 'send 5 usdc to all iitr.eth members';
+    const s = scan(typed);
+    expect(s.groups.map((group) => group.parent)).toEqual(['iitr.eth']);
+    expect(s.ens).toEqual([]);
+    expect(s.groups[0]?.start).toBe(typed.indexOf('iitr.eth'));
+    expect(s.groups[0]?.end).toBe(typed.indexOf('iitr.eth') + 'iitr.eth'.length);
+    expect(scan('ask all iitr.eth memberships to renew').groups).toEqual([]);
+  });
+
+  it.each(['twice a week', 'once a week', 'twice per week', 'every day'])(
+    'LIVE-P065/P074: recognizes the explicit recurrence %s',
+    (recurrence) => {
+      expect(scan(`pay mihir 5 usdc ${recurrence}`).recurrence.map((flag) => flag.word)).toContain(
+        recurrence === 'every day' ? 'every' : recurrence,
+      );
+    },
+  );
+
   it('§8.3 rule 1 (C-078): clauses split at punctuation, newline, and/then/also/plus with offsets', () => {
     const t = 'send 40 usdc to a on base, and 20 usdc to b; then 5 to c\nplus 1 to d. also 2 to e! ok? fine';
     const s = scan(t);
@@ -124,6 +143,30 @@ describe('lexical (§8.3, C-443)', () => {
     expect(err('send btc 5 to mihir')).toBe('UNSUPPORTED_TOKEN');
     expect(err('I like dai a lot, send 5 usdc')).toBe('ok');
   });
+
+  it.each([
+    '100usdt',
+    '1,000USDT',
+    '0.25weth',
+    'one hundred usdt',
+    'one thousand usdt',
+    'two hundred and five usdt',
+    'twenty-five thousand usdt',
+    'five lakh usdt',
+    'usdt one hundred',
+  ])('B12: unsupported token in %s stops before any model call', async (phrase) => {
+    const ctx = makeTestContext({ req: { typed_text: `send ${phrase} to Mihir` } });
+    expect(await s2.step(ctx)).toEqual({ kind: 'error', code: 'UNSUPPORTED_TOKEN' });
+    expect(ctx.llm.recorded).toEqual([]);
+    expect(ctx.repos.tables.db1.size).toBe(0);
+  });
+
+  it.each(['send 5 usdc to 100usdt.eth', 'send 5 usdc to usdt2', 'ask éusdt 5 questions', 'ask b100usdt about fees'])(
+    'B12: ticker substrings in names do not create unsupported-token errors: %s',
+    (typed) => {
+      expect(err(typed)).toBe('ok');
+    },
+  );
 
   it('§8.3 rule 8 (C-085): chrono spans with kinds and offsets in the session timezone', () => {
     const s = scan('send 10 usdc to aradhya at 5pm');

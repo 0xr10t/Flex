@@ -4,6 +4,7 @@
 // Q_GROUP_MEMBERS (and Q_NO_PAYEE when every document payee was dropped), §16.1 untrusted addresses,
 // §7.2 / §16.4 DB2 written only by add_contact after "Yes" + name, §15 SELF_PAYMENT / ENS_INDEXER_UNAVAILABLE /
 // GROUP_EMPTY / TOO_MANY_RETRIES.
+// SQ-S-01: failed-payment corrections preserve the resolved recipient's ENS chain restrictions.
 
 import {
   CHIPS,
@@ -513,7 +514,10 @@ async function startSpan(ctx: StepContext, span: RecipientSpan): Promise<Outcome
         source: 'session',
         is_contact: contactRows.length > 0,
         contact_chain_ids: contactRows.map((r) => r.chain_id),
-        ens_chain_ids: [],
+        ens_chain_ids:
+          ctx.req.retry_context?.recipient === span.followup_placeholder
+            ? [...ctx.req.retry_context.ens_chain_ids]
+            : [],
         pinned_chain_id: row.chain_id,
       },
     };
@@ -597,6 +601,59 @@ export async function resolveStep(ctx: StepContext): Promise<StepResult> {
   ctx.req.state = 'RECIPIENTS_RESOLVED';
   ctx.log.info({ event: 'recipients_resolved', step: 's6', request_id: ctx.req.request_id, n_payees: st.index });
   return { kind: 'continue' };
+}
+
+/**
+ * SQ-CV-01: replace only the unresolved recipient the current S6 question refers to.
+ * The original span still identifies the text S7 must mask; the new Origin identifies the user's correction.
+ * No model-authored address, generic text substitution, contact alias, or earlier recipient is changed here.
+ */
+export function canCorrectPendingRecipient(ctx: StepContext): boolean {
+  const st = s6State(ctx.req);
+  const flow = st.flow;
+  if (
+    ctx.req.paused_at?.step !== 's6' ||
+    !flow ||
+    !(flow.t === 'who_is' || (flow.t === 'addr' && flow.stage === 'reenter')) ||
+    ctx.repos.handoffs.get(ctx.req.request_id) !== undefined
+  )
+    return false;
+  const source = ctx.req.spans[st.index];
+  if (!source || source.kind === 'group' || source.followup_placeholder !== null) return false;
+  // A single correction at a question cannot distinguish several repeated occurrences of the same payee.
+  return ctx.req.spans.filter((s) => nameKey(s.text) === nameKey(source.text)).length === 1;
+}
+
+export async function correctPendingRecipient(ctx: StepContext, text: string): Promise<StepResult | null> {
+  if (!canCorrectPendingRecipient(ctx)) return null;
+  const st = s6State(ctx.req);
+  const source = ctx.req.spans[st.index] as RecipientSpan;
+  const replacement: RecipientSpan = {
+    ...source,
+    text,
+    kind: looksLikeAddress(text) ? 'address' : looksLikeEns(text) ? 'ens' : 'name',
+    source: 'user',
+    followup_placeholder: null,
+    untrusted_item_index: null,
+  };
+  // Retain the old text/range as masking provenance, but the target is explicitly user-supplied now.
+  ctx.req.spans[st.index] = { ...source, source: 'user', untrusted_item_index: null };
+  delete ctx.req.retry_context;
+  delete ctx.req.failed_payment_candidate;
+  ctx.req.resolved.length = st.index;
+  for (const index of Object.keys(st.groups)) if (Number(index) >= st.index) delete st.groups[Number(index)];
+  st.flow = null;
+  st.pending = null;
+  st.done = false;
+  for (const step of ['s7', 's8', 's9', 's9_answers', 's10', 's11', 's12'] as const) delete ctx.req.step_state[step];
+  ctx.req.recipients = [];
+  delete ctx.req.masked_text_s8;
+  delete ctx.req.payments;
+  delete ctx.req.plan;
+  delete ctx.req.summary;
+  delete ctx.req.envelope;
+  ctx.req.limit_override = false;
+  return settle(ctx, st, await startSpan(ctx, replacement)) ?? { kind: 'continue' };
 }
 
 /** Continues after a handled answer: either the next question of the same payee, or re-enter S6. */
