@@ -6,12 +6,12 @@
 // Owner: Lane B.
 
 import { createPublicClient, erc20Abi, http, type PublicClient, type Transport } from 'viem';
-import { NOTES } from '../contracts/catalog.js';
+import { NOTES, joinList } from '../contracts/catalog.js';
 import type { RpcClients } from '../contracts/io.js';
 import { fromBaseUnits } from '../contracts/money.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import { TOKEN_DECIMALS, type ChainId, type Config } from '../contracts/types.js';
-import { chainName, joinNames } from '../lexical/step-util.js';
+import { chainName } from '../lexical/step-util.js';
 
 /** §14.5: 10 s timeout, no retries inside a request. */
 const RPC_TIMEOUT_MS = 10_000;
@@ -101,7 +101,7 @@ async function s0Step(ctx: StepContext): Promise<StepResult> {
     return {
       kind: 'error',
       code: 'BALANCES_UNAVAILABLE',
-      params: { chains: joinNames(unavailable.map((c) => chainName(config, c))) },
+      params: { chains: joinList(unavailable.map((c) => chainName(config, c))) },
     };
   }
   for (const c of unavailable) req.notes.push(NOTES.CHAIN_UNREADABLE({ chain: chainName(config, c) }));

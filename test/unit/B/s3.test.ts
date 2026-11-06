@@ -564,7 +564,7 @@ describe('S3 relative amounts (§8.4 step 6, C-097)', () => {
     expect(ctx.req.amounts[0]?.amount).toBe('50');
   });
 
-  it('value 0 → INSUFFICIENT_FUNDS (SQB-11 params: need 0, have 0, chain name)', async () => {
+  it('SQB-11 / F-10: value 0 → INSUFFICIENT_FUNDS with the zero chain dropped; text has no "across"', async () => {
     const { result } = await run(
       'send all my eth to riya on base',
       [{ phrase: 'all my eth', number: null, relative: 'all', token: 'ETH' }],
@@ -574,10 +574,12 @@ describe('S3 relative amounts (§8.4 step 6, C-097)', () => {
     expect(result).toEqual({
       kind: 'error',
       code: 'INSUFFICIENT_FUNDS',
-      params: { token: 'ETH', need: '0', have: '0', chains: 'Base Sepolia' },
+      params: { token: 'ETH', need: '0', have: '0', chains: '' },
     });
-    if (result.kind === 'error')
-      expect(ERROR_MESSAGE.INSUFFICIENT_FUNDS(result.params ?? {})).toContain("You don't have enough ETH");
+    if (result.kind !== 'error') throw new Error('expected error');
+    const msg = ERROR_MESSAGE.INSUFFICIENT_FUNDS(result.params ?? {});
+    expect(msg).toContain("You don't have enough ETH: you need 0, and can use 0.");
+    expect(msg).not.toContain('across');
   });
 
   it('a pinned chain outside the allowlist → CHAIN_NOT_ALLOWED (SQB-20)', async () => {

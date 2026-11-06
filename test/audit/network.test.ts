@@ -91,13 +91,15 @@ describe('SSRF address table (src/quarantine/ssrf.ts)', () => {
     expect(isBlockedIp(ip)).toBe(false);
   });
 
-  // OBSERVATIONS (task item 3): ranges the spec does not list. Characterisation, not violations.
-  const unlisted: Array<[string, string]> = [
+  // SQ-O-08 / F-13: ranges the spec did not list are now refused (human decision).
+  const newlyBlocked: Array<[string, string]> = [
     ['100.64.0.1', 'CGNAT 100.64.0.0/10'],
     ['64:ff9b::7f00:1', 'NAT64 64:ff9b::/96 wrapping 127.0.0.1'],
     ['64:ff9b::a00:1', 'NAT64 wrapping 10.0.0.1'],
+    ['64:ff9b::808:808', 'F-13 NAT64 wrapping public 8.8.8.8, refused entirely'],
     ['2002:7f00:1::1', '6to4 2002::/16 wrapping 127.0.0.1'],
     ['2002:c0a8:101::1', '6to4 wrapping 192.168.1.1'],
+    ['2002:808:808::1', 'F-13 6to4 wrapping public 8.8.8.8, refused entirely'],
     ['::7f00:1', 'IPv4-compatible ::127.0.0.1'],
     ['192.0.0.1', 'IETF protocol 192.0.0.0/24'],
     ['198.18.0.1', 'benchmarking 198.18.0.0/15'],
@@ -106,7 +108,12 @@ describe('SSRF address table (src/quarantine/ssrf.ts)', () => {
     ['ff02::1', 'IPv6 multicast'],
     ['fec0::1', 'IPv6 site-local fec0::/10'],
   ];
-  it.each(unlisted)('OBS: %s (%s) is NOT blocked', (ip) => {
+  it.each(newlyBlocked)('SQ-O-08 / F-13: %s (%s) is blocked', (ip) => {
+    expect(isBlockedIp(ip)).toBe(true);
+  });
+
+  const boundaryAllowed = ['100.128.0.1', '100.63.255.255', '192.0.1.1', '198.20.0.1', '198.17.255.255', '::8.8.8.8'];
+  it.each(boundaryAllowed)('SQ-O-08: boundary address %s just outside the new ranges is allowed', (ip) => {
     expect(isBlockedIp(ip)).toBe(false);
   });
 });
@@ -216,6 +223,18 @@ describe('URL fetcher (§8.2 step 3)', () => {
     expect(await f.fetchUrl('https://rebind.example.com/')).toEqual({ ok: false });
     expect(lookups).toEqual(['rebind.example.com', 'rebind.example.com']); // pre-check + connect-time lookup
   });
+
+  it.each(['100.64.0.1', '64:ff9b::808:808', '2002:808:808::1'])(
+    'SQ-O-08 / F-13 DNS rebinding: first lookup public, connect-time lookup %s -> refused',
+    async (addr) => {
+      let n = 0;
+      const f = createContentFetcher(cfg, {
+        resolve: async () => (++n === 1 ? PUBLIC : [{ address: addr, family: addr.includes(':') ? 6 : 4 }]),
+      });
+      expect(await f.fetchUrl('https://rebind.example.com/')).toEqual({ ok: false });
+      expect(n).toBe(2);
+    },
+  );
 
   it('DNS rebinding variant: connect-time answer mixes public and private -> refused', async () => {
     let n = 0;

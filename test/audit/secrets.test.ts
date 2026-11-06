@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createBase58check, base58 } from '@scure/base';
 import { describe, expect, it } from 'vitest';
 import { detectSecret } from '../../src/guard/secrets.js';
+import { isSecretRefusal, secretRefusal } from '../../src/guard/urls.js';
+import { createContentFetcher } from '../../src/quarantine/fetch.js';
+import { testConfig } from '../fakes/context.js';
 import { Harness } from '../acceptance/harness.js';
 
 const sha256 = (d: Uint8Array): Uint8Array => new Uint8Array(createHash('sha256').update(d).digest());
@@ -145,22 +148,52 @@ describe('S1 hit writes nothing (§8.2 step 2, A-16)', () => {
 describe('S1 URL channel', () => {
   const KEY_URL = `https://example.com/collect?k=${HEX64}`;
 
-  it('OBS characterisation: a secret inside urls[] is not scanned and the URL is fetched (spec §8.2 step 2 scans only typed text, pasted blocks, attachments)', async () => {
-    const h = new Harness('audit-url-char', { calls: [] }, {});
-    h.fetcher.pages.set(KEY_URL, { ok: false });
+  // SQ-O-06 (human): a key the user put in urls[] is never sent to a host.
+  it('SQ-O-06: a secret in urls[] is blocked before any fetch (SECRET_DETECTED, no outbound request, nothing written)', async () => {
+    const h = new Harness('audit-url', { calls: [] }, {});
     const r = await h.say('read this', { urls: [KEY_URL] });
-    expect(r.body.error?.code).toBe('URL_FETCH_FAILED');
-    expect(h.fetcher.calls).toEqual([KEY_URL]); // the key left the process in an HTTPS GET
+    expect(r.body.state).toBe('error');
+    expect(r.body.error?.code).toBe('SECRET_DETECTED');
+    expect(h.fetcher.calls).toEqual([]);
+    for (const t of ['db1_amount_placeholders', 'db3_address_placeholders', 'db8_prompts', 'db8_history'])
+      expect(h.count(t), t).toBe(0);
+    expect(h.llm.recorded).toEqual([]);
+    expect(JSON.stringify(r.body)).not.toContain(HEX64);
+    expect(readFileSync(h.logFile, 'utf8')).not.toContain(HEX64);
     await h.finish();
   });
 
-  // Documents a §16.2 / §16.4 violation: a key the user put in urls[] is sent to an arbitrary host.
-  it.fails('a secret in urls[] must be blocked before any fetch (SECRET_DETECTED, no outbound request)', async () => {
-    const h = new Harness('audit-url', { calls: [] }, {});
-    const r = await h.say('read this', { urls: [KEY_URL] });
+  it('SQ-O-06: a fetcher that refuses with secretRefusal() (redirect target carried a key) -> SECRET_DETECTED, nothing stored or logged', async () => {
+    const h = new Harness('audit-url-redirect', { calls: [] }, {});
+    const clean = 'https://a.example.com/start';
+    h.fetcher.pages.set(clean, secretRefusal());
+    const r = await h.say('read this', { urls: [clean] });
     expect(r.body.error?.code).toBe('SECRET_DETECTED');
-    expect(h.fetcher.calls).toEqual([]);
+    for (const t of ['db1_amount_placeholders', 'db3_address_placeholders', 'db8_prompts', 'db8_history'])
+      expect(h.count(t), t).toBe(0);
+    expect(h.llm.recorded).toEqual([]);
+    expect(readFileSync(h.logFile, 'utf8')).not.toContain('a.example.com');
     await h.finish();
+  });
+
+  it('SQ-O-06: the production fetcher never requests a redirect target that carries a key', async () => {
+    const cfg = testConfig();
+    const requested: string[] = [];
+    const f = createContentFetcher(cfg, {
+      resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+      httpGet: async (url) => {
+        requested.push(url.href);
+        return {
+          status: 302,
+          headers: { location: `https://b.example.com/?k=${HEX64}` },
+          body: (async function* () {})(),
+          destroy: () => undefined,
+        };
+      },
+    });
+    const res = await f.fetchUrl('https://a.example.com/');
+    expect(isSecretRefusal(res)).toBe(true);
+    expect(requested).toEqual(['https://a.example.com/']);
   });
 
   it('a secret in a URL typed in the text IS blocked before any fetch', async () => {

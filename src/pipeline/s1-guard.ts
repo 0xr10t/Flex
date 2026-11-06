@@ -2,9 +2,10 @@
 // text/plain, text/markdown, text/csv UTF-8 decoded, application/pdf via pdf-parse, anything else →
 // ATTACHMENT_UNSUPPORTED naming the file; urls[] plus https URLs in typed text, replaced by `[link N]`; http:// →
 // URL_FETCH_FAILED), step 2 secret scan over typed text, pasted blocks and attachment text (not fetched pages;
-// I-15) → SECRET_DETECTED with nothing written to DB8/DB1/DB3/logs and buffers dropped, step 3 fetch URLs only
-// after the scan passes (ContentFetcher: SSRF, redirects, size, types) → URL_FETCH_FAILED with the link number,
-// step 4 20,000-character cap per item → DOCUMENT_TOO_LARGE, step 5 Q-LLM extraction per item (failure → note
+// I-15) and, per SQ-O-06, every link URL (the fetcher scans each redirect target too) → SECRET_DETECTED with nothing
+// written to DB8/DB1/DB3/logs and buffers dropped, step 3 fetch URLs only after the scan passes
+// (ContentFetcher: SSRF, redirects, size, types) → URL_FETCH_FAILED with the link number, step 4 20,000-character
+// cap per item → DOCUMENT_TOO_LARGE, step 5 Q-LLM extraction per item (failure → note
 // "Couldn't read anything usable from <item>."), step 6 persist typed text + pasted blocks to db8_prompts.
 // ENS text records are never fetched (C-077: nothing here reads ENS). §3.2, §16.1, §16.3, FR-01, FR-03, I-13–I-17.
 // S1 asks no questions, so it has no AnswerHandler.
@@ -14,7 +15,7 @@ import { NOTES } from '../contracts/catalog.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { MessageInput, QItem } from '../contracts/types.js';
 import { detectSecret } from '../guard/secrets.js';
-import { extractUrls, isHttpsUrl } from '../guard/urls.js';
+import { extractUrls, isHttpsUrl, isSecretRefusal, urlHasSecret } from '../guard/urls.js';
 import { nowUtcIso, unsupported } from '../lexical/step-util.js';
 import { decodeUtf8, pdfToText } from '../quarantine/extract.js';
 import { ITEM_LABEL } from '../quarantine/labels.js';
@@ -87,9 +88,9 @@ async function s1Step(ctx: StepContext): Promise<StepResult> {
     items.push({ label: ITEM_LABEL.url({ n: l.n }), scanned: false, text: null, link: l.n, url: l.url });
   }
 
-  // ── step 2: secret scan (typed text — before and after URL removal — pasted blocks, attachment text) ──
+  // ── step 2: secret scan (typed text — before and after URL removal — pasted blocks, attachment text, URLs) ──
   const toScan = [input.text, ...items.filter((i) => i.scanned).map((i) => i.text ?? '')];
-  if (toScan.some((t) => detectSecret(t) !== null)) {
+  if (toScan.some((t) => detectSecret(t) !== null) || links.some((l) => urlHasSecret(l.url))) {
     dropBuffers(ctx);
     return { kind: 'error', code: 'SECRET_DETECTED' };
   }
@@ -98,6 +99,10 @@ async function s1Step(ctx: StepContext): Promise<StepResult> {
   for (const it of items) {
     if (it.url === undefined) continue;
     const res = await ctx.fetcher.fetchUrl(it.url);
+    if (isSecretRefusal(res)) {
+      dropBuffers(ctx);
+      return { kind: 'error', code: 'SECRET_DETECTED' };
+    }
     if (!res.ok) {
       dropBuffers(ctx);
       return { kind: 'error', code: 'URL_FETCH_FAILED', params: { n: String(it.link) } };

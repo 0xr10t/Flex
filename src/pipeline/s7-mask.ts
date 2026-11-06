@@ -1,23 +1,19 @@
 // Implements: §8.8 S7 — Mask recipients (single → new `address_` + DB3 `single` row with chain_id = pinned chain or
 // NULL; group → reuse the §9.6 `group_` placeholder; follow-up refs reuse the earlier placeholder, no new row),
 // `masked_text_s8`, §7.3 rules 5–6 (one placeholder per span per request; never reused across requests except
-// follow-ups), §17.2 step 4 (follow-up payee offered to S8 under SESSION with its previous chain).
+// follow-ups), §17.2 step 4 (follow-up payee offered to S8 under SESSION with its previous chain). SQ-O-01 / SQB-23
+// (human, 2026-11-06): further whole-word occurrences of a tagged text are masked with the same placeholder
+// (`sweepRepeats`), without a new DB3 row; the fail-closed `s7_span_mismatch` check covers them too.
 
 import type { Db8HistoryRow } from '../contracts/repos.js';
 import type { StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type { AddressPh, ChainId, RecipientPh, RecipientRef, ResolvedRecipient } from '../contracts/types.js';
 import { CHAIN_IDS } from '../contracts/types.js';
+import { PERSON, sweepRepeats, type Masking } from '../lexical/sweep.js';
 import { s6State } from '../recipients/state.js';
 
 /** §17.2 step 1: session history depth. */
 const HISTORY_LIMIT = 5;
-
-interface Replacement {
-  start: number;
-  end: number;
-  text: string;
-  with: string;
-}
 
 /**
  * §17.2 step 4: the payee's previous chain. History rows hold the handed-off payments (placeholders only); only the
@@ -48,7 +44,7 @@ export function lastChainFor(history: Db8HistoryRow[], placeholder: AddressPh): 
  * a replacement that doesn't match its text or overlaps another is a bug: null, because a recipient could otherwise
  * stay readable in the text LLM #4 sees (§16.1).
  */
-function applyReplacements(text: string, reps: Replacement[]): string | null {
+function applyReplacements(text: string, reps: Masking[]): string | null {
   let out = text;
   let floor = Number.POSITIVE_INFINITY;
   for (const r of [...reps].sort((a, b) => b.start - a.start)) {
@@ -65,7 +61,7 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
   if (done?.done) return { kind: 'continue' };
   const s6 = s6State(req);
   const refs: RecipientRef[] = [];
-  const reps: Replacement[] = [];
+  const reps: Masking[] = [];
 
   for (let i = 0; i < req.spans.length; i++) {
     const span = req.spans[i];
@@ -109,9 +105,10 @@ export async function maskStep(ctx: StepContext): Promise<StepResult> {
       reps.push({ start: span.span.start, end: span.span.end, text: span.text, with: placeholder });
   }
   // §8.6 rule 6 / §8.8 (CCR C-1): S5's `mentioned` spans become `[person]`.
-  for (const m of req.mentioned_spans) reps.push({ start: m.start, end: m.end, text: m.text, with: '[person]' });
+  for (const m of req.mentioned_spans) reps.push({ start: m.start, end: m.end, text: m.text, with: PERSON });
 
-  const masked = applyReplacements(req.masked_text_s3 ?? req.typed_text, reps);
+  const source = req.masked_text_s3 ?? req.typed_text;
+  const masked = applyReplacements(source, [...reps, ...sweepRepeats(source, reps)]);
   if (masked === null) {
     ctx.log.error({
       event: 'internal_error',

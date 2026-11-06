@@ -31,12 +31,6 @@ export function statedChain(scan: LexicalScan, clause_index: number | null): Cha
   return all.length === 1 ? (all[0] ?? null) : null;
 }
 
-/** SQ-06 (b): chain names joined with ", " and a final " and ". */
-export function joinNames(names: string[]): string {
-  if (names.length <= 1) return names.join('');
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
 function distinct<T>(xs: T[]): T[] {
   return [...new Set(xs)];
 }

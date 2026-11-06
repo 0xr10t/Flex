@@ -26,6 +26,8 @@ export const ENS_SCAN_RE = /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(eth|xyz|com|org|in|io|
 export const URL_SCAN_RE = /https?:\/\/[^\s<>"']+/gi;
 /** The `[link N]` markers S1 writes into typed_text. */
 export const LINK_MARKER_RE = /\[link \d+\]/g;
+/** Every placeholder or marker the pipeline writes into the masked texts (global, for scanning). */
+export const PLACEHOLDER_TOKEN_RE = /(?:amount|address|group)_[0-9a-f]{8}|\[amount\]|\[person\]|\[link \d+\]/g;
 
 /** A dotted name (parent of a group marker). */
 const DOTTED = '[a-z0-9-]+(?:\\.[a-z0-9-]+)+';

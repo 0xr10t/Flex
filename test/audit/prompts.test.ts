@@ -100,15 +100,7 @@ describe('SQ-O-01: §8.8 masks only tagged spans; an untagged repeat of a name r
 
   const TEXT = 'Send 50 usdc to Aradhya. Aradhya is my flatmate and Aradhya likes pizza';
 
-  it('OBS characterisation: the 2nd and 3rd "Aradhya" are still readable in the LLM #4 user message', async () => {
-    const { four, state } = await run(TEXT, payeeFixture(TEXT));
-    expect(state).toBe('awaiting_confirmation');
-    expect(four).toMatch(/MESSAGE|Message/i);
-    expect((four.match(/Aradhya/g) ?? []).length).toBe(2);
-  });
-
-  // Expected by §16.1 ("#4 sees amounts and recipients masked"); fails today -> SQ-O-01 (human ruling pending).
-  it.fails('SQ-O-01: no occurrence of a tagged payee name reaches the LLM #4 user message', async () => {
+  it('SQ-O-01 / SQB-23: no occurrence of a tagged payee name reaches the LLM #4 user message', async () => {
     const { four, state } = await run(TEXT, payeeFixture(TEXT));
     expect(state).toBe('awaiting_confirmation'); // guards against a pass caused by an earlier failure
     expect(four).toMatch(/address_[0-9a-f]{8}/);
@@ -144,17 +136,67 @@ describe('SQ-O-01: §8.8 masks only tagged spans; an untagged repeat of a name r
     ],
   });
 
-  it('OBS characterisation: the 2nd "Kabir" (mentioned, §8.8 -> [person]) is still readable in LLM #4', async () => {
-    const { four, state } = await run(MENTION, mentionFixture());
-    expect(state).toBe('awaiting_confirmation');
-    expect(four).toContain('[person]');
-    expect((four.match(/Kabir/g) ?? []).length).toBe(1);
-  });
-
-  it.fails('SQ-O-01: no occurrence of a mentioned name reaches the LLM #4 user message', async () => {
+  it('SQ-O-01 / SQB-23: no occurrence of a mentioned name reaches the LLM #4 user message', async () => {
     const { four, state } = await run(MENTION, mentionFixture());
     expect(state).toBe('awaiting_confirmation');
     expect(four).toContain('[person]');
     expect(four).not.toContain('Kabir');
+  });
+});
+
+describe('F-12: a name tagged both payee and mentioned asks Q_NAME_ROLE', () => {
+  const TEXT = 'Send 50 usdc to Aradhya. Aradhya is my flatmate';
+  const fixture = (): FixtureFile => ({
+    calls: [
+      {
+        name: 'amounts',
+        match: 'Aradhya',
+        output: {
+          amounts: [{ phrase: '50 usdc', number: '50', relative: null, token: 'USDC', fiat: null, role: 'pay' }],
+        },
+      },
+      {
+        name: 'request_type',
+        match: 'Aradhya',
+        output: { request_type: 'actions', actions: ['i'], also_balance: false },
+      },
+      {
+        name: 'spans',
+        match: 'Aradhya',
+        output: {
+          spans: [
+            { text: 'Aradhya', kind: 'name', role: 'payee' },
+            { text: 'Aradhya', kind: 'name', role: 'mentioned' },
+          ],
+        },
+      },
+      { name: 'payments', match: 'ACTION KINDS:', output: { payments: [PAYMENT] } },
+    ],
+  });
+
+  it('F-12: answer "pay" -> LLM #4 sees no "Aradhya" and the address_ placeholder twice; one DB3 row; one spans call', async () => {
+    const h = new Harness('audit-f12-pay', fixture(), {});
+    const r1 = await h.say(TEXT);
+    expect(r1.body.question?.code).toBe('Q_NAME_ROLE');
+    const r2 = await h.answer(r1, { chipLabel: 'Yes, pay Aradhya' });
+    expect(r2.body.state).toBe('awaiting_confirmation');
+    const four = h.llm.recorded.find((c) => c.name === 'payments')?.user ?? '';
+    expect(four).not.toContain('Aradhya');
+    const message = four.split('\n')[0] ?? '';
+    expect(message.match(/address_[0-9a-f]{8}/g) ?? []).toHaveLength(2); // both occurrences swept
+    expect(new Set(four.match(/address_[0-9a-f]{8}/g)).size).toBe(1);
+    expect(h.count('db3_address_placeholders')).toBe(1);
+    expect(h.llm.recorded.filter((c) => c.name === 'spans')).toHaveLength(1);
+    await h.finish({ allowUnused: true });
+  });
+
+  it('F-12: answer "only mentioned" -> Q_NO_PAYEE, and no DB3 row for the name', async () => {
+    const h = new Harness('audit-f12-mentioned', fixture(), {});
+    const r1 = await h.say(TEXT);
+    expect(r1.body.question?.code).toBe('Q_NAME_ROLE');
+    const r2 = await h.answer(r1, { chipLabel: "No, they're only mentioned" });
+    expect(r2.body.question?.code).toBe('Q_NO_PAYEE');
+    expect(h.count('db3_address_placeholders')).toBe(0);
+    await h.finish({ allowUnused: true });
   });
 });

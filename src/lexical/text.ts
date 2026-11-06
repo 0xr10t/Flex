@@ -70,6 +70,14 @@ function glued(a: string, b: string): boolean {
   return (/[A-Za-z]/.test(a) && /[A-Za-z]/.test(b)) || (/[0-9]/.test(a) && /[0-9]/.test(b));
 }
 
+/** True when `r` cuts no word or number of `haystack` at either edge (see `findUnused`). */
+export function isWholeWordAt(haystack: string, r: Range): boolean {
+  return (
+    !glued(haystack[r.start - 1] ?? '', haystack[r.start] ?? '') &&
+    !glued(haystack[r.end - 1] ?? '', haystack[r.end] ?? '')
+  );
+}
+
 /**
  * Finds `needle` in `haystack` at the first occurrence that does not overlap `used` (§8.4 rule 1 "first unused
  * occurrence"). With `wholeWord`, the occurrence must not cut a word or a number: no letter next to a letter and no
@@ -83,11 +91,7 @@ export function findUnused(haystack: string, needle: string, used: readonly Rang
     const i = haystack.indexOf(needle, from);
     if (i < 0) return null;
     const r = { start: i, end: i + needle.length };
-    const okWord =
-      !wholeWord ||
-      (!glued(haystack[i - 1] ?? '', needle[0] ?? '') &&
-        !glued(needle[needle.length - 1] ?? '', haystack[r.end] ?? ''));
-    if (okWord && !overlapsAny(r, used)) return r;
+    if ((!wholeWord || isWholeWordAt(haystack, r)) && !overlapsAny(r, used)) return r;
     from = i + 1;
   }
 }

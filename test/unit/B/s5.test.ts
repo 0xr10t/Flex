@@ -300,7 +300,7 @@ describe('S5 span offsets index masked_text_s3 (cross-lane contract)', () => {
     expect(ctx.req.mentioned_spans[0]?.start).toBe(ctx.req.masked_text_s3!.indexOf('Kabir'));
   });
 
-  it('same name payee once and mentioned once (different occurrences) do not overlap', async () => {
+  it('F-12: same name payee once and mentioned once (different occurrences) asks Q_NAME_ROLE; after "pay" the offsets hold', async () => {
     const typed = 'pay Aman 5 usdc; Aman is not who paid before';
     const ctx = await setup(typed, {
       amounts: [{ phrase: '5 usdc', number: '5' }],
@@ -309,10 +309,11 @@ describe('S5 span offsets index masked_text_s3 (cross-lane contract)', () => {
         { text: 'Aman', kind: 'name', role: 'mentioned' },
       ],
     });
-    await run(ctx);
+    const r = await run(ctx, [chip('pay')]);
+    expect(r.questions.map((q) => q.code)).toEqual(['Q_NAME_ROLE']);
+    expect(r.result).toEqual({ kind: 'continue' });
     expect(ctx.req.spans).toHaveLength(1);
-    expect(ctx.req.mentioned_spans).toHaveLength(1);
-    expect(ctx.req.spans[0]!.span!.start).toBeLessThan(ctx.req.mentioned_spans[0]!.start);
+    expect(ctx.req.mentioned_spans).toHaveLength(0);
     expectOffsetContract(ctx);
   });
 
@@ -627,5 +628,145 @@ describe('S5 failures and re-entrancy', () => {
     await run(ctx);
     expect(await s5.step(ctx)).toEqual({ kind: 'continue' });
     expect(ctx.llm.recorded.filter((c) => c.name === 'spans')).toHaveLength(1);
+  });
+});
+
+describe('S5 Q_NAME_ROLE (F-12, SQ-O-01)', () => {
+  const T = 'pay Aman 5 usdc; Aman is my flatmate';
+  const base = {
+    amounts: [{ phrase: '5 usdc', number: '5' }],
+    spans: [
+      { text: 'Aman', kind: 'name' as const },
+      { text: 'Aman', kind: 'name' as const, role: 'mentioned' as const },
+    ],
+  };
+  const spansCalls = (ctx: TestContext) => ctx.llm.recorded.filter((c) => c.name === 'spans');
+
+  it('F-12: the question shape (text, chips, code), asked before req.spans is set', async () => {
+    const ctx = await setup(T, base);
+    const r = await run(ctx);
+    expect(r.result.kind).toBe('question');
+    expect(r.questions).toHaveLength(1);
+    const q = r.questions[0]!;
+    expect(q.code).toBe('Q_NAME_ROLE');
+    expect(q.text).toBe('Should I pay Aman?');
+    expect(q.chips.map((c) => ({ id: c.id, label: c.label }))).toEqual([
+      { id: 'pay', label: 'Yes, pay Aman' },
+      { id: 'only_mentioned', label: "No, they're only mentioned" },
+    ]);
+    expect(q.attempt).toBe(1);
+    expect(ctx.req.spans).toEqual([]);
+  });
+
+  it('F-12: "Yes, pay" by chip keeps the payee and drops that name\'s mentioned spans', async () => {
+    const ctx = await setup(T, base);
+    const r = await run(ctx, [chip('pay')]);
+    expect(r.result).toEqual({ kind: 'continue' });
+    expect(payees(ctx)).toEqual([['Aman', 'name']]);
+    expect(ctx.req.spans[0]!.span!.start).toBe(T.indexOf('Aman'));
+    expect(ctx.req.mentioned_spans).toEqual([]);
+    expectOffsetContract(ctx);
+    expectLabelsOk(ctx);
+  });
+
+  it('F-12: a typed "yes" maps to the pay chip', async () => {
+    const ctx = await setup(T, base);
+    const r = await run(ctx, [text('yes')]);
+    expect(r.result).toEqual({ kind: 'continue' });
+    expect(payees(ctx)).toEqual([['Aman', 'name']]);
+    expect(ctx.req.mentioned_spans).toEqual([]);
+  });
+
+  it('F-12: only mentioned (typed "no"), no payee left -> normal flow Q_NO_PAYEE; every occurrence is mentioned', async () => {
+    const ctx = await setup(T, base);
+    const r = await run(ctx, [text('no')]);
+    expect(r.questions.map((q) => q.code)).toEqual(['Q_NAME_ROLE', 'Q_NO_PAYEE']);
+    expect(ctx.req.spans).toEqual([]);
+    expect(ctx.req.mentioned_spans.map((m) => m.text)).toEqual(['Aman', 'Aman']);
+    const masked = ctx.req.masked_text_s3 ?? '';
+    expect(ctx.req.mentioned_spans.map((m) => m.start)).toEqual([masked.indexOf('Aman'), masked.lastIndexOf('Aman')]);
+    expectOffsetContract(ctx);
+  });
+
+  it('F-12: only mentioned (chip) while another payee remains -> no further question', async () => {
+    const typed = 'pay Aman and Riya 5 usdc; Aman is my flatmate';
+    const ctx = await setup(typed, {
+      amounts: base.amounts,
+      spans: [
+        { text: 'Aman', kind: 'name' },
+        { text: 'Riya', kind: 'name' },
+        { text: 'Aman', kind: 'name', role: 'mentioned' },
+      ],
+    });
+    const r = await run(ctx, [chip('only_mentioned')]);
+    expect(r.questions.map((q) => q.code)).toEqual(['Q_NAME_ROLE']);
+    expect(r.result).toEqual({ kind: 'continue' });
+    expect(payees(ctx)).toEqual([['Riya', 'name']]);
+    expect(ctx.req.mentioned_spans.map((m) => m.text)).toEqual(['Aman', 'Aman']);
+    expectOffsetContract(ctx);
+  });
+
+  it('F-12: an invalid answer re-asks with the same text and attempt+1 (the TOO_MANY_RETRIES limit belongs to the runner)', async () => {
+    const ctx = await setup(T, base);
+    const r = await run(ctx, [text('maybe'), text('hmm')]);
+    expect(r.questions.map((q) => [q.code, q.text, q.attempt])).toEqual([
+      ['Q_NAME_ROLE', 'Should I pay Aman?', 1],
+      ['Q_NAME_ROLE', 'Should I pay Aman?', 2],
+      ['Q_NAME_ROLE', 'Should I pay Aman?', 3],
+    ]);
+    expect(ctx.req.spans).toEqual([]);
+  });
+
+  it('F-12: two conflicting names are asked one at a time, in text order', async () => {
+    const typed = 'pay Aman and Riya 5 usdc each; Riya is my friend, Aman is my flatmate';
+    const ctx = await setup(typed, {
+      amounts: base.amounts,
+      spans: [
+        { text: 'Aman', kind: 'name' },
+        { text: 'Riya', kind: 'name' },
+        { text: 'Riya', kind: 'name', role: 'mentioned' },
+        { text: 'Aman', kind: 'name', role: 'mentioned' },
+      ],
+    });
+    const r = await run(ctx, [chip('pay'), chip('only_mentioned')]);
+    expect(r.questions.map((q) => q.text)).toEqual(['Should I pay Aman?', 'Should I pay Riya?']);
+    expect(r.result).toEqual({ kind: 'continue' });
+    expect(payees(ctx)).toEqual([['Aman', 'name']]);
+    expect(ctx.req.mentioned_spans.map((m) => m.text)).toEqual(['Riya', 'Riya']);
+    expectOffsetContract(ctx);
+  });
+
+  it('F-12: the conflict is case-insensitive ("Aradhya" payee vs "aradhya" mentioned)', async () => {
+    const typed = 'pay Aradhya 5 usdc; aradhya is my flatmate';
+    const ctx = await setup(typed, {
+      amounts: base.amounts,
+      spans: [
+        { text: 'Aradhya', kind: 'name' },
+        { text: 'aradhya', kind: 'name', role: 'mentioned' },
+      ],
+    });
+    const r = await run(ctx);
+    expect(r.questions.map((q) => q.code)).toEqual(['Q_NAME_ROLE']);
+    expect(r.questions[0]!.text).toBe('Should I pay Aradhya?');
+  });
+
+  it('F-12: no conflict (different names) asks nothing', async () => {
+    const typed = 'pay Aman 5 usdc; Kabir is my flatmate';
+    const ctx = await setup(typed, {
+      amounts: base.amounts,
+      spans: [
+        { text: 'Aman', kind: 'name' },
+        { text: 'Kabir', kind: 'name', role: 'mentioned' },
+      ],
+    });
+    const r = await run(ctx);
+    expect(r.questions).toEqual([]);
+    expect(r.result).toEqual({ kind: 'continue' });
+  });
+
+  it('F-12: exactly one LLM #3 (spans) call across question, re-ask and answer', async () => {
+    const ctx = await setup(T, base);
+    await run(ctx, [text('maybe'), chip('pay')]);
+    expect(spansCalls(ctx)).toHaveLength(1);
   });
 });

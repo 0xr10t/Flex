@@ -14,12 +14,6 @@ export function chainName(config: Config, chain_id: ChainId): string {
   return config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
 }
 
-/** "A", "A and B", "A, B and C" (SQ-06 interim format). */
-export function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? '';
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
-}
-
 export function qid(): QuestionId {
   return newId('question') as QuestionId;
 }

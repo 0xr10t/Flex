@@ -9,6 +9,7 @@ import {
   type HttpResponse,
   type ResolveHost,
 } from '../../../src/quarantine/fetch.js';
+import { isSecretRefusal } from '../../../src/guard/urls.js';
 import { isBlockedIp } from '../../../src/quarantine/ssrf.js';
 import { testConfig } from '../../fakes/context.js';
 import { tinyPdf } from './helpers.js';
@@ -81,6 +82,7 @@ describe('SSRF range check (§8.2 step 3, C-070, SQB-12)', () => {
     '::ffff:7f00:1',
     '[::1]',
     'not-an-ip',
+    'fec0::1', // SQ-O-08: site-local now refused
   ])('refuses %s', (ip) => {
     expect(isBlockedIp(ip)).toBe(true);
   });
@@ -93,11 +95,135 @@ describe('SSRF range check (§8.2 step 3, C-070, SQB-12)', () => {
     '169.253.1.1',
     '11.0.0.1',
     '2606:4700:4700::1111',
-    'fec0::1',
     'fbff::1',
     '::ffff:8.8.8.8',
   ])('allows %s', (ip) => {
     expect(isBlockedIp(ip)).toBe(false);
+  });
+});
+
+describe('SSRF additional ranges (SQ-O-08, F-13)', () => {
+  it.each([
+    '100.64.0.0',
+    '100.64.0.1',
+    '100.127.255.255', // 100.64.0.0/10
+    '192.0.0.0',
+    '192.0.0.255', // 192.0.0.0/24
+    '198.18.0.0',
+    '198.19.255.255', // 198.18.0.0/15
+    '224.0.0.0',
+    '239.255.255.255',
+    '255.255.255.255', // multicast, broadcast
+    'ff00::',
+    'ff02::1',
+    'ffff::1', // ff00::/8
+    'fec0::',
+    'fec0::1',
+    'feff::1', // fec0::/10
+    '64:ff9b::',
+    '64:ff9b::7f00:1',
+    '64:ff9b::808:808',
+    '64:ff9b::ffff:ffff', // F-13 NAT64 entirely
+    '2002::',
+    '2002:808:808::1',
+    '2002:7f00:1::1',
+    '2002:ffff::1', // F-13 6to4 entirely
+    '::7f00:1',
+    '::a00:1',
+    '::127.0.0.1',
+    '::192.168.1.1', // IPv4-compatible, decoded
+    '::ffff:100.64.0.1', // IPv4-mapped into a new range
+  ])('SQ-O-08 / F-13 refuses %s', (ip) => {
+    expect(isBlockedIp(ip)).toBe(true);
+  });
+
+  it.each([
+    '100.63.255.255',
+    '100.128.0.0',
+    '100.128.0.1', // just outside 100.64.0.0/10
+    '192.0.1.1',
+    '191.255.255.255', // just outside 192.0.0.0/24
+    '198.17.255.255',
+    '198.20.0.0',
+    '198.20.0.1', // just outside 198.18.0.0/15
+    '223.255.255.255', // just below multicast
+    'fe00::1', // outside fec0::/10 and fe80::/10
+    '64:ff9a::1',
+    '64:ff9c::1', // neighbours of 64:ff9b::/96
+    '2001:ffff::1',
+    '2003::1', // neighbours of 2002::/16
+    '::8.8.8.8',
+    '::808:808', // IPv4-compatible of a public address
+    '::ffff:8.8.8.8',
+  ])('SQ-O-08 / F-13 allows boundary address %s', (ip) => {
+    expect(isBlockedIp(ip)).toBe(false);
+  });
+
+  it.each(['240.0.0.1', '255.255.255.254'])('SQ-O-08: only 255.255.255.255 is refused, not 240.0.0.0/4 (%s)', (ip) => {
+    expect(isBlockedIp(ip)).toBe(false);
+  });
+
+  it.each(['100.64.0.1', '64:ff9b::808:808', '2002:808:808::1', '224.0.0.1', 'ff02::1'])(
+    'SQ-O-08 / F-13 fetcher refuses a host resolving to %s at the pre-check (no request)',
+    async (addr) => {
+      const { fetcher, requested } = setup(
+        { 'https://h.example.com/': resp(200, { 'content-type': 'text/plain' }, enc('x')) },
+        { resolve: async () => [{ address: addr, family: addr.includes(':') ? 6 : 4 }] },
+      );
+      expect(await fetcher.fetchUrl('https://h.example.com/')).toEqual({ ok: false });
+      expect(requested).toEqual([]);
+    },
+  );
+
+  it.each(['100.64.0.1', '64:ff9b::808:808'])(
+    'SQ-O-08 / F-13 DNS rebinding: public at the pre-check, %s at connect time -> refused',
+    async (addr) => {
+      let n = 0;
+      const cfg = testConfig();
+      const f = createContentFetcher(cfg, {
+        resolve: async () =>
+          ++n === 1
+            ? [{ address: '93.184.216.34', family: 4 }]
+            : [{ address: addr, family: addr.includes(':') ? 6 : 4 }],
+      });
+      expect(await f.fetchUrl('https://rebind.example.com/')).toEqual({ ok: false });
+      expect(n).toBe(2);
+    },
+  );
+});
+
+describe('fetcher secret scan (SQ-O-06)', () => {
+  const HEX = 'ab'.repeat(32);
+  it('SQ-O-06 a URL carrying a key is never requested', async () => {
+    const { fetcher, requested } = setup({});
+    const r = await fetcher.fetchUrl(`https://a.example.com/?k=${HEX}`);
+    expect(isSecretRefusal(r)).toBe(true);
+    expect(requested).toEqual([]);
+  });
+
+  it('SQ-O-06 a redirect target carrying a key (also percent-encoded seed) is never requested; exactly one request made', async () => {
+    for (const loc of [
+      `https://b.example.com/?k=${HEX}`,
+      '/x?m=abandon%20ability%20able%20about%20above%20absent%20absorb%20abstract%20absurd%20abuse%20access%20accident',
+    ]) {
+      const { fetcher, requested } = setup({ 'https://a.example.com/': resp(302, { location: loc }) });
+      const r = await fetcher.fetchUrl('https://a.example.com/');
+      expect(isSecretRefusal(r)).toBe(true);
+      expect(requested).toEqual(['https://a.example.com/']);
+    }
+  });
+
+  it('SQ-O-06 a clean redirect is still followed and an ordinary failure is not a secret refusal', async () => {
+    const { fetcher, requested } = setup({
+      'https://a.example.com/': resp(302, { location: 'https://b.example.com/' }),
+      'https://b.example.com/': resp(200, { 'content-type': 'text/plain' }, enc('ok')),
+    });
+    expect(await fetcher.fetchUrl('https://a.example.com/')).toEqual({ ok: true, text: 'ok' });
+    expect(requested).toHaveLength(2);
+    const bad = setup({ 'https://a.example.com/': resp(500, {}) });
+    const r = await bad.fetcher.fetchUrl('https://a.example.com/');
+    expect(r).toEqual({ ok: false });
+    expect(isSecretRefusal(r)).toBe(false);
   });
 });
 
