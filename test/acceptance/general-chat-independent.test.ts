@@ -222,6 +222,35 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     expect(h.exec.submissions).toEqual([sent, sent]);
   });
 
+  it('retains submission uncertainty in chat context after the final handoff timeout', async () => {
+    const h = make('exhausted-timeouts', [
+      route('wallet'),
+      ...payment(),
+      route('chat'),
+      chat('Check your wallet; a timeout does not prove whether it received the request.'),
+    ]);
+    h.exec.responses.push(...Array.from({ length: 3 }, () => ({ status: 'unavailable', cause: 'timeout' }) as const));
+    const summary = await h.say('send 10 usdc to mihir');
+    for (let i = 0; i < 3; i++) {
+      const failed = await h.confirm(summary, 'yes');
+      expect(failed.body.error?.code).toBe('EXECUTION_UNAVAILABLE');
+    }
+    const submissions = structuredClone(h.exec.submissions);
+    expect(submissions).toHaveLength(3);
+    expect(submissions).toEqual(Array.from({ length: 3 }, () => submissions[0]));
+    const before = snapshot(h);
+    const explained = await h.say('Did the wallet receive that request?');
+    expect(explained.body.state).toBe('done');
+    expect(explained.body.request_id).not.toBe(summary.body.request_id);
+    expect(JSON.parse(h.llm.recorded.at(-1)!.user).wallet_context).toMatchObject({
+      state: 'FAILED',
+      last_error: 'EXECUTION_UNAVAILABLE',
+      pending_summary: null,
+    });
+    expect(snapshot(h)).toEqual(before);
+    expect(h.exec.submissions).toEqual(submissions);
+  });
+
   it('marks older history omitted after trimming and clears the flag and memory on a new session', async () => {
     const calls = Array.from({ length: 9 }, (_, i) => [route('chat'), chat(`Explanation ${i}.`)]).flat();
     const h = make('history-limit', calls);
@@ -394,6 +423,7 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     first[0]!.output = {
       amounts: [{ phrase: '100 usdc', number: '100', token: 'USDC', fiat: null, relative: null, role: 'pay' }],
     };
+    (first[3]!.output as { payments: Array<{ chain: number | string }> }).payments[0]!.chain = 84532;
     const retry = payment();
     retry[0]!.output = {
       amounts: [{ phrase: '20', number: '20', token: null, fiat: null, relative: null, role: 'pay' }],
@@ -405,7 +435,7 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
           kind: 'i',
           amount: '$amount:0',
           recipient: '$session:0',
-          chain: 84532,
+          chain: 'unstated',
           frequency: null,
           interval: null,
           times_per_week: null,
@@ -422,6 +452,11 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
       route('wallet'),
       ...retry,
     ]);
+    h.setBalances({
+      84532: { USDC: '30', ETH: '0.1' },
+      421614: { USDC: '0', ETH: '0.1' },
+      11155111: { USDC: '0', ETH: '0.1' },
+    });
     const failed = await h.say('send 100 usdc to mihir on Base');
     expect(failed.body.error?.code).toBe('INSUFFICIENT_FUNDS');
     const before = snapshot(h);
