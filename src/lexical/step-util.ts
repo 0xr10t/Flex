@@ -10,6 +10,7 @@ import { TOKEN_DECIMALS } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { newId } from '../util/ids.js';
 
+/** Display name of a chain from config (§13.1). */
 export function chainName(config: Config, chain_id: ChainId): string {
   return config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
 }

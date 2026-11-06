@@ -6,7 +6,8 @@
 
 import type { StepContext } from '../contracts/step.js';
 import type { AmountPh, ChainId, ErrorCode, Frequency, Payment, RecipientPh, Weekday } from '../contracts/types.js';
-import { chainName, isGroupPh, recipientNameOf } from './common.js';
+import { chainName } from '../lexical/step-util.js';
+import { isGroupPh, recipientNameOf } from './common.js';
 import { chainBindingProblems } from './chain-binding.js';
 import { parseCount } from './answers.js';
 import { WEEKDAYS } from './schedule.js';
@@ -430,8 +431,8 @@ export function terminalError(ctx: StepContext, payments: Payment[]): PairingOut
         code: 'CHAIN_CONFLICT',
         params: {
           name: recipientNameOf(ctx, p.recipient),
-          chain: chainName(ctx, pin),
-          other: chainName(ctx, p.chain),
+          chain: chainName(ctx.config, pin),
+          other: chainName(ctx.config, p.chain),
         },
       };
     }

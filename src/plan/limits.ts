@@ -8,7 +8,8 @@ import type { BrokenLimit } from '../contracts/catalog.js';
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { InternalIntent, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
-import { db1BaseUnits, decimalsOf, fmt, nowUtcIso } from './common.js';
+import { nowUtcIso } from '../lexical/step-util.js';
+import { db1BaseUnits, decimalsOf, fmt } from './common.js';
 import { TOKENS_ORDER } from './spendable.js';
 
 /** Tokens of the plan's `i`, `j`, `k` intents, in a fixed order (SQ-D-13: `l` moves no token). */

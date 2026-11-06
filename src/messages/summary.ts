@@ -19,16 +19,8 @@ import type {
   Summary,
   Weekday,
 } from '../contracts/types.js';
-import {
-  chainName,
-  db1BaseUnits,
-  decimalsOf,
-  fmt,
-  joinAnd,
-  pushNote,
-  recipientName,
-  recipientNameOf,
-} from '../plan/common.js';
+import { chainName } from '../lexical/step-util.js';
+import { db1BaseUnits, decimalsOf, fmt, joinAnd, pushNote, recipientName, recipientNameOf } from '../plan/common.js';
 import { spentToday, thisRequest, tokensUsed } from '../plan/limits.js';
 import { CADENCE, END_TEXT, SUMMARY_LINE } from './templates.js';
 
@@ -88,8 +80,8 @@ function lineJ(ctx: StepContext, it: PlanJ): string {
   return SUMMARY_LINE.J({
     padded: displayAmount(ctx, it.amount),
     token: it.token,
-    source: chainName(ctx, it.source_chain_id),
-    dest: chainName(ctx, it.dest_chain_id),
+    source: chainName(ctx.config, it.source_chain_id),
+    dest: chainName(ctx.config, it.dest_chain_id),
     b: ctx.limits.bridge_buffer_pct,
   });
 }
@@ -100,7 +92,7 @@ function lineI(ctx: StepContext, it: PlanI): string {
     token: it.token,
     name: recipientNameOf(ctx, it.recipient),
     addr: address(ctx, it.recipient),
-    chain: chainName(ctx, it.chain_id),
+    chain: chainName(ctx.config, it.chain_id),
   });
   if (it.depends_on.length === 0) return base;
   // Bridges come first and are never collapsed, so step s is line s + 1 (SQ-D-03 for several steps).
@@ -114,7 +106,7 @@ function lineGroup(ctx: StepContext, group: GroupPh, members: PlanI[]): string {
     token: first.token,
     count: String(members.length),
     parent: ctx.repos.db3.get(group)?.name ?? '',
-    chain: chainName(ctx, first.chain_id),
+    chain: chainName(ctx.config, first.chain_id),
     names: members.map((m) => ctx.repos.db3.get(m.recipient)?.name ?? '').join(', '),
   });
 }
@@ -130,7 +122,7 @@ function lineK(ctx: StepContext, it: PlanK): string {
     cadence: cadenceText(s),
     time: s.time_of_day,
     timezone: s.timezone,
-    chain: chainName(ctx, it.chain_id),
+    chain: chainName(ctx.config, it.chain_id),
     first: displayDate(first),
     end: endText(ctx, s),
     total_cap: displayAmount(ctx, it.limits.total_cap),
@@ -145,7 +137,7 @@ function lineL(ctx: StepContext, it: PlanL): string {
     amount: normalizeDecimal(row.amount_per_payment, decimalsOf(row.token)),
     token: row.token,
     cadence: cadenceText(JSON.parse(row.schedule_json) as Schedule),
-    chain: chainName(ctx, it.chain_id),
+    chain: chainName(ctx.config, it.chain_id),
   });
 }
 

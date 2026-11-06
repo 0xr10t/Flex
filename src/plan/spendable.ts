@@ -6,7 +6,8 @@ import type { StepContext, StepResult } from '../contracts/step.js';
 import type { ChainId, Token } from '../contracts/types.js';
 import { toBaseUnits } from '../contracts/money.js';
 import { insufficientFundsParams } from '../contracts/catalog.js';
-import { chainName, decimalsOf, fmt, nowUtcIso } from './common.js';
+import { chainName, nowUtcIso } from '../lexical/step-util.js';
+import { decimalsOf, fmt } from './common.js';
 
 export const TOKENS_ORDER: readonly Token[] = ['USDC', 'ETH'];
 
@@ -63,10 +64,10 @@ export function hasGas(b: ChainBalance): boolean {
 /** §10.3 rule 2 / V-05: the chain is in `allowed_chain_ids` and its balances are readable. */
 export function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainId): StepResult | null {
   if (!ctx.limits.allowed_chain_ids.includes(c)) {
-    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx, c) } };
+    return { kind: 'error', code: 'CHAIN_NOT_ALLOWED', params: { chain: chainName(ctx.config, c) } };
   }
   if (!balanceOf(balances, c)?.ok) {
-    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx, c) } };
+    return { kind: 'error', code: 'BALANCES_UNAVAILABLE', params: { chains: chainName(ctx.config, c) } };
   }
   return null;
 }
@@ -81,7 +82,7 @@ export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: Re
     return {
       kind: 'error',
       code: 'NO_GAS',
-      params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx, c) },
+      params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx.config, c) },
     };
   }
   return null;
@@ -106,6 +107,9 @@ export function insufficientParams(
     token,
     need: fmt(needTotal, token),
     have: fmt(have, token),
-    chains: positive.map((b) => ({ name: chainName(ctx, b.chain_id), spendable: fmt(b.spendable[token], token) })),
+    chains: positive.map((b) => ({
+      name: chainName(ctx.config, b.chain_id),
+      spendable: fmt(b.spendable[token], token),
+    })),
   });
 }

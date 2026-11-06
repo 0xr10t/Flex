@@ -35,13 +35,12 @@ import type {
   GroupMember,
   GroupPh,
   Question,
-  QuestionId,
   RecipientSpan,
   ResolvedRecipient,
 } from '../contracts/types.js';
-import { newId } from '../util/ids.js';
 import { checkAddress, isSelf, looksLikeAddress, sameAddress, type AddressCheck } from './address.js';
-import { chainName, okChains, statedChain } from './chains.js';
+import { okChains, statedChain } from './chains.js';
+import { chainName, qid } from '../lexical/step-util.js';
 import { firstLabel, normalizeEns, resolveOnChain, resolveOnChains, type ChainAddress } from './ens.js';
 import { resolveMembers, triageMembers } from './group.js';
 import { checkContactName, closeContacts, nameKey } from './names.js';
@@ -58,8 +57,6 @@ type Outcome =
   | { k: 'ask'; flow: Flow; question: Question; base?: string }
   | { k: 'removed' }
   | { k: 'stop'; result: StepResult };
-
-const qid = (): QuestionId => newId('question') as QuestionId;
 
 const plainChip = (id: string, label: string): Chip => ({ id, label, disabled: false, detail: '' });
 
@@ -269,7 +266,7 @@ async function ensLookup(ctx: StepContext, name: string, origin: Origin, attempt
   const chips = found.map((f) =>
     plainChip(
       String(f.chain_id),
-      ENS_CHAIN_CHIP_LABEL({ chain: chainName(ctx, f.chain_id), addr: shortAddress(f.address) }),
+      ENS_CHAIN_CHIP_LABEL({ chain: chainName(ctx.config, f.chain_id), addr: shortAddress(f.address) }),
     ),
   );
   return ask(
@@ -353,7 +350,7 @@ function correctQuestion(
       ? QUESTION_VARIANT.ADDRESS_CORRECT_ENS({
           ens: ens.name,
           addr: address,
-          chains: joinList(ens.chain_ids.map((c) => chainName(ctx, c))),
+          chains: joinList(ens.chain_ids.map((c) => chainName(ctx.config, c))),
         })
       : QUESTION_TEXT.Q_ADDRESS_CORRECT({ addr: address });
   if (origin.untrusted) text = `${text} ${QUESTION_VARIANT.ADDRESS_CORRECT_UNTRUSTED_SUFFIX()}`;
@@ -395,7 +392,7 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
       const allowed = okChains(ctx);
       // spec-questions/C.md SQ-C-04: no allowed `ok` chain to offer.
       if (allowed.length === 0) return unsupported(ctx, 'group_chain_no_ok_chain');
-      const chips = allowed.map((c) => plainChip(String(c), chainName(ctx, c)));
+      const chips = allowed.map((c) => plainChip(String(c), chainName(ctx.config, c)));
       return ask({ ...flow, stage: 'chain' }, buildQuestion({ question_id: qid(), code: 'Q_GROUP_CHAIN', chips }));
     }
   }
@@ -423,7 +420,7 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
       }),
     );
   }
-  const chain = chainName(ctx, chain_id);
+  const chain = chainName(ctx.config, chain_id);
   // Step 5.
   if (children.length === 0) return stop({ kind: 'error', code: 'GROUP_EMPTY', params: { parent, chain } });
   // Steps 6–7.
@@ -454,7 +451,7 @@ async function groupAdvance(ctx: StepContext, flow: Extract<Flow, { t: 'group' }
 function groupFinish(ctx: StepContext, flow: Extract<Flow, { t: 'group' }>, selected: Set<string>): Outcome {
   const parent = flow.parent as string;
   const chain_id = flow.chain_id as ChainId;
-  const chain = chainName(ctx, chain_id);
+  const chain = chainName(ctx.config, chain_id);
   const base = { session_id: ctx.req.session_id, request_id: ctx.req.request_id };
   const group_ph = ctx.repos.db3.mint({
     ...base,

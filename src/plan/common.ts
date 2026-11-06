@@ -4,7 +4,7 @@
 
 import type { StepContext, StepResult } from '../contracts/step.js';
 import type { Db3Row } from '../contracts/repos.js';
-import type { AmountPh, ChainId, RecipientPh, Token } from '../contracts/types.js';
+import type { AmountPh, RecipientPh, Token } from '../contracts/types.js';
 import { TOKEN_DECIMALS } from '../contracts/types.js';
 import { fromBaseUnits, toBaseUnits } from '../contracts/money.js';
 import { joinList } from '../contracts/catalog.js';
@@ -13,16 +13,8 @@ export function decimalsOf(token: Token): 6 | 18 {
   return TOKEN_DECIMALS[token];
 }
 
-export function chainName(ctx: StepContext, chain_id: ChainId): string {
-  return ctx.config.chains.find((c) => c.chain_id === chain_id)?.name ?? String(chain_id);
-}
-
 /** "A", "A and B", "A, B and C" (SQ-06): the catalog's joinList. */
 export const joinAnd = joinList;
-
-export function nowUtcIso(ctx: StepContext): string {
-  return ctx.now().toUTC().toISO() ?? new Date(0).toISOString();
-}
 
 /** DB1 amount of a placeholder in base units (throws when missing: callers validate first). */
 export function db1BaseUnits(ctx: StepContext, ph: AmountPh): { units: bigint; token: Token; amount: string } {
