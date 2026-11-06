@@ -28,7 +28,7 @@ import { seedAutopay, seedSpend } from './seed.js';
 
 export function registerA55toA59(): void {
   describe('A-55 … A-59', () => {
-    it("A-55: an autopay_payment report reduces today's remaining allowance for the next request", async () => {
+    it("A-55 SQ-D-16: an autopay_payment report reduces today's remaining allowance for the next request", async () => {
       const h = await harness('A-55');
       const id = seedAutopay(h);
       seedSpend(h, { amount: '290', kind: 'payment' });
@@ -43,7 +43,10 @@ export function registerA55toA59(): void {
         }),
       ).toBe(204);
       const r = await h.say('send 10 usdc to mihir');
-      expectError(r, 'LIMIT_DAILY', "This would go over today's USDC limit. You can still send 5 today.");
+      expect(r.body.question?.code).toBe('Q_LIMIT_OVERRIDE');
+      expect(r.body.question?.text).toBe(
+        "This is 10 USDC, over today's limit of 300 (only 5 is left). Go ahead this once?",
+      );
       await h.finish();
     });
 
