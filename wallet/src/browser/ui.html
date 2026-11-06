@@ -13,15 +13,21 @@
         <div><span class="brand">FLEX</span><span class="badge">TESTNET</span></div>
         <button id="connect" type="button">Connect MetaMask</button>
       </header>
-      <p class="eyebrow">YOUR WALLET, ACROSS CHAINS</p>
-      <h1>Review payments.<br />Keep control.</h1>
-      <p class="intro">
+      <section class="approve-head">
+        <p class="eyebrow">FROM FLEXX</p>
+        <h1>Approve your request</h1>
+        <p id="focus-status" class="intro" role="status" aria-live="polite"></p>
+        <button id="show-all" class="secondary" type="button">Show all transfers</button>
+      </section>
+      <p class="eyebrow hero">YOUR WALLET, ACROSS CHAINS</p>
+      <h1 class="hero">Review payments.<br />Keep control.</h1>
+      <p class="intro hero">
         Review your saved payments and account setup below. You can also bridge test USDC between networks into your own
         wallet.
       </p>
       <p id="connection" class="muted">Connect the configured wallet to review and approve a transfer.</p>
       <div class="layout">
-        <section class="panel">
+        <section class="panel prepare">
           <h2>Prepare a transfer</h2>
           <form id="bridge-form">
             <label for="source">From</label

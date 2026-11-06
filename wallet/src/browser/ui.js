@@ -1,4 +1,4 @@
-/* global window, document, fetch, setInterval, URL */
+/* global window, document, fetch, setInterval, URL, URLSearchParams */
 const names = { 11155111: 'Ethereum Sepolia', 84532: 'Base Sepolia', 421614: 'Arbitrum Sepolia' };
 const $ = (id) => document.getElementById(id);
 let state,
@@ -6,6 +6,16 @@ let state,
   connected = false,
   sending = false,
   refreshing = false;
+/**
+ * Approval view: flexx opens this page as `#approve=<request id>` after you confirm a plan. The page then shows only
+ * that request, with its details filled in, and opens MetaMask by itself as soon as each step has passed its checks.
+ */
+const focusId = (() => {
+  const id = new URLSearchParams(window.location.hash.slice(1)).get('approve');
+  return id && /^req_[0-9a-f]{12}$/.test(id) ? id : null;
+})();
+/** Steps this page has already opened MetaMask for (or refreshed), so a rejection never reopens it. */
+const autoTried = new Set();
 const errors = {
   INVALID_BRIDGE: 'Choose two different testnets and enter a positive USDC amount with up to six decimals.',
   REFRESH_OR_RECOVER_BATCH:
@@ -46,7 +56,8 @@ function el(tag, text, className) {
 function action(label, fn, secondary = false) {
   const node = el('button', label, secondary ? 'secondary' : undefined);
   node.type = 'button';
-  node.disabled = sending || !connected;
+  // approving connects MetaMask first when needed, so there is no separate connect step
+  node.disabled = sending;
   node.addEventListener('click', async () => {
     try {
       await fn();
@@ -60,6 +71,22 @@ function action(label, fn, secondary = false) {
 function eth(wei) {
   const s = BigInt(wei).toString().padStart(19, '0');
   return `${s.slice(0, -18)}.${s.slice(-18).replace(/0+$/, '') || '0'}`;
+}
+/** Connects MetaMask to the configured wallet; throws when it can't. */
+async function connect() {
+  provider = window.ethereum?.providers?.find((p) => p.isMetaMask) ?? window.ethereum;
+  if (!provider?.isMetaMask) throw new Error('Open this page in a browser with MetaMask installed.');
+  const accounts = await provider.request({ method: 'eth_requestAccounts' });
+  connected = accounts.some((a) => a.toLowerCase() === state.wallet.toLowerCase());
+  $('connection').textContent = connected
+    ? `Connected: ${state.wallet}`
+    : `Choose this configured account in MetaMask: ${state.wallet}`;
+  $('connect').textContent = connected ? 'Connected to MetaMask' : 'Connect MetaMask';
+  render();
+  if (!connected) throw new Error(`Choose the configured account in MetaMask: ${state.wallet}`);
+}
+async function ensureConnected() {
+  if (!connected) await connect();
 }
 async function accountCheck(chainId) {
   const accounts = await provider.request({ method: 'eth_accounts' });
@@ -91,6 +118,7 @@ async function send(batch) {
   render();
   let claimed = false;
   try {
+    await ensureConnected();
     const chainId = await accountCheck(batch.chainId);
     const capabilities = await provider.request({
       method: 'wallet_getCapabilities',
@@ -130,6 +158,7 @@ async function signDelegation(request) {
   render();
   let signature;
   try {
+    await ensureConnected();
     await accountCheck(request.typedData.domain.chainId);
     signature = await provider.request({
       method: 'eth_signTypedData_v4',
@@ -170,6 +199,7 @@ async function checkAccountUpgrade(request) {
   sending = true;
   render();
   try {
+    await ensureConnected();
     await accountCheck(request.chainId);
     await api('/browser/account-upgrade', { requestId: request.requestId, step: request.step, decision: 'check' });
     notify('Account upgrade verified. Rechecking the saved payment; review it in MetaMask when it is ready.');
@@ -210,6 +240,7 @@ function accountSetup(request) {
     action(
       `Select ${chain} in MetaMask`,
       async () => {
+        await ensureConnected();
         await accountCheck(request.chainId);
         notify(`Open MetaMask → account menu → Account details → Smart account, and enable ${chain}.`);
       },
@@ -230,8 +261,91 @@ function accountSetup(request) {
   card.append(actions);
   return card;
 }
+const short = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+/** What a step does, in words, from the request the agent sent: the heading and the filled-in details. */
+function describe(intent, chainId) {
+  if (intent?.intent_id === 'i') {
+    const single = intent.recipients.length === 1;
+    const heading = single
+      ? `Send ${intent.recipients[0].amount.value} ${intent.token} to ${short(intent.recipients[0].recipient)}`
+      : `Pay ${intent.recipients.length} recipients in ${intent.token}`;
+    return {
+      heading,
+      lines: [
+        ...(single
+          ? [`Recipient: ${intent.recipients[0].recipient}`]
+          : intent.recipients.map((r) => `${r.amount.value} ${intent.token} to ${r.recipient}`)),
+        `Network: ${names[intent.chain_id] ?? names[chainId]}`,
+        ...(intent.depends_on?.length ? ['Runs after the transfer between your chains above has arrived.'] : []),
+      ],
+    };
+  }
+  if (intent?.intent_id === 'j')
+    return {
+      heading: `Move ${intent.amount.value} USDC · ${names[intent.source_chain_id]} → ${names[intent.dest_chain_id]}`,
+      lines: [`Arrives at your own wallet. CCIP fee at most ${intent.fee_max_eth} test ETH.`],
+    };
+  if (intent?.intent_id === 'k') return { heading: `Register recurring payment on ${names[chainId]}`, lines: [] };
+  if (intent?.intent_id === 'l') return { heading: `Cancel recurring payment on ${names[chainId]}`, lines: [] };
+  return { heading: `Payment on ${names[chainId]}`, lines: [] };
+}
+/** In the approval view, only the request flexx opened the page for. */
+const inFocus = (requestId) => !focusId || requestId === focusId;
+function renderFocus() {
+  document.body.classList.toggle('focus', Boolean(focusId));
+  if (!focusId) return;
+  const batches = state.batches.filter((b) => b.requestId === focusId);
+  const delegations = (state.delegations ?? []).filter((d) => d.requestId === focusId);
+  const upgrades = (state.upgrades ?? []).filter((u) => u.requestId === focusId);
+  const request = state.requests.find((r) => r.id === focusId);
+  if (upgrades.length) {
+    $('focus-status').textContent =
+      'Your payment is saved and waiting for account setup. Follow the steps below, then check the upgrade.';
+    return;
+  }
+  const done = batches.length > 0 && batches.every((b) => ['executed', 'failed'].includes(b.stepStatus));
+  const waiting = batches.some((b) => b.status === 'draft' && !['executed', 'failed'].includes(b.stepStatus));
+  // the automatic MetaMask prompt has been used (or failed): from here the button does it
+  const tried =
+    batches.some((b) => autoTried.has(`b:${b.id}:${b.createdMs}`)) ||
+    delegations.some((d) => autoTried.has(`d:${d.id}`));
+  $('focus-status').textContent = done
+    ? batches.every((b) => b.stepStatus === 'executed')
+      ? 'Done. Every step was approved and verified.'
+      : 'This request stopped. See the step below.'
+    : waiting || delegations.length
+      ? sending
+        ? 'Approve the request in MetaMask. Its details are below.'
+        : tried
+          ? 'Press Approve in MetaMask below when you are ready.'
+          : 'Opening MetaMask to approve the request below…'
+      : batches.length
+        ? 'Waiting for MetaMask and the chain to confirm.'
+        : request
+          ? 'Checking the route, fee and simulation. MetaMask opens as soon as it is ready.'
+          : 'This request has not reached the wallet yet. It appears here as soon as it does.';
+}
+/** In the approval view, opens MetaMask by itself for the next step that is ready, once per step. */
+async function autoApprove() {
+  if (!focusId || sending || !state) return;
+  for (const request of (state.delegations ?? []).filter((d) => d.requestId === focusId)) {
+    if (autoTried.has(`d:${request.id}`)) continue;
+    autoTried.add(`d:${request.id}`);
+    return signDelegation(request);
+  }
+  for (const batch of state.batches.filter((b) => b.requestId === focusId && b.status === 'draft')) {
+    if (['executed', 'failed'].includes(batch.stepStatus)) continue;
+    const key = `b:${batch.id}:${batch.createdMs}`;
+    if (autoTried.has(key)) continue;
+    autoTried.add(key);
+    // a quote older than a minute is checked again first; the refreshed step opens MetaMask on the next poll
+    if (batch.expired) return api('/browser/refresh', { id: batch.id }).catch((e) => notify(e.message));
+    return send(batch);
+  }
+}
 function render() {
   if (!state) return;
+  renderFocus();
   $('prepare').disabled = !connected || sending;
   $('ceiling').textContent = `CCIP fee ceiling: ${state.feeMaxEth} test ETH. Network gas is additional.`;
   const container = $('batches');
@@ -239,8 +353,10 @@ function render() {
   if (container.querySelector('input:focus')) return;
   const expanded = new Set([...container.querySelectorAll('details[open]')].map((d) => d.dataset.batchId));
   container.replaceChildren();
-  for (const request of state.upgrades ?? []) container.append(accountSetup(request));
-  for (const request of state.delegations ?? []) {
+  const upgrades = (state.upgrades ?? []).filter((u) => inFocus(u.requestId));
+  const delegations = (state.delegations ?? []).filter((d) => inFocus(d.requestId));
+  for (const request of upgrades) container.append(accountSetup(request));
+  for (const request of delegations) {
     const card = el('article', undefined, 'card');
     const intent = request.intent;
     card.append(el('h3', 'Approve recurring payment permission'));
@@ -270,7 +386,7 @@ function render() {
     );
     container.append(card);
   }
-  const queued = state.requests.filter((r) => !state.batches.some((b) => b.requestId === r.id));
+  const queued = state.requests.filter((r) => inFocus(r.id) && !state.batches.some((b) => b.requestId === r.id));
   const pending = queued.filter((r) =>
     r.steps.some((s) => !['executed', 'failed'].includes(s.status) && s.error !== 'BROWSER_ACCOUNT_UPGRADE_REQUIRED'),
   );
@@ -291,19 +407,15 @@ function render() {
         `${stopReasons[request.steps.find((s) => s.status === 'failed').error] || `Transfer checks stopped: ${request.steps.find((s) => s.status === 'failed').error || 'unavailable'}.`} No wallet approval was requested.`,
       ),
     );
-  if (!state.batches.length && !state.upgrades?.length && !state.delegations?.length)
+  const shown = state.batches.filter((b) => inFocus(b.requestId));
+  if (!shown.length && !upgrades.length && !delegations.length && !focusId)
     container.append(el('p', 'Your prepared transfers will appear here.', 'muted'));
-  for (const batch of state.batches) {
+  for (const batch of shown) {
     const card = el('article', undefined, 'card');
     const intent = batch.intent;
-    card.append(
-      el(
-        'h3',
-        intent?.intent_id === 'j'
-          ? `${intent.amount.value} USDC · ${names[intent.source_chain_id]} → ${names[intent.dest_chain_id]}`
-          : `${intent?.intent_id === 'k' ? 'Register recurring payment' : intent?.intent_id === 'l' ? 'Cancel recurring payment' : 'Payment'} on ${names[batch.chainId]}`,
-      ),
-    );
+    const about = describe(intent, batch.chainId);
+    card.append(el('h3', about.heading));
+    for (const line of about.lines) card.append(el('p', line, 'detail'));
     const complete = ['executed', 'failed'].includes(batch.stepStatus);
     const label =
       batch.stepStatus === 'executed'
@@ -363,7 +475,7 @@ function render() {
       const actions = el('div', undefined, 'actions');
       if (batch.status === 'draft') {
         actions.append(
-          action(batch.expired ? 'Refresh checks & quote' : 'Review in MetaMask', () =>
+          action(batch.expired ? 'Refresh checks & quote' : 'Approve in MetaMask', () =>
             batch.expired ? api('/browser/refresh', { id: batch.id }) : send(batch),
           ),
         );
@@ -396,6 +508,7 @@ async function refresh() {
     render();
     if (connected && !sending)
       for (const batch of state.batches.filter((b) => b.status === 'dispatched')) await track(batch, true);
+    void autoApprove();
   } catch (e) {
     notify(e.message);
   } finally {
@@ -404,19 +517,15 @@ async function refresh() {
 }
 $('connect').addEventListener('click', async () => {
   try {
-    provider = window.ethereum?.providers?.find((p) => p.isMetaMask) ?? window.ethereum;
-    if (!provider?.isMetaMask) throw new Error('Open this page in a browser with MetaMask installed.');
-    const accounts = await provider.request({ method: 'eth_requestAccounts' });
-    connected = accounts.some((a) => a.toLowerCase() === state.wallet.toLowerCase());
-    $('connection').textContent = connected
-      ? `Connected: ${state.wallet}`
-      : `Choose this configured account in MetaMask: ${state.wallet}`;
-    $('connect').textContent = connected ? 'Connected to MetaMask' : 'Connect MetaMask';
-    if (connected) notify('Connected. Choose a route and amount, then check the transfer.');
-    render();
+    await connect();
+    notify('Connected. Choose a route and amount, then check the transfer.');
   } catch (e) {
     notify(typeof e.code === 'number' ? 'MetaMask connection was not completed.' : e.message);
   }
+});
+$('show-all').addEventListener('click', () => {
+  window.location.hash = '';
+  window.location.reload();
 });
 $('bridge-form').addEventListener('submit', async (e) => {
   e.preventDefault();

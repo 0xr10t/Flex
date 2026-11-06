@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { ALEX, BASE, WALLET, envelope, payEth } from '../support/envelopes.js';
+import { ALEX, BASE, BOB, WALLET, envelope, payEth } from '../support/envelopes.js';
 
 class Element {
   children: Element[] = [];
@@ -39,7 +39,7 @@ class Element {
   }
 }
 
-async function browser() {
+async function browser({ focused = false, unrelated = false } = {}) {
   const nodes = new Map<string, Element>();
   const get = (id: string) => {
     if (!nodes.has(id)) nodes.set(id, new Element());
@@ -47,6 +47,8 @@ async function browser() {
   };
   const e = envelope([payEth(0, [[ALEX, '0.01']])]);
   const setup = { requestId: e.request_id, step: 0, chainId: BASE, intent: e.intents[0] };
+  const other = envelope([payEth(0, [[BOB, '0.02']])]);
+  const otherSetup = { requestId: other.request_id, step: 0, chainId: BASE, intent: other.intents[0] };
   let upgraded = false;
   let pending = true;
   const providerCalls: string[] = [];
@@ -55,7 +57,7 @@ async function browser() {
     wallet: WALLET,
     chainIds: [BASE],
     feeMaxEth: '0.003',
-    upgrades: pending ? [setup] : [],
+    upgrades: [...(pending ? [setup] : []), ...(unrelated ? [otherSetup] : [])],
     requests: pending
       ? [{ id: e.request_id, steps: [{ step: 0, status: 'pending', error: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' }] }]
       : [],
@@ -73,9 +75,14 @@ async function browser() {
     },
   };
   runInNewContext(readFileSync(new URL('../../src/browser/ui.js', import.meta.url), 'utf8'), {
-    document: { getElementById: get, createElement: (name: string) => new Element(name) },
-    window: { ethereum: provider },
+    document: {
+      getElementById: get,
+      createElement: (name: string) => new Element(name),
+      body: { classList: { toggle: vi.fn() } },
+    },
+    window: { ethereum: provider, location: { hash: focused ? `#approve=${e.request_id}` : '', reload: vi.fn() } },
     URL,
+    URLSearchParams,
     setInterval: () => 0,
     fetch: async (url: string, options: { body?: string }) => {
       if (url === '/browser/state') return { ok: true, json: async () => state() };
@@ -115,9 +122,9 @@ describe('browser account setup flow', () => {
     expect(b.get('batches').text()).toContain('Account details → Smart account');
     expect(b.get('batches').text()).toContain('payment still needs its own MetaMask approval');
     expect(b.get('requests').text()).not.toContain('checking route');
-    expect(b.button('Check upgrade and continue').disabled).toBe(true);
-    await b.get('connect').click();
+    expect(b.button('Check upgrade and continue').disabled).toBe(false);
     await b.button('Select Base Sepolia in MetaMask').click();
+    expect(b.providerCalls[0]).toBe('eth_requestAccounts');
     expect(b.providerCalls).toContain('wallet_switchEthereumChain');
     expect(b.apiCalls).toEqual([]);
     await b.button('Check upgrade and continue').click();
@@ -139,12 +146,31 @@ describe('browser account setup flow', () => {
   });
   it('can cancel the saved payment without requesting a chain switch or transaction', async () => {
     const b = await browser();
-    await b.get('connect').click();
     await b.button('Cancel payment').click();
     expect(b.apiCalls).toEqual([
       { url: '/browser/account-upgrade', body: { requestId: b.setup.requestId, step: 0, decision: 'cancel' } },
     ]);
-    expect(b.providerCalls).toEqual(['eth_requestAccounts']);
+    expect(b.providerCalls).toEqual([]);
     expect(b.get('batches').text()).not.toContain('Enable your smart account');
+  });
+  it('shows only the CLI-selected request and explains account setup without opening MetaMask automatically', async () => {
+    const b = await browser({ focused: true, unrelated: true });
+    expect(b.get('batches').text()).toContain(`0.01 ETH to ${ALEX}`);
+    expect(b.get('batches').text()).not.toContain(BOB);
+    expect(b.get('focus-status').text()).toContain('saved and waiting for account setup');
+    expect(b.get('requests').text()).not.toContain('checking route');
+    expect(b.providerCalls).toEqual([]);
+    expect(b.apiCalls).toEqual([]);
+
+    b.upgrade();
+    await b.button('Check upgrade and continue').click();
+    expect(b.providerCalls[0]).toBe('eth_requestAccounts');
+    expect(b.apiCalls).toEqual([
+      { url: '/browser/account-upgrade', body: { requestId: b.setup.requestId, step: 0, decision: 'check' } },
+    ]);
+    expect(b.get('batches').text()).not.toContain('Enable your smart account');
+    expect(b.get('batches').text()).not.toContain(BOB);
+    expect(b.providerCalls).not.toContain('wallet_sendCalls');
+    expect(b.providerCalls).not.toContain('eth_signTypedData_v4');
   });
 });

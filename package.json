@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "flexx": "dist/src/cli/main.js"
+  },
   "engines": {
     "node": "^22.12.0 || >=24.0.0"
   },
@@ -31,6 +34,7 @@
     "ens:check": "wallet/node_modules/.bin/vite-node scripts/ens-check.ts",
     "ens:pay": "wallet/node_modules/.bin/vite-node scripts/ens-pay.ts",
     "start": "node dist/src/index.js",
+    "cli": "node dist/src/cli/main.js",
     "prebuild": "npm --prefix packages/protocol run build",
     "pretypecheck": "npm --prefix packages/protocol run build",
     "pretest": "npm --prefix packages/protocol run build",
@@ -81,5 +85,10 @@
     "vitest@4.1.12": {
       "vite": "7.3.7"
     }
+  },
+  "allowScripts": {
+    "better-sqlite3-multiple-ciphers@13.0.3": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true
   }
 }
