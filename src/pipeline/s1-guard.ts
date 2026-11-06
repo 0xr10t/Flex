@@ -2,9 +2,10 @@
 // text/plain, text/markdown, text/csv UTF-8 decoded, application/pdf via pdf-parse, anything else →
 // ATTACHMENT_UNSUPPORTED naming the file; urls[] plus https URLs in typed text, replaced by `[link N]`; http:// →
 // URL_FETCH_FAILED), step 2 secret scan over typed text, pasted blocks and attachment text (not fetched pages;
-// I-15; SQ-O-06 adds every `urls[]` entry, and the fetcher scans each redirect target) → SECRET_DETECTED with nothing written to DB8/DB1/DB3/logs and buffers dropped, step 3 fetch URLs only
-// after the scan passes (ContentFetcher: SSRF, redirects, size, types) → URL_FETCH_FAILED with the link number,
-// step 4 20,000-character cap per item → DOCUMENT_TOO_LARGE, step 5 Q-LLM extraction per item (failure → note
+// I-15) and, per SQ-O-06, every link URL (the fetcher scans each redirect target too) → SECRET_DETECTED with nothing
+// written to DB8/DB1/DB3/logs and buffers dropped, step 3 fetch URLs only after the scan passes
+// (ContentFetcher: SSRF, redirects, size, types) → URL_FETCH_FAILED with the link number, step 4 20,000-character
+// cap per item → DOCUMENT_TOO_LARGE, step 5 Q-LLM extraction per item (failure → note
 // "Couldn't read anything usable from <item>."), step 6 persist typed text + pasted blocks to db8_prompts.
 // ENS text records are never fetched (C-077: nothing here reads ENS). §3.2, §16.1, §16.3, FR-01, FR-03, I-13–I-17.
 // S1 asks no questions, so it has no AnswerHandler.

@@ -56,7 +56,7 @@ interface FollowupChoice {
 export interface S5State {
   tagged: boolean;
   /** LLM #3 spans after rules 1–5, kept while Q_NAME_ROLE questions settle their roles (F-12). */
-  raw?: Tagged[] | null;
+  raw: Tagged[] | null;
   pending:
     | { code: 'Q_FOLLOWUP_WHO' | 'Q_NO_PAYEE'; base_text: string; choices: FollowupChoice[] }
     | { code: 'Q_NAME_ROLE'; base_text: string; name_key: string }
@@ -69,7 +69,7 @@ const PLACEHOLDER_RE = new RegExp(PLACEHOLDER_TOKEN_RE.source);
 function s5State(ctx: StepContext): S5State {
   let st = ctx.req.step_state.s5 as S5State | undefined;
   if (!st) {
-    st = { tagged: false, pending: null, done: false };
+    st = { tagged: false, raw: null, pending: null, done: false };
     ctx.req.step_state.s5 = st;
   }
   return st;
@@ -253,7 +253,7 @@ async function s5Step(ctx: StepContext): Promise<StepResult> {
   if (st.done) return { kind: 'continue' };
 
   if (!st.tagged) {
-    if (st.raw == null) {
+    if (st.raw === null) {
       st.raw = await tagSpans(ctx);
       if (st.raw === null) return { kind: 'error', code: 'MODEL_FAILED' };
     }

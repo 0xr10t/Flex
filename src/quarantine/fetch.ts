@@ -138,7 +138,6 @@ export function createContentFetcher(config: Config, deps: FetcherDeps = {}): Co
         res.destroy();
         const loc = res.headers.location;
         if (loc === undefined) return { ok: false };
-        if (urlHasSecret(loc)) return secretRefusal();
         redirects++;
         if (redirects > max_redirects) return { ok: false };
         try {
