@@ -40,7 +40,7 @@ describe('error messages come from the catalog', () => {
       .filter(({ l }) => /params: \{[^}]*(message|text|raw|typed|prompt)[^}]*\}/.test(l))
       .map(({ at }) => at);
     // The only param whose value is external, free-form text is the execution layer's `message`.
-    expect(paramSites).toEqual(['pipeline/s12-handoff.ts:159']);
+    expect(paramSites).toEqual(['pipeline/s12-handoff.ts:161']);
   });
 
   it('every catalog entry renders from its own params without throwing for the documented slots', () => {
@@ -50,15 +50,18 @@ describe('error messages come from the catalog', () => {
 });
 
 describe('EXECUTION_REJECTED echoes the execution layer text (by design, §8.14 step 5)', () => {
-  it('OBS: the 4xx `message` reaches the UI response verbatim (no length cap, no filtering), and never the logs', async () => {
+  it('SQ-O-09 OBS: the 4xx `message` reaches the UI response capped at 200 characters with control characters removed, and never the logs', async () => {
     const h = new Harness('audit-rej', loadFixture('A-01'), {});
-    const nasty = `rejected: wallet 0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E balance 12345.67 USDC <b>x</b> ${'y'.repeat(4000)}`;
+    const nasty = `rejected: wallet 0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E balance 12345.67 USDC <b>x</b>\u0007\u001b[31m\n${'y'.repeat(4000)}`;
     h.exec.responses = [{ status: 'rejected', message: nasty }];
     const r = await h.say('Send 50 USDc to ARADHYA');
     const done = await h.confirm(r, 'yes');
     expect(done.body.error?.code).toBe('EXECUTION_REJECTED');
-    expect(done.body.error?.message).toBe(`Your wallet couldn't accept this: ${nasty}`);
-    expect(done.body.error?.message.length).toBeGreaterThan(4000);
+    const cleaned = nasty.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+    expect(done.body.error?.message).toBe(`Your wallet couldn't accept this: ${[...cleaned].slice(0, 200).join('')}`);
+    expect(done.body.error?.message.length).toBeLessThan(260);
+    // eslint-disable-next-line no-control-regex
+    expect(done.body.error?.message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
     const log = readFileSync(h.logFile, 'utf8');
     expect(log).not.toContain('balance 12345');
     expect(log).not.toContain('yyyy');
