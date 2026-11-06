@@ -124,5 +124,25 @@ export const COUNT_AFTER_RE = /^\s*(?:(?:time|week|day|month|payment)s?|x)(?![A-
 export const CLAUSE_CHAR_RE = /[.!?;\n,]/g;
 export const CLAUSE_WORD_RE = /(?<![A-Za-z0-9_])(?:and|then|also|plus)(?![A-Za-z0-9_])/gi;
 
-/** Plain numbers (protected from clause splitting: "0.5", "1,000"). */
-export const PLAIN_NUMBER_RE = /\d[\d,]*(?:\.\d+)?/g;
+/**
+ * Plain numbers (protected from clause splitting: "0.5", "1,000", "10,00,000"). Only separators *inside* a number
+ * are protected: a comma right after a number ("pay riya 10, mihir 20") still separates clauses (SQB-04, R2-1).
+ */
+export const PLAIN_NUMBER_RE = /\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
+
+/** English number words that `parseAmountText` reads (§8.4 step 3), plus the lakh/crore suffixes. */
+const NUMBER_WORDS =
+  'zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|' +
+  'seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|' +
+  'lakhs?|crores?';
+
+/**
+ * A run of English number words joined by spaces, hyphens or "and" ("two hundred and five", "twenty-five
+ * thousand"). S2 protects the longest prefixes of a run that `parseAmountText` parses (R2-2).
+ */
+export const NUMBER_WORD_RUN_RE = new RegExp(
+  `(?<![A-Za-z0-9_])(?:${NUMBER_WORDS})(?:(?:\\s+|-)(?:(?:${NUMBER_WORDS})|and(?=\\s+(?:${NUMBER_WORDS})(?![A-Za-z0-9_]))))*(?![A-Za-z0-9_])`,
+  'gi',
+);
+/** One word of a number-word run. */
+export const NUMBER_WORD_RE = /[A-Za-z]+/g;

@@ -33,6 +33,8 @@ import {
   GROUP_AT_MARKER_RE,
   GROUP_WORD_MARKER_RE,
   LINK_MARKER_RE,
+  NUMBER_WORD_RE,
+  NUMBER_WORD_RUN_RE,
   NUMERIC_RE,
   ORDINAL_AFTER_RE,
   PLAIN_NUMBER_RE,
@@ -125,6 +127,41 @@ function isNumberToken(tok: string | null): boolean {
   return p.ok || p.reason === 'zero';
 }
 
+/**
+ * Number-word phrases that `parseAmountText` reads ("two hundred and five"), so an "and" inside one is not a clause
+ * separator (SQB-04, R2-2). Within a run of number words, the longest parseable prefix is taken, then the rest of
+ * the run is scanned the same way ("five and two" is not one number, so its "and" still separates).
+ */
+export function numberWordPhrases(text: string): Range[] {
+  const out: Range[] = [];
+  for (const run of matches(NUMBER_WORD_RUN_RE, text)) {
+    const words = matches(NUMBER_WORD_RE, run.text).map((w) => ({
+      start: run.start + w.start,
+      end: run.start + w.end,
+    }));
+    let i = 0;
+    while (i < words.length) {
+      let best = -1;
+      for (let j = words.length - 1; j > i; j--) {
+        const first = words[i] as Range;
+        const last = words[j] as Range;
+        const p = parseAmountText(text.slice(first.start, last.end), null);
+        if (p.ok || p.reason === 'zero') {
+          best = j;
+          break;
+        }
+      }
+      if (best > i) {
+        out.push({ start: (words[i] as Range).start, end: (words[best] as Range).end });
+        i = best + 1;
+      } else {
+        i++;
+      }
+    }
+  }
+  return out;
+}
+
 /** §8.3 S2. Returns the scan, or the stopping error of rule 6 / rule 7. */
 export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
   // ── protected ranges (addresses, ENS-like names, numbers, links) ──
@@ -133,7 +170,15 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
   const linkMarkers = matches(LINK_MARKER_RE, text);
   const ensRaw = matches(ENS_SCAN_RE, text);
   const numbersRaw = matches(PLAIN_NUMBER_RE, text);
-  const clauses = splitClauses(text, [...addressMatches, ...urlMatches, ...linkMarkers, ...ensRaw, ...numbersRaw]);
+  const numberWords = numberWordPhrases(text);
+  const clauses = splitClauses(text, [
+    ...addressMatches,
+    ...urlMatches,
+    ...linkMarkers,
+    ...ensRaw,
+    ...numbersRaw,
+    ...numberWords,
+  ]);
 
   // ── rule 2: addresses ──
   const addresses = addressMatches.map((m) => span(m, clauses));
