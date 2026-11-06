@@ -1,0 +1,46 @@
+[
+ {
+  "id": "P-061",
+  "source": "paraphrase",
+  "prompt": "pay mihir 5 usdc every monday for 4 weeks",
+  "expected": {
+   "plan": [
+    {
+     "t": "k",
+     "tok": "USDC",
+     "amt": "5",
+     "to": "Mihir",
+     "sched": {
+      "freq": "weekly",
+      "interval": 1,
+      "days": [
+       "MON"
+      ],
+      "end": {
+       "type": "on_date"
+      }
+     }
+    }
+   ]
+  },
+  "first_latency_ms": 13710,
+  "questions": [],
+  "total_ms": 14042,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 5 USDC every Mon at 10:00 (Asia/Kolkata) on Base Sepolia, first on 9 Nov 2026, until 6 Dec 2026. Sets aside 20 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   3244,
+   2316,
+   2122,
+   5956
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ }
+]

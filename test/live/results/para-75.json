@@ -1,0 +1,1224 @@
+[
+ {
+  "id": "P-076",
+  "source": "paraphrase",
+  "prompt": "send mihir 10 usdc each week until I cancel",
+  "expected": {
+   "plan": [
+    {
+     "t": "k",
+     "tok": "USDC",
+     "amt": "10",
+     "to": "Mihir",
+     "sched": {
+      "freq": "weekly",
+      "interval": 1,
+      "end": {
+       "type": "until_cancelled"
+      }
+     }
+    }
+   ]
+  },
+  "first_latency_ms": 26534,
+  "questions": [],
+  "total_ms": 27175,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 10 USDC every Thu at 10:00 (Asia/Kolkata) on Base Sepolia, first on 12 Nov 2026, until you cancel (at most 52 weeks). Sets aside 520 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   6597,
+   4716,
+   2841,
+   12104
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-077",
+  "source": "paraphrase",
+  "prompt": "cancel my autopay to mihir",
+  "expected": {
+   "plan": [
+    {
+     "t": "l",
+     "to": "Mihir",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 8762,
+  "questions": [
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 9203,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   5234,
+   2281,
+   1123
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 5234,
+    "user": "Message: <<<cancel my autopay to mihir>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "my autopay to mihir",
+       "number": null,
+       "relative": null,
+       "token": null,
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2281,
+    "user": "Message: <<<cancel [amount]>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "l"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 1123,
+    "user": "Message: <<<cancel [amount]>>>\nCANDIDATES: []",
+    "output": {
+     "spans": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-078",
+  "source": "paraphrase",
+  "prompt": "please stop the weekly payment to Mihir",
+  "expected": {
+   "plan": [
+    {
+     "t": "l",
+     "to": "Mihir",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 7514,
+  "questions": [
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 8193,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3984,
+   2356,
+   1143
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3984,
+    "user": "Message: <<<please stop the weekly payment to Mihir>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "weekly payment to Mihir",
+       "number": null,
+       "relative": null,
+       "token": null,
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2356,
+    "user": "Message: <<<please stop the [amount]>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "l"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 1143,
+    "user": "Message: <<<please stop the [amount]>>>\nCANDIDATES: []",
+    "output": {
+     "spans": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-079",
+  "source": "paraphrase",
+  "prompt": "i dont want to pay mihir every week anymore",
+  "expected": {
+   "plan": [
+    {
+     "t": "l",
+     "to": "Mihir",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 8620,
+  "questions": [
+   "Q_AMOUNT_MISSING"
+  ],
+  "total_ms": 9041,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_AMOUNT_MISSING",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   5927,
+   2669
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 5927,
+    "user": "Message: <<<i dont want to pay mihir every week anymore>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "pay mihir every week",
+       "number": null,
+       "relative": null,
+       "token": null,
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2669,
+    "user": "Message: <<<i dont want to [amount] anymore>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "i"
+     ],
+     "also_balance": false
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-080",
+  "source": "paraphrase",
+  "prompt": "end the recurring payment to mihir",
+  "expected": {
+   "plan": [
+    {
+     "t": "l",
+     "to": "Mihir",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 7154,
+  "questions": [
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 7863,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   4054,
+   2104,
+   983
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 4054,
+    "user": "Message: <<<end the recurring payment to mihir>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "recurring payment to mihir",
+       "number": null,
+       "relative": null,
+       "token": null,
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2104,
+    "user": "Message: <<<end the [amount]>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "l"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 983,
+    "user": "Message: <<<end the [amount]>>>\nCANDIDATES: []",
+    "output": {
+     "spans": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-081",
+  "source": "paraphrase",
+  "prompt": "cancel autopay for aradhya",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "NO_ACTIVE_AUTOPAY"
+   }
+  },
+  "first_latency_ms": 6461,
+  "questions": [
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 6687,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3551,
+   1941,
+   962
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3551,
+    "user": "Message: <<<cancel autopay for aradhya>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "autopay for aradhya",
+       "number": null,
+       "relative": null,
+       "token": null,
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 1941,
+    "user": "Message: <<<cancel [amount]>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "l"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 962,
+    "user": "Message: <<<cancel [amount]>>>\nCANDIDATES: []",
+    "output": {
+     "spans": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-082",
+  "source": "paraphrase",
+  "prompt": "cancel mihir autopay",
+  "expected": {
+   "plan": [
+    {
+     "t": "l",
+     "to": "Mihir",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 14035,
+  "questions": [
+   "Q_AUTOPAY_PICK"
+  ],
+  "total_ms": 14269,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Stop paying Mihir 10 USDC every Mon on Base Sepolia, and refund what's left in it to you.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   3278,
+   2121,
+   2467,
+   6136
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-083",
+  "source": "paraphrase",
+  "prompt": "pay everyone under iitr.eth 5 usdc on base",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "5",
+     "to": "addr:161",
+     "chain": "base"
+    },
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "5",
+     "to": "addr:162",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 10640,
+  "questions": [
+   "Q_NO_PAYEE"
+  ],
+  "total_ms": 10949,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_NO_PAYEE",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3883,
+   2380,
+   4018
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3883,
+    "user": "Message: <<<pay everyone under iitr.eth 5 usdc on base>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "5 usdc",
+       "number": "5",
+       "relative": null,
+       "token": "USDC",
+       "fiat": null,
+       "role": "pay"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2380,
+    "user": "Message: <<<pay everyone under iitr.eth amount_8098a76f on base>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "i"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 4018,
+    "user": "Message: <<<pay everyone under iitr.eth amount_8098a76f on base>>>\nCANDIDATES: [\"iitr.eth\"]",
+    "output": {
+     "spans": [
+      {
+       "text": "everyone under iitr.eth",
+       "kind": "group",
+       "role": "payee"
+      },
+      {
+       "text": "iitr.eth",
+       "kind": "ens",
+       "role": "mentioned"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-084",
+  "source": "paraphrase",
+  "prompt": "Send 8 usdc to all iitr.eth members on arbitrum",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "8",
+     "to": "addr:161",
+     "chain": "arb"
+    },
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "8",
+     "to": "addr:162",
+     "chain": "arb"
+    }
+   ]
+  },
+  "first_latency_ms": 8927,
+  "questions": [
+   "Q_ADDRESS_REENTER"
+  ],
+  "total_ms": 9256,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_ADDRESS_REENTER",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3902,
+   2422,
+   2567
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3902,
+    "user": "Message: <<<Send 8 usdc to all iitr.eth members on arbitrum>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "8 usdc",
+       "number": "8",
+       "relative": null,
+       "token": "USDC",
+       "fiat": null,
+       "role": "pay"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2422,
+    "user": "Message: <<<Send amount_44293723 to all iitr.eth members on arbitrum>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "i"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 2567,
+    "user": "Message: <<<Send amount_44293723 to all iitr.eth members on arbitrum>>>\nCANDIDATES: [\"iitr.eth\"]",
+    "output": {
+     "spans": [
+      {
+       "text": "iitr.eth",
+       "kind": "ens",
+       "role": "payee"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-085",
+  "source": "paraphrase",
+  "prompt": "give each person in iitr.eth 3 usdc",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "3",
+     "to": "addr:161",
+     "chain": "base"
+    },
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "3",
+     "to": "addr:162",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 8514,
+  "questions": [
+   "Q_ADDRESS_REENTER"
+  ],
+  "total_ms": 8847,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_ADDRESS_REENTER",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3726,
+   2337,
+   2438
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3726,
+    "user": "Message: <<<give each person in iitr.eth 3 usdc>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "3 usdc",
+       "number": "3",
+       "relative": null,
+       "token": "USDC",
+       "fiat": null,
+       "role": "pay"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 2337,
+    "user": "Message: <<<give each person in iitr.eth amount_d166da49>>>",
+    "output": {
+     "request_type": "actions",
+     "actions": [
+      "i"
+     ],
+     "also_balance": false
+    }
+   },
+   {
+    "name": "spans",
+    "ms": 2438,
+    "user": "Message: <<<give each person in iitr.eth amount_d166da49>>>\nCANDIDATES: [\"iitr.eth\"]",
+    "output": {
+     "spans": [
+      {
+       "text": "iitr.eth",
+       "kind": "ens",
+       "role": "payee"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-086",
+  "source": "paraphrase",
+  "prompt": "how much usdc do i have",
+  "expected": {
+   "outcome": {
+    "kind": "balance"
+   }
+  },
+  "first_latency_ms": 5811,
+  "questions": [],
+  "total_ms": 6035,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_REQUEST",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   3847,
+   1947
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3847,
+    "user": "Message: <<<how much usdc do i have>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "how much usdc do i have",
+       "number": null,
+       "relative": null,
+       "token": "USDC",
+       "fiat": null,
+       "role": "context"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 1947,
+    "user": "Message: <<<[amount]>>>",
+    "output": {
+     "request_type": "unsupported",
+     "actions": [],
+     "also_balance": false
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-087",
+  "source": "paraphrase",
+  "prompt": "show my balances",
+  "expected": {
+   "outcome": {
+    "kind": "balance"
+   }
+  },
+  "first_latency_ms": 2759,
+  "questions": [],
+  "total_ms": 3151,
+  "final_state": "done",
+  "final_code": null,
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   808,
+   1924
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-088",
+  "source": "paraphrase",
+  "prompt": "whats in my wallet",
+  "expected": {
+   "outcome": {
+    "kind": "balance"
+   }
+  },
+  "first_latency_ms": 2827,
+  "questions": [],
+  "total_ms": 3233,
+  "final_state": "done",
+  "final_code": null,
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   770,
+   2031
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-089",
+  "source": "paraphrase",
+  "prompt": "swap 10 usdc to eth",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "UNSUPPORTED_REQUEST"
+   }
+  },
+  "first_latency_ms": 5623,
+  "questions": [],
+  "total_ms": 5891,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_REQUEST",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   3665,
+   1949
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-090",
+  "source": "paraphrase",
+  "prompt": "buy some eth for me",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "UNSUPPORTED_REQUEST"
+   }
+  },
+  "first_latency_ms": 3112,
+  "questions": [
+   "Q_AMOUNT_MISSING"
+  ],
+  "total_ms": 3400,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_AMOUNT_MISSING",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 1,
+  "llm_ms": [
+   3103
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3103,
+    "user": "Message: <<<buy some eth for me>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "some eth",
+       "number": null,
+       "relative": null,
+       "token": "ETH",
+       "fiat": null,
+       "role": "pay"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-091",
+  "source": "paraphrase",
+  "prompt": "bridge 20 usdc from base to arbitrum",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "UNSUPPORTED_REQUEST"
+   }
+  },
+  "first_latency_ms": 5570,
+  "questions": [],
+  "total_ms": 5773,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_REQUEST",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   3661,
+   1904
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-092",
+  "source": "paraphrase",
+  "prompt": "send 10 usdc to mihir on solana",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "UNSUPPORTED_CHAIN"
+   }
+  },
+  "first_latency_ms": 2,
+  "questions": [],
+  "total_ms": 207,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_CHAIN",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 0,
+  "llm_ms": [],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-093",
+  "source": "paraphrase",
+  "prompt": "send 5 sol to mihir",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "UNSUPPORTED_TOKEN"
+   }
+  },
+  "first_latency_ms": 1,
+  "questions": [],
+  "total_ms": 173,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_TOKEN",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 0,
+  "llm_ms": [],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-094",
+  "source": "paraphrase",
+  "prompt": "send 10 usdc to mihir on ethereum mainnet",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "MAINNET_NOT_SUPPORTED"
+   }
+  },
+  "first_latency_ms": 2,
+  "questions": [],
+  "total_ms": 171,
+  "final_state": "error",
+  "final_code": "MAINNET_NOT_SUPPORTED",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 0,
+  "llm_ms": [],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-095",
+  "source": "paraphrase",
+  "prompt": "send 10 usdc to Rahul",
+  "expected": {
+   "outcome": {
+    "kind": "question",
+    "codes": [
+     "Q_WHO_IS"
+    ]
+   }
+  },
+  "first_latency_ms": 7399,
+  "questions": [
+   "Q_WHO_IS"
+  ],
+  "total_ms": 7567,
+  "final_state": "awaiting_answer",
+  "final_code": "Q_WHO_IS",
+  "outcome": "exact",
+  "expected_outcome": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 3,
+  "llm_ms": [
+   3161,
+   2070,
+   2162
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-096",
+  "source": "paraphrase",
+  "prompt": "split 40 usdc between aradhya and mihir",
+  "expected": {
+   "outcome": {
+    "kind": "error",
+    "code": "SPLIT_UNSUPPORTED"
+   }
+  },
+  "first_latency_ms": 5551,
+  "questions": [],
+  "total_ms": 5750,
+  "final_state": "error",
+  "final_code": "UNSUPPORTED_REQUEST",
+  "outcome": "acceptable_stop",
+  "unexpected_stop": true,
+  "pairing_reached": false,
+  "pairing_exact": false,
+  "llm_calls": 2,
+  "llm_ms": [
+   3625,
+   1921
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false,
+  "llm_trace": [
+   {
+    "name": "amounts",
+    "ms": 3625,
+    "user": "Message: <<<split 40 usdc between aradhya and mihir>>>",
+    "output": {
+     "amounts": [
+      {
+       "phrase": "40 usdc",
+       "number": "40",
+       "relative": null,
+       "token": "USDC",
+       "fiat": null,
+       "role": "pay"
+      }
+     ]
+    }
+   },
+   {
+    "name": "request_type",
+    "ms": 1921,
+    "user": "Message: <<<split amount_fa257df0 between aradhya and mihir>>>",
+    "output": {
+     "request_type": "unsupported",
+     "actions": [],
+     "also_balance": false
+    }
+   }
+  ]
+ },
+ {
+  "id": "P-097",
+  "source": "paraphrase",
+  "prompt": "send 10 usdc to aradhya for the 500 rupee dinner",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "10",
+     "to": "Aradhya"
+    }
+   ]
+  },
+  "first_latency_ms": 16917,
+  "questions": [],
+  "total_ms": 17221,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Send 10 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 10 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   6418,
+   2095,
+   2196,
+   6192
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-098",
+  "source": "paraphrase",
+  "prompt": "Bro Mihir saved my life yesterday, send him 11 bucks",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "USDC",
+     "amt": "11",
+     "to": "Mihir"
+    }
+   ]
+  },
+  "first_latency_ms": 13935,
+  "questions": [],
+  "total_ms": 14111,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Send 11 USDC to Mihir (0x91Ab…77d0) on Base Sepolia.\n- You wrote '11 bucks' → 11 USDC.\nSpent today after this: 11 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   3238,
+   2051,
+   2316,
+   6314
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-099",
+  "source": "paraphrase",
+  "prompt": "send aradhya 0.03 eth on base",
+  "expected": {
+   "plan": [
+    {
+     "t": "i",
+     "tok": "ETH",
+     "amt": "0.03",
+     "to": "Aradhya",
+     "chain": "base"
+    }
+   ]
+  },
+  "first_latency_ms": 14330,
+  "questions": [],
+  "total_ms": 14534,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Send 0.03 ETH to Aradhya (0x3fA9…c21E) on Base Sepolia.\nSpent today after this: 0.03 of 0.15 ETH.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   3819,
+   2071,
+   2152,
+   6273
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ },
+ {
+  "id": "P-100",
+  "source": "paraphrase",
+  "prompt": "pay mihir 6 usdc on the 1st of every month for 3 months",
+  "expected": {
+   "plan": [
+    {
+     "t": "k",
+     "tok": "USDC",
+     "amt": "6",
+     "to": "Mihir",
+     "sched": {
+      "freq": "monthly",
+      "interval": 1,
+      "dom": 1,
+      "end": {
+       "type": "on_date"
+      }
+     }
+    }
+   ]
+  },
+  "first_latency_ms": 14575,
+  "questions": [],
+  "total_ms": 14816,
+  "final_state": "awaiting_confirmation",
+  "final_code": null,
+  "summary": "Please confirm:\n1. Pay Mihir (0x91Ab…77d0) 6 USDC on the 1st of every month at 10:00 (Asia/Kolkata) on Base Sepolia, first on 1 Dec 2026, until 28 Feb 2027. Sets aside 18 USDC now; anything unused is refunded if you cancel.\nSpent today after this: 0 of 300 USDC.\nConfirm?",
+  "outcome": "exact",
+  "pairing_reached": true,
+  "pairing_exact": true,
+  "llm_calls": 4,
+  "llm_ms": [
+   3335,
+   2508,
+   2258,
+   6394
+  ],
+  "llm_retries": 0,
+  "llm_failures": 0,
+  "model_failed": false
+ }
+]

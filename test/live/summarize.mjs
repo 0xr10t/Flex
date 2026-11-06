@@ -1,0 +1,21 @@
+// Usage: node test/live/summarize.mjs [tag ...]  (default: every results/*.json). Prints the §20.3 metrics.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+const dir = join(import.meta.dirname, 'results');
+const tags = process.argv.slice(2).length ? process.argv.slice(2) : readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));
+const all = tags.flatMap((t) => JSON.parse(readFileSync(join(dir, `${t}.json`), 'utf8')));
+const cnt = (f) => all.filter(f).length;
+const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) + '%' : 'n/a');
+const reached = all.filter((x) => x.pairing_reached);
+const noq = all.filter((x) => (x.questions ?? []).length === 0 && x.first_latency_ms && x.outcome === 'exact' && x.expected_outcome !== true || ((x.questions ?? []).length === 0 && x.first_latency_ms));
+const lat = noq.map((x) => x.first_latency_ms).sort((a, b) => a - b);
+const q = (p) => lat[Math.min(lat.length - 1, Math.floor(p * lat.length))];
+console.log('prompts', all.length, '(acceptance', cnt((x) => x.source === 'acceptance'), 'paraphrase', cnt((x) => x.source === 'paraphrase'), ')');
+for (const o of ['exact', 'acceptable_stop', 'rejected_summary', 'wrong_handoff', 'crash']) console.log(o, cnt((x) => x.outcome === o));
+console.log('  of exact: expected-outcome (no plan)', cnt((x) => x.expected_outcome), '; unexpected stops', cnt((x) => x.unexpected_stop));
+console.log('pairing exact', reached.filter((x) => x.pairing_exact).length, '/', reached.length, pct(reached.filter((x) => x.pairing_exact).length, reached.length));
+console.log('question rate', cnt((x) => (x.questions ?? []).length > 0), '/', all.length, pct(cnt((x) => (x.questions ?? []).length > 0), all.length));
+console.log('latency (no-question requests) n', lat.length, 'median', q(0.5), 'p95', q(0.95), 'max', lat[lat.length - 1], 'over 20s', lat.filter((v) => v > 20000).length);
+console.log('llm retries', all.reduce((a, x) => a + (x.llm_retries ?? 0), 0), 'MODEL_FAILED', cnt((x) => x.model_failed));
+console.log('total wall ms (sum of per-prompt)', all.reduce((a, x) => a + (x.total_ms ?? 0), 0));
+if (process.env.LIST) for (const x of all.filter((x) => x.outcome !== 'exact' || x.unexpected_stop || (x.pairing_reached && !x.pairing_exact))) console.log(x.id, '|', x.prompt.slice(0, 70), '|', x.outcome, x.final_code ?? '', (x.why ?? (x.diff ?? []).join('; ')) || x.error?.slice(0, 100) || '', x.pairing_reached && !x.pairing_exact ? '[S8 retry]' : '');
