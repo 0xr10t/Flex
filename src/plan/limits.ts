@@ -13,7 +13,7 @@ import { TOKENS_ORDER } from './spendable.js';
 
 /** Tokens of the plan's `i`, `j`, `k` intents, in a fixed order (SQ-D-13: `l` moves no token). */
 export function tokensUsed(plan: InternalIntent[]): Token[] {
-  return TOKENS_ORDER.filter((t) => plan.some((it) => it.intent_id !== 'l' && it.token === t));
+  return TOKENS_ORDER.filter((t) => plan.some((it) => (it.intent_id !== 'l' && it.token === t) || (it.intent_id === 'j' && t === 'ETH')));
 }
 
 export function spentToday(ctx: StepContext, token: Token): bigint {
@@ -25,7 +25,8 @@ export function spentToday(ctx: StepContext, token: Token): bigint {
 export function thisRequest(ctx: StepContext, plan: InternalIntent[], token: Token): bigint {
   let sum = 0n;
   for (const it of plan) {
-    if (it.intent_id === 'i' && it.token === token) sum += db1BaseUnits(ctx, it.amount).units;
+    if (it.intent_id === 'i' && it.token === token) sum += it.recipients.reduce((total, p) => total + db1BaseUnits(ctx, p.amount).units, 0n);
+    if (it.intent_id === 'j' && token === 'ETH') sum += toBaseUnits(it.fee_max_eth, 18);
     if (it.intent_id === 'j' && it.token === token) {
       sum += db1BaseUnits(ctx, it.amount).units - BigInt(it.deliverable_base_units);
     }

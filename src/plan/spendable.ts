@@ -72,16 +72,17 @@ export function checkChain(ctx: StepContext, balances: ChainBalance[], c: ChainI
 }
 
 /** §10.4 gas check / V-11 for every touched chain, in `allowed_chain_ids` order. */
-export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: ReadonlySet<ChainId>): StepResult | null {
+export function checkGas(ctx: StepContext, balances: ChainBalance[], touched: ReadonlySet<ChainId>, fees: ReadonlyMap<ChainId, bigint> = new Map()): StepResult | null {
   const { limits } = ctx;
   for (const c of limits.allowed_chain_ids) {
     if (!touched.has(c)) continue;
     const b = balanceOf(balances, c);
-    if (b && hasGas(b)) continue;
+    const required = (b?.reserve ?? 0n) + (fees.get(c) ?? 0n);
+    if (b && hasGas(b) && b.raw.ETH - b.pending.ETH >= required) continue;
     return {
       kind: 'error',
       code: 'NO_GAS',
-      params: { reserve: limits.eth_gas_reserve[String(c)] ?? '0', chain: chainName(ctx, c) },
+      params: { reserve: fmt(required, 'ETH'), chain: chainName(ctx, c) },
     };
   }
   return null;

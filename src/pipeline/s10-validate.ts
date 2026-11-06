@@ -3,6 +3,8 @@
 // §11.1 INTERNAL_ERROR logging the rule ID, §16.1 / V-08 keyed on DB3 source='untrusted' (§9.2 step 7), SQ-15 reply for the "No" answer, SQ-17 `deliverable` = x.
 
 import { getAddress, zeroAddress } from 'viem';
+import { checkEnvelope, placeholderHashes } from '@flex/protocol';
+import { swapBack } from '../handoff/swap-back.js';
 import {
   LIMIT_OVERRIDE,
   LIMIT_OVERRIDE_YES_NO,
@@ -29,19 +31,19 @@ import {
   tokensUsed,
   type LimitBreach,
 } from '../plan/limits.js';
-import { enumerateOccurrences } from '../plan/schedule.js';
 import { checkChain, checkGas, insufficientParams, readBalances, type ChainBalance } from '../plan/spendable.js';
 
 type Failure = StepResult | null;
 
 function amountsOf(it: InternalIntent): AmountPh[] {
-  if (it.intent_id === 'i' || it.intent_id === 'j') return [it.amount];
-  if (it.intent_id === 'k') return [it.amount_per_payment, it.limits.per_period_cap, it.limits.total_cap];
+  if (it.intent_id === 'j') return [it.amount];
+  if (it.intent_id === 'i') return it.recipients.map((p) => p.amount);
+  if (it.intent_id === 'k') return [...it.recipients.map((p) => p.amount), it.fee.amount, it.display.per_period_cap, it.limits.max_per_run, it.limits.max_total];
   return [];
 }
 
-function recipientOf(it: InternalIntent): AddressPh | null {
-  return it.intent_id === 'j' ? null : it.recipient;
+function recipientsOf(it: InternalIntent): AddressPh[] {
+  return it.intent_id === 'j' ? [] : it.intent_id === 'l' ? [it.recipient] : it.recipients.map((p) => p.recipient);
 }
 
 function chainsOf(it: InternalIntent): ChainId[] {
@@ -53,10 +55,9 @@ function chainsOf(it: InternalIntent): ChainId[] {
 function placeholdersExist(ctx: StepContext, plan: InternalIntent[]): boolean {
   const sid = ctx.req.session_id;
   return plan.every((it) => {
-    const r = recipientOf(it);
     return (
       amountsOf(it).every((a) => ctx.repos.db1.get(a)?.session_id === sid) &&
-      (r === null || ctx.repos.db3.get(r)?.session_id === sid)
+      recipientsOf(it).every((r) => ctx.repos.db3.get(r)?.session_id === sid)
     );
   });
 }
@@ -94,12 +95,12 @@ function checkChains(ctx: StepContext, plan: InternalIntent[], balances: ChainBa
 function checkSelfPayment(ctx: StepContext, plan: InternalIntent[]): Failure {
   const wallet = getAddress(ctx.config.wallet.address);
   for (const it of plan) {
-    const ph = recipientOf(it);
-    if (ph === null) continue;
+    for (const ph of recipientsOf(it)) {
     const address = ctx.repos.db3.get(ph)?.address;
     if (!address) return internalError(ctx, 's10', 'V-07');
     const checksummed = getAddress(address);
     if (checksummed === wallet || checksummed === zeroAddress) return { kind: 'error', code: 'SELF_PAYMENT' };
+    }
   }
   return null;
 }
@@ -112,7 +113,7 @@ function checkUntrusted(ctx: StepContext, plan: InternalIntent[]): Failure {
       if (row?.source === 'untrusted' && !row.confirmed) return internalError(ctx, 's10', 'V-08');
     }
     if (it.intent_id !== 'k') continue;
-    if (db1.get(it.amount_per_payment)?.source === 'untrusted' || db3.get(it.recipient)?.source === 'untrusted') {
+    if (it.recipients.some((p) => db1.get(p.amount)?.source === 'untrusted' || db3.get(p.recipient)?.source === 'untrusted')) {
       return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
     }
   }
@@ -123,7 +124,7 @@ function checkCancels(ctx: StepContext, plan: InternalIntent[]): Failure {
   for (const it of plan) {
     if (it.intent_id !== 'l') continue;
     const row = ctx.repos.db7.get(it.autopay_id);
-    if (row?.status !== 'active' || row.delegate_address === null) {
+    if (row?.status !== 'active' || !row.plan_id || row.plan_id !== it.plan_id || row.chain_id !== it.chain_id) {
       return { kind: 'error', code: 'NO_ACTIVE_AUTOPAY', params: { name: recipientNameOf(ctx, it.recipient) } };
     }
   }
@@ -131,6 +132,9 @@ function checkCancels(ctx: StepContext, plan: InternalIntent[]): Failure {
 }
 
 function structural(ctx: StepContext, plan: InternalIntent[], balances: ChainBalance[]): Failure {
+  if (plan.length > 16) return { kind: 'error', code: 'LIMIT_INTENTS' };
+  const bridges = plan.filter((it) => it.intent_id === 'j').length;
+  if (bridges > 3) return { kind: 'error', code: 'LIMIT_BRIDGES', params: { n: String(bridges), max: '3' } };
   if (!validators.internalPlan(plan)) return internalError(ctx, 's10', 'V-01');
   if (!placeholdersExist(ctx, plan)) return internalError(ctx, 's10', 'V-02');
   if (!stepsConsistent(plan)) return internalError(ctx, 's10', 'V-03');
@@ -140,7 +144,23 @@ function structural(ctx: StepContext, plan: InternalIntent[], balances: ChainBal
   const chains = checkChains(ctx, plan, balances);
   if (chains) return chains;
   if (!amountsPositive(ctx, plan)) return internalError(ctx, 's10', 'V-06');
-  return checkSelfPayment(ctx, plan) ?? checkUntrusted(ctx, plan) ?? checkCancels(ctx, plan);
+  const basic = checkSelfPayment(ctx, plan) ?? checkUntrusted(ctx, plan) ?? checkCancels(ctx, plan);
+  if (basic) return basic;
+  for (const it of plan) if (it.intent_id === 'k') {
+    const s = it.schedule;
+    if (s.interval_seconds * s.max_runs > 52 * 604800) return { kind: 'error', code: 'LIMIT_AUTOPAY_DURATION', params: { weeks: '52' } };
+    const perRun = it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, db1BaseUnits(ctx, it.fee.amount).units);
+    if (perRun !== db1BaseUnits(ctx, it.limits.max_per_run).units ||
+        perRun * BigInt(s.max_runs) !== db1BaseUnits(ctx, it.limits.max_total).units ||
+        s.end_at !== s.start_at + s.interval_seconds * (s.max_runs - 1) + s.late_window_seconds ||
+        s.start_at <= ctx.now().toSeconds()) return { kind: 'error', code: 'EXECUTION_PLAN_INVALID' };
+  }
+  try {
+    const envelope = swapBack(ctx, plan);
+    const checked = checkEnvelope(envelope, { nowMs: ctx.now().toMillis(), delegationHashes: placeholderHashes(envelope) });
+    if (!checked.ok) return { kind: 'error', code: 'EXECUTION_PLAN_INVALID' };
+  } catch { return internalError(ctx, 's10', 'V-09c'); }
+  return null;
 }
 
 // ───────────────────────────── §11.2 funding ─────────────────────────────
@@ -155,18 +175,26 @@ function needAndAvailable(
   let need = 0n;
   let available = b.spendable[token];
   for (const it of plan) {
+    if (it.intent_id === 'j' && token === 'ETH' && it.source_chain_id === b.chain_id) need += toBaseUnits(it.fee_max_eth, 18);
     if (it.intent_id === 'l' || it.token !== token) continue;
     if (it.intent_id === 'j') {
       if (it.dest_chain_id === b.chain_id) available += BigInt(it.deliverable_base_units);
       if (it.source_chain_id === b.chain_id) available -= db1BaseUnits(ctx, it.amount).units;
     } else if (it.chain_id === b.chain_id) {
-      need += db1BaseUnits(ctx, it.intent_id === 'i' ? it.amount : it.limits.total_cap).units;
+      need += it.intent_id === 'i'
+        ? it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n)
+        : db1BaseUnits(ctx, it.limits.max_total).units;
     }
   }
   return { need, available };
 }
 
 function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalance[]): Failure {
+  const touched = new Set(plan.map((it) => (it.intent_id === 'j' ? it.source_chain_id : it.chain_id)));
+  const fees = new Map<ChainId, bigint>();
+  for (const it of plan) if (it.intent_id === 'j') fees.set(it.source_chain_id, (fees.get(it.source_chain_id) ?? 0n) + toBaseUnits(it.fee_max_eth, 18));
+  const gas = checkGas(ctx, balances, touched, fees);
+  if (gas) return gas;
   for (const token of tokensUsed(plan)) {
     const perChain = balances.map((b) => needAndAvailable(ctx, plan, b, token));
     if (perChain.some((x) => x.need > x.available)) {
@@ -180,8 +208,7 @@ function funding(ctx: StepContext, plan: InternalIntent[], balances: ChainBalanc
       return { kind: 'error', code: 'INSUFFICIENT_FUNDS', params: insufficientParams(ctx, token, balances, total) };
     }
   }
-  const touched = new Set(plan.map((it) => (it.intent_id === 'j' ? it.source_chain_id : it.chain_id)));
-  return checkGas(ctx, balances, touched);
+  return null;
 }
 
 // ───────────────────────────── §11.3 limits (SQ-D-16) ─────────────────────────────
@@ -192,13 +219,13 @@ function breaches(ctx: StepContext, plan: InternalIntent[]): LimitBreach[] {
   const found = [bridgeBreach(ctx, plan.filter((it) => it.intent_id === 'j').length, repeating)];
   for (const it of plan) {
     if (it.intent_id === 'i') {
-      found.push(perTxBreach(ctx, db1BaseUnits(ctx, it.amount).units, it.token, false));
+      found.push(...it.recipients.map((p) => perTxBreach(ctx, db1BaseUnits(ctx, p.amount).units, it.token, false)));
     } else if (it.intent_id === 'k') {
       found.push(
-        perTxBreach(ctx, db1BaseUnits(ctx, it.amount_per_payment).units, it.token, true),
-        autopayPeriodBreach(ctx, db1BaseUnits(ctx, it.limits.per_period_cap).units, it.token),
+        ...it.recipients.map((p) => perTxBreach(ctx, db1BaseUnits(ctx, p.amount).units, it.token, true)),
+        autopayPeriodBreach(ctx, db1BaseUnits(ctx, it.display.per_period_cap).units, it.token),
       );
-      if (enumerateOccurrences(it.schedule, ctx.limits.autopay_max_weeks).exceedsMaxWeeks) {
+      if (it.schedule.interval_seconds * (it.schedule.max_runs - 1) > ctx.limits.autopay_max_weeks * 604800) {
         found.push(autopayDurationBreach(ctx));
       }
     }
@@ -223,7 +250,7 @@ function subjectAmount(ctx: StepContext, plan: InternalIntent[], found: LimitBre
   const token = tokens[0];
   if (tokens.length !== 1 || token === undefined) return undefined;
   let total = 0n;
-  for (const it of plan) if (it.intent_id === 'i' && it.token === token) total += db1BaseUnits(ctx, it.amount).units;
+  for (const it of plan) if (it.intent_id === 'i' && it.token === token) total += it.recipients.reduce((sum, p) => sum + db1BaseUnits(ctx, p.amount).units, 0n);
   return total > 0n ? { value: fmt(total, token), token } : undefined;
 }
 

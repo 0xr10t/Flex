@@ -2,9 +2,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NOTES, REPLY } from '../../../src/contracts/catalog.js';
 import { shortAddress } from '../../../src/contracts/money.js';
-import type { AddressPh, InternalIntent, Schedule } from '../../../src/contracts/types.js';
+import type { AddressPh, InternalIntent, CalendarSchedule } from '../../../src/contracts/types.js';
 import { buildBalanceAnswer } from '../../../src/messages/balance.js';
 import { buildSummary, cadenceText } from '../../../src/messages/summary.js';
+import { s9 } from '../../../src/pipeline/s9-plan.js';
 import { s11 } from '../../../src/pipeline/s11-summary.js';
 import type { TestContext } from '../../fakes/context.js';
 import {
@@ -53,7 +54,7 @@ function build(ctx: TestContext, plan: InternalIntent[]): ReturnType<typeof buil
 }
 
 /** A k plan with a given schedule (Mihir on Base). */
-function kLine(schedule: Schedule): string {
+function kLine(schedule: CalendarSchedule): string {
   const ctx = ctxD({ actions: ['k'], balances: usdc('0', '1000', '0') });
   const mi = addMihir(ctx);
   return build(ctx, [planK(ctx, 0, mi, BASE, { schedule })]).lines[0] as string;
@@ -62,14 +63,14 @@ function kLine(schedule: Schedule): string {
 const E6_END = { type: 'on_date', date: '2026-12-31' } as const;
 
 describe('§13.1 line templates', () => {
-  it('C-279 §13.1 j line (E3): Move … (your own account; includes a 2% fee buffer, anything left over stays with you).', () => {
+  it('C-279 §13.1 j line (E3): Move … (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.', () => {
     const ctx = ctxD({ balances: usdc('0', '30', '50') });
     const j = planJ(ctx, 0, ARB, BASE, '10.2', '10', [1]);
     const a = addAradhya(ctx);
     const i = planI(1, mintAmount(ctx, '40'), a, BASE, { depends_on: [0] });
     const s = build(ctx, [j, i]);
     expect(s.lines[0]).toBe(
-      '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+      '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
     );
   });
 
@@ -79,7 +80,7 @@ describe('§13.1 line templates', () => {
     const j = planJ(ctx, 0, ARB, BASE, '10.2', '10', [1]);
     const a = addAradhya(ctx);
     const s = build(ctx, [j, planI(1, mintAmount(ctx, '40'), a, BASE, { depends_on: [0] })]);
-    expect(s.lines[0]).toContain('includes a 3.5% fee buffer');
+    expect(s.lines[0]).toContain('3.5% token buffer');
   });
 
   it('C-280 §13.1 i line: Send {amount} {token} to {Name} ({addr}) on {Chain}. (no suffix without depends_on)', () => {
@@ -101,7 +102,7 @@ describe('§13.1 line templates', () => {
     const s = build(ctx, plan);
     expect(s.lines[1]).toBe(`2. Send 40 USDC to Aradhya (${ADDR_ARADHYA}) on Base Sepolia. After step 1.`);
     expect(s.lines[2]).toBe(`3. Send 20 USDC to Mihir (${ADDR_MIHIR}) on Arbitrum Sepolia.`);
-    expect(s.footer).toEqual(['Spent today after this: 60.2 of 300 USDC.']);
+    expect(s.footer).toEqual(['Spent today after this: 60.2 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
   });
 
   it('C-280 SQ-D-03 §13.1 an i depending on several bridges → "After step 1 and 2."', () => {
@@ -127,8 +128,10 @@ describe('§13.1 line templates', () => {
     });
     const a = mintAmount(ctx, '10');
     const plan = [
-      planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE),
-      planI(1, a, members['bob.iitr.eth'] as AddressPh, BASE),
+      { ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE), recipients: [
+        { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+        { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+      ] },
     ];
     const s = build(ctx, plan);
     expect(s.lines).toEqual([
@@ -156,9 +159,11 @@ describe('§13.1 line templates', () => {
     });
     const a = mintAmount(ctx, '10');
     const plan = [
-      planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE),
-      planI(1, a, members['bob.iitr.eth'] as AddressPh, BASE),
-      planI(2, mintAmount(ctx, '5'), addMihir(ctx), BASE),
+      { ...planI(0, a, members['alice.iitr.eth'] as AddressPh, BASE), recipients: [
+        { amount: a, recipient: members['alice.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+        { amount: a, recipient: members['bob.iitr.eth'] as AddressPh, reused_from_chain_id: null },
+      ] },
+      planI(1, mintAmount(ctx, '5'), addMihir(ctx), BASE),
     ];
     const s = build(ctx, plan);
     expect(s.lines).toHaveLength(2);
@@ -168,9 +173,9 @@ describe('§13.1 line templates', () => {
   it('C-282 E6 §13.1 k line, exact spec text', () => {
     const ctx = ctxD({ actions: ['k'], balances: usdc('0', '100', '0') });
     const mi = addMihir(ctx);
-    const s = build(ctx, [planK(ctx, 0, mi, BASE, { amount: '10', total: '80' })]);
+    const s = build(ctx, [planK(ctx, 0, mi, BASE, { amount: '10' })]);
     expect(s.lines[0]).toBe(
-      `1. Pay Mihir (${ADDR_MIHIR}) 10 USDC every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, until 31 Dec 2026. Sets aside 80 USDC now; anything unused is refunded if you cancel.`,
+      `1. Pay 10 USDC to Mihir (${ADDR_MIHIR}) every Fri at 10:00 (Asia/Kolkata) on Base Sepolia, first on 6 Nov 2026, for 8 payments. Each run also pays 0.05 USDC to ${ctx.config.autopay!.fee_collector}; at most 10.05 USDC per run and 80.4 USDC overall. Money stays in your wallet until each run. Runs more than 3600 seconds late are skipped.`,
     );
     // k creation adds 0 to the footer (D-19)
     expect(s.footer).toEqual(['Spent today after this: 0 of 300 USDC.']);
@@ -179,7 +184,7 @@ describe('§13.1 line templates', () => {
   it('C-282 §13.1 k first date is shown in the schedule timezone, not UTC', () => {
     const line = kLine(weekly(['FRI'], '2026-11-06T10:00:00.000+05:30', E6_END));
     expect(line).toContain('first on 6 Nov 2026');
-    const sameInstantUtc = weekly(['FRI'], '2026-11-05T22:00:00.000-06:00', E6_END, {
+    const sameInstantUtc = weekly(['THU'], '2026-11-05T22:00:00.000-06:00', E6_END, {
       tz: 'America/Chicago',
       time: '22:00',
     });
@@ -193,7 +198,7 @@ describe('§13.1 line templates', () => {
     const mi = addMihir(ctx);
     const s = build(ctx, [planL(0, mi, 'ap_0000000000f7')]);
     expect(s.lines).toEqual([
-      "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia, and refund what's left in it to you.",
+      "1. Stop paying Mihir 10 USDC every Fri on Base Sepolia. Money stays in your wallet; there is no refund transfer.",
     ]);
     expect(s.footer).toEqual([]);
     expect(s.text).toBe(['Please confirm:', s.lines[0], 'Confirm?'].join('\n'));
@@ -204,12 +209,12 @@ describe('§13.1 line templates', () => {
     addAutopay(ctx, {
       autopay_id: 'ap_0000000000f8',
       amount: '25.50',
-      schedule: sched('monthly', '2026-11-15T10:00:00.000+05:30', E6_END, { dom: 15 }),
+      schedule: sched('daily', '2026-11-15T10:00:00.000+05:30', E6_END, { interval: 30 }),
       chain_id: ARB,
     });
     const s = build(ctx, [planL(0, addMihir(ctx), 'ap_0000000000f8', ARB)]);
     expect(s.lines[0]).toBe(
-      "1. Stop paying Mihir 25.5 USDC on the 15th of every month on Arbitrum Sepolia, and refund what's left in it to you.",
+      "1. Stop paying Mihir 25.5 USDC every 30 days on Arbitrum Sepolia. Money stays in your wallet; there is no refund transfer.",
     );
   });
 });
@@ -257,7 +262,7 @@ describe('§13.1 {cadence} forms', () => {
   it('C-285 daily: "every day" / "every {n} days"', () => {
     expect(cadenceText(sched('daily', first, E6_END))).toBe('every day');
     expect(cadenceText(sched('daily', first, E6_END, { interval: 3 }))).toBe('every 3 days');
-    expect(kLine(sched('daily', first, E6_END))).toContain('USDC every day at 10:00');
+    expect(kLine(sched('daily', first, E6_END))).toContain('every day at 10:00');
   });
 
   it('C-285 weekly: "every Mon and Thu" / "every Fri" / "every Mon, Wed and Fri" / "every {n} weeks on Mon"', () => {
@@ -285,8 +290,8 @@ describe('§13.1 {cadence} forms', () => {
   });
 
   it('C-285 cadence is embedded in the k line between {token} and "at {HH:MM}"', () => {
-    const line = kLine(sched('monthly', first, E6_END, { dom: 15, interval: 2 }));
-    expect(line).toContain('10 USDC every 2 months on the 15th at 10:00 (Asia/Kolkata)');
+    const line = kLine(sched('daily', first, E6_END, { interval: 60 }));
+    expect(line).toContain('every 60 days at 10:00 (Asia/Kolkata)');
   });
 });
 
@@ -294,7 +299,7 @@ describe('§13.1 {end text} forms', () => {
   const first = '2026-11-06T10:00:00.000+05:30';
   it('C-286 after_count → "for {n} payments"', () => {
     expect(kLine(weekly(['FRI'], first, { type: 'after_count', count: 8 }))).toContain(
-      'first on 6 Nov 2026, for 8 payments. Sets aside',
+      'first on 6 Nov 2026, for 8 payments. Each run also pays',
     );
   });
   it('C-286 SQ-D-11 after_count 1 → "for 1 payments" (template as written)', () => {
@@ -302,19 +307,19 @@ describe('§13.1 {end text} forms', () => {
   });
   it('C-286 on_date → "until {d MMM yyyy}"', () => {
     expect(kLine(weekly(['FRI'], first, { type: 'on_date', date: '2027-01-05' }))).toContain(
-      'first on 6 Nov 2026, until 5 Jan 2027. Sets aside',
+      'first on 6 Nov 2026, for 9 payments. Each run also pays',
     );
   });
   it('C-286 until_cancelled → "until you cancel (at most {autopay_max_weeks} weeks)" using DB5', () => {
     expect(kLine(weekly(['FRI'], first, { type: 'until_cancelled' }))).toContain(
-      'until you cancel (at most 52 weeks). Sets aside',
+      'for 52 payments. Each run also pays',
     );
     const ctx = ctxD({ actions: ['k'], balances: usdc('0', '1000', '0') });
     setLimits(ctx, { autopay_max_weeks: 26 });
     const line = build(ctx, [
-      planK(ctx, 0, addMihir(ctx), BASE, { schedule: weekly(['FRI'], first, { type: 'until_cancelled' }) }),
+      planK(ctx, 0, addMihir(ctx), BASE, { schedule: weekly(['FRI'], first, { type: 'after_count', count: 26 }) }),
     ]).lines[0];
-    expect(line).toContain('until you cancel (at most 26 weeks)');
+    expect(line).toContain('for 26 payments');
   });
 });
 
@@ -355,7 +360,7 @@ describe('§13.1 footer and framing', () => {
     const ctx = ctxD({ balances: usdc('0', '30', '60') });
     const j = planJ(ctx, 0, ARB, BASE, '20.4', '20', [1]);
     const i = planI(1, mintAmount(ctx, '50'), addAradhya(ctx), BASE, { depends_on: [0] });
-    expect(build(ctx, [j, i]).footer).toEqual(['Spent today after this: 50.4 of 300 USDC.']);
+    expect(build(ctx, [j, i]).footer).toEqual(['Spent today after this: 50.4 of 300 USDC.', 'Spent today after this: 0.002 of 0.15 ETH.']);
   });
 
   it('C-288 §13.1 framing: "Please confirm:" first, numbered lines, notes as bullets, footer, "Confirm?" last', () => {
@@ -383,10 +388,11 @@ describe('§13.1 footer and framing', () => {
     expect(build(ctx, plan).text).toBe(
       [
         'Please confirm:',
-        '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; includes a 2% fee buffer, anything left over stays with you).',
+        '1. Move 10.2 USDC from Arbitrum Sepolia to Base Sepolia (your own account; 0% token buffer). The bridge fee is at most 0.002 ETH on Arbitrum Sepolia.',
         '2. Send 40 USDC to Aradhya (0x3fA9…c21E) on Base Sepolia. After step 1.',
         '3. Send 20 USDC to Mihir (0x91Ab…77d0) on Arbitrum Sepolia.',
         'Spent today after this: 60.2 of 300 USDC.',
+        'Spent today after this: 0.002 of 0.15 ETH.',
         'Confirm?',
       ].join('\n'),
     );
@@ -412,7 +418,7 @@ describe('§13.1 notes', () => {
     expect(s.notes).toEqual(['Recipient and chain from your last payment.']);
   });
 
-  it('C-296 §13.1 note "Paid on the 28th, since months differ in length." is emitted by S9 for a day-29/30/31 monthly k', async () => {
+  it('C-296 §13.1 monthly conversion is explicit and the summary never claims calendar-month semantics', async () => {
     const { ctx, payment } = kSetup({
       clause: 'pay mihir 10 usdc on the 31st of every month for 3 months',
       day_of_month: 31,
@@ -421,11 +427,14 @@ describe('§13.1 notes', () => {
       balances: usdc('0', '1000', '0'),
     });
     ctx.req.scan.recurrence = [];
-    const res = await run(ctx, [payment]);
-    expect(res.kind).toBe('continue');
-    const s = buildSummary(ctx, ctx.req.plan as InternalIntent[]);
-    expect(s.notes).toContain('Paid on the 28th, since months differ in length.');
-    expect(s.lines[0]).toContain('on the 28th of every month');
+    const question = await run(ctx, [payment]);
+    if (question.kind !== 'question') throw new Error('monthly choice required');
+    expect(question.question.code).toBe('Q_AUTOPAY_MONTHLY');
+    await s9.onAnswer?.(ctx, question.question, { kind: 'chip', chip_id: 'thirty_days' });
+    expect((await s9.step(ctx)).kind).toBe('continue');
+    const summary = buildSummary(ctx, ctx.req.plan!);
+    expect(summary.notes.join(' ')).not.toContain('28th');
+    expect(summary.lines[0]).toContain('every 30 days');
   });
 
   it('C-292 §13.1 note "You wrote \'{phrase}\' → {amount} {token}." for an LLM-only number', () => {

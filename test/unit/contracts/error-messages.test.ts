@@ -89,13 +89,18 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ],
   ['INTERNAL_ERROR', {}, 'Something went wrong preparing this. Nothing was sent.'],
   ['CANCELLED', {}, 'Cancelled. Nothing was sent.'],
+  ['AUTOPAY_NOT_CONFIGURED', {}, 'Repeating payments need an operator fee and fee recipient configured first.'],
+  ['ETH_NOT_BRIDGEABLE', {}, 'ETH cannot be bridged. Add ETH on the payment network or choose another network.'],
+  ['LIMIT_GROUP_SIZE', {}, 'That group has more recipients than a single payment can accept.'],
+  ['LIMIT_INTENTS', {}, 'This request needs more than 16 steps. Split it into smaller requests.'],
+  ['EXECUTION_PLAN_INVALID', {}, 'This plan does not meet the wallet’s execution rules. Adjust the request and try again.'],
 ];
 
 describe('C-395 §15 error messages', () => {
-  it('C-395 §15: the catalogue has exactly 35 codes, each with a message', () => {
+  it('C-395 §15: the catalogue has exactly 40 codes, each with a message', () => {
     // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 37 cases over 35 codes.
     const codes = [...new Set(CASES.map(([c]) => c))].sort();
-    expect(codes).toHaveLength(35);
+    expect(codes).toHaveLength(40);
     expect([...ERROR_CODES].sort()).toEqual(codes);
     expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });

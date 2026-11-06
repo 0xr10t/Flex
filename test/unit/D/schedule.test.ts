@@ -2,7 +2,7 @@
 // and §10.7 cancel (`l`).
 import { DateTime } from 'luxon';
 import { describe, expect, it, vi } from 'vitest';
-import type { Schedule, Weekday } from '../../../src/contracts/types.js';
+import type { CalendarSchedule, Weekday } from '../../../src/contracts/types.js';
 import {
   clampDayOfMonth,
   cronFor,
@@ -23,6 +23,7 @@ import {
   addAmount,
   addAutopay,
   addMihir,
+  planIdFor,
   ctxD,
   expectError,
   expectQuestion,
@@ -180,7 +181,7 @@ describe('C-449 §20.1 schedule: schedule.ts pure functions (§10.6)', () => {
   });
 
   it('C-232 §10.6 derived 1: daily interval 2 keeps 10:00 local across the DST end (America/New_York)', () => {
-    const s: Schedule = sched(
+    const s: CalendarSchedule = sched(
       'daily',
       '2026-10-30T10:00:00-04:00',
       { type: 'after_count', count: 4 },
@@ -258,7 +259,13 @@ describe('C-449 §20.1 schedule: schedule.ts pure functions (§10.6)', () => {
 describe('S9 `k` fields (§10.6 table)', () => {
   const getK = async (o: KOpts, end = 'for 4 payments') => {
     const { ctx, payment } = kSetup(withEnd(o, end));
-    const plan = await runOk(ctx, [payment]);
+    let result = await run(ctx, [payment]);
+    if (result.kind === 'question' && result.question.code === 'Q_AUTOPAY_MONTHLY') {
+      result = (await answerAndReenter(ctx, result.question, chip('four_weeks'))).next!;
+    }
+    expect(result).toEqual({ kind: 'continue' });
+    expectValidPlan(ctx);
+    const plan = planOf(ctx);
     return { ctx, k: asK(plan[plan.length - 1]) };
   };
 
@@ -282,7 +289,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(answer).toEqual({ kind: 'continue' });
     expect(next).toEqual({ kind: 'continue' });
     expectValidPlan(ctx);
-    expect(asK(planOf(ctx)[0]).schedule).toMatchObject({ frequency: 'weekly', days_of_week: ['THU'] });
+    expect(asK(planOf(ctx)[0]).display.schedule).toMatchObject({ frequency: 'weekly', days_of_week: ['THU'] });
     expect(ctx.req.step_state.s9).toBeUndefined();
   });
 
@@ -296,37 +303,37 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(q2.question_id).not.toBe(q.question_id);
   });
 
-  it.each(['daily', 'weekly', 'monthly'] as const)('C-224 §10.6 Q_AUTOPAY_FREQUENCY chip %s is accepted', async (f) => {
+  it.each(['daily', 'weekly'] as const)('C-224 §10.6 Q_AUTOPAY_FREQUENCY chip %s is accepted', async (f) => {
     const { ctx, payment } = kSetup(withEnd({ frequency: null, days_of_week: null }));
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_FREQUENCY');
     const { next } = await answerAndReenter(ctx, q, chip(f));
     expect(next).toEqual({ kind: 'continue' });
-    expect(asK(planOf(ctx)[0]).schedule.frequency).toBe(f);
+    expect(asK(planOf(ctx)[0]).display.schedule.frequency).toBe(f);
   });
 
   it('C-224 §10.6 times_per_week = 7 → daily without a question (also over a weekly/null frequency)', async () => {
     for (const frequency of [null, 'weekly'] as const) {
       const { k } = await getK({ frequency, days_of_week: null, times_per_week: 7 });
-      expect(k.schedule).toMatchObject({ frequency: 'daily', days_of_week: null });
-      expect(k.cre_job.cron).toBe('0 10 * * *');
+      expect(k.display.schedule).toMatchObject({ frequency: 'daily', days_of_week: null });
+      expect(k.schedule.interval_seconds).toBe(86400);
     }
   });
 
   it('C-225 §10.6 interval null → 1; interval from S8 is kept', async () => {
-    expect((await getK({})).k.schedule.interval).toBe(1);
+    expect((await getK({})).k.display.schedule.interval).toBe(1);
     const { k } = await getK({ frequency: 'daily', days_of_week: null, interval: 2 });
-    expect(k.schedule.interval).toBe(2);
-    expect(k.cre_job.interval).toBe(2);
+    expect(k.display.schedule.interval).toBe(2);
+    expect(k.schedule.interval_seconds).toBe(172800);
   });
 
   it('C-226 §10.6 days the user named win over times_per_week', async () => {
     const { k } = await getK({ days_of_week: ['TUE'], times_per_week: 3 });
-    expect(k.schedule.days_of_week).toEqual(['TUE']);
+    expect(k.display.schedule.days_of_week).toEqual(['TUE']);
   });
 
   it('C-226 §10.6 named days are stored in week order', async () => {
     const { k } = await getK({ days_of_week: ['FRI', 'MON'] });
-    expect(k.schedule.days_of_week).toEqual(['MON', 'FRI']);
+    expect(k.display.schedule.days_of_week).toEqual(['MON', 'FRI']);
   });
 
   it.each([
@@ -338,74 +345,67 @@ describe('S9 `k` fields (§10.6 table)', () => {
     [6, ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']],
   ] as Array<[number, Weekday[]]>)('C-226 §10.6 weekly with times_per_week %i → %j', async (n, days) => {
     const { k } = await getK({ days_of_week: null, times_per_week: n });
-    expect(k.schedule.days_of_week).toEqual(days);
+    expect(k.display.schedule.days_of_week).toEqual(days);
   });
 
   it('C-226 §10.6 weekly with no days and no times_per_week → today’s weekday (Thursday)', async () => {
     const { k } = await getK({ days_of_week: null });
-    expect(k.schedule.days_of_week).toEqual(['THU']);
+    expect(k.display.schedule.days_of_week).toEqual(['THU']);
   });
 
-  it('C-227 §10.6 monthly day_of_month from S8; null → today’s day of month (5)', async () => {
-    const a = (await getK({ frequency: 'monthly', days_of_week: null, day_of_month: 15 })).k;
-    expect(a.schedule).toMatchObject({ frequency: 'monthly', day_of_month: 15, days_of_week: null });
-    expect(ms(a.schedule.first_occurrence)).toBe(ms('2026-11-15T10:00:00+05:30'));
-    expect(a.cre_job.cron).toBe('0 10 15 * *');
-    const b = (await getK({ frequency: 'monthly', days_of_week: null })).k;
-    expect(b.schedule.day_of_month).toBe(5);
-    expect(ms(b.schedule.first_occurrence)).toBe(ms('2026-12-05T10:00:00+05:30'));
-  });
-
-  it.each([29, 30, 31])('C-227 §10.6 day_of_month %i → 28 with the note', async (d) => {
-    const { ctx, k } = await getK({ frequency: 'monthly', days_of_week: null, day_of_month: d });
-    expect(k.schedule.day_of_month).toBe(28);
-    expect(k.cre_job.cron).toBe('0 10 28 * *');
-    expect(ctx.req.notes).toContain('Paid on the 28th, since months differ in length.');
-  });
-
-  it('C-227 §10.6 day_of_month ≤ 28 has no 28th note', async () => {
-    const { ctx } = await getK({ frequency: 'monthly', days_of_week: null, day_of_month: 28 });
-    expect(ctx.req.notes).toEqual([]);
+  it.each([15, 28, 29, 30, 31])('monthly day %i requires an explicit fixed-interval choice', async (day) => {
+    const { ctx, payment } = kSetup(withEnd({ frequency: 'monthly', days_of_week: null, day_of_month: day }));
+    const before = db1Count(ctx);
+    const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_MONTHLY');
+    expect(q.chips.map((c) => c.label)).toEqual(['Every 4 weeks', 'Every 30 days']);
+    expect(db1Count(ctx)).toBe(before);
+    const invalid = await answerAndReenter(ctx, q, text('keep the 31st'));
+    expect(expectQuestion(invalid.answer, 'Q_AUTOPAY_MONTHLY').attempt).toBe(2);
+    expect((await answerAndReenter(ctx, q, chip('thirty_days'))).next).toEqual({ kind: 'continue' });
+    const k = asK(planOf(ctx)[0]);
+    expect(k.schedule).toMatchObject({ interval_seconds: 2592000, max_runs: 4 });
+    expect(k.display.schedule.day_of_month).toBeNull();
+    expect(ctx.req.notes).not.toContain('Paid on the 28th, since months differ in length.');
   });
 
   it('C-228 §10.6 time_of_day: chrono time in the clause, else defaults.autopay_time_of_day', async () => {
     const a = (await getK({ chrono: [{ kind: 'time', time: '18:30' }] })).k;
-    expect(a.schedule.time_of_day).toBe('18:30');
-    expect(a.cre_job.cron).toBe('30 18 * * 5');
-    expect((await getK({})).k.schedule.time_of_day).toBe('10:00');
+    expect(a.display.schedule.time_of_day).toBe('18:30');
+    expect(a.schedule.start_at * 1000).toBe(ms('2026-11-06T18:30:00+05:30'));
+    expect((await getK({})).k.display.schedule.time_of_day).toBe('10:00');
   });
 
   it('C-229 §10.6 timezone = session timezone (schedule and cre_job)', async () => {
     const { k } = await getK({ timezone: NY, now: '2026-11-05T12:00:00Z' });
-    expect(k.schedule.timezone).toBe(NY);
-    expect(k.cre_job.timezone).toBe(NY);
+    expect(k.display.schedule.timezone).toBe(NY);
+    expect(k.schedule.start_at * 1000).toBe(ms('2026-11-06T10:00:00-05:00'));
   });
 
   it('C-230 §10.6 start_date: chrono start date in the clause (daily and weekly), else today', async () => {
     const d = (await getK({ frequency: 'daily', days_of_week: null, chrono: [{ kind: 'start', date: '2026-11-10' }] }))
       .k;
-    expect(d.schedule.start_date).toBe('2026-11-10');
-    expect(ms(d.schedule.first_occurrence)).toBe(ms('2026-11-10T10:00:00+05:30'));
+    expect(d.display.schedule.start_date).toBe('2026-11-10');
+    expect(ms(d.display.schedule.first_occurrence)).toBe(ms('2026-11-10T10:00:00+05:30'));
     const w = (await getK({ chrono: [{ kind: 'start', date: '2026-11-10' }] })).k;
-    expect(ms(w.schedule.first_occurrence)).toBe(ms('2026-11-13T10:00:00+05:30'));
-    expect((await getK({})).k.schedule.start_date).toBe('2026-11-05');
+    expect(ms(w.display.schedule.first_occurrence)).toBe(ms('2026-11-13T10:00:00+05:30'));
+    expect((await getK({})).k.display.schedule.start_date).toBe('2026-11-05');
   });
 
   it('C-230 §10.6 first occurrence is strictly after now: 10:00 already passed today → tomorrow', async () => {
     const { k } = await getK({ frequency: 'daily', days_of_week: null });
-    expect(ms(k.schedule.first_occurrence)).toBe(ms('2026-11-06T10:00:00+05:30'));
+    expect(ms(k.display.schedule.first_occurrence)).toBe(ms('2026-11-06T10:00:00+05:30'));
   });
 
   it('C-230 §10.6 first occurrence today when the time is still ahead (now 08:00 IST)', async () => {
     const { k } = await getK({ frequency: 'daily', days_of_week: null, now: '2026-11-05T02:30:00Z' });
-    expect(ms(k.schedule.first_occurrence)).toBe(ms('2026-11-05T10:00:00+05:30'));
+    expect(ms(k.display.schedule.first_occurrence)).toBe(ms('2026-11-05T10:00:00+05:30'));
   });
 
   it('C-230 §10.6 chrono time 23:30 today (after now 23:00) → today; exactly 23:00 → tomorrow', async () => {
     const a = (await getK({ frequency: 'daily', days_of_week: null, chrono: [{ kind: 'time', time: '23:30' }] })).k;
-    expect(ms(a.schedule.first_occurrence)).toBe(ms('2026-11-05T23:30:00+05:30'));
+    expect(ms(a.display.schedule.first_occurrence)).toBe(ms('2026-11-05T23:30:00+05:30'));
     const b = (await getK({ frequency: 'daily', days_of_week: null, chrono: [{ kind: 'time', time: '23:00' }] })).k;
-    expect(ms(b.schedule.first_occurrence)).toBe(ms('2026-11-06T23:00:00+05:30'));
+    expect(ms(b.display.schedule.first_occurrence)).toBe(ms('2026-11-06T23:00:00+05:30'));
   });
 
   it('C-328 C-230 §10.6 start date in the past → Q_AUTOPAY_START (date input); a future answer is used', async () => {
@@ -416,8 +416,8 @@ describe('S9 `k` fields (§10.6 table)', () => {
     const { next } = await answerAndReenter(ctx, q, text('2026-11-10'));
     expect(next).toEqual({ kind: 'continue' });
     const k = asK(planOf(ctx)[0]);
-    expect(k.schedule.start_date).toBe('2026-11-10');
-    expect(ms(k.schedule.first_occurrence)).toBe(ms('2026-11-13T10:00:00+05:30'));
+    expect(k.display.schedule.start_date).toBe('2026-11-10');
+    expect(ms(k.display.schedule.first_occurrence)).toBe(ms('2026-11-13T10:00:00+05:30'));
   });
 
   it('C-335 C-230 §10.6 Q_AUTOPAY_START: "tomorrow" is parsed relative to now in the session timezone; today is accepted', async () => {
@@ -426,13 +426,13 @@ describe('S9 `k` fields (§10.6 table)', () => {
     );
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_START');
     await answerAndReenter(ctx, q, text('tomorrow'));
-    expect(asK(planOf(ctx)[0]).schedule.start_date).toBe('2026-11-06');
+    expect(asK(planOf(ctx)[0]).display.schedule.start_date).toBe('2026-11-06');
     const s2 = kSetup(
       withEnd({ frequency: 'daily', days_of_week: null, chrono: [{ kind: 'start', date: '2026-11-01' }] }),
     );
     const q2 = expectQuestion(await run(s2.ctx, [s2.payment]), 'Q_AUTOPAY_START');
     await answerAndReenter(s2.ctx, q2, text('2026-11-05'));
-    expect(asK(planOf(s2.ctx)[0]).schedule.start_date).toBe('2026-11-05');
+    expect(asK(planOf(s2.ctx)[0]).display.schedule.start_date).toBe('2026-11-05');
   });
 
   it('C-230 §10.6 Q_AUTOPAY_START: a past or unparseable answer re-asks (attempt + 1)', async () => {
@@ -456,17 +456,17 @@ describe('S9 `k` fields (§10.6 table)', () => {
     ['ongoing', { type: 'until_cancelled' }],
   ])('C-231 §10.6 end "%s" (weekly Friday, first 2026-11-06)', async (phrase, end) => {
     const { k } = await getK({}, phrase);
-    expect(k.schedule.end).toEqual(end);
+    expect(k.display.schedule.end).toEqual(end);
   });
 
   it('C-231 §10.6 end "for 10 days" (daily, first 2026-11-06) → on_date 2026-11-15', async () => {
     const { k } = await getK({ frequency: 'daily', days_of_week: null }, 'for 10 days');
-    expect(k.schedule.end).toEqual({ type: 'on_date', date: '2026-11-15' });
+    expect(k.display.schedule.end).toEqual({ type: 'on_date', date: '2026-11-15' });
   });
 
   it('C-231 §10.6 end "until <date>" from chrono → on_date', async () => {
     const { k } = await getK({ chrono: [{ kind: 'end', date: '2026-12-01' }] }, 'until dec 1');
-    expect(k.schedule.end).toEqual({ type: 'on_date', date: '2026-12-01' });
+    expect(k.display.schedule.end).toEqual({ type: 'on_date', date: '2026-12-01' });
   });
 
   it('C-329 C-231 §10.6 nothing stated → Q_AUTOPAY_END with chips After a number of payments / Until a date / Until I cancel', async () => {
@@ -488,7 +488,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     }
     const ok = await answerAndReenter(ctx, qc, text('5'));
     expect(ok.next).toEqual({ kind: 'continue' });
-    expect(asK(planOf(ctx)[0]).schedule.end).toEqual({ type: 'after_count', count: 5 });
+    expect(asK(planOf(ctx)[0]).display.schedule.end).toEqual({ type: 'after_count', count: 5 });
   });
 
   it('SQ-D-16 F-5 content amount: C-231 §13.4 Q_AUTOPAY_COUNT 520 is accepted by the question but exceeds the duration limit → LIMIT_AUTOPAY_DURATION', async () => {
@@ -511,7 +511,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     }
     const ok = await answerAndReenter(ctx, qd, text('2026-11-20'));
     expect(ok.next).toEqual({ kind: 'continue' });
-    expect(asK(planOf(ctx)[0]).schedule.end).toEqual({ type: 'on_date', date: '2026-11-20' });
+    expect(asK(planOf(ctx)[0]).display.schedule.end).toEqual({ type: 'on_date', date: '2026-11-20' });
   });
 
   it('C-231 §13.4 Q_AUTOPAY_END → "Until I cancel" → until_cancelled', async () => {
@@ -519,7 +519,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_END');
     const r = await answerAndReenter(ctx, q, chip(q.chips[2]?.id ?? ''));
     expect(r.next).toEqual({ kind: 'continue' });
-    expect(asK(planOf(ctx)[0]).schedule.end).toEqual({ type: 'until_cancelled' });
+    expect(asK(planOf(ctx)[0]).display.schedule.end).toEqual({ type: 'until_cancelled' });
   });
 
   it('C-231 §9.7 Q_AUTOPAY_END: an unknown chip re-asks', async () => {
@@ -544,7 +544,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     const r2 = await answerAndReenter(ctx, q2, chip('daily'));
     expect(r2.next).toEqual({ kind: 'continue' });
     const plan = planOf(ctx);
-    expect(plan.map((p) => asK(p).schedule.frequency)).toEqual(['weekly', 'daily']);
+    expect(plan.map((p) => asK(p).display.schedule.frequency)).toEqual(['weekly', 'daily']);
     expect(plan.map((p) => p.step)).toEqual([0, 1]);
     expect(ctx.req.step_state.s9).toBeUndefined();
   });
@@ -567,7 +567,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it('SQ-D-16 F-5 content amount: C-234 §10.6 derived 3: 53 weekly payments end exactly on first + 52 weeks → allowed; 54 → LIMIT_AUTOPAY_DURATION', async () => {
     const ok = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 53 payments'));
-    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).schedule.end).toEqual({ type: 'after_count', count: 53 });
+    expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).display.schedule.end).toEqual({ type: 'after_count', count: 53 });
     const bad = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 54 payments'));
     markContent(bad.ctx);
     expectError(await run(bad.ctx, [bad.payment]), 'LIMIT_AUTOPAY_DURATION');
@@ -575,8 +575,8 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it('C-232 C-234 §10.6 until_cancelled enumerates occurrences before first + 52 weeks: 52 Fridays, total_cap 520', async () => {
     const { ctx, k } = await getK({ balances: usdc('0', '1000', '0') }, 'until I cancel');
-    expect(amountOf(ctx, k.limits.total_cap)).toBe('520');
-    expect(k.limits.expires_at).toBe('2027-10-29T18:29:59Z'); // first Fri 2026-11-06 + 51 weeks
+    expect(amountOf(ctx, k.limits.max_total)).toBe('522.6');
+    expect(k.schedule.end_at * 1000).toBe(ms('2027-10-29T05:30:00Z')); // first Fri 2026-11-06 + 51 weeks
   });
 
   it.each([
@@ -588,7 +588,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     'C-235 §10.6 derived 4: SQ-R-03 per_period_cap %s = amount × max scheduled payments in 7 days',
     async (_n, o, amount, cap) => {
       const { ctx, k } = await getK({ ...o, amount });
-      expect(amountOf(ctx, k.limits.per_period_cap)).toBe(cap);
+      expect(amountOf(ctx, k.display.per_period_cap)).toBe(cap);
     },
   );
 
@@ -622,7 +622,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(plan).toHaveLength(1);
     const k = asK(plan[0]);
     expect(k.chain_id).toBe(ARB);
-    expect(amountOf(ctx, k.limits.total_cap)).toBe('40');
+    expect(amountOf(ctx, k.limits.max_total)).toBe('40.2');
   });
 
   it('C-205 C-237 §10.2 §10.4 the prefund (total_cap) is bridged when no chain can fund it; k depends on the bridge', async () => {
@@ -637,23 +637,23 @@ describe('S9 `k` fields (§10.6 table)', () => {
 
   it('C-237 C-214 §10.4 prefund 80 with 30 + 50 spendable cannot be bridged with the 2% pad → INSUFFICIENT_FUNDS {need 80.6, have 80}', async () => {
     const { ctx, payment } = kSetup(withEnd({ balances: usdc('0', '30', '50') }, 'for 8 payments'));
-    expectError(await run(ctx, [payment]), 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '80.6', have: '80' });
+    expectError(await run(ctx, [payment]), 'INSUFFICIENT_FUNDS', { token: 'USDC', need: '80.4', have: '80' });
   });
 
   it('C-238 §10.6 derived 7: both caps are minted in DB1 (source derived, origins, confirmed, token)', async () => {
     const { ctx, k } = await getK({ times_per_week: 3, days_of_week: null });
-    expect(ctx.repos.db1.get(k.limits.per_period_cap)).toMatchObject({
+    expect(ctx.repos.db1.get(k.display.per_period_cap)).toMatchObject({
       amount: '30',
       token: 'USDC',
       source: 'derived',
       origin: 'autopay_per_period_cap',
       confirmed: true,
     });
-    expect(ctx.repos.db1.get(k.limits.total_cap)).toMatchObject({
-      amount: '40',
+    expect(ctx.repos.db1.get(k.limits.max_total)).toMatchObject({
+      amount: '20.1',
       token: 'USDC',
       source: 'derived',
-      origin: 'autopay_total_cap',
+      origin: 'autopay_max_total',
       confirmed: true,
     });
   });
@@ -663,21 +663,27 @@ describe('S9 `k` fields (§10.6 table)', () => {
       { timezone: NY, now: '2026-10-30T12:00:00Z', frequency: 'daily', days_of_week: null, interval: 2 },
       'for 4 payments',
     );
-    expect(ms(k.schedule.first_occurrence)).toBe(ms('2026-10-30T10:00:00-04:00'));
-    expect(k.limits.expires_at).toBe('2026-11-06T04:59:59Z'); // 2026-11-05 23:59:59 EST
-    expect(k.cre_job).toEqual({ trigger: 'cron', cron: '0 10 * * *', timezone: NY, interval: 2 });
+    expect(ms(k.display.schedule.first_occurrence)).toBe(ms('2026-10-30T10:00:00-04:00'));
+    expect(k.schedule.end_at * 1000).toBe(ms('2026-11-05T15:00:00Z')); // 2026-11-05 23:59:59 EST
+    expect(k.schedule.interval_seconds).toBe(172800);
+    expect(k.executor).toBe('chainlink-cre');
   });
 
   it.each([
-    [{}, '0 10 * * 5'],
-    [{ times_per_week: 3, days_of_week: null }, '0 10 * * 1,3,5'],
-    [{ days_of_week: ['SUN'] as Weekday[] }, '0 10 * * 0'],
-    [{ frequency: 'daily' as const, days_of_week: null }, '0 10 * * *'],
-    [{ frequency: 'monthly' as const, days_of_week: null, day_of_month: 15 }, '0 10 15 * *'],
-  ])('C-240 §10.6 derived 9: cron for %j is %s', async (o, cron) => {
-    const { k } = await getK(o);
-    expect(k.cre_job.cron).toBe(cron);
-    expect(k.cre_job.trigger).toBe('cron');
+    [{}, 604800, 1],
+    [{ times_per_week: 3, days_of_week: null }, 604800, 3],
+    [{ days_of_week: ['SUN'] as Weekday[] }, 604800, 1],
+    [{ frequency: 'daily' as const, days_of_week: null }, 86400, 1],
+    [{ frequency: 'monthly' as const, days_of_week: null }, 2419200, 1],
+  ])('fixed schedules for %j use %i seconds across %i legs', async (o, seconds, count) => {
+    const { ctx } = await getK(o);
+    const legs = planOf(ctx).map(asK);
+    expect(legs).toHaveLength(count);
+    for (const k of legs) {
+      expect(k.schedule.interval_seconds).toBe(seconds);
+      expect(k.executor).toBe('chainlink-cre');
+      expect(k).not.toHaveProperty('cre_job');
+    }
   });
 
   it('C-241 §10.6 derived 10: autopay_id = ap_<12hex>, unique per k', async () => {
@@ -712,7 +718,7 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(db1Count(ctx)).toBe(before);
     r = await answerAndReenter(ctx, q, text('3'));
     expect(r.next).toEqual({ kind: 'continue' });
-    expect(db1Count(ctx)).toBe(before + 2); // exactly per_period_cap and total_cap, only in the final phase
+    expect(db1Count(ctx)).toBe(before + 4); // fee, max_per_run, max_total and the private per-period cap, only in the final phase
   });
 });
 
@@ -733,9 +739,8 @@ describe('S9 cancel `l` (§10.7)', () => {
         step: 0,
         autopay_id: 'ap_0000000000f7',
         chain_id: ARB,
-        delegate_address: ALICE_CS,
+        plan_id: planIdFor('ap_0000000000f7'),
         recipient: mi,
-        refund_remaining: true,
       },
     ]);
   });
@@ -806,8 +811,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     expect(asL(planOf(ctx)[0])).toMatchObject({
       autopay_id: 'ap_0000000000a1',
       chain_id: ARB,
-      delegate_address: ALICE_CS,
-      refund_remaining: true,
+      plan_id: planIdFor('ap_0000000000a1'),
     });
   });
 
@@ -835,7 +839,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     const plan = await runOk(ctx, [payment]);
     expect(plan.map((p) => p.intent_id)).toEqual(['l']);
     expect(db1Count(ctx)).toBe(before);
-    expect(DELEGATE_CS).toBe(asL(plan[0]).delegate_address);
+    expect(asL(plan[0]).plan_id).toBe(planIdFor(asL(plan[0]).autopay_id));
     expect(NOW_E6).toBeTruthy();
   });
 });

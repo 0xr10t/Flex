@@ -470,7 +470,7 @@ describe('envelope changes (docs/wallet/ARCHITECTURE_CHANGES.md)', () => {
 
   describe('the JSON schema and the verified schemas agree on limits', () => {
     const schema = JSON.parse(
-      readFileSync(new URL('../../src/schemas/handoff-envelope.schema.json', import.meta.url), 'utf8'),
+      readFileSync(new URL('../../../packages/protocol/src/schemas/handoff-envelope.schema.json', import.meta.url), 'utf8'),
     );
     it('steps', () => expect(schema.properties.intents.maxItems).toBe(MAX_STEPS_PER_PLAN));
     it('one-time recipients', () => expect(schema.$defs.payment_i.properties.recipients.maxItems).toBe(MAX_RECIPIENTS));

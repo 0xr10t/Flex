@@ -15,7 +15,8 @@ export const DB5_DEFAULTS: Readonly<Limits> = Object.freeze<Limits>({
   max_bridges_per_request: 3,
   allowed_chain_ids: [11155111, 84532, 421614],
   eth_gas_reserve: { '11155111': '0.01', '84532': '0.002', '421614': '0.002' },
-  bridge_buffer_pct: '2',
+  bridge_buffer_pct: '0',
+  max_group_size: 100,
 });
 
 /** The eight DB5 keys of §6.3, in table order. */
@@ -28,4 +29,5 @@ export const DB5_KEYS: readonly LimitKey[] = [
   'allowed_chain_ids',
   'eth_gas_reserve',
   'bridge_buffer_pct',
+  'max_group_size',
 ];

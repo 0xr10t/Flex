@@ -14,30 +14,32 @@ const EXEC_AT = '2026-11-05T10:00:00.000Z';
 const TX = `0x${'ab'.repeat(32)}`;
 const DELEGATE_LOWER = '0x91ab2c3d4e5f60718293a4b5c6d7e8f9012377d0';
 const DELEGATE_EIP55 = getAddress(DELEGATE_LOWER);
+const PLAN = `0x${'12'.repeat(32)}` as const;
+const identity = { autopay_id: 'ap_00000000000a', plan_id: PLAN, executor_address: DELEGATE_EIP55, chain_id: 84532, token: 'USDC' };
 const RECIPIENT = '0x3fA94b8e2d1C7a6f5E4d3C2b1A0f9e8D7c6Bc21E' as Address;
 
 let t: TempDb;
 let s: ServerHarness<TempDb['repos']>;
 
 const db6 = (over: Partial<Db6Insert>): Db6Insert => ({
-  request_id: 'req_000000000001',
-  step: 0,
-  kind: 'payment',
-  counts_toward_limit: true,
-  chain_id: 84532,
-  token: 'USDC',
-  amount: '10',
-  recipient_address: RECIPIENT,
-  intent_id: 'i',
-  autopay_id: null,
-  status: 'pending',
-  tx_hash: null,
-  created_at: '2026-11-05T09:00:00.000Z',
-  executed_at: null,
-  ...over,
+request_id: 'req_000000000001',
+step: 0,
+kind: 'payment',
+counts_toward_limit: true,
+chain_id: 84532,
+token: 'USDC',
+recipient_address: RECIPIENT,
+intent_id: 'i',
+autopay_id: null,
+status: 'pending',
+tx_hash: null,
+created_at: '2026-11-05T09:00:00.000Z',
+executed_at: null,
+amount: '10',
+...over
 });
 
-function autopay(autopay_id: string, request_id: string): void {
+function autopay(autopay_id: string, request_id: string, active = true): void {
   t.repos.db7.insertPending(
     {
       autopay_id: autopay_id as `ap_${string}`,
@@ -47,10 +49,12 @@ function autopay(autopay_id: string, request_id: string): void {
       chain_id: 84532,
       token: 'USDC',
       amount_per_payment: '10',
-      schedule_json: '{"frequency":"weekly"}',
+      schedule_json: JSON.stringify({ start_at: 1793939400, interval_seconds: 604800, max_runs: 4, late_window_seconds: 3600, end_at: 1795757400 }),
+      fee: '0.05',
     },
     '2026-11-05T09:00:00.000Z',
   );
+  if (active) t.repos.db7.update(autopay_id, { status: 'active', plan_id: PLAN, executor_address: DELEGATE_EIP55 }, NOW);
 }
 
 const dump = (): unknown => ({
@@ -118,13 +122,20 @@ describe('§14.3 intent_result', () => {
 
   describe('k step (autopay creation)', () => {
     beforeEach(() => {
-      t.repos.db6.insertMany([
-        db6({ kind: 'autopay_prefund', counts_toward_limit: false, intent_id: 'k', autopay_id: 'ap_00000000000a' }),
-      ]);
-      autopay('ap_00000000000a', 'req_000000000001');
+      autopay('ap_00000000000a', 'req_000000000001', false);
+      t.repos.handoffs.insert({ request_id: 'req_000000000001', status: 'accepted', history: null,
+        envelope: { version: '2', request_id: 'req_000000000001', wallet_address: RECIPIENT, created_at: NOW,
+          intents: [{ intent_id: 'k', step: 0, depends_on: [], autopay_id: 'ap_00000000000a', token: 'USDC',
+            chain_id: 84532, token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+            recipients: [{ recipient: DELEGATE_EIP55, amount: { value: '10', base_units: '10000000', decimals: 6 } }],
+            fee: { to: RECIPIENT, amount: { value: '0.05', base_units: '50000', decimals: 6 } },
+            schedule: JSON.parse(ap('ap_00000000000a').schedule_json as string),
+            limits: { max_per_run: { value: '10.05', base_units: '10050000', decimals: 6 }, max_total: { value: '40.2', base_units: '40200000', decimals: 6 } }, executor: 'chainlink-cre' }],
+        },
+      });
     });
 
-    it('C-351 k: executed → prefund row executed; DB7 active with EIP-55 delegate_address and cre_job_id', async () => {
+    it('C-351 k: executed → DB7 active with on-chain plan_id and EIP-55 executor; no upfront spend', async () => {
       const r = await post({
         kind: 'intent_result',
         request_id: 'req_000000000001',
@@ -132,18 +143,17 @@ describe('§14.3 intent_result', () => {
         status: 'executed',
         tx_hash: TX,
         executed_at: EXEC_AT,
-        autopay: { autopay_id: 'ap_00000000000a', delegate_address: DELEGATE_LOWER, cre_job_id: 'job-123' },
+        autopay: { ...identity, executor_address: DELEGATE_LOWER },
       });
       expect(r.status).toBe(204);
-      expect(rows6('req_000000000001')[0]).toMatchObject({ status: 'executed', tx_hash: TX });
+      expect(rows6('req_000000000001')).toEqual([]);
       expect(ap('ap_00000000000a')).toMatchObject({
         status: 'active',
-        delegate_address: DELEGATE_EIP55,
-        cre_job_id: 'job-123',
+        plan_id: PLAN, executor_address: DELEGATE_EIP55,
       });
     });
 
-    it('C-351 k: failed → DB6 failed and DB7 failed', async () => {
+    it('C-351 k: failed → DB7 failed without recording spend', async () => {
       const r = await post({
         kind: 'intent_result',
         request_id: 'req_000000000001',
@@ -152,11 +162,11 @@ describe('§14.3 intent_result', () => {
         autopay: { autopay_id: 'ap_00000000000a' },
       });
       expect(r.status).toBe(204);
-      expect(rows6('req_000000000001')[0]).toMatchObject({ status: 'failed' });
+      expect(rows6('req_000000000001')).toEqual([]);
       expect(ap('ap_00000000000a')).toMatchObject({ status: 'failed', delegate_address: null });
     });
 
-    it('C-351 k: executed with no delegate_address → 400 and nothing changed', async () => {
+    it('C-351 k: executed with no executor_address → 400 and nothing changed', async () => {
       const before = dump();
       const r = await post({
         kind: 'intent_result',
@@ -165,7 +175,7 @@ describe('§14.3 intent_result', () => {
         status: 'executed',
         tx_hash: TX,
         executed_at: EXEC_AT,
-        autopay: { autopay_id: 'ap_00000000000a', cre_job_id: 'job-123' },
+        autopay: { autopay_id: 'ap_00000000000a', plan_id: PLAN, chain_id: 84532, token: 'USDC' },
       });
       expect(r.status).toBe(400);
       expect(dump()).toEqual(before);
@@ -177,7 +187,7 @@ describe('§14.3 intent_result', () => {
       autopay('ap_00000000000b', 'req_000000000001');
       t.repos.db7.update(
         'ap_00000000000b',
-        { status: 'active', delegate_address: DELEGATE_EIP55 as Address, cre_job_id: 'job-1' },
+        { status: 'active', executor_address: DELEGATE_EIP55, plan_id: PLAN },
         NOW,
       );
       // B03: l-only requests have no spend row, but must prove the exact submitted cancellation identity.
@@ -186,7 +196,7 @@ describe('§14.3 intent_result', () => {
         status: 'accepted',
         history: null,
         envelope: {
-          version: '1',
+          version: '2',
           request_id: 'req_00000000000c',
           wallet_address: getAddress('0x00000000000000000000000000000000000000aa'),
           created_at: NOW,
@@ -196,9 +206,7 @@ describe('§14.3 intent_result', () => {
               step: 0,
               autopay_id: 'ap_00000000000b',
               chain_id: 84532,
-              delegate_address: DELEGATE_EIP55,
-              recipient: getAddress(RECIPIENT.toLowerCase()),
-              refund_remaining: true,
+              plan_id: PLAN,
             },
           ],
         },
@@ -215,7 +223,7 @@ describe('§14.3 intent_result', () => {
         autopay: { autopay_id: 'ap_00000000000b' },
       });
       expect(r.status).toBe(204);
-      expect(ap('ap_00000000000b')).toMatchObject({ status: 'cancelled', delegate_address: DELEGATE_EIP55 });
+      expect(ap('ap_00000000000b')).toMatchObject({ status: 'cancelled', executor_address: DELEGATE_EIP55 });
       expect(rows6('req_00000000000c')).toEqual([]);
     });
 
@@ -267,20 +275,21 @@ describe('§14.3 autopay_payment', () => {
   });
   const body = (over: Record<string, unknown> = {}, apOver: Record<string, unknown> = {}): Record<string, unknown> => ({
     kind: 'autopay_payment',
+    request_id: 'req_000000000001', status: 'executed',
     tx_hash: TX,
     executed_at: EXEC_AT,
-    autopay: { autopay_id: 'ap_00000000000a', amount: '10', chain_id: 84532, token: 'USDC', ...apOver },
+    autopay: { ...identity, amount: '10', fee: '0.05', slot: 0, status: 'active', ...apOver },
     ...over,
   });
 
-  it('C-352 / C-266: inserts an executed autopay_payment DB6 row that counts toward the limit; request_id defaults to the DB7 row', async () => {
+  it('C-352 / C-266: records recipient spend and operator fee against the registered plan and slot', async () => {
     const r = await post(body());
     expect(r.status).toBe(204);
     const rows = rows6('req_000000000001').filter((x) => x.kind === 'autopay_payment');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       kind: 'autopay_payment',
-      status: 'executed',
+    request_id: 'req_000000000001', status: 'executed',
       counts_toward_limit: 1,
       amount: '10',
       chain_id: 84532,
@@ -298,10 +307,11 @@ describe('§14.3 autopay_payment', () => {
     expect(spent.map((x) => x.amount)).toEqual(['10']);
   });
 
-  it('C-352: an explicit known request_id is used', async () => {
+  it('C-352: a known but unrelated request_id cannot receive the run spend', async () => {
     t.repos.db6.insertMany([db6({ request_id: 'req_000000000009' })]);
-    expect((await post(body({ request_id: 'req_000000000009' }))).status).toBe(204);
-    expect(rows6('req_000000000009').some((x) => x.kind === 'autopay_payment')).toBe(true);
+    const before = dump();
+    expect((await post(body({ request_id: 'req_000000000009' }))).status).toBe(404);
+    expect(dump()).toEqual(before);
   });
 
   it('C-352: too many decimals for the token → 400 (USDC 7, ETH 19), nothing changed', async () => {
@@ -329,9 +339,9 @@ describe('§14.3 autopay_payment', () => {
 describe('§14.3 autopay_status', () => {
   beforeEach(() => autopay('ap_00000000000a', 'req_000000000001'));
 
-  for (const status of ['active', 'cancelled', 'ended', 'failed'] as const) {
+  for (const status of ['cancelled', 'ended', 'failed'] as const) {
     it(`C-353: status ${status} updates the DB7 row`, async () => {
-      const r = await post({ kind: 'autopay_status', autopay: { autopay_id: 'ap_00000000000a', status } });
+      const r = await post({ kind: 'autopay_status', request_id: 'req_000000000001', autopay: { ...identity, status } });
       expect(r.status).toBe(204);
       expect(ap('ap_00000000000a')).toMatchObject({ status });
     });
@@ -353,7 +363,7 @@ describe('§14.3 404 / 400 / 204', () => {
     t.repos.db6.insertMany([db6({})]);
     autopay('ap_00000000000a', 'req_000000000001');
   });
-  const paymentAp = { amount: '10', chain_id: 84532, token: 'USDC' };
+  const paymentAp = { plan_id: PLAN, executor_address: DELEGATE_EIP55, amount: '10', fee: '0.05', slot: 0, status: 'active', chain_id: 84532, token: 'USDC' };
 
   it('C-354: an unknown request_id → 404 (intent_result without autopay; payment / status with a known autopay_id)', async () => {
     const before = dump();
@@ -364,7 +374,7 @@ describe('§14.3 404 / 400 / 204', () => {
       (
         await post({
           kind: 'autopay_payment',
-          request_id: 'req_ffffffffffff',
+    request_id: 'req_ffffffffffff', status: 'executed', tx_hash: TX,
           executed_at: EXEC_AT,
           autopay: { autopay_id: 'ap_00000000000a', ...paymentAp },
         })
@@ -375,7 +385,7 @@ describe('§14.3 404 / 400 / 204', () => {
         await post({
           kind: 'autopay_status',
           request_id: 'req_ffffffffffff',
-          autopay: { autopay_id: 'ap_00000000000a', status: 'ended' },
+          autopay: { ...identity, status: 'ended' },
         })
       ).status,
     ).toBe(404);
@@ -397,10 +407,10 @@ describe('§14.3 404 / 400 / 204', () => {
       ).status,
     ).toBe(404);
     expect(
-      (await post({ kind: 'autopay_payment', executed_at: EXEC_AT, autopay: { autopay_id: unknown, ...paymentAp } }))
+      (await post({ kind: 'autopay_payment', request_id: 'req_000000000001', status: 'executed', tx_hash: TX, executed_at: EXEC_AT, autopay: { autopay_id: unknown, ...paymentAp } }))
         .status,
     ).toBe(404);
-    expect((await post({ kind: 'autopay_status', autopay: { autopay_id: unknown, status: 'ended' } })).status).toBe(
+    expect((await post({ kind: 'autopay_status', request_id: 'req_000000000001', autopay: { ...identity, autopay_id: unknown, status: 'ended' } })).status).toBe(
       404,
     );
     expect(dump()).toEqual(before);
@@ -433,7 +443,7 @@ describe('§14.3 404 / 400 / 204', () => {
         step: 0,
         status: 'executed',
         executed_at: EXEC_AT,
-        autopay: { autopay_id: 'ap_00000000000a', delegate_address: '0x123' },
+        autopay: { autopay_id: 'ap_00000000000a', executor_address: '0x123' },
       },
     ],
     ['a negative step', { kind: 'intent_result', request_id: 'req_000000000001', step: -1, status: 'failed' }],
@@ -486,15 +496,16 @@ describe('§18 report content is not logged', () => {
       status: 'executed',
       tx_hash: TX,
       executed_at: EXEC_AT,
-      autopay: { autopay_id: 'ap_00000000000a', delegate_address: DELEGATE_LOWER, cre_job_id: 'job-secret-77' },
+      autopay: { ...identity, executor_address: DELEGATE_LOWER },
     });
     await post({
       kind: 'autopay_payment',
+    request_id: 'req_000000000001', status: 'executed',
       tx_hash: `0x${'cd'.repeat(32)}`,
       executed_at: EXEC_AT,
-      autopay: { autopay_id: 'ap_00000000000a', amount: '12.345', chain_id: 84532, token: 'USDC' },
+      autopay: { ...identity, amount: '10', fee: '0.05', slot: 0, status: 'active' },
     });
-    await post({ kind: 'autopay_status', autopay: { autopay_id: 'ap_ffffffffffff', status: 'ended' } });
+    await post({ kind: 'autopay_status', request_id: 'req_000000000001', autopay: { ...identity, autopay_id: 'ap_ffffffffffff', status: 'ended' } });
     expect(s.log.lines.length).toBeGreaterThan(0);
     const logged = JSON.stringify(s.log.lines);
     for (const secret of [

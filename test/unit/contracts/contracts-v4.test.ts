@@ -32,7 +32,7 @@ const perPayment = (max: string, repeating = false): BrokenLimit => ({
 
 describe('contracts-v4 question catalogue', () => {
   it('SQ-D-16 SQ-O-03 SQ-O-01 F-1 F-11 F-12: 28 codes; Q_GROUP_OVER_LIMIT gone, three new ones present', () => {
-    expect(QUESTION_CODES).toHaveLength(28);
+    expect(QUESTION_CODES).toHaveLength(29);
     expect(QUESTION_CODES).not.toContain('Q_GROUP_OVER_LIMIT');
     expect(QUESTION_CODES).toContain('Q_LIMIT_OVERRIDE');
     expect(QUESTION_CODES).toContain('Q_PAIR_AMOUNT');

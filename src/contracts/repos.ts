@@ -138,7 +138,8 @@ export interface Db5Limits {
 
 // ───────────────────────────── DB6 ─────────────────────────────
 
-export type Db6Kind = 'payment' | 'bridge_out' | 'bridge_buffer' | 'autopay_prefund' | 'autopay_payment';
+/** autopay_prefund is retained only for historical v1 records. */
+export type Db6Kind = 'payment' | 'bridge_out' | 'bridge_buffer' | 'bridge_fee' | 'autopay_prefund' | 'autopay_payment' | 'autopay_fee';
 
 export interface Db6Row {
   id: number;
@@ -152,6 +153,7 @@ export interface Db6Row {
   recipient_address: Address | null;
   intent_id: 'i' | 'j' | 'k' | null;
   autopay_id: AutopayId | null;
+  autopay_slot?: number | null;
   status: 'pending' | 'executed' | 'failed';
   tx_hash: string | null;
   created_at: string;
@@ -173,6 +175,7 @@ export interface Db6SpendLog {
     status: 'executed' | 'failed';
     tx_hash: string | null;
     executed_at: string | null;
+    bridge_fee_eth?: string;
   }): number;
   /**
    * §10.1: rows with status 'pending', created_at > now − 10 min, this chain and token,
@@ -203,6 +206,12 @@ export interface Db7Row {
   schedule_json: string;
   delegate_address: Address | null;
   cre_job_id: string | null;
+  /** Nullable for historical v1 registrations; never invent a v2 identity for those rows. */
+  plan_id?: Address | null;
+  executor_address?: Address | null;
+  fee?: DecimalString | null;
+  recipients_json?: string | null;
+  display_json?: string | null;
   status: Db7Status;
   created_at: string;
   updated_at: string;
@@ -220,7 +229,7 @@ export interface Db7Autopays {
   listByRequest(request_id: string): Db7Row[];
   update(
     autopay_id: string,
-    patch: Partial<Pick<Db7Row, 'status' | 'delegate_address' | 'cre_job_id'>>,
+    patch: Partial<Pick<Db7Row, 'status' | 'delegate_address' | 'cre_job_id' | 'plan_id' | 'executor_address'>>,
     now: string,
   ): void;
 }

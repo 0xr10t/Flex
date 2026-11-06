@@ -56,16 +56,16 @@ describe('§15 error messages in their stated cases', () => {
     expect(msg).toBe('That schedule has no payment dates. Check the start and end.');
   });
 
-  it('C-381 §15 SQ-08 F-10 INSUFFICIENT_FUNDS: 50.6 USDC needed with padding, 30 usable across the chains with a positive amount', async () => {
+  it('C-381 §15 SQ-08 F-10 INSUFFICIENT_FUNDS: 50 USDC needed with padding, 30 usable across the chains with a positive amount', async () => {
     const ctx = ctxD({ balances: usdc('0', '10', '20') });
     const r = addAradhya(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', {
       token: 'USDC',
-      need: '50.6',
+      need: '50',
       have: '30',
     });
     expect(msg).toBe(
-      "You don't have enough USDC: you need 50.6, and can use 30 across Base Sepolia (10) and Arbitrum Sepolia (20).",
+      "You don't have enough USDC: you need 50, and can use 30 across Base Sepolia (10) and Arbitrum Sepolia (20).",
     );
   });
 
@@ -73,7 +73,7 @@ describe('§15 error messages in their stated cases', () => {
     const ctx = ctxD({ balances: usdc('0', '0', '0') });
     const r = addAradhya(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { have: '0' });
-    expect(msg).toBe("You don't have enough USDC: you need 51, and can use 0.");
+    expect(msg).toBe("You don't have enough USDC: you need 50, and can use 0.");
   });
 
   it('SQ-08 F-10 INSUFFICIENT_FUNDS leaves an unreadable chain out of the list and the total', async () => {
@@ -81,17 +81,17 @@ describe('§15 error messages in their stated cases', () => {
     ctx.repos.db4.markUnavailable(ARB, 'Arbitrum Sepolia', '2026-11-05T17:30:00.000Z');
     const r = addAradhya(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { have: '10' });
-    expect(msg).toBe("You don't have enough USDC: you need 50.8, and can use 10 across Base Sepolia (10).");
+    expect(msg).toBe("You don't have enough USDC: you need 50, and can use 10 across Base Sepolia (10).");
   });
 
   it('C-382 §15 NO_GAS: a bridge source with ETH below the reserve', async () => {
     const ctx = ctxD({ balances: { ...usdc('0', '30', '60'), [ARB]: { USDC: '60', ETH: '0.001' } } });
     const r = addAradhya(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '50', r, BASE)]), 'NO_GAS', {
-      reserve: '0.002',
+      reserve: '0.004',
       chain: 'Arbitrum Sepolia',
     });
-    expect(msg).toBe('You need at least 0.002 ETH on Arbitrum Sepolia for network fees.');
+    expect(msg).toBe('You need at least 0.004 ETH on Arbitrum Sepolia for network fees.');
   });
 
   it('C-383 §15 CHAIN_NOT_ALLOWED: stated chain outside allowed_chain_ids', async () => {
@@ -155,7 +155,7 @@ describe('§13.1 group lines keyed on group and amount (S9 → S11)', () => {
     const res = await run(ctx, [pay(ctx, 'i', a10, group, BASE), pay(ctx, 'i', a20, group, BASE)]);
     expect(res).toEqual({ kind: 'continue' });
     const plan = ctx.req.plan as InternalIntent[];
-    expect(plan).toHaveLength(4);
+    expect(plan).toHaveLength(2);
     const s = buildSummary(ctx, plan);
     expect(s.lines).toEqual([
       '1. Send 10 USDC each to 2 members of iitr.eth on Base Sepolia: alice.iitr.eth, bob.iitr.eth.',
@@ -177,15 +177,13 @@ describe('§13.1 group lines keyed on group and amount (S9 → S11)', () => {
     const a10 = addAmount(ctx, '10');
     const a20 = addAmount(ctx, '20');
     const mk = (step: number, amount: typeof a10, who: string): InternalIntent => ({
-      intent_id: 'i',
-      step,
-      depends_on: [],
-      token: 'USDC',
-      chain_id: BASE,
-      amount,
-      recipient: members[who] as AddressPh,
-      reused_from_chain_id: null,
-    });
+intent_id: 'i',
+step,
+depends_on: [],
+token: 'USDC',
+chain_id: BASE,
+recipients: [{ amount, recipient: members[who] as AddressPh, reused_from_chain_id: null }]
+});
     const s = buildSummary(ctx, [
       mk(0, a10, 'alice.iitr.eth'),
       mk(1, a10, 'bob.iitr.eth'),
@@ -193,8 +191,10 @@ describe('§13.1 group lines keyed on group and amount (S9 → S11)', () => {
       mk(3, a20, 'bob.iitr.eth'),
     ]);
     expect(s.lines.map((l) => l.replace(/^\d+\. /, '').slice(0, 24))).toEqual([
-      'Send 10 USDC each to 2 m',
-      'Send 20 USDC each to 2 m',
+      'Send 10 USDC to alice.ii',
+      'Send 10 USDC to bob.iitr',
+      'Send 20 USDC to alice.ii',
+      'Send 20 USDC to bob.iitr',
     ]);
   });
 });

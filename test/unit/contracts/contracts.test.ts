@@ -46,21 +46,20 @@ describe('contracts-v1', () => {
 
   it('§12.5 E1 envelope validates; extra fields are rejected', () => {
     const env = {
-      version: '1',
+      version: '2',
       request_id: 'req_5d1c0a9b8e7f',
       wallet_address: '0x00000000000000000000000000000000000000Aa',
       created_at: '2026-11-06T04:31:10Z',
       intents: [
         {
-          intent_id: 'i',
-          step: 0,
-          depends_on: [],
-          token: 'USDC',
-          token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-          chain_id: 84532,
-          amount: { value: '50', base_units: '50000000', decimals: 6 },
-          recipient: ARADHYA,
-        },
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+token_address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+chain_id: 84532,
+recipients: [{ amount: { value: '50', base_units: '50000000', decimals: 6 }, recipient: ARADHYA }]
+},
       ],
     };
     expect(validators.handoffEnvelope(env)).toBe(true);
@@ -69,15 +68,13 @@ describe('contracts-v1', () => {
 
   it('§12.3 internal plan schema enforces placeholder patterns', () => {
     const i = {
-      intent_id: 'i',
-      step: 0,
-      depends_on: [],
-      token: 'USDC',
-      chain_id: 84532,
-      amount: 'amount_a1b2c3d4',
-      recipient: 'address_0f1e2d3c',
-      reused_from_chain_id: null,
-    };
+intent_id: 'i',
+step: 0,
+depends_on: [],
+token: 'USDC',
+chain_id: 84532,
+recipients: [{ amount: 'amount_a1b2c3d4', recipient: 'address_0f1e2d3c', reused_from_chain_id: null }]
+};
     expect(validators.internalPlan([i])).toBe(true);
     expect(validators.internalPlan([{ ...i, amount: '50' }])).toBe(false);
   });
@@ -88,8 +85,8 @@ describe('contracts-v1', () => {
       expect(QUESTION_INPUT[c]).toBeTruthy();
     }
     for (const c of ERROR_CODES) expect(ERROR_MESSAGE[c]).toBeTypeOf('function');
-    expect(QUESTION_CODES).toHaveLength(28); // contracts-v4: -Q_GROUP_OVER_LIMIT, +Q_LIMIT_OVERRIDE, Q_PAIR_AMOUNT, Q_NAME_ROLE
-    expect(ERROR_CODES).toHaveLength(35);
+    expect(QUESTION_CODES).toHaveLength(29); // contracts-v4: -Q_GROUP_OVER_LIMIT, +Q_LIMIT_OVERRIDE, Q_PAIR_AMOUNT, Q_NAME_ROLE
+    expect(ERROR_CODES).toHaveLength(40);
   });
 
   it('§3.3 registry wires a real step for S0–S12 in fixed order (Phase 2)', async () => {

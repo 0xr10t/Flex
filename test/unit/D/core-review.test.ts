@@ -17,7 +17,7 @@ import {
   addMihir,
   addRecipient,
   addWord,
-  ctxD,
+  ctxD as defaultCtxD,
   db6Row,
   expectError,
   expectQuestion,
@@ -27,8 +27,12 @@ import {
   planI,
   planJ,
   setClauses,
+  setLimits,
 } from './helpers.js';
 import { amountOf, asI, asJ, asK, chip, iPay, kSetup, run, runOk, text, usdc } from './s9-helpers.js';
+
+// The rounding regressions below explicitly use the legacy, configurable 2% buffer.
+const ctxD: typeof defaultCtxD = (...args) => { const ctx = defaultCtxD(...args); setLimits(ctx, { bridge_buffer_pct: '2' }); return ctx; };
 
 describe('R4-F1 / R1-F2 pairing consent and independent attempts', () => {
   function setup() {
@@ -156,7 +160,7 @@ describe('R3-2 ENS chains and SQ-R-03 short autopay caps', () => {
       const plan = await runOk(ctx, [iPay(ctx, '10', recipient)]);
       expect(plan.map((p) => p.intent_id)).toEqual(['j', 'i']);
       expect(asJ(plan[0])).toMatchObject({ source_chain_id: SEPOLIA, dest_chain_id: BASE });
-      expect(asI(plan[1])).toMatchObject({ chain_id: BASE, reused_from_chain_id: null });
+      expect(asI(plan[1])).toMatchObject({ chain_id: BASE, recipients: [{ reused_from_chain_id: null }] });
       expect(ctx.req.notes).toEqual([]);
     },
   );
@@ -183,8 +187,8 @@ describe('R3-2 ENS chains and SQ-R-03 short autopay caps', () => {
       days_of_week: null,
     });
     const k = asK((await runOk(ctx, [payment]))[0]);
-    expect(amountOf(ctx, k.limits.total_cap)).toBe('40');
-    expect(amountOf(ctx, k.limits.per_period_cap)).toBe('40');
+    expect(amountOf(ctx, k.limits.max_total)).toBe('40.1');
+    expect(amountOf(ctx, k.display.per_period_cap)).toBe('40');
     expect(await s10.step(ctx)).toEqual({ kind: 'continue' });
     expect(ctx.req.limit_override).toBe(false);
   });

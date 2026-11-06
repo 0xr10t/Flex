@@ -35,7 +35,7 @@ const CHECKS: Record<string, string[]> = {
   ],
   db5_limits: [],
   db6_spend_log: [
-    "CHECK (kind IN ('payment','bridge_out','bridge_buffer','autopay_prefund','autopay_payment'))",
+    "CHECK (kind IN ('payment','bridge_out','bridge_buffer','bridge_fee','autopay_prefund','autopay_payment','autopay_fee'))",
     'CHECK (counts_toward_limit IN (0,1))',
     "CHECK (status IN ('pending','executed','failed'))",
   ],

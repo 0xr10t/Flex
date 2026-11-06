@@ -1,17 +1,27 @@
 // Implements: §8.0 request object, §12.3 internal plan types, §12.5 hand-off envelope types,
 // §13.4 question shape + codes, §14.1 AgentResponse, §14.3 ExecutionReport, §15 error codes, §6.1 Config, §6.3 Limits.
 // SQ-S-01 / SQ-S-02: in-memory failed-payment context for a fresh amount correction or back-reference.
-// Owned by the Orchestrator (frozen contract). Lanes must not edit; send a CCR (ORCHESTRATOR_PROMPT §7).
 //
 // Fields marked "internal addition" are not named in the spec text but are needed to carry state between
 // steps that the spec describes. They never leave the agent process.
 
+import type { AutopayK, BridgeJ, CancelL, ChainId, HandoffEnvelope, PaymentI, Token } from '@flex/protocol';
+export type {
+  ChainId,
+  Token,
+  Amount as EnvelopeAmount,
+  PaymentI as EnvelopeI,
+  BridgeJ as EnvelopeJ,
+  AutopayK as EnvelopeK,
+  CancelL as EnvelopeL,
+  EnvelopeIntent,
+  HandoffEnvelope,
+} from '@flex/protocol';
+
 // ───────────────────────────── Primitives ─────────────────────────────
 
-export type ChainId = 11155111 | 84532 | 421614;
 export const CHAIN_IDS: readonly ChainId[] = [11155111, 84532, 421614];
 
-export type Token = 'USDC' | 'ETH';
 export const TOKEN_DECIMALS: Readonly<Record<Token, 6 | 18>> = { USDC: 6, ETH: 18 };
 
 /** §7.3 `amount_` + 8 lowercase hex. */
@@ -76,6 +86,9 @@ export interface Config {
     indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
+  /** Optional for payment-only installations. Required before an autopay can be planned. */
+  autopay?: { late_window_seconds: number; fee: Record<Token, DecimalString>; fee_collector: Address };
+  bridge?: { ccip_fee_max_eth: DecimalString };
   fetch: { max_bytes: number; timeout_ms: number; max_redirects: number };
   defaults: { timezone: string; autopay_time_of_day: string };
 }
@@ -91,6 +104,7 @@ export interface Limits {
   /** Keyed by chain id as a string, e.g. "11155111". */
   eth_gas_reserve: Record<string, DecimalString>;
   bridge_buffer_pct: DecimalString;
+  max_group_size: number;
 }
 export type LimitKey = keyof Limits;
 
@@ -191,7 +205,8 @@ export interface LexicalScan {
 
 export type AmountSource = 'user' | 'derived' | 'untrusted';
 export type AmountOrigin =
-  'phrase' | 'relative' | 'bridge_padded' | 'autopay_per_period_cap' | 'autopay_total_cap' | 'document';
+  'phrase' | 'relative' | 'bridge_padded' | 'autopay_per_period_cap' | 'autopay_total_cap' | 'document'
+  | 'autopay_fee' | 'autopay_max_per_run' | 'autopay_max_total';
 
 /** One pay amount of this request (S3), mirrored by a DB1 row. */
 export interface AmountItem {
@@ -293,12 +308,12 @@ export interface Payment {
   token: Token | null;
 }
 
-// ───────────────────────────── §12.5 schedule / CRE job ─────────────────────────────
+// ───────────────────────────── Private calendar input / display metadata ─────────────────────────────
 
 export type ScheduleEnd =
   { type: 'after_count'; count: number } | { type: 'on_date'; date: string } | { type: 'until_cancelled' };
 
-export interface Schedule {
+export interface CalendarSchedule {
   frequency: Frequency;
   interval: number;
   days_of_week: Weekday[] | null;
@@ -313,124 +328,35 @@ export interface Schedule {
   end: ScheduleEnd;
 }
 
-export interface CreJob {
-  trigger: 'cron';
-  cron: string;
-  timezone: string;
-  interval: number;
-}
-
 // ───────────────────────────── §12.3 internal plan (placeholders) ─────────────────────────────
 
-export interface PlanI {
-  intent_id: 'i';
-  step: number;
-  depends_on: number[];
-  token: Token;
-  chain_id: ChainId;
+/** Only the agent's private references differ from the shared execution intent. */
+export interface PlanPayee {
   amount: AmountPh;
   recipient: AddressPh;
   reused_from_chain_id: ChainId | null;
 }
-export interface PlanJ {
-  intent_id: 'j';
-  step: number;
-  token: Token;
-  source_chain_id: ChainId;
-  dest_chain_id: ChainId;
+export interface PlanI extends Omit<PaymentI, 'token_address' | 'recipients'> {
+  recipients: PlanPayee[];
+}
+export interface PlanJ extends Omit<BridgeJ, 'source_token_address' | 'dest_token_address' | 'amount'> {
   amount: AmountPh;
   deliverable_base_units: string;
-  receiver: 'self';
-  funds_steps: number[];
 }
-export interface PlanK {
-  intent_id: 'k';
-  step: number;
-  depends_on: number[];
-  autopay_id: string;
-  token: Token;
-  chain_id: ChainId;
-  recipient: AddressPh;
-  amount_per_payment: AmountPh;
-  schedule: Schedule;
-  limits: { per_period_cap: AmountPh; total_cap: AmountPh; expires_at: string };
-  cre_job: CreJob;
+export interface PlanK extends Omit<AutopayK, 'token_address' | 'recipients' | 'fee' | 'limits'> {
+  recipients: PlanPayee[];
+  fee: { to: Address; amount: AmountPh };
+  limits: { max_per_run: AmountPh; max_total: AmountPh };
+  /** Never handed off. Calendar wording, aggregate weekly limit and source S8 payment for replanning. */
+  display: { schedule: CalendarSchedule; per_period_cap: AmountPh; payment_index: number };
 }
-export interface PlanL {
-  intent_id: 'l';
-  step: number;
-  autopay_id: string;
-  chain_id: ChainId;
-  delegate_address: string;
+export interface PlanL extends CancelL {
+  /** Private reference used to describe the cancellation to the user. */
   recipient: AddressPh;
-  refund_remaining: true;
 }
 export type InternalIntent = PlanI | PlanJ | PlanK | PlanL;
 /** The S9 output validated by V-01 against src/schemas/internal-plan.schema.json. */
 export type InternalPlan = InternalIntent[];
-
-// ───────────────────────────── §12.5 hand-off envelope ─────────────────────────────
-
-export interface EnvelopeAmount {
-  value: DecimalString;
-  base_units: BaseUnitsString;
-  decimals: 6 | 18;
-}
-export interface EnvelopeI {
-  intent_id: 'i';
-  step: number;
-  depends_on: number[];
-  token: Token;
-  token_address: Address | null;
-  chain_id: ChainId;
-  amount: EnvelopeAmount;
-  recipient: Address;
-}
-export interface EnvelopeJ {
-  intent_id: 'j';
-  step: number;
-  token: Token;
-  source_token_address: Address | null;
-  dest_token_address: Address | null;
-  source_chain_id: ChainId;
-  dest_chain_id: ChainId;
-  amount: EnvelopeAmount;
-  receiver: 'self';
-  funds_steps: number[];
-}
-export interface EnvelopeK {
-  intent_id: 'k';
-  step: number;
-  depends_on: number[];
-  autopay_id: string;
-  token: Token;
-  token_address: Address | null;
-  chain_id: ChainId;
-  recipient: Address;
-  amount_per_payment: EnvelopeAmount;
-  prefund: EnvelopeAmount;
-  schedule: Schedule;
-  limits: { per_period_cap: EnvelopeAmount; total_cap: EnvelopeAmount; expires_at: string };
-  cre_job: CreJob;
-}
-export interface EnvelopeL {
-  intent_id: 'l';
-  step: number;
-  autopay_id: string;
-  chain_id: ChainId;
-  delegate_address: Address;
-  recipient: Address;
-  refund_remaining: true;
-}
-export type EnvelopeIntent = EnvelopeI | EnvelopeJ | EnvelopeK | EnvelopeL;
-
-export interface HandoffEnvelope {
-  version: '1';
-  request_id: string;
-  wallet_address: Address;
-  created_at: string;
-  intents: EnvelopeIntent[];
-}
 
 // ───────────────────────────── §13.4 questions ─────────────────────────────
 
@@ -458,6 +384,7 @@ export type QuestionCode =
   | 'Q_PAIR_AMOUNT'
   | 'Q_NAME_ROLE'
   | 'Q_AUTOPAY_FREQUENCY'
+  | 'Q_AUTOPAY_MONTHLY'
   | 'Q_AUTOPAY_START'
   | 'Q_AUTOPAY_END'
   | 'Q_AUTOPAY_COUNT'
@@ -488,6 +415,7 @@ export const QUESTION_CODES: readonly QuestionCode[] = [
   'Q_PAIR_AMOUNT',
   'Q_NAME_ROLE',
   'Q_AUTOPAY_FREQUENCY',
+  'Q_AUTOPAY_MONTHLY',
   'Q_AUTOPAY_START',
   'Q_AUTOPAY_END',
   'Q_AUTOPAY_COUNT',
@@ -544,6 +472,11 @@ export type ErrorCode =
   | 'GROUP_EMPTY'
   | 'NO_ACTIVE_AUTOPAY'
   | 'AUTOPAY_NOT_READY'
+  | 'AUTOPAY_NOT_CONFIGURED'
+  | 'ETH_NOT_BRIDGEABLE'
+  | 'LIMIT_GROUP_SIZE'
+  | 'LIMIT_INTENTS'
+  | 'EXECUTION_PLAN_INVALID'
   | 'AUTOPAY_NO_OCCURRENCES'
   | 'INSUFFICIENT_FUNDS'
   | 'NO_GAS'
@@ -581,6 +514,11 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'GROUP_EMPTY',
   'NO_ACTIVE_AUTOPAY',
   'AUTOPAY_NOT_READY',
+  'AUTOPAY_NOT_CONFIGURED',
+  'ETH_NOT_BRIDGEABLE',
+  'LIMIT_GROUP_SIZE',
+  'LIMIT_INTENTS',
+  'EXECUTION_PLAN_INVALID',
   'AUTOPAY_NO_OCCURRENCES',
   'INSUFFICIENT_FUNDS',
   'NO_GAS',
@@ -722,20 +660,4 @@ export interface AgentResponse {
 
 // ───────────────────────────── §14.3 execution reports ─────────────────────────────
 
-export interface ExecutionReport {
-  kind: 'intent_result' | 'autopay_payment' | 'autopay_status';
-  request_id?: string;
-  step?: number;
-  status?: 'executed' | 'failed';
-  tx_hash?: string;
-  executed_at?: string;
-  autopay?: {
-    autopay_id: string;
-    delegate_address?: string;
-    cre_job_id?: string;
-    status?: 'active' | 'cancelled' | 'ended' | 'failed';
-    amount?: DecimalString;
-    chain_id?: ChainId;
-    token?: Token;
-  };
-}
+export type { ExecutionReport } from '@flex/protocol';

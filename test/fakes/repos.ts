@@ -36,7 +36,8 @@ export const DEFAULT_LIMITS: Limits = {
   max_bridges_per_request: 3,
   allowed_chain_ids: [11155111, 84532, 421614],
   eth_gas_reserve: { '11155111': '0.01', '84532': '0.002', '421614': '0.002' },
-  bridge_buffer_pct: '2',
+  bridge_buffer_pct: '0',
+  max_group_size: 100,
 };
 
 export const CHAIN_NAMES: Record<ChainId, string> = {
@@ -211,10 +212,11 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     hasRequest: (rid) => t.db6.some((r) => r.request_id === rid),
     listByRequest: (rid) => t.db6.filter((r) => r.request_id === rid).map(clone),
     hasTxHash: (h) => t.db6.some((r) => r.tx_hash !== null && r.tx_hash.toLowerCase() === h.toLowerCase()),
-    applyIntentResult({ request_id, step, status, tx_hash, executed_at }) {
+    applyIntentResult({ request_id, step, status, tx_hash, executed_at, bridge_fee_eth }) {
       let n = 0;
       for (const r of t.db6) {
         if (r.request_id === request_id && r.step === step && r.status !== 'executed') {
+          if (r.kind === 'bridge_fee' && bridge_fee_eth !== undefined) r.amount = bridge_fee_eth;
           r.status = status;
           r.tx_hash = tx_hash;
           r.executed_at = executed_at;
@@ -231,7 +233,7 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
             r.status === 'pending' &&
             r.chain_id === chain_id &&
             r.token === token &&
-            (r.kind === 'payment' || r.kind === 'bridge_out' || r.kind === 'autopay_prefund') &&
+            (r.kind === 'payment' || r.kind === 'bridge_out' || r.kind === 'bridge_fee' || r.kind === 'autopay_prefund') &&
             DateTime.fromISO(r.created_at, { zone: 'utc' }) > cutoff,
         )
         .map(clone);
@@ -258,6 +260,11 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
         ...row,
         delegate_address: null,
         cre_job_id: null,
+        plan_id: null,
+        executor_address: null,
+        fee: row.fee ?? null,
+        recipients_json: row.recipients_json ?? null,
+        display_json: row.display_json ?? null,
         status: 'pending',
         created_at: now,
         updated_at: now,

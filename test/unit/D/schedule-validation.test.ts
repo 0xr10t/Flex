@@ -66,14 +66,18 @@ describe('P10 live-model schedule regressions', () => {
     const { ctx, llm } = setup(text, { ...fields, interval: 4 }, { ...fields, interval: 1 });
     expect(await s8.step(ctx)).toEqual({ kind: 'continue' });
     expect(llm.recorded).toHaveLength(2);
-    expect(await s9.step(ctx)).toEqual({ kind: 'continue' });
+    let result = await s9.step(ctx);
+    if (fields.frequency === 'monthly') {
+      if (result.kind !== 'question') throw new Error('monthly choice required');
+      expect(result.question.code).toBe('Q_AUTOPAY_MONTHLY');
+      await s9.onAnswer?.(ctx, result.question, { kind: 'chip', chip_id: 'thirty_days' });
+      result = await s9.step(ctx);
+    }
+    expect(result).toEqual({ kind: 'continue' });
     const k = asK(ctx.req.plan?.[0]);
-    expect(k.schedule.frequency).toBe(fields.frequency);
-    expect(k.schedule.interval).toBe(1);
-    expect(k.schedule.days_of_week).toEqual(fields.days_of_week ?? null);
-    expect(k.schedule.day_of_month).toBe(fields.day_of_month === 31 ? 28 : null);
-    expect(enumerateOccurrences(k.schedule, 52).occurrences).toHaveLength(4);
-    expect(amountOf(ctx, k.limits.total_cap)).toBe(fields.frequency === 'monthly' ? '40' : '20');
+    expect(k.schedule.interval_seconds).toBe(fields.frequency === 'monthly' ? 30 * 86400 : 604800);
+    expect(k.schedule.max_runs).toBe(4);
+    expect(amountOf(ctx, k.limits.max_total)).toBe(fields.frequency === 'monthly' ? '40.2' : '20.2');
     expect(ctx.exec.submissions).toHaveLength(0);
   });
 
@@ -91,8 +95,8 @@ describe('P10 live-model schedule regressions', () => {
     expect(llm.recorded).toHaveLength(1);
     expect(await s9.step(ctx)).toEqual({ kind: 'continue' });
     const k = asK(ctx.req.plan?.[0]);
-    expect(k.schedule).toMatchObject({ frequency: 'weekly', interval: 2 });
-    const occurrences = enumerateOccurrences(k.schedule, 52).occurrences;
+    expect(k.display.schedule).toMatchObject({ frequency: 'weekly', interval: 2 });
+    const occurrences = enumerateOccurrences(k.display.schedule, 52).occurrences;
     expect(occurrences).toHaveLength(4);
     expect(occurrences[1]?.diff(occurrences[0]!, 'days').days).toBe(14);
   });

@@ -101,7 +101,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (needsExecutor.some((c) => !deps.executorChainIds.includes(c)))
       return refuse('unsupported', MESSAGE.unsupported);
 
-    const checked = checkEnvelope(envelope, { delegationHashes: placeholderHashes(envelope) });
+    const checked = checkEnvelope(envelope, { nowMs: now().getTime(), delegationHashes: placeholderHashes(envelope) });
     if (!checked.ok) return refuse(checked.stage, checked.message);
 
     deps.store.insertRequest(envelope, now().toISOString());

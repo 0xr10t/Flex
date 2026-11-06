@@ -9,12 +9,14 @@
 // SQ-S-01: an amount correction keeps the failed request's chain and uses its own summary note.
 
 import { DateTime } from 'luxon';
+import type { Schedule as ExecutionSchedule } from '@flex/protocol';
 import { CHIPS, NOTES, buildQuestion, joinList, matchChip, reask } from '../contracts/catalog.js';
 import type { Db7Row } from '../contracts/repos.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type {
   AddressPh,
   AmountPh,
+  AmountOrigin,
   ChainId,
   Frequency,
   GroupPh,
@@ -23,7 +25,7 @@ import type {
   PlanJ,
   QuestionCode,
   QuestionId,
-  Schedule,
+  CalendarSchedule,
   ScheduleEnd,
   Token,
   Weekday,
@@ -44,11 +46,8 @@ import {
   unsupported,
 } from '../plan/common.js';
 import {
-  clampDayOfMonth,
-  cronFor,
   daysForTimesPerWeek,
-  enumerateOccurrences,
-  expiresAt,
+  fixedSchedule,
   firstOccurrence,
   mostInAnyWeek,
   onDateForDuration,
@@ -82,6 +81,7 @@ import { AUTOPAY_PICK_LABEL } from '../messages/templates.js';
 
 interface S9State {
   freq: Record<string, Frequency>;
+  monthly: Record<string, 'four_weeks' | 'thirty_days'>;
   start: Record<string, string>;
   end: Record<string, ScheduleEnd>;
   pick: Record<string, string>;
@@ -98,8 +98,8 @@ function stateOf(ctx: StepContext): S9State {
   if (existing) return existing;
   const kept = ctx.req.step_state[ANSWERS_KEY] as Omit<S9State, 'pending' | 'late'> | undefined;
   const st: S9State = kept
-    ? { freq: { ...kept.freq }, start: { ...kept.start }, end: { ...kept.end }, pick: { ...kept.pick } }
-    : { freq: {}, start: {}, end: {}, pick: {} };
+    ? { freq: { ...kept.freq }, monthly: { ...kept.monthly }, start: { ...kept.start }, end: { ...kept.end }, pick: { ...kept.pick } }
+    : { freq: {}, monthly: {}, start: {}, end: {}, pick: {} };
   ctx.req.step_state.s9 = st;
   return st;
 }
@@ -124,18 +124,20 @@ function ask(
 // ───────────────────────────── phase 1: schedules and cancels ─────────────────────────────
 
 interface KDraft {
-  schedule: Schedule;
+  schedule: CalendarSchedule;
   amount: bigint;
   token: Token;
   perPeriod: bigint;
   total: bigint;
-  day28: boolean;
-  last: DateTime;
+  fee: bigint;
+  legs: ExecutionSchedule[];
 }
 
-type Phase1 = { kind: 'ok'; k: Map<number, KDraft>; l: Map<number, Db7Row> } | { kind: 'result'; result: StepResult };
+type Phase1 = { kind: 'ok'; k: Map<number, KDraft>; l: Map<number, Db7Row[]> } | { kind: 'result'; result: StepResult };
 
 function paymentClauses(ctx: StepContext, p: Payment): Set<number> {
+  // A conjunction in a single schedule ("Monday and Thursday for four payments") can span lexical clauses.
+  if (ctx.req.payments?.length === 1) return new Set(ctx.req.scan.clauses.map((clause) => clause.index));
   const out = new Set<number>();
   const a = ctx.req.amounts.find((x) => x.placeholder === p.amount)?.span?.clause_index;
   if (a !== undefined) out.add(a);
@@ -152,6 +154,7 @@ function resolveK(
   i: number,
 ): { kind: 'ok'; draft: KDraft } | { kind: 'result'; result: StepResult } {
   const { req, limits } = ctx;
+  if (!ctx.config.autopay) return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NOT_CONFIGURED' } };
   const key = String(i);
   const today: DateTime = ctx.now().startOf('day');
   const clauses = paymentClauses(ctx, p);
@@ -161,25 +164,29 @@ function resolveK(
   const dates = req.scan.dates.filter((d) => inClause(d.clause_index));
 
   // frequency
-  const frequency: Frequency | null = p.times_per_week === 7 ? 'daily' : (p.frequency ?? st.freq[key] ?? null);
+  let frequency: Frequency | null = p.times_per_week === 7 ? 'daily' : (p.frequency ?? st.freq[key] ?? null);
   if (frequency === null) {
     return {
       kind: 'result',
       result: ask(ctx, st, 'Q_AUTOPAY_FREQUENCY', i, { chips: [CHIPS.DAILY, CHIPS.WEEKLY, CHIPS.MONTHLY] }),
     };
   }
-  const interval = p.interval ?? 1;
+  let interval = p.interval ?? 1;
+  if (frequency === 'monthly') {
+    const choice = st.monthly[key];
+    if (!choice) return { kind: 'result', result: ask(ctx, st, 'Q_AUTOPAY_MONTHLY', i, { chips: [
+      { id: 'four_weeks', label: `Every ${4 * interval} weeks`, disabled: false, detail: '' },
+      { id: 'thirty_days', label: `Every ${30 * interval} days`, disabled: false, detail: '' },
+    ] }) };
+    frequency = choice === 'four_weeks' ? 'weekly' : 'daily';
+    interval *= choice === 'four_weeks' ? 4 : 30;
+  }
   let days_of_week: Weekday[] | null = null;
-  let day_of_month: number | null = null;
-  let day28 = false;
+  const day_of_month = null;
   if (frequency === 'weekly') {
     if (p.days_of_week !== null && p.days_of_week.length > 0) days_of_week = sortDays(p.days_of_week);
     else if (p.times_per_week !== null) days_of_week = sortDays(daysForTimesPerWeek(p.times_per_week, today));
     else days_of_week = [weekdayOf(today)];
-  } else if (frequency === 'monthly') {
-    const c = clampDayOfMonth(p.day_of_month ?? today.day);
-    day_of_month = c.day;
-    day28 = c.clamped;
   }
   const time_of_day =
     dates.find((d) => d.kind !== 'end' && d.time !== null)?.time ?? ctx.config.defaults.autopay_time_of_day;
@@ -226,15 +233,18 @@ function resolveK(
       end = parsed;
     }
   }
-  const schedule: Schedule = { ...core, first_occurrence: first.toISO({ suppressMilliseconds: true }) as string, end };
+  const schedule: CalendarSchedule = { ...core, first_occurrence: first.toISO({ suppressMilliseconds: true }) as string, end };
 
   // Derived values (§10.6): 2 zero occurrences, 3 duration, 4 per-period cap, 5 per-payment limit.
   // A broken limit that can be lifted is left to S10, which asks Q_LIMIT_OVERRIDE once for all of them (SQ-D-16).
   const liftable = limitsCanBeLifted(ctx);
-  let occ = enumerateOccurrences(schedule, limits.autopay_max_weeks);
+  const late = ctx.config.autopay.late_window_seconds;
+  if (late > interval * (frequency === 'daily' ? 86400 : 604800))
+    return { kind: 'result', result: { kind: 'error', code: 'EXECUTION_PLAN_INVALID' } };
+  let occ = fixedSchedule(schedule, limits.autopay_max_weeks, late);
   if (occ.exceedsMaxWeeks) {
     if (!liftable) return { kind: 'result', result: autopayDurationBreach(ctx).error };
-    occ = enumerateOccurrences(schedule, LIFTED_MAX_WEEKS);
+    occ = fixedSchedule(schedule, LIFTED_MAX_WEEKS, late);
     if (occ.exceedsMaxWeeks) return { kind: 'result', result: unsupported(ctx, 's9', 'S9_AUTOPAY_BEYOND_LIFTED_MAX') };
   }
   if (occ.occurrences.length === 0)
@@ -248,17 +258,17 @@ function resolveK(
   const token = row.token;
   const amount = toBaseUnits(row.amount, decimalsOf(token));
   const count = BigInt(occ.occurrences.length);
-  const total = amount * count;
+  const fee = toBaseUnits(ctx.config.autopay.fee[token], decimalsOf(token));
+  const total = (amount + fee) * count;
   // SQ-R-03: per_period_cap = min(amount × most payments in any 7-day window, total_cap).
   const inWeek = amount * BigInt(mostInAnyWeek(occ.occurrences));
-  const perPeriod = inWeek < total ? inWeek : total;
+  const perPeriod = inWeek < amount * count ? inWeek : amount * count;
   const overLimit = autopayPeriodBreach(ctx, perPeriod, token) ?? perTxBreach(ctx, amount, token, true);
   if (overLimit && !liftable) return { kind: 'result', result: overLimit.error };
-  const last = occ.occurrences[occ.occurrences.length - 1] as DateTime;
-  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total, day28, last } };
+  return { kind: 'ok', draft: { schedule, amount, token, perPeriod, total, fee, legs: occ.legs } };
 }
 
-function scheduleLabel(s: Schedule): string {
+function scheduleLabel(s: CalendarSchedule): string {
   if (s.frequency === 'weekly') return `weekly on ${(s.days_of_week ?? []).join(', ')}`;
   if (s.frequency === 'monthly') return `monthly on day ${String(s.day_of_month ?? '')}`;
   return 'daily';
@@ -269,7 +279,7 @@ function resolveL(
   st: S9State,
   p: Payment,
   i: number,
-): { kind: 'ok'; row: Db7Row } | { kind: 'result'; result: StepResult } {
+): { kind: 'ok'; rows: Db7Row[] } | { kind: 'result'; result: StepResult } {
   const r = ctx.repos.db3.get(p.recipient);
   if (!r || r.address === null) return { kind: 'result', result: internalError(ctx, 's9', 'S9_L_RECIPIENT_MISSING') };
   const active = ctx.repos.db7.findByRecipient(r.address, 'active');
@@ -282,14 +292,18 @@ function resolveL(
       result: { kind: 'error', code: 'NO_ACTIVE_AUTOPAY', params: { name: recipientNameOf(ctx, p.recipient) } },
     };
   }
-  if (active.length === 1) return { kind: 'ok', row: active[0] as Db7Row };
-  const picked = active.find((a) => a.autopay_id === st.pick[String(i)]);
-  if (picked) return { kind: 'ok', row: picked };
-  const chips = active.map((a) => {
+  const groups = [...new Map(active.map((a) => [a.request_id, active.filter((other) => other.request_id === a.request_id)])).values()];
+  const picked = groups.length === 1 ? groups[0] : groups.find((rows) => rows.some((a) => a.autopay_id === st.pick[String(i)]));
+  if (picked) {
+    if (picked.some((a) => !a.plan_id)) return { kind: 'result', result: { kind: 'error', code: 'AUTOPAY_NOT_READY' } };
+    return { kind: 'ok', rows: picked };
+  }
+  const chips = groups.map((rows) => {
+    const a = rows[0] as Db7Row;
     let since = '';
     let label = '';
     try {
-      const s = JSON.parse(a.schedule_json) as Schedule;
+      const s = JSON.parse(a.display_json ?? a.schedule_json) as CalendarSchedule;
       since = s.start_date;
       label = scheduleLabel(s);
     } catch {
@@ -313,7 +327,7 @@ function resolveL(
 
 function phase1(ctx: StepContext, st: S9State, payments: Payment[]): Phase1 {
   const k = new Map<number, KDraft>();
-  const l = new Map<number, Db7Row>();
+  const l = new Map<number, Db7Row[]>();
   for (let i = 0; i < payments.length; i++) {
     const p = payments[i] as Payment;
     if (p.kind === 'k') {
@@ -323,7 +337,7 @@ function phase1(ctx: StepContext, st: S9State, payments: Payment[]): Phase1 {
     } else if (p.kind === 'l') {
       const r = resolveL(ctx, st, p, i);
       if (r.kind === 'result') return r;
-      l.set(i, r.row);
+      l.set(i, r.rows);
     }
   }
   return { kind: 'ok', k, l };
@@ -497,7 +511,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
   for (let i = 0; i < payments.length; i++) {
     const p = payments[i] as Payment;
     if (p.kind === 'l') {
-      const row = p1.l.get(i) as Db7Row;
+      for (const row of p1.l.get(i) ?? []) {
       const bad = checkChain(ctx, balances, row.chain_id);
       if (bad) return bad;
       items.push({
@@ -511,6 +525,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
         reused: null,
         l: row,
       });
+      }
       continue;
     }
     if (p.amount === null) return internalError(ctx, 's9', 'S9_AMOUNT_NULL');
@@ -527,6 +542,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
         .listMembers(p.recipient as GroupPh)
         .sort((a, b) => ((a.name ?? '') < (b.name ?? '') ? -1 : (a.name ?? '') > (b.name ?? '') ? 1 : 0));
       if (!group || group.chain_id === null || members.length === 0) return internalError(ctx, 's9', 'S9_GROUP_EMPTY');
+      if (members.length > limits.max_group_size) return { kind: 'error', code: 'LIMIT_GROUP_SIZE' };
       targets = members.map((m) => ({ recipient: m.placeholder as AddressPh, groupChain: group.chain_id }));
     } else {
       targets = [{ recipient: p.recipient as AddressPh, groupChain: null }];
@@ -566,6 +582,8 @@ async function step(ctx: StepContext): Promise<StepResult> {
     const spendable = new Map<ChainId, bigint>(
       okChains.map((c) => [c, balanceOf(balances, c)?.spendable[token] ?? 0n]),
     );
+    if (token === 'ETH' && okChains.some((c) => (need.get(c) ?? 0n) > (spendable.get(c) ?? 0n)))
+      return { kind: 'error', code: 'ETH_NOT_BRIDGEABLE' };
     const planned = planBridges(token, okChains, spendable, need, limits.bridge_buffer_pct);
     if (planned === null) {
       const needed = neededWithPadding(okChains, spendable, need, limits.bridge_buffer_pct);
@@ -577,7 +595,10 @@ async function step(ctx: StepContext): Promise<StepResult> {
   const touched = new Set<ChainId>([...bridges.map((b) => b.source), ...items.map((it) => it.chain)]);
   const tooMany = bridgeBreach(ctx, bridges.length, false);
   if (tooMany && !limitsCanBeLifted(ctx)) return tooMany.error;
-  const noGas = checkGas(ctx, balances, touched);
+  const feeMax = ctx.config.bridge?.ccip_fee_max_eth ?? '0.002';
+  const bridgeFees = new Map<ChainId, bigint>();
+  for (const b of bridges) bridgeFees.set(b.source, (bridgeFees.get(b.source) ?? 0n) + toBaseUnits(feeMax, 18));
+  const noGas = checkGas(ctx, balances, touched, bridgeFees);
   if (noGas) return noGas;
 
   // §10.5 ordering: all j first (by first payment needing the destination, then source in allowed order).
@@ -599,7 +620,7 @@ async function step(ctx: StepContext): Promise<StepResult> {
   const mint = (
     amount: bigint,
     token: Token,
-    origin: 'bridge_padded' | 'autopay_per_period_cap' | 'autopay_total_cap',
+    origin: AmountOrigin,
   ): AmountPh =>
     ctx.repos.db1.mint({
       session_id: req.session_id,
@@ -616,12 +637,13 @@ async function step(ctx: StepContext): Promise<StepResult> {
     const j: PlanJ = {
       intent_id: 'j',
       step: plan.length,
-      token: b.token,
+      token: 'USDC',
       source_chain_id: b.source,
       dest_chain_id: b.dest,
       amount: mint(b.padded, b.token, 'bridge_padded'),
       deliverable_base_units: b.deliverable.toString(),
       receiver: 'self',
+      fee_max_eth: feeMax,
       funds_steps: [],
     };
     plan.push(j);
@@ -635,64 +657,66 @@ async function step(ctx: StepContext): Promise<StepResult> {
         step: stepNo,
         autopay_id: it.l.autopay_id,
         chain_id: it.l.chain_id,
-        delegate_address: it.l.delegate_address ?? '',
+        plan_id: it.l.plan_id!,
         recipient: it.recipient,
-        refund_remaining: true,
       });
       continue;
     }
     const token = it.token as Token;
     const depends_on = jSteps.filter((j) => j.dest_chain_id === it.chain && j.token === token).map((j) => j.step);
-    for (const j of jSteps) if (depends_on.includes(j.step)) j.funds_steps.push(stepNo);
     if (it.reused !== null) {
       ctx.repos.db3.setReusedFromChain(it.recipient, it.reused);
       pushNote(ctx, NOTES.SILENT_REUSE({ chains: reusedOnChains(ctx, it.recipient, it.chain) }));
     }
     if (it.kind === 'i') {
-      plan.push({
+      const address = ctx.repos.db3.get(it.recipient)?.address?.toLowerCase();
+      const batch = plan.find((other) => other.intent_id === 'i' && other.chain_id === it.chain && other.token === token &&
+        other.recipients.length < 100 && !other.recipients.some((payee) => ctx.repos.db3.get(payee.recipient)?.address?.toLowerCase() === address));
+      const payee = { amount: it.amount as AmountPh, recipient: it.recipient, reused_from_chain_id: it.reused };
+      if (batch?.intent_id === 'i') batch.recipients.push(payee);
+      else plan.push({
         intent_id: 'i',
         step: stepNo,
         depends_on,
         token,
         chain_id: it.chain,
-        amount: it.amount as AmountPh,
-        recipient: it.recipient,
-        reused_from_chain_id: it.reused,
+        recipients: [payee],
       });
     } else if (it.k) {
       const d = it.k;
-      if (d.day28) pushNote(ctx, NOTES.DAY_28());
+      for (const schedule of d.legs) {
       plan.push({
         intent_id: 'k',
-        step: stepNo,
+        step: plan.length,
         depends_on,
         autopay_id: newId('autopay'),
         token,
         chain_id: it.chain,
-        recipient: it.recipient,
-        amount_per_payment: it.amount as AmountPh,
-        schedule: d.schedule,
+        recipients: [{ recipient: it.recipient, amount: it.amount as AmountPh, reused_from_chain_id: it.reused }],
+        fee: { to: ctx.config.autopay!.fee_collector, amount: mint(d.fee, token, 'autopay_fee') },
+        schedule,
         limits: {
-          per_period_cap: mint(d.perPeriod, token, 'autopay_per_period_cap'),
-          total_cap: mint(d.total, token, 'autopay_total_cap'),
-          expires_at: expiresAt(d.last, d.schedule.timezone),
+          max_per_run: mint(d.amount + d.fee, token, 'autopay_max_per_run'),
+          max_total: mint((d.amount + d.fee) * BigInt(schedule.max_runs), token, 'autopay_max_total'),
         },
-        cre_job: {
-          trigger: 'cron',
-          cron: cronFor(d.schedule),
-          timezone: d.schedule.timezone,
-          interval: d.schedule.interval,
+        executor: 'chainlink-cre',
+        display: {
+          schedule: d.schedule,
+          per_period_cap: mint(d.perPeriod, token, 'autopay_per_period_cap'),
+          payment_index: it.pay,
         },
       });
+      }
     }
   }
+  for (const j of jSteps) j.funds_steps = plan.filter((it) => (it.intent_id === 'i' || it.intent_id === 'k') && it.depends_on.includes(j.step)).map((it) => it.step);
   // §17.2 step 7: every follow-up payee gets the note (SQ-D-07 for a follow-up with a typed chain).
   if (payments.some((p) => req.recipients.some((r) => r.placeholder === p.recipient && r.followup))) {
     pushNote(ctx, req.retry_context !== undefined ? NOTES.PAYMENT_CORRECTION() : NOTES.FOLLOWUP());
   }
   req.plan = plan;
   req.state = 'PLANNED';
-  req.step_state[ANSWERS_KEY] = { freq: st.freq, start: st.start, end: st.end, pick: st.pick };
+  req.step_state[ANSWERS_KEY] = { freq: st.freq, monthly: st.monthly, start: st.start, end: st.end, pick: st.pick };
   delete req.step_state.s9;
   ctx.log.info({ event: 'planned', request_id: req.request_id, step: 's9', n_intents: plan.length });
   return { kind: 'continue' };
@@ -710,6 +734,12 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
   const again = (): StepResult => ({ kind: 'question', question: reask(q, qid()) });
   const today = ctx.now().startOf('day').toISODate() as string;
   switch (q.code) {
+    case 'Q_AUTOPAY_MONTHLY': {
+      const chip = matchChip(q, answer);
+      if (chip?.id !== 'four_weeks' && chip?.id !== 'thirty_days') return again();
+      st.monthly[key] = chip.id;
+      break;
+    }
     case 'Q_AUTOPAY_FREQUENCY': {
       const chip = matchChip(q, answer);
       const f = chip ? FREQ_BY_CHIP[chip.id] : undefined;
@@ -767,12 +797,7 @@ const onAnswer: AnswerHandler = async (ctx, q, answer) => {
 
 /** The S8 payment a planned `k` comes from (same amount placeholder and recipient). */
 function paymentOfK(ctx: StepContext, payments: Payment[], it: Extract<InternalIntent, { intent_id: 'k' }>): number {
-  return payments.findIndex(
-    (p) =>
-      p.kind === 'k' &&
-      p.amount === it.amount_per_payment &&
-      (p.recipient === it.recipient || ctx.repos.db3.get(it.recipient)?.group_placeholder === p.recipient),
-  );
+  return payments[it.display.payment_index]?.kind === 'k' ? it.display.payment_index : -1;
 }
 
 /**
@@ -786,7 +811,7 @@ function beforeHandoff(ctx: StepContext): StepResult | null {
   const late: number[] = [];
   for (const it of req.plan ?? []) {
     if (it.intent_id !== 'k') continue;
-    const occurrence = DateTime.fromISO(it.schedule.first_occurrence, { setZone: true });
+    const occurrence = DateTime.fromSeconds(it.schedule.start_at);
     if (occurrence.isValid && occurrence > now) continue;
     const i = paymentOfK(ctx, payments, it);
     if (i < 0) return internalError(ctx, 's9', 'S9_LATE_K_UNMATCHED');

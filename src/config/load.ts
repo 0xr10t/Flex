@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { IANAZone } from 'luxon';
+import { isAddress, zeroAddress } from 'viem';
+import { toBaseUnits } from '../contracts/money.js';
 import { ajv } from '../schemas/index.js';
 import { CHAIN_IDS, type ChainId, type Config } from '../contracts/types.js';
 
@@ -118,6 +120,19 @@ const CONFIG_SCHEMA = {
       required: ['url', 'outbound_token_file', 'timeout_ms'],
       properties: { url: NON_EMPTY, outbound_token_file: NON_EMPTY, timeout_ms: POS_INT },
     },
+    autopay: {
+      type: 'object', additionalProperties: false,
+      required: ['late_window_seconds', 'fee', 'fee_collector'],
+      properties: {
+        late_window_seconds: { type: 'integer', minimum: 60 },
+        fee_collector: ADDRESS,
+        fee: { type: 'object', additionalProperties: false, required: ['USDC', 'ETH'], properties: { USDC: NON_EMPTY, ETH: NON_EMPTY } },
+      },
+    },
+    bridge: {
+      type: 'object', additionalProperties: false, required: ['ccip_fee_max_eth'],
+      properties: { ccip_fee_max_eth: NON_EMPTY },
+    },
     fetch: {
       type: 'object',
       additionalProperties: false,
@@ -164,6 +179,21 @@ export function validateConfig(raw: unknown): Config {
   if (new Set(ids).size !== ids.length) errors.push('/chains duplicate chain_id');
   if (!ids.includes(cfg.ens.rpc_chain_id)) errors.push('/ens/rpc_chain_id not a configured chain');
   if (!IANAZone.isValidZone(cfg.defaults.timezone)) errors.push('/defaults/timezone not an IANA timezone');
+  if (cfg.autopay) {
+    if (!isAddress(cfg.autopay.fee_collector) || cfg.autopay.fee_collector.toLowerCase() === zeroAddress)
+      errors.push('/autopay/fee_collector must be a nonzero address');
+    for (const token of ['USDC', 'ETH'] as const) {
+      try {
+        if (toBaseUnits(cfg.autopay.fee[token], token === 'USDC' ? 6 : 18) <= 0n) throw new Error();
+      } catch { errors.push(`/autopay/fee/${token} must be a positive token amount`); }
+    }
+  }
+  if (cfg.bridge) {
+    try {
+      const fee = toBaseUnits(cfg.bridge.ccip_fee_max_eth, 18);
+      if (fee <= 0n || fee > toBaseUnits('0.01', 18)) throw new Error();
+    } catch { errors.push('/bridge/ccip_fee_max_eth must be positive and at most 0.01 ETH'); }
+  }
   const urls: Array<[string, string]> = [
     ['/llm/ollama_url', cfg.llm.ollama_url],
     ['/execution/url', cfg.execution.url],
