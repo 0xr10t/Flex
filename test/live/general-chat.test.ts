@@ -165,7 +165,18 @@ async function chatTurn(h: Harness, trace: LiveCall[], send: () => Promise<Resp>
   expect(calls[0]?.output).toEqual({ intent: 'chat' });
   const output = calls[1]?.output as { reply?: unknown } | undefined;
   expect(typeof output?.reply).toBe('string');
-  expect(responseText(response)).toBe(typeof output?.reply === 'string' ? output.reply.trim() : undefined);
+  // Display cleanup preserves line breaks/tabs and removes other ASCII controls before trimming.
+  const expected =
+    typeof output?.reply === 'string'
+      ? [...output.reply]
+          .filter((character) => {
+            const code = character.charCodeAt(0);
+            return code === 9 || code === 10 || code === 13 || (code >= 32 && code !== 127);
+          })
+          .join('')
+          .trim()
+      : undefined;
+  expect(responseText(response)).toBe(expected);
   expect(responseText(response).length).toBeGreaterThan(0);
   return response;
 }
