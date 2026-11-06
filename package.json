@@ -33,7 +33,11 @@
     "start": "node dist/src/index.js",
     "prebuild": "npm --prefix packages/protocol run build",
     "pretypecheck": "npm --prefix packages/protocol run build",
-    "pretest": "npm --prefix packages/protocol run build"
+    "pretest": "npm --prefix packages/protocol run build",
+    "pretest:unit": "npm --prefix packages/protocol run build",
+    "pretest:acceptance": "npm --prefix packages/protocol run build",
+    "pretest:audit": "npm --prefix packages/protocol run build",
+    "pretest:live": "npm --prefix packages/protocol run build"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",

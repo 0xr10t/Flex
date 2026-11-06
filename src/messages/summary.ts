@@ -15,6 +15,7 @@ import type {
   PlanK,
   PlanL,
   CalendarSchedule,
+  EnvelopeK,
   Summary,
   Weekday,
 } from '../contracts/types.js';
@@ -118,16 +119,21 @@ function lineI(ctx: StepContext, it: PlanI): string {
   return base + SUMMARY_LINE.AFTER_STEP({ n: joinList(it.depends_on.map((s) => String(s + 1))) });
 }
 
-function lineK(ctx: StepContext, it: PlanK): string {
-  const first = DateTime.fromSeconds(it.schedule.start_at, { zone: it.display.schedule.timezone });
-  const s: CalendarSchedule = {
-    ...it.display.schedule,
+function displayLeg(display: CalendarSchedule, schedule: PlanK['schedule']): CalendarSchedule {
+  const first = DateTime.fromSeconds(schedule.start_at, { zone: display.timezone });
+  return {
+    ...display,
     days_of_week:
-      it.display.schedule.frequency === 'weekly'
+      display.frequency === 'weekly'
         ? [(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const)[first.weekday - 1]!]
         : null,
-    end: { type: 'after_count', count: it.schedule.max_runs },
+    end: { type: 'after_count', count: schedule.max_runs },
   };
+}
+
+function lineK(ctx: StepContext, it: PlanK): string {
+  const first = DateTime.fromSeconds(it.schedule.start_at, { zone: it.display.schedule.timezone });
+  const s = displayLeg(it.display.schedule, it.schedule);
   const payee = it.recipients[0]!;
   return SUMMARY_LINE.K({
     name: recipientNameOf(ctx, payee.recipient),
@@ -157,11 +163,19 @@ function lineK(ctx: StepContext, it: PlanK): string {
 function lineL(ctx: StepContext, it: PlanL): string {
   const row = ctx.repos.db7.get(it.autopay_id);
   if (!row) throw new Error('db7 row missing');
+  const schedule = JSON.parse(row.schedule_json) as PlanK['schedule'];
+  const display = JSON.parse(row.display_json ?? row.schedule_json) as CalendarSchedule;
+  const cadence = cadenceText(row.display_json ? displayLeg(display, schedule) : display);
+  const recipients = JSON.parse(row.recipients_json ?? '[]') as EnvelopeK['recipients'];
+  if (recipients.length > 1) {
+    const payments = joinList(recipients.map((p) => `${p.amount.value} ${row.token} to ${shortAddress(p.recipient)}`));
+    return `Stop the repeating payment of ${payments} ${cadence} on ${chainName(ctx.config, it.chain_id)}. This cancels the whole plan for all its recipients. Money stays in your wallet; there is no refund transfer.`;
+  }
   return SUMMARY_LINE.L({
     name: recipientName(ctx, ctx.repos.db3.get(it.recipient)) || row.recipient_name,
     amount: normalizeDecimal(row.amount_per_payment, decimalsOf(row.token)),
     token: row.token,
-    cadence: cadenceText(JSON.parse(row.display_json ?? row.schedule_json) as CalendarSchedule),
+    cadence,
     chain: chainName(ctx.config, it.chain_id),
   });
 }
@@ -186,6 +200,16 @@ function addPlanNotes(ctx: StepContext, plan: InternalIntent[]): void {
   const used = new Set(paid.map((p) => p.amount));
   for (const it of plan)
     if (it.intent_id === 'k') {
+      if (it.recipients.some((payee) => repos.db3.get(payee.recipient)?.group_placeholder)) {
+        pushNote(
+          ctx,
+          'Each run pays all selected members together, with one operator fee. The listed addresses and amounts are fixed; later ENS group changes do not update this plan.',
+        );
+        pushNote(
+          ctx,
+          'Cancelling through any member cancels the whole group plan. Recipient addresses and amounts are visible on-chain.',
+        );
+      }
       const first = DateTime.fromSeconds(it.schedule.start_at, { zone: it.display.schedule.timezone });
       if (first.set({ month: 1 }).offset !== first.set({ month: 7 }).offset)
         pushNote(ctx, 'Times are fixed in UTC, so the local time shifts by an hour when daylight saving changes.');

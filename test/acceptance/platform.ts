@@ -201,7 +201,7 @@ export function registerPlatform(): void {
       await h.finish();
     });
 
-    it('A-54: intent_result for a k step moves the DB7 row to active with the delegate and updates DB6', async () => {
+    it('A-54: a legacy k result records plan/executor identity and settles its historical prefund row', async () => {
       const h = await harness('none');
       const id = seedAutopay(h, { id: 'ap_aaaaaaaaaaaa', status: 'pending' });
       seedSpend(h, {

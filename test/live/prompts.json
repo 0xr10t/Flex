@@ -1433,18 +1433,23 @@
           "amt": "10",
           "to": "Mihir",
           "sched": {
-            "freq": "monthly",
-            "interval": 1,
-            "dom": 28,
+            "freq": "weekly",
+            "interval": 4,
             "end": {
               "type": "on_date",
-              "date": "2027-02-27"
+              "date": "2027-02-11"
             }
           },
           "chain": "base"
         }
       ]
-    }
+    },
+    "answers": [
+      {
+        "code": "Q_AUTOPAY_MONTHLY",
+        "chip": "Every 4 weeks"
+      }
+    ]
   },
   {
     "id": "A-SQO03",
@@ -3727,16 +3732,21 @@
           "amt": "20",
           "to": "Mihir",
           "sched": {
-            "freq": "monthly",
-            "interval": 1,
-            "dom": 5,
+            "freq": "weekly",
+            "interval": 4,
             "end": {
               "type": "on_date"
             }
           }
         }
       ]
-    }
+    },
+    "answers": [
+      {
+        "code": "Q_AUTOPAY_MONTHLY",
+        "chip": "Every 4 weeks"
+      }
+    ]
   },
   {
     "id": "P-064",
@@ -3954,22 +3964,17 @@
       }
     },
     "expected": {
-      "plan": [
-        {
-          "t": "k",
-          "tok": "USDC",
-          "amt": "8",
-          "to": "Aradhya",
-          "sched": {
-            "freq": "monthly",
-            "interval": 1,
-            "end": {
-              "type": "on_date"
-            }
-          }
-        }
-      ]
-    }
+      "outcome": {
+        "kind": "error",
+        "code": "LIMIT_AUTOPAY_DURATION"
+      }
+    },
+    "answers": [
+      {
+        "code": "Q_AUTOPAY_MONTHLY",
+        "chip": "Every 4 weeks"
+      }
+    ]
   },
   {
     "id": "P-070",
@@ -4121,16 +4126,21 @@
           "amt": "10",
           "to": "Aradhya",
           "sched": {
-            "freq": "monthly",
-            "interval": 1,
-            "dom": 28,
+            "freq": "weekly",
+            "interval": 4,
             "end": {
               "type": "on_date"
             }
           }
         }
       ]
-    }
+    },
+    "answers": [
+      {
+        "code": "Q_AUTOPAY_MONTHLY",
+        "chip": "Every 4 weeks"
+      }
+    ]
   },
   {
     "id": "P-074",
@@ -4196,28 +4206,11 @@
         }
       }
     },
-    "answers": [
-      {
-        "code": "Q_LIMIT_OVERRIDE",
-        "chip": "Yes, set it up"
-      }
-    ],
     "expected": {
-      "plan": [
-        {
-          "t": "k",
-          "tok": "USDC",
-          "amt": "10",
-          "to": "Mihir",
-          "sched": {
-            "freq": "weekly",
-            "interval": 1,
-            "end": {
-              "type": "on_date"
-            }
-          }
-        }
-      ]
+      "outcome": {
+        "kind": "error",
+        "code": "LIMIT_AUTOPAY_DURATION"
+      }
     }
   },
   {
@@ -5097,15 +5090,20 @@
           "amt": "6",
           "to": "Mihir",
           "sched": {
-            "freq": "monthly",
-            "interval": 1,
-            "dom": 1,
+            "freq": "weekly",
+            "interval": 4,
             "end": {
               "type": "on_date"
             }
           }
         }
       ]
-    }
+    },
+    "answers": [
+      {
+        "code": "Q_AUTOPAY_MONTHLY",
+        "chip": "Every 4 weeks"
+      }
+    ]
   }
 ]

@@ -5,9 +5,18 @@
 // Correction texts name placeholders only (never values), so the retry prompt keeps §16.1.
 
 import type { StepContext } from '../contracts/step.js';
-import type { AmountPh, ChainId, ErrorCode, Frequency, Payment, RecipientPh, Weekday } from '../contracts/types.js';
+import type {
+  AmountPh,
+  ChainId,
+  ErrorCode,
+  Frequency,
+  GroupPh,
+  Payment,
+  RecipientPh,
+  Weekday,
+} from '../contracts/types.js';
 import { chainName } from '../pipeline/step-util.js';
-import { isGroupPh, recipientNameOf } from './common.js';
+import { isGroupPh, isUntrustedRecipient, recipientNameOf } from './common.js';
 import { chainBindingProblems } from './chain-binding.js';
 import { parseCount } from './answers.js';
 import { WEEKDAYS } from './schedule.js';
@@ -339,9 +348,10 @@ export function retryableProblems(ctx: StepContext, pc: PairingContext, payments
     }
   }
 
-  // P5 groups only with kind i (k with a group is terminal, see terminalError).
+  // Group creation supports i and k. Cancellation finds a saved plan through an individual member.
   for (const p of payments) {
-    if (isGroupPh(p.recipient) && p.kind === 'l') problems.push(`${p.recipient} can only be used with kind "i".`);
+    if (isGroupPh(p.recipient) && p.kind === 'l')
+      problems.push(`${p.recipient} can only be used with kind "i" or "k".`);
   }
 
   // P9 chain must be "unstated" or one of the S2 chain IDs.
@@ -391,12 +401,8 @@ export function pairsToConfirm(ctx: StepContext, pc: PairingContext, payments: P
   return payments.flatMap((p, n) => (askable(p) ? [n] : []));
 }
 
-/** P5 (k + group), P6, P7, P9 (pin conflict): terminal errors, no retry. */
-function terminalError(ctx: StepContext, payments: Payment[]): PairingOutcome {
-  // P5
-  if (payments.some((p) => p.kind === 'k' && isGroupPh(p.recipient))) {
-    return { kind: 'error', code: 'GROUP_AUTOPAY_UNSUPPORTED' };
-  }
+/** P6, P7, P9 (pin conflict): terminal errors, no retry. */
+export function terminalError(ctx: StepContext, payments: Payment[]): PairingOutcome {
   // P6 relative amounts: only i, a single recipient, used once.
   for (const item of ctx.req.amounts) {
     if (item.relative === null) continue;
@@ -415,7 +421,14 @@ function terminalError(ctx: StepContext, payments: Payment[]): PairingOutcome {
     // Keyed on the DB3 source: a content address the user just confirmed has a DB2 row through add_contact but
     // "stays flagged untrusted for this request only" (§9.2 step 7). Only a contact that existed before this request
     // (S6 sets source='contact') passes the §16.1 exception.
-    if (ctx.repos.db3.get(p.recipient)?.source === 'untrusted') return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
+    if (
+      isUntrustedRecipient(ctx, p.recipient) ||
+      (isGroupPh(p.recipient) &&
+        ctx.repos.db3
+          .listMembers(p.recipient as GroupPh)
+          .some((member) => isUntrustedRecipient(ctx, member.placeholder)))
+    )
+      return { kind: 'error', code: 'UNTRUSTED_IN_AUTOPAY' };
   }
   // P9 pinned recipient (DB3 chain_id of a single row, §8.8) or pinned amount with a different stated chain.
   for (const p of payments) {

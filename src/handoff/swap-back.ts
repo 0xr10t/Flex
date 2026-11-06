@@ -1,6 +1,6 @@
 // Implements: §8.14 step 1 `swap_back`: builds the §12.5 envelope from the internal plan with an allowlist of fields,
 // `amount_` → {value, base_units, decimals} from DB1, `address_` → EIP-55 address from DB3; §12.5 hand-off rules
-// (token_address, base_units with bigint, no trailing zeros, checksums, prefund = total_cap); §16.2 no names, ENS names,
+// (token_address, base_units with bigint, no trailing zeros, checksums, per-run fees and caps); §16.2 no names, ENS names,
 // prompt text, placeholders or summary in the envelope. Throws on any missing value: S12 reports HANDOFF_INVALID.
 
 import { getAddress } from 'viem';

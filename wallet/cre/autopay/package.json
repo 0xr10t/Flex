@@ -5,7 +5,8 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pretypecheck": "npm --prefix ../../../packages/protocol run build"
   },
   "dependencies": {
     "@flex/protocol": "file:../../../packages/protocol",

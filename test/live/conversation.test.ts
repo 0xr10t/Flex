@@ -92,26 +92,22 @@ describe('real-model conversational replies', () => {
       ]);
       expect(h.exec.submissions).toHaveLength(0);
       expect((await h.confirm(summary, 'yes')).body.state).toBe('done');
-      expect(h.envelope.intents).toHaveLength(1);
-      const intent = h.envelope.intents[0]!;
-      expect(intent).toMatchObject({
-        intent_id: 'k',
-        recipient: RIYA,
-        token: 'USDC',
-        amount_per_payment: { value: '10' },
-        schedule: {
-          frequency: 'weekly',
-          interval: 1,
-          days_of_week: ['MON', 'THU'],
-          start_date: '2026-11-05',
-          time_of_day: '10:00',
-          timezone: 'Asia/Kolkata',
-          end: { type: 'on_date', date: '2026-11-29' },
-        },
-        limits: { total_cap: { value: '60' } },
-      });
-      if (intent.intent_id !== 'k') throw new Error('Expected an autopay');
-      expect(intent.schedule.start_at * 1000).toBe(Date.parse('2026-11-09T04:30:00Z'));
+      expect(h.envelope.version).toBe('2');
+      expect(h.envelope.intents).toHaveLength(2);
+      for (const [index, intent] of h.envelope.intents.entries()) {
+        expect(intent).toMatchObject({
+          intent_id: 'k',
+          token: 'USDC',
+          recipients: [{ recipient: RIYA, amount: { value: '10' } }],
+          fee: { amount: { value: '0.05' } },
+          schedule: { interval_seconds: 604800, max_runs: 3, late_window_seconds: 3600 },
+          limits: { max_per_run: { value: '10.05' }, max_total: { value: '30.15' } },
+        });
+        if (intent.intent_id !== 'k') throw new Error('Expected an autopay leg');
+        expect(intent.schedule.start_at * 1000).toBe(
+          Date.parse(index === 0 ? '2026-11-09T04:30:00Z' : '2026-11-12T04:30:00Z'),
+        );
+      }
       expect(h.repos.db2.findByNameKey('yash')).toEqual([]);
     });
   });

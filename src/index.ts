@@ -32,6 +32,8 @@ import { createEnsClient } from './recipients/ens-client.js';
 import { createSubnameSource } from './recipients/subnames.js';
 import { createExecutionClient } from './handoff/execution-client.js';
 import { registry } from './pipeline/registry.js';
+import { HistoryCache } from './history/cache.js';
+import { createBlockscoutSource } from './history/blockscout.js';
 
 /** Factories owned by lanes B, C and D (wired by the Orchestrator in Phase 2, see `productionFactories`). */
 export interface LaneFactories {
@@ -91,10 +93,21 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
   const rpc = factories.createRpc(config);
   // Privacy fix 8: balances are read on a jittered timer from here on, not when a message arrives.
   const refresher = startBalanceRefresher({ rpc, repos, config, log });
+  const history = config.history?.enabled
+    ? new HistoryCache({
+        address: config.wallet.address,
+        chains: () =>
+          repos.db5.getAll().allowed_chain_ids.filter((id) => config.chains.some((chain) => chain.chain_id === id)),
+        source: createBlockscoutSource(config),
+        log,
+      })
+    : undefined;
+  history?.start();
   const app = createApp({
     repos,
     llm,
     rpc,
+    history,
     ens: factories.createEns(config),
     subnames: factories.createSubnames(config),
     exec: factories.createExecution(config, tokens.outbound),
@@ -118,6 +131,7 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
     ollama,
     async close() {
       refresher.stop();
+      history?.stop();
       await app.close();
       db.close();
       log.close();

@@ -1,20 +1,3 @@
 {
-  "calls": [
-    {
-      "name": "amounts",
-      "match": "what's my balance",
-      "output": {
-        "amounts": []
-      }
-    },
-    {
-      "name": "request_type",
-      "match": "balance",
-      "output": {
-        "request_type": "balance",
-        "actions": [],
-        "also_balance": false
-      }
-    }
-  ]
+  "calls": []
 }

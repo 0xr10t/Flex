@@ -1,4 +1,4 @@
-// Implements: §7.1 DB6 spend log (counts_toward_limit = 1 exactly for payment, bridge_buffer, autopay_payment),
+// Implements: §7.1 DB6 spend log (counts_toward_limit = 1 for payments, bridge buffers and execution fees),
 // §10.1 / I-10 pending rows of the last 10 minutes, §11.3 V-15 / I-38 spent today (pending by created_at,
 // executed by executed_at, local calendar date in the session timezone), §14.3 intent_result updates.
 // Owner: Lane A.
@@ -87,7 +87,7 @@ export function createDb6(db: Database): Db6SpendLog {
   const insertManyTx = db.transaction((rows: Db6Insert[]) => {
     for (const r of rows) {
       if (typeof r.amount !== 'string') throw new Error('db6: amount must be a decimal string');
-      // §7.1: counts_toward_limit = 1 for kind IN ('payment','bridge_buffer','autopay_payment'), else 0.
+      // Spending and execution fees count toward policy limits; self-transfers and historical prefunds do not.
       if (r.counts_toward_limit !== COUNTING_KINDS.has(r.kind)) {
         throw new Error('db6: counts_toward_limit does not match kind');
       }

@@ -5,70 +5,160 @@
   "additionalProperties": false,
   "required": ["version", "request_id", "wallet_address", "created_at", "intents"],
   "properties": {
-    "version": { "const": "2" },
-    "request_id": { "type": "string", "pattern": "^req_[0-9a-f]{12}$" },
-    "wallet_address": { "$ref": "#/$defs/address" },
-    "created_at": { "type": "string", "format": "date-time" },
+    "version": {
+      "const": "2",
+      "description": "Wire contract version; separate from the mapped execution representation version."
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^req_[0-9a-f]{12}$",
+      "description": "Request identifier and HTTP Idempotency-Key. Retries reuse the identical envelope."
+    },
+    "wallet_address": {
+      "$ref": "#/$defs/address",
+      "description": "Account to execute from; must match the wallet receiving this request."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 creation time; stable across retries."
+    },
     "intents": {
       "type": "array",
       "minItems": 1,
       "maxItems": 16,
       "items": {
         "oneOf": [
-          { "$ref": "#/$defs/payment_i" },
-          { "$ref": "#/$defs/bridge_j" },
-          { "$ref": "#/$defs/autopay_k" },
-          { "$ref": "#/$defs/cancel_l" }
+          {
+            "$ref": "#/$defs/payment_i"
+          },
+          {
+            "$ref": "#/$defs/bridge_j"
+          },
+          {
+            "$ref": "#/$defs/autopay_k"
+          },
+          {
+            "$ref": "#/$defs/cancel_l"
+          }
         ]
-      }
+      },
+      "description": "Ordered, contiguous zero-based steps; at most 16 steps and 3 bridges."
     }
   },
   "$defs": {
-    "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
-    "chainId": { "enum": [11155111, 84532, 421614] },
-    "token": { "enum": ["USDC", "ETH"] },
-    "tokenAddress": { "oneOf": [{ "$ref": "#/$defs/address" }, { "type": "null" }] },
-    "step": { "type": "integer", "minimum": 0 },
-    "stepList": { "type": "array", "items": { "$ref": "#/$defs/step" }, "uniqueItems": true },
-    "uint": { "type": "integer", "minimum": 1 },
-    "unixTime": { "type": "integer", "minimum": 1700000000, "maximum": 4102444800 },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "chainId": {
+      "enum": [11155111, 84532, 421614]
+    },
+    "token": {
+      "enum": ["USDC", "ETH"]
+    },
+    "tokenAddress": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/address"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Registered chain-specific USDC address, or null for native ETH."
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stepList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "uniqueItems": true
+    },
+    "uint": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unixTime": {
+      "type": "integer",
+      "minimum": 1700000000,
+      "maximum": 4102444800
+    },
     "amount": {
       "type": "object",
       "additionalProperties": false,
       "required": ["value", "base_units", "decimals"],
       "properties": {
-        "value": { "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$" },
-        "base_units": { "type": "string", "pattern": "^[1-9][0-9]*$" },
-        "decimals": { "enum": [6, 18] }
-      }
+        "value": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$",
+          "description": "Canonical decimal string without exponent notation or trailing decimal zeroes."
+        },
+        "base_units": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "description": "Positive integer string equal to value times 10^decimals."
+        },
+        "decimals": {
+          "enum": [6, 18],
+          "description": "6 for USDC, 18 for native ETH."
+        }
+      },
+      "description": "Positive exact token amount; value and base_units must agree at the declared precision."
     },
     "payee": {
       "type": "object",
       "additionalProperties": false,
       "required": ["recipient", "amount"],
-      "properties": { "recipient": { "$ref": "#/$defs/address" }, "amount": { "$ref": "#/$defs/amount" } }
+      "properties": {
+        "recipient": {
+          "$ref": "#/$defs/address"
+        },
+        "amount": {
+          "$ref": "#/$defs/amount"
+        }
+      }
     },
-
     "payment_i": {
       "type": "object",
       "additionalProperties": false,
       "required": ["intent_id", "step", "depends_on", "token", "token_address", "chain_id", "recipients"],
       "properties": {
-        "intent_id": { "const": "i" },
-        "step": { "$ref": "#/$defs/step" },
-        "depends_on": { "$ref": "#/$defs/stepList" },
-        "token": { "$ref": "#/$defs/token" },
-        "token_address": { "$ref": "#/$defs/tokenAddress" },
-        "chain_id": { "$ref": "#/$defs/chainId" },
+        "intent_id": {
+          "const": "i"
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        },
+        "depends_on": {
+          "$ref": "#/$defs/stepList",
+          "description": "Earlier bridge steps funding this payment; must agree with bridge funds_steps."
+        },
+        "token": {
+          "$ref": "#/$defs/token"
+        },
+        "token_address": {
+          "$ref": "#/$defs/tokenAddress"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/chainId"
+        },
         "recipients": {
           "type": "array",
           "minItems": 1,
           "maxItems": 100,
-          "items": { "$ref": "#/$defs/payee" }
+          "items": {
+            "$ref": "#/$defs/payee"
+          },
+          "description": "Distinct payees and their per-run amounts, excluding any operator fee."
         }
-      }
+      },
+      "description": "Immediate atomic payment to 1\u2013100 distinct recipients on one chain."
     },
-
     "bridge_j": {
       "type": "object",
       "additionalProperties": false,
@@ -86,33 +176,75 @@
         "funds_steps"
       ],
       "properties": {
-        "intent_id": { "const": "j" },
-        "step": { "$ref": "#/$defs/step" },
-        "token": { "const": "USDC" },
-        "source_token_address": { "$ref": "#/$defs/address" },
-        "dest_token_address": { "$ref": "#/$defs/address" },
-        "source_chain_id": { "$ref": "#/$defs/chainId" },
-        "dest_chain_id": { "$ref": "#/$defs/chainId" },
-        "amount": { "$ref": "#/$defs/amount" },
-        "receiver": { "const": "self" },
-        "fee_max_eth": { "type": "string", "pattern": "^0(\\.[0-9]{1,18})?$" },
-        "funds_steps": { "$ref": "#/$defs/stepList" }
-      }
+        "intent_id": {
+          "const": "j"
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        },
+        "token": {
+          "const": "USDC"
+        },
+        "source_token_address": {
+          "$ref": "#/$defs/address"
+        },
+        "dest_token_address": {
+          "$ref": "#/$defs/address"
+        },
+        "source_chain_id": {
+          "$ref": "#/$defs/chainId"
+        },
+        "dest_chain_id": {
+          "$ref": "#/$defs/chainId"
+        },
+        "amount": {
+          "$ref": "#/$defs/amount"
+        },
+        "receiver": {
+          "const": "self"
+        },
+        "fee_max_eth": {
+          "type": "string",
+          "pattern": "^0(\\.[0-9]{1,18})?$",
+          "description": "Source-chain native ETH fee cap, greater than zero and at most 0.01; separate from the USDC transfer amount."
+        },
+        "funds_steps": {
+          "$ref": "#/$defs/stepList",
+          "description": "Later payment/autopay steps funded by this bridge; reciprocal with depends_on."
+        }
+      },
+      "description": "USDC CCIP bridge between the same wallet on two supported testnets."
     },
-
     "schedule": {
       "type": "object",
       "additionalProperties": false,
       "required": ["start_at", "interval_seconds", "max_runs", "late_window_seconds", "end_at"],
       "properties": {
-        "start_at": { "$ref": "#/$defs/unixTime" },
-        "interval_seconds": { "type": "integer", "minimum": 60 },
-        "max_runs": { "$ref": "#/$defs/uint" },
-        "late_window_seconds": { "type": "integer", "minimum": 60 },
-        "end_at": { "$ref": "#/$defs/unixTime" }
-      }
+        "start_at": {
+          "$ref": "#/$defs/unixTime",
+          "description": "Unix seconds of the first slot."
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Seconds between slots; at least 60. Local time can shift at daylight-saving changes."
+        },
+        "max_runs": {
+          "$ref": "#/$defs/uint",
+          "description": "Number of slots, at most 520; interval_seconds multiplied by max_runs cannot exceed 52 weeks."
+        },
+        "late_window_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Seconds a slot stays payable, between 60 and interval_seconds inclusive."
+        },
+        "end_at": {
+          "$ref": "#/$defs/unixTime",
+          "description": "Unix seconds at or after the last slot end, including its late window."
+        }
+      },
+      "description": "Fixed UTC slots, with missed slots skipped. Not a calendar or cron schedule."
     },
-
     "autopay_k": {
       "type": "object",
       "additionalProperties": false,
@@ -131,50 +263,103 @@
         "executor"
       ],
       "properties": {
-        "intent_id": { "const": "k" },
-        "step": { "$ref": "#/$defs/step" },
-        "depends_on": { "$ref": "#/$defs/stepList" },
-        "autopay_id": { "type": "string", "pattern": "^ap_[0-9a-f]{12}$" },
-        "token": { "$ref": "#/$defs/token" },
-        "token_address": { "$ref": "#/$defs/tokenAddress" },
-        "chain_id": { "$ref": "#/$defs/chainId" },
+        "intent_id": {
+          "const": "k"
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        },
+        "depends_on": {
+          "$ref": "#/$defs/stepList",
+          "description": "Earlier bridge steps funding this payment; must agree with bridge funds_steps."
+        },
+        "autopay_id": {
+          "type": "string",
+          "pattern": "^ap_[0-9a-f]{12}$",
+          "description": "Agent registry ID, distinct from the on-chain plan_id returned by the wallet."
+        },
+        "token": {
+          "$ref": "#/$defs/token"
+        },
+        "token_address": {
+          "$ref": "#/$defs/tokenAddress"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/chainId"
+        },
         "recipients": {
           "type": "array",
           "minItems": 1,
           "maxItems": 50,
-          "items": { "$ref": "#/$defs/payee" }
+          "items": {
+            "$ref": "#/$defs/payee"
+          },
+          "description": "Distinct payees and their per-run amounts, excluding any operator fee."
         },
         "fee": {
           "type": "object",
           "additionalProperties": false,
           "required": ["to", "amount"],
-          "properties": { "to": { "$ref": "#/$defs/address" }, "amount": { "$ref": "#/$defs/amount" } }
+          "properties": {
+            "to": {
+              "$ref": "#/$defs/address"
+            },
+            "amount": {
+              "$ref": "#/$defs/amount"
+            }
+          },
+          "description": "Operator fee per successful run, in the same asset. Collector must differ from every payee."
         },
-        "schedule": { "$ref": "#/$defs/schedule" },
+        "schedule": {
+          "$ref": "#/$defs/schedule"
+        },
         "limits": {
           "type": "object",
           "additionalProperties": false,
           "required": ["max_per_run", "max_total"],
           "properties": {
-            "max_per_run": { "$ref": "#/$defs/amount" },
-            "max_total": { "$ref": "#/$defs/amount" }
+            "max_per_run": {
+              "$ref": "#/$defs/amount",
+              "description": "Cap covering all recipients plus the operator fee for one run."
+            },
+            "max_total": {
+              "$ref": "#/$defs/amount",
+              "description": "Cap covering at least all recipients plus fee multiplied by max_runs. Agent emits the exact total."
+            }
           }
         },
-        "executor": { "const": "chainlink-cre" }
-      }
+        "executor": {
+          "const": "chainlink-cre"
+        }
+      },
+      "description": "Register a recurring atomic payment to 1\u201350 recipients. No prefund transfer."
     },
-
     "cancel_l": {
       "type": "object",
       "additionalProperties": false,
       "required": ["intent_id", "step", "autopay_id", "chain_id", "plan_id"],
       "properties": {
-        "intent_id": { "const": "l" },
-        "step": { "$ref": "#/$defs/step" },
-        "autopay_id": { "type": "string", "pattern": "^ap_[0-9a-f]{12}$" },
-        "chain_id": { "$ref": "#/$defs/chainId" },
-        "plan_id": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
-      }
+        "intent_id": {
+          "const": "l"
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        },
+        "autopay_id": {
+          "type": "string",
+          "pattern": "^ap_[0-9a-f]{12}$"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/chainId"
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$",
+          "description": "32-byte on-chain plan ID returned by the wallet on successful autopay registration."
+        }
+      },
+      "description": "Cancel a registered on-chain plan; no refund transfer."
     }
-  }
+  },
+  "description": "Canonical agent-to-wallet v2 handoff. Both sides must also run checkEnvelope for semantic and cross-step validation."
 }

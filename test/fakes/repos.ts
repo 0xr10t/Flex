@@ -276,7 +276,14 @@ export function createFakeRepos(seed?: { limits?: Limits }): FakeRepos {
     get: (id) => clone(t.db7.get(id)),
     findByRecipient: (a, status) =>
       [...t.db7.values()]
-        .filter((r) => r.recipient_address === a && (status === undefined || r.status === status))
+        .filter(
+          (r) =>
+            (r.recipient_address.toLowerCase() === a.toLowerCase() ||
+              (JSON.parse(r.recipients_json ?? '[]') as Array<{ recipient: string }>).some(
+                (p) => p.recipient.toLowerCase() === a.toLowerCase(),
+              )) &&
+            (status === undefined || r.status === status),
+        )
         .map(clone),
     listByRequest: (rid) => [...t.db7.values()].filter((r) => r.request_id === rid).map(clone),
     update(id, patch, now) {

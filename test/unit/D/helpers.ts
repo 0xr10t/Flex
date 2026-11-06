@@ -564,7 +564,7 @@ export function db6Row(p: Partial<Db6Insert> & Pick<Db6Insert, 'kind' | 'amount'
   return {
     request_id: 'req_0000000000c0',
     step: 0,
-    counts_toward_limit: p.kind === 'payment' || p.kind === 'bridge_buffer' || p.kind === 'autopay_payment',
+    counts_toward_limit: ['payment', 'bridge_buffer', 'bridge_fee', 'autopay_payment', 'autopay_fee'].includes(p.kind),
     chain_id: BASE,
     token: 'USDC',
     recipient_address: null,

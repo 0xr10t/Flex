@@ -19,7 +19,7 @@ const raw = execFileSync(
 );
 const schema = JSON.parse(raw);
 schema.$schema = 'https://json-schema.org/draft/2020-12/schema';
-schema.$id = 'agent-layer/internal-plan/v1';
+schema.$id = 'agent-layer/internal-plan/v2';
 const defs = schema.definitions;
 defs.AmountPh = { ...defs.AmountPh, pattern: '^amount_[0-9a-f]{8}$' };
 defs.AddressPh = { ...defs.AddressPh, pattern: '^address_[0-9a-f]{8}$' };

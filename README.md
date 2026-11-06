@@ -57,6 +57,25 @@ To set up the agent, the wallet and the CRE workflow for the testnets from one f
 it in, build both packages, and run `node scripts/setup-testnet.mjs`. It writes the three configs and the tokens to
 `.local/`.
 
+### Wallet information and the shared contract
+
+Common address and balance questions bypass Ollama and RPC, even with chat disabled or the model offline. Each
+session captures its public wallet address when it opens. Balance replies read the background-updated DB4 cache
+and current local spending reservations. Asking while a payment is open preserves its question, attempt count and
+confirmation. Cold or unreadable balances are unavailable, never zero; incomplete totals are labelled subtotals.
+Cache timestamps stay in internal balance context, outside the answer text.
+
+Weekly received-payment questions and explicit identifier explanations also bypass Ollama. Incoming history uses
+an opt-in Blockscout source and a separate background cache; unknown identifiers are inspected locally without a
+lookup or storage. See [received payments and identifiers](docs/agent/README.md) for configuration and limitations.
+With chat enabled, other contextual wallet questions select verified facts from the same local cache. Mixed
+display/payment requests still use the payment pipeline. A wallet-information reply cannot approve a payment.
+
+The current agent–wallet interface is [the shared v2 protocol](packages/protocol/README.md), including recipient
+arrays, fixed UTC schedules, execution fees and cancellation by plan ID. It supports ENS group autopays with up to
+50 selected members; confirmation fixes the recipient list and amounts. Offline contract tests cover this flow;
+live results from before the migration do not validate it. The v1 specification below remains historical context.
+
 ### CRE autopay workflow (local build and simulate)
 
 The local runner reads the root `.env` and needs an authenticated CRE CLI (`cre login`). Set `CRE_CLI_PATH` to the

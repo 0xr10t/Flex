@@ -1,6 +1,7 @@
 // Real agent pipeline, wallet HTTP intake, both SQLCipher stores and wallet report sender. No sockets or signing.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DateTime } from 'luxon';
+import { decodeFunctionData, erc20Abi, getAddress } from 'viem';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +11,10 @@ import { createExecutionClient } from '../../src/handoff/execution-client.js';
 import { buildApp } from '../../wallet/src/server/app.js';
 import { openDatabase, Store } from '../../wallet/src/store/store.js';
 import { ReportSender } from '../../wallet/src/runner/reports.js';
-import { ARB, BASE, Harness, REPORT_TOKEN, SEPOLIA, WALLET, type Resp } from './harness.js';
+import { verifiedIntent } from '../../wallet/src/autopay/autopay-k.js';
+import { executionsOf } from '../../wallet/src/chain/redeem.v2.js';
+import { ARB, BASE, Harness, MIHIR, REPORT_TOKEN, SEPOLIA, WALLET, coinType, lines, type Resp } from './harness.js';
+import { envelopeDiff, summaryOk } from '../live/intent-oracle.js';
 import type { FixtureCall, FixtureFile } from '../fakes/llm.js';
 
 const NOW = '2026-11-05T17:30:00Z';
@@ -131,6 +135,102 @@ async function confirm(h: Harness, response: Resp): Promise<HandoffEnvelope> {
 }
 
 describe('shared agent ↔ wallet intent contract', () => {
+  it('confirms a selected group, preserves every payee in wallet execution, records runs once, and cancels through a non-primary member', async () => {
+    const group = fixture('k', { frequency: 'weekly', days_of_week: ['FRI'] });
+    group.calls[2] = call('spans', { spans: [{ text: 'team.eth', kind: 'group', role: 'payee' }] });
+    const { h, store, sender, accepted } = await connected({ calls: [...group.calls, ...fixture('l').calls] });
+    const alice = getAddress('0x0000000000000000000000000000000000001001');
+    const omitted = getAddress('0x0000000000000000000000000000000000001003');
+    h.subnames.children.set('team.eth', ['alice.team.eth', 'mihir.team.eth', 'omitted.team.eth']);
+    h.ens.set('alice.team.eth', coinType(BASE), alice);
+    h.ens.set('mihir.team.eth', coinType(BASE), MIHIR);
+    h.ens.set('omitted.team.eth', coinType(BASE), omitted);
+    const members = await h.say('Pay 10 usdc each to everyone in team.eth every Friday for 4 payments on Base');
+    expect(members.body.question?.code).toBe('Q_GROUP_MEMBERS');
+    expect(h.exec.submissions).toEqual([]);
+    const pending = await h.answer(members, { selectedLabels: ['alice.team.eth', 'mihir.team.eth'] });
+    expect(pending.body.summary?.text).toContain('one operator fee');
+    expect(pending.body.summary?.text).toContain('whole group plan');
+    expect(accepted).not.toHaveBeenCalled();
+    expect(store.storedHash(pending.body.request_id)).toBeNull();
+    // Membership is a snapshot, not an instruction for the wallet to resolve again at execution time.
+    h.subnames.children.set('team.eth', ['omitted.team.eth']);
+    h.ens.set('alice.team.eth', coinType(BASE), omitted);
+    const env = await confirm(h, pending);
+    expect(env.intents).toHaveLength(1);
+    const k = env.intents[0] as AutopayK;
+    expect(k.recipients.map((r) => r.recipient)).toEqual([alice, getAddress(MIHIR)]);
+    expect(k.limits).toMatchObject({ max_per_run: { value: '20.05' }, max_total: { value: '80.2' } });
+    expect(store.envelope(env.request_id)).toEqual(env);
+    expect(h.repos.db6.listByRequest(env.request_id)).toEqual([]);
+    const executions = executionsOf(verifiedIntent(env, k.step));
+    expect(executions).toHaveLength(3);
+    expect(executions.every((execution) => execution.target === k.token_address && execution.value === 0n)).toBe(true);
+    expect(executions.map((execution) => decodeFunctionData({ abi: erc20Abi, data: execution.callData }).args)).toEqual(
+      [
+        [alice, 10_000_000n],
+        [getAddress(MIHIR), 10_000_000n],
+        [getAddress(k.fee.to), 50_000n],
+      ],
+    );
+    store.finishStep(
+      env.request_id,
+      k.step,
+      {
+        status: 'executed',
+        tx_hash: TX,
+        executed_at: h.nowIso,
+        report: {
+          autopay: {
+            autopay_id: k.autopay_id,
+            plan_id: planId(k.step),
+            executor_address: EXECUTOR,
+            chain_id: BASE,
+            token: 'USDC',
+          },
+        },
+      },
+      h.nowIso,
+      h.clock.toMillis(),
+    );
+    await sender.kick();
+    const rows = h.repos.db7.findByRecipient(getAddress(MIHIR), 'active');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amount_per_payment: '20', fee: '0.05' });
+    expect(JSON.parse(rows[0]!.recipients_json!)).toEqual(k.recipients);
+    const report: AutopayPaymentReport = {
+      kind: 'autopay_payment',
+      request_id: env.request_id,
+      status: 'executed',
+      tx_hash: TX,
+      executed_at: h.nowIso,
+      autopay: {
+        autopay_id: k.autopay_id,
+        plan_id: planId(k.step),
+        executor_address: EXECUTOR,
+        chain_id: BASE,
+        token: 'USDC',
+        slot: 0,
+        status: 'active',
+        amount: '20',
+        fee: '0.05',
+      },
+    };
+    expect(await h.report({ ...report, autopay: { ...report.autopay, amount: '10' } })).toBe(400);
+    expect(await h.report(report)).toBe(204);
+    expect(await h.report(report)).toBe(204);
+    expect(h.repos.db6.listByRequest(env.request_id).map((r) => [r.kind, r.amount])).toEqual([
+      ['autopay_payment', '20'],
+      ['autopay_fee', '0.05'],
+    ]);
+    const stopping = await h.say('Stop paying Mihir');
+    expect(stopping.body.summary?.text).toContain('This cancels the whole plan for all its recipients');
+    const cancelled = await confirm(h, stopping);
+    expect(cancelled.intents).toEqual([
+      { intent_id: 'l', step: 0, autopay_id: k.autopay_id, chain_id: BASE, plan_id: planId(k.step) },
+    ]);
+  });
+
   it('hands off a real pipeline payment only after confirmation; retry is idempotent and altered content conflicts', async () => {
     const { h, store, accepted, client, app } = await connected(fixture('i'));
     const pending = await h.say('Send 10 usdc to Mihir on Base');
@@ -191,6 +291,19 @@ describe('shared agent ↔ wallet intent contract', () => {
     expect(pending.body.summary?.text).toContain('Money stays in your wallet');
     const envelope = await confirm(h, pending);
     const legs = envelope.intents as AutopayK[];
+    const expected = [
+      {
+        t: 'k',
+        tok: 'USDC',
+        amt: '10',
+        to: 'Mihir',
+        chain: 'base',
+        sched: { freq: 'weekly', interval: 1, days: ['MON', 'THU'], end: { type: 'after_count', count: 4 } },
+      },
+    ];
+    expect(summaryOk(lines(pending), expected, {})).toEqual({ ok: true, why: '' });
+    expect(envelopeDiff(envelope, expected, {}, h)).toEqual([]);
+    expect(envelopeDiff({ ...envelope, intents: legs.slice(0, 1) }, expected, {}, h).length).toBeGreaterThan(0);
     expect(legs).toHaveLength(2);
     expect(legs.map((leg) => leg.schedule)).toEqual([
       {
@@ -238,7 +351,11 @@ describe('shared agent ↔ wallet intent contract', () => {
     }
     await sender.kick();
     expect(store.allReports().every((r) => r.status === 'delivered')).toBe(true);
-    const cancel = await confirm(h, await h.say('Stop paying Mihir'));
+    const cancellation = await h.say('Stop paying Mihir');
+    expect(cancellation.body.summary?.text).toContain('every Mon on Base Sepolia');
+    expect(cancellation.body.summary?.text).toContain('every Thu on Base Sepolia');
+    expect(cancellation.body.summary?.text).not.toContain('every Mon and Thu');
+    const cancel = await confirm(h, cancellation);
     expect(cancel.intents).toEqual(
       legs.map((leg, step) => ({
         intent_id: 'l',
@@ -304,6 +421,11 @@ describe('shared agent ↔ wallet intent contract', () => {
     expect(await h.report({ ...first, autopay: { ...first.autopay, plan_id: planId(9) } })).toBe(404);
     expect(await h.report({ ...first, autopay: { ...first.autopay, slot: 2 } })).toBe(400);
     expect(await h.report({ ...first, request_id: 'req_000000000000' })).toBe(404);
+    expect(await h.report({ ...first, autopay: { ...first.autopay, fee: '0.5' } })).toBe(400);
+    expect(await h.report({ ...first, autopay: { ...first.autopay, executor_address: WALLET } })).toBe(404);
+    expect(await h.report({ ...first, autopay: { ...first.autopay, chain_id: ARB } })).toBe(404);
+    expect(await h.report({ ...first, autopay: { ...first.autopay, token: 'ETH' } })).toBe(404);
+    expect(await h.report({ ...first, tx_hash: `0x${'cd'.repeat(32)}` })).toBe(400);
     const rows = h.repos.db6.listByRequest(env.request_id);
     expect(rows.map((r) => [r.kind, r.amount])).toEqual([
       ['autopay_payment', '10'],
@@ -314,11 +436,13 @@ describe('shared agent ↔ wallet intent contract', () => {
   });
 
   it.each([
-    ['four_weeks', 2419200],
-    ['thirty_days', 2592000],
-  ] as const)('asks before interpreting monthly as %s', async (choice, interval) => {
-    const { h } = await connected(fixture('k', { frequency: 'monthly', day_of_month: 31 }));
-    const question = await h.say('Pay Mihir 10 usdc every month on the 31st for 3 payments on Base');
+    [1, 'four_weeks', 2419200],
+    [1, 'thirty_days', 2592000],
+    [2, 'four_weeks', 4838400],
+    [2, 'thirty_days', 5184000],
+  ] as const)('asks before interpreting every %i months as %s', async (months, choice, interval) => {
+    const { h } = await connected(fixture('k', { frequency: 'monthly', interval: months, day_of_month: 31 }));
+    const question = await h.say(`Pay Mihir 10 usdc every ${months} months on the 31st for 3 payments on Base`);
     expect(question.body.question?.code).toBe('Q_AUTOPAY_MONTHLY');
     expect(h.exec.submissions).toEqual([]);
     const pending = await h.answer(question, { chip: choice });

@@ -731,7 +731,7 @@ describe('S9 cancel `l` (§10.7)', () => {
     return { ctx, mi, payment: pay(ctx, 'l', null, mi) };
   };
 
-  it('C-206 C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id, delegate_address from DB7; refund_remaining true', async () => {
+  it('C-206 C-242 C-245 §10.7 one active autopay → l with autopay_id, chain_id and on-chain plan_id from DB7', async () => {
     const { ctx, mi, payment } = lSetup();
     addAutopay(ctx, { autopay_id: 'ap_0000000000f7', chain_id: ARB, delegate: ALICE_CS });
     const plan = await runOk(ctx, [payment]);

@@ -96,6 +96,8 @@ export interface Config {
   /** Optional for payment-only installations. Required before an autopay can be planned. */
   autopay?: { late_window_seconds: number; fee: Record<Token, DecimalString>; fee_collector: Address };
   bridge?: { ccip_fee_max_eth: DecimalString };
+  /** Opt-in background account history. api_url is a trusted Blockscout /api/v2 base, never user message text. */
+  history?: { enabled: boolean; sources: Array<{ chain_id: ChainId; api_url: string }> };
   defaults: { timezone: string; autopay_time_of_day: string };
 }
 
@@ -477,7 +479,6 @@ export type ErrorCode =
   | 'UNSUPPORTED_REQUEST'
   | 'SPLIT_UNSUPPORTED'
   | 'RELATIVE_AMOUNT_NOT_ALLOWED'
-  | 'GROUP_AUTOPAY_UNSUPPORTED'
   | 'UNTRUSTED_IN_AUTOPAY'
   | 'CHAIN_CONFLICT'
   | 'PAIRING_FAILED'
@@ -487,6 +488,7 @@ export type ErrorCode =
   | 'GROUP_EMPTY'
   | 'NO_ACTIVE_AUTOPAY'
   | 'AUTOPAY_NOT_READY'
+  | 'LEGACY_AUTOPAY_UNSUPPORTED'
   | 'AUTOPAY_NOT_CONFIGURED'
   | 'ETH_NOT_BRIDGEABLE'
   | 'LIMIT_GROUP_SIZE'
@@ -521,7 +523,6 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'UNSUPPORTED_REQUEST',
   'SPLIT_UNSUPPORTED',
   'RELATIVE_AMOUNT_NOT_ALLOWED',
-  'GROUP_AUTOPAY_UNSUPPORTED',
   'UNTRUSTED_IN_AUTOPAY',
   'CHAIN_CONFLICT',
   'PAIRING_FAILED',
@@ -531,6 +532,7 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'GROUP_EMPTY',
   'NO_ACTIVE_AUTOPAY',
   'AUTOPAY_NOT_READY',
+  'LEGACY_AUTOPAY_UNSUPPORTED',
   'AUTOPAY_NOT_CONFIGURED',
   'ETH_NOT_BRIDGEABLE',
   'LIMIT_GROUP_SIZE',
@@ -670,6 +672,8 @@ export interface AgentResponse {
   request_id: string;
   state: ResponseState;
   messages: Array<{ type: 'text'; text: string }>;
+  /** Presentation hint for replies computed from local data, without a model call. */
+  reply_source?: 'local';
   question?: Question;
   summary?: Summary;
   error?: { code: ErrorCode; message: string };

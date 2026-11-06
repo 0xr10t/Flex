@@ -72,3 +72,14 @@ export function unsupported(ctx: StepContext, step: string, rule_id: string): St
 export function isGroupPh(ph: string): boolean {
   return ph.startsWith('group_');
 }
+
+/** ENS resolution must not erase the provenance of a group supplied by untrusted content. */
+export function isUntrustedRecipient(ctx: StepContext, ph: RecipientPh): boolean {
+  const row = ctx.repos.db3.get(ph);
+  if (row?.source === 'untrusted') return true;
+  const group = row?.group_placeholder ?? (isGroupPh(ph) ? ph : null);
+  if (group === null) return false;
+  if (ctx.repos.db3.get(group)?.source === 'untrusted') return true;
+  const ref = ctx.req.recipients.find((r) => r.placeholder === group);
+  return ref !== undefined && ctx.req.spans[ref.span_index]?.source === 'untrusted';
+}

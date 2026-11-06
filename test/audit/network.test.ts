@@ -126,6 +126,7 @@ describe('§16.4 outbound network calls (static inventory)', () => {
     expect(text('recipients/ens-client.ts')).toMatch(/proxy: config\.network\.socks_proxy, isolation: 'ens'/);
     expect(text('recipients/subnames.ts')).toMatch(/proxy: config\.network\.socks_proxy, isolation: 'indexer'/);
     expect(text('quarantine/fetch.ts')).toMatch(/proxyAgent\(proxy, 'links'\)/);
+    expect(text('history/blockscout.ts')).toMatch(/proxy: config\.network\.socks_proxy,\s*isolation: 'history'/);
   });
 
   it('privacy fix 7: every call of viem http() in src passes a fetchFn, and only isolated-fetch.ts calls it', () => {
