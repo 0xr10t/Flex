@@ -23,7 +23,6 @@ import {
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
 import type {
   AddressPh,
-  AgentRequest,
   Answer,
   Chip,
   Question,
@@ -42,12 +41,6 @@ interface LlmSpan {
   kind: SpanKind;
   role: 'payee' | 'mentioned';
 }
-
-/**
- * CCR B-2 (same field as Lane C's CCR C-1): S5 hands the `mentioned` spans (offsets in masked_text_s3) to S7, which
- * replaces them by `[person]` (§8.6 rule 6, §8.8). Local stub until the contract carries the field.
- */
-export type WithMentioned = AgentRequest & { mentioned_spans?: Span[] };
 
 interface FollowupChoice {
   placeholder: AddressPh;
@@ -195,7 +188,7 @@ function noPayeeQuestion(st: S5State): StepResult {
 }
 
 async function s5Step(ctx: StepContext): Promise<StepResult> {
-  const req = ctx.req as WithMentioned;
+  const req = ctx.req;
   const st = s5State(ctx);
   if (st.done) return { kind: 'continue' };
 
