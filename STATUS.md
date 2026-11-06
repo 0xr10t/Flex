@@ -91,6 +91,8 @@ A-60: 0 hits for registered addresses, names, ENS names, amounts and prompt frag
 
 ## Standing decisions and gotchas
 
+- 2026-11-06, human decision: the post-answers deep review swarm runs on **Opus** reviewers (an exception to the Sonnet-reviews rule, for this review only). The live-model evaluation runs against the local Ollama `qwen2.5:7b-instruct` (installed 2026-11-06).
+
 - Orchestrator-owned (change only through the Orchestrator): `src/contracts/`, `src/schemas/`, `src/db/schema.sql`, `src/pipeline/registry.ts`, `src/llm/prompt-builder/index.ts`, `test/fakes/`, root config. CCRs B-1, B-2, C-1 (approved) and D-1 (rejected) are logged in the CCR table below; their files were removed after Phase 2.
 
 - Model rule, set by the human. Anyone who writes or changes production code under `src/**` (the four lane agents and
