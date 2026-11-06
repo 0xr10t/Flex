@@ -6,11 +6,23 @@
 // payee; previous single payees of the most recent history entry: one → used, several → Q_FOLLOWUP_WHO, none →
 // Q_NO_PAYEE; the chosen payee keeps its earlier placeholder in `followup_placeholder` for S6/S7). §8.5 rule 3
 // SPLIT_UNSUPPORTED (decided here, after S5). §16.1 provenance (document payees only when the typed text has none),
-// §16.2 / D-29 (mentioned names never stored or looked up). Re-entrant through req.step_state.s5.
+// §16.2 / D-29 (mentioned names never stored or looked up). SQ-O-01 / F-12 (human, 2026-11-06): a name tagged both
+// payee and mentioned → Q_NAME_ROLE "Should I pay {name}?"; "Yes, pay {name}" keeps it a payee (its mentioned
+// occurrences go, S7 sweeps them to the payee placeholder), "No, they're only mentioned" turns its payee spans into
+// mentioned ones (all become [person]; with no payee left the normal no-payee flow follows). One name is one contact
+// (D-11), so the answer covers every occurrence. Re-entrant through req.step_state.s5.
 // Owner: Lane B.
 
 import { normalize } from 'viem/ens';
-import { QUESTION_TEXT, buildQuestion, joinList, matchChip } from '../contracts/catalog.js';
+import {
+  NAME_ROLE,
+  NAME_ROLE_CHIP,
+  NAME_ROLE_YES_NO,
+  QUESTION_TEXT,
+  buildQuestion,
+  joinList,
+  matchChip,
+} from '../contracts/catalog.js';
 import { LlmFailed } from '../contracts/llm.js';
 import { shortAddress } from '../contracts/money.js';
 import {
@@ -26,6 +38,7 @@ import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
 import { ADDRESS_FULL_RE, PLACEHOLDER_TOKEN_RE } from '../lexical/patterns.js';
 import { lastHistoryPayments, qid } from '../lexical/step-util.js';
 import { reaskPending } from '../amounts/verify.js';
+import { nameKey } from '../lexical/sweep.js';
 import { clauseIndexAt, findUnused, overlaps, type Range } from '../lexical/text.js';
 import { maskedToTyped, type S3State } from './s3-amounts.js';
 
@@ -42,7 +55,12 @@ interface FollowupChoice {
 
 export interface S5State {
   tagged: boolean;
-  pending: { code: 'Q_FOLLOWUP_WHO' | 'Q_NO_PAYEE'; base_text: string; choices: FollowupChoice[] } | null;
+  /** LLM #3 spans after rules 1–5, kept while Q_NAME_ROLE questions settle their roles (F-12). */
+  raw?: Tagged[] | null;
+  pending:
+    | { code: 'Q_FOLLOWUP_WHO' | 'Q_NO_PAYEE'; base_text: string; choices: FollowupChoice[] }
+    | { code: 'Q_NAME_ROLE'; base_text: string; name_key: string }
+    | null;
   done: boolean;
 }
 
@@ -142,6 +160,27 @@ function filterSpans(
   return result.sort((a, b) => a.range.start - b.range.start);
 }
 
+/** F-12: the first payee span (in text order) whose name is also tagged `mentioned`, else null. */
+function roleConflict(tagged: readonly Tagged[]): Tagged | null {
+  const mentioned = new Set(tagged.filter((t) => t.role === 'mentioned').map((t) => nameKey(t.text)));
+  return tagged.find((t) => t.role === 'payee' && mentioned.has(nameKey(t.text))) ?? null;
+}
+
+function nameRoleQuestion(st: S5State, payee: Tagged): StepResult {
+  const name = payee.text;
+  const base_text = NAME_ROLE.text({ name });
+  st.pending = { code: 'Q_NAME_ROLE', base_text, name_key: nameKey(name) };
+  return {
+    kind: 'question',
+    question: buildQuestion({
+      question_id: qid(),
+      code: 'Q_NAME_ROLE',
+      text: base_text,
+      chips: NAME_ROLE.chips({ name }),
+    }),
+  };
+}
+
 /** §17.2 step 3: single (non-group) recipients of the most recent history entry, in order, deduplicated. */
 function previousPayees(ctx: StepContext): FollowupChoice[] {
   const out: FollowupChoice[] = [];
@@ -181,34 +220,41 @@ async function s5Step(ctx: StepContext): Promise<StepResult> {
   if (st.done) return { kind: 'continue' };
 
   if (!st.tagged) {
-    const masked = req.masked_text_s3 ?? req.typed_text;
-    // CANDIDATES: every address, ENS and group candidate from S2, text as in the masked text.
-    const candidates: Array<{ text: string; kind: SpanKind }> = [];
-    const seen = new Set<string>();
-    const add = (text: string, kind: SpanKind): void => {
-      if (seen.has(text) || !masked.includes(text)) return;
-      seen.add(text);
-      candidates.push({ text, kind });
-    };
-    const all = [
-      ...req.scan.addresses.map((s) => ({ s, kind: 'address' as const, text: s.text })),
-      ...req.scan.ens.map((s) => ({ s, kind: 'ens' as const, text: s.text })),
-      ...req.scan.groups.map((s) => ({ s, kind: 'group' as const, text: s.parent })),
-    ].sort((a, b) => a.s.start - b.s.start);
-    for (const c of all) add(c.text, c.kind);
+    if (st.raw == null) {
+      const masked = req.masked_text_s3 ?? req.typed_text;
+      // CANDIDATES: every address, ENS and group candidate from S2, text as in the masked text.
+      const candidates: Array<{ text: string; kind: SpanKind }> = [];
+      const seen = new Set<string>();
+      const add = (text: string, kind: SpanKind): void => {
+        if (seen.has(text) || !masked.includes(text)) return;
+        seen.add(text);
+        candidates.push({ text, kind });
+      };
+      const all = [
+        ...req.scan.addresses.map((s) => ({ s, kind: 'address' as const, text: s.text })),
+        ...req.scan.ens.map((s) => ({ s, kind: 'ens' as const, text: s.text })),
+        ...req.scan.groups.map((s) => ({ s, kind: 'group' as const, text: s.parent })),
+      ].sort((a, b) => a.s.start - b.s.start);
+      for (const c of all) add(c.text, c.kind);
 
-    const p = buildSpansPrompt(
-      masked,
-      candidates.map((c) => c.text),
-    );
-    let out: { spans: LlmSpan[] };
-    try {
-      out = await ctx.llm.call<{ spans: LlmSpan[] }>({ name: 'spans', ...p });
-    } catch (e) {
-      if (e instanceof LlmFailed) return { kind: 'error', code: 'MODEL_FAILED' };
-      throw e;
+      const p = buildSpansPrompt(
+        masked,
+        candidates.map((c) => c.text),
+      );
+      let out: { spans: LlmSpan[] };
+      try {
+        out = await ctx.llm.call<{ spans: LlmSpan[] }>({ name: 'spans', ...p });
+      } catch (e) {
+        if (e instanceof LlmFailed) return { kind: 'error', code: 'MODEL_FAILED' };
+        throw e;
+      }
+      st.raw = filterSpans(ctx, masked, out.spans, candidates);
     }
-    const tagged = filterSpans(ctx, masked, out.spans, candidates);
+    // F-12: one name tagged with both roles → ask, one name at a time.
+    const conflict = roleConflict(st.raw);
+    if (conflict !== null) return nameRoleQuestion(st, conflict);
+    const tagged = st.raw;
+    st.raw = null;
     req.spans = tagged
       .filter((t) => t.role === 'payee')
       .map((t) => ({
@@ -297,7 +343,15 @@ const s5Answer: AnswerHandler = async (ctx: StepContext, q: Question, answer: An
   const pending = st.pending;
   if (!pending || pending.code !== q.code) return { kind: 'error', code: 'INTERNAL_ERROR' };
   const again = (): StepResult => ({ kind: 'question', question: reaskPending(q, pending) });
-  if (pending.code === 'Q_FOLLOWUP_WHO') {
+  if (pending.code === 'Q_NAME_ROLE') {
+    const chip = matchChip(q, answer, NAME_ROLE_YES_NO);
+    if (chip === null || !st.raw) return again();
+    const same = (t: Tagged): boolean => nameKey(t.text) === pending.name_key;
+    st.raw =
+      chip.id === NAME_ROLE_CHIP.PAY
+        ? st.raw.filter((t) => !(same(t) && t.role === 'mentioned'))
+        : st.raw.map((t) => (same(t) ? { ...t, role: 'mentioned' as const } : t));
+  } else if (pending.code === 'Q_FOLLOWUP_WHO') {
     const chip = matchChip(q, answer);
     const choice = chip === null ? undefined : pending.choices.find((c) => c.placeholder === chip.id);
     if (choice === undefined) return again();
