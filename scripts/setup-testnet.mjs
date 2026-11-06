@@ -84,8 +84,9 @@ if (missing.length) {
   const deploymentsPath = resolve(local, 'deployments.json');
   const deployments = existsSync(deploymentsPath) ? JSON.parse(readFileSync(deploymentsPath, 'utf8')) : {};
   const wallet = {
-    server: { host: '127.0.0.1', port: 8788 },
-    agent: { url: 'http://127.0.0.1:8787' },
+    // The wallet listens where the agent sends (execution.url) and reports to where the agent listens (server).
+    server: { host: '127.0.0.1', port: Number(new URL(cfg.execution.url).port || 80) },
+    agent: { url: `http://${cfg.server.host}:${cfg.server.port}` },
     auth: {
       inbound_token_file: cfg.execution.outbound_token_file,
       report_token_file: cfg.auth.execution_report_token_file,
