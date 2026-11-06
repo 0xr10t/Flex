@@ -191,6 +191,7 @@ test('failed downloads clean staging and retain the active release', (t) => {
     env: { ...process.env, PATH: `${tools}:${process.env.PATH}` },
   });
   assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /could not download flex-v0\.2\.0-.*; check that release v0\.2\.0 is published/);
   assert.equal(active(prefix), 'v0.1.0');
   assert.ok(!existsSync(join(prefix, '.install-lock')));
 });

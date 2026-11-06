@@ -103,7 +103,8 @@ if [[ -z "$archive" ]]; then
   printf 'Downloading %s from GitHub Releases...\n' "$asset"
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     --connect-timeout 15 --max-time 600 --retry 2 \
-    "https://github.com/0xr10t/Flex/releases/download/$version/$asset" --output "$archive"
+    "https://github.com/0xr10t/Flex/releases/download/$version/$asset" --output "$archive" ||
+    fail "could not download $asset; check that release $version is published for this platform"
 fi
 python3 - "$archive" "$digest" "$staging/payload" <<'PY'
 import hashlib, pathlib, shutil, sys, tarfile
