@@ -11,7 +11,7 @@
 // Owner: Lane A.
 
 import { DateTime, IANAZone } from 'luxon';
-import { ERROR_MESSAGE, REPLY } from '../contracts/catalog.js';
+import { ERROR_MESSAGE, REPLY, matchChip } from '../contracts/catalog.js';
 import type {
   AllowlistLogger,
   ContentFetcher,
@@ -552,10 +552,12 @@ export class SessionManager {
     if (decision.intent === 'answer' && decision.value !== null && answerOnlyReply(text, decision.value)) {
       const q = paused.question;
       // Model interpretation cannot select consent, price/amount choices, contacts, or limit overrides.
-      // Discrete choices continue to require the existing native whole-reply match or an explicit chip.
+      // A copied token may match an enabled native choice; consent and other discrete choices still need
+      // the existing whole-reply match or an explicit chip.
       const freeValue =
         q.input === 'number' ||
         q.input === 'date' ||
+        (q.code === 'Q_TOKEN' && matchChip(q, { kind: 'text', text: decision.value }) !== null) ||
         ['Q_NO_PAYEE', 'Q_WHO_IS', 'Q_ADDRESS_REENTER', 'Q_NAME_FOR_ADDRESS', 'Q_GROUP_PARENT'].includes(q.code);
       if (
         freeValue &&
