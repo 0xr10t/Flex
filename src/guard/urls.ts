@@ -67,11 +67,11 @@ export function isHttpsUrl(url: string): boolean {
 }
 
 function safeDecode(s: string): string {
-  try {
-    return decodeURIComponent(s.replace(/\+/g, ' '));
-  } catch {
-    return s;
-  }
+  // Decode each run of percent-encoded bytes tolerantly. An unrelated stray '%' or invalid UTF-8 byte must not
+  // hide a valid encoded secret elsewhere in the URL (B15). Literal Unicode and malformed escapes stay intact.
+  return s
+    .replace(/\+/g, ' ')
+    .replace(/(?:%[0-9a-f]{2})+/gi, (run) => Buffer.from(run.replace(/%/g, ''), 'hex').toString('utf8'));
 }
 
 /** SQ-O-06: true when the URL, as written or percent-decoded, carries a secret (§8.2 step 2 detectors). */
