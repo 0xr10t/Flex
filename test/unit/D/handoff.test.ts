@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAddress } from 'viem';
 import { ERROR_MESSAGE, REPLY } from '../../../src/contracts/catalog.js';
 import type { Address, AddressPh, HandoffEnvelope, InternalIntent, Payment } from '../../../src/contracts/types.js';
-import { createExecutionClient } from '../../../src/handoff/execution-client.js';
+import { createExecutionClient, rejectMessage } from '../../../src/handoff/execution-client.js';
 import { swapBack } from '../../../src/handoff/swap-back.js';
 import { s12 } from '../../../src/pipeline/s12-handoff.js';
 import { validators } from '../../../src/schemas/index.js';
@@ -629,6 +629,23 @@ describe('§8.14 steps 5–6 / §15 rejected and unavailable', () => {
     expect(res.kind === 'error' && res.final_state).toBeFalsy();
   });
 
+  it('SQ-A-06 F-9 S12 passes the cause of an unavailable result on as params.cause', async () => {
+    for (const cause of ['timeout', 'server_error'] as const) {
+      const ctx = ctxD({ balances: usdc('0', '80', '0') });
+      ctx.exec.responses = [{ status: 'unavailable', cause }];
+      const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)]);
+      expectError(res, 'EXECUTION_UNAVAILABLE', { cause });
+    }
+  });
+
+  it('SQ-O-09 S12 cuts a 300-character rejection message to 200 characters and removes control characters', async () => {
+    const ctx = ctxD({ balances: usdc('0', '80', '0') });
+    ctx.exec.responses = [{ status: 'rejected', message: `a\u0007${'b'.repeat(298)}\u001b` }];
+    const res = await handoff(ctx, [planI(0, mintAmount(ctx, '50'), addAradhya(ctx), BASE)]);
+    const msg = expectError(res, 'EXECUTION_REJECTED', { message: `a${'b'.repeat(199)}` });
+    expect(msg).toBe(`Your wallet couldn't accept this: a${'b'.repeat(199)}`);
+  });
+
   it('C-392 5xx / timeout → EXECUTION_UNAVAILABLE with the §15 message; nothing recorded', async () => {
     const ctx = ctxD({ balances: usdc('0', '80', '0') });
     ctx.exec.responses = [{ status: 'unavailable', cause: 'server_error' }];
@@ -753,19 +770,49 @@ describe('§14.2 execution client (no network: fetch stubbed)', () => {
     }
   });
 
-  it('C-349 C-392 §14.2 5xx → unavailable', async () => {
+  it('SQ-O-09 rejectMessage strips control characters and cuts to 200 code points', () => {
+    expect(rejectMessage('a\u0000b\u001fc\u007fd\u009fe\nf\tg')).toBe('abcdefg');
+    expect(rejectMessage('x'.repeat(300))).toHaveLength(200);
+    // 200 code points, not UTF-16 units: an astral character counts once
+    expect([...rejectMessage('😀'.repeat(300))]).toHaveLength(200);
+    expect(rejectMessage('short')).toBe('short');
+  });
+
+  it('SQ-O-09 §14.2 a 300-character 4xx message reaches the result as 200 characters, control characters removed', async () => {
+    stub(new Response(JSON.stringify({ message: `\u0007${'m'.repeat(299)}\u001b[0m` }), { status: 422 }));
+    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({
+      status: 'rejected',
+      message: 'm'.repeat(200),
+    });
+  });
+
+  it('SQ-O-09 §14.2 a message that is only control characters or whitespace falls back to "HTTP <status>"', async () => {
+    stub(new Response(JSON.stringify({ message: '\u0007\u0000 \n' }), { status: 409 }));
+    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({
+      status: 'rejected',
+      message: 'HTTP 409',
+    });
+  });
+
+  it('C-349 C-392 SQ-A-06 F-9 §14.2 5xx → unavailable, cause server_error', async () => {
     for (const status of [500, 502, 503, 504]) {
       stub(new Response('boom', { status }));
-      expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({ status: 'unavailable' });
+      expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({
+        status: 'unavailable',
+        cause: 'server_error',
+      });
     }
   });
 
-  it('C-349 C-392 §14.2 network failure → unavailable', async () => {
+  it('C-349 C-392 SQ-A-06 F-9 §14.2 network failure → unavailable, cause timeout', async () => {
     stub(new TypeError('fetch failed'));
-    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({ status: 'unavailable' });
+    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({
+      status: 'unavailable',
+      cause: 'timeout',
+    });
   });
 
-  it('C-349 C-392 §14.2 timeout (execution.timeout_ms) → unavailable', async () => {
+  it('C-349 C-392 SQ-A-06 F-9 §14.2 timeout (execution.timeout_ms) → unavailable, cause timeout', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -777,12 +824,18 @@ describe('§14.2 execution client (no network: fetch stubbed)', () => {
     );
     const cfg = testConfig();
     cfg.execution.timeout_ms = 30;
-    expect(await createExecutionClient(cfg, 't').submit(env(), 'k')).toEqual({ status: 'unavailable' });
+    expect(await createExecutionClient(cfg, 't').submit(env(), 'k')).toEqual({
+      status: 'unavailable',
+      cause: 'timeout',
+    });
   });
 
-  it('C-349 §14.2 a 3xx (redirect refused / not a success) → unavailable', async () => {
+  it('C-349 SQ-A-06 F-9 §14.2 a 3xx (redirect refused / not a success) → unavailable, cause server_error', async () => {
     stub(new Response(null, { status: 302, headers: { Location: 'http://evil.invalid/' } }));
-    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({ status: 'unavailable' });
+    expect(await createExecutionClient(testConfig(), 't').submit(env(), 'k')).toEqual({
+      status: 'unavailable',
+      cause: 'server_error',
+    });
   });
 
   it('C-152 C-349 §14.2 two submits of the same envelope send the same Idempotency-Key header', async () => {
@@ -793,7 +846,7 @@ describe('§14.2 execution client (no network: fetch stubbed)', () => {
     vi.stubGlobal('fetch', f);
     const client = createExecutionClient(testConfig(), 't');
     const e = env();
-    expect(await client.submit(e, 'req_aaaaaaaaaaaa')).toEqual({ status: 'unavailable' });
+    expect(await client.submit(e, 'req_aaaaaaaaaaaa')).toEqual({ status: 'unavailable', cause: 'server_error' });
     expect(await client.submit(e, 'req_aaaaaaaaaaaa')).toEqual({ status: 'accepted' });
     const headers = f.mock.calls.map((c) => (c[1] as RequestInit).headers as Record<string, string>);
     expect(headers[0]?.['Idempotency-Key']).toBe('req_aaaaaaaaaaaa');
