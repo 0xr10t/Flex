@@ -1,4 +1,5 @@
 // Phase 3 audit (§3.2): Q-LLM output never reaches a P-LLM prompt except as a placeholder (§16.1), and SQ-O-01.
+import { getAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { FixtureFile } from '../fakes/llm.js';
 import { Harness } from '../acceptance/harness.js';
@@ -223,6 +224,7 @@ describe('R3-3: the S7 sweep catches names whose lowercase form changes length',
       ],
     };
     const h = new Harness('audit-r33', fixture, {});
+    h.addContact('İrem', getAddress(ADDR), [84532]);
     await h.say(TEXT);
     const four = h.llm.recorded.find((c) => c.name === 'payments')?.user ?? '';
     await h.finish({ allowUnused: true });
