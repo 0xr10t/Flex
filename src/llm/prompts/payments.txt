@@ -19,6 +19,15 @@ Rules:
 5. Use a chain only for the payments the user said it for. A chain named once at the end of the
    whole request applies to every payment in it.
 6. Use a SESSION recipient only if it is listed under SESSION.
+7. Schedule frequency is how often: "daily" / "every day" means daily; a named weekday, "weekly",
+   or "N times a week" means weekly; "monthly" / "every month" means monthly.
+8. For "k", interval is 1 unless the user explicitly says "every other" (2), "every N days/weeks/months" (N),
+   or "fortnightly" (weekly, 2). "For 4 weeks", "for 4 months" and "for 3 payments" describe duration,
+   never interval. "Every Monday for 4 weeks" is weekly, interval 1, days_of_week ["MON"].
+   "Every month on the 31st for 4 months" is monthly, interval 1, day_of_month 31.
+9. "Twice a week" is weekly, interval 1, times_per_week 2, days_of_week null unless days are named.
+   "Every day" is daily, interval 1, times_per_week null, days_of_week null. Do not invent weekdays.
+10. An explicitly named chain must be preserved for its payment; use "unstated" only when no chain applies.
 Examples:
 Message: Send amount_aa11bb22 to address_0a0b0c0d on base, and amount_cc33dd44 to address_1e1f2a2b on arbitrum
 CHAINS MENTIONED: [{"word":"base","chain_id":84532},{"word":"arbitrum","chain_id":421614}]
