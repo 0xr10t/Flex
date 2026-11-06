@@ -77,6 +77,9 @@ Lane follow-ups after rebasing onto `contracts-v3`: A — `newAgentRequest()` (`
 | `1823dff` | Orchestrator wiring: registry, prompt-builder index, production factories, entry point | 2026-11-06 | ✅ 1346/1346, build ✅ |
 | `7c8db03` | Acceptance suite (`phase2/acceptance` @ `d4f0c9b`) | 2026-11-06 | unit 1346/1346; acceptance 46/70 |
 | `311a409` | Acceptance triage (`phase2/acceptance` @ `9c9cc6f`) | 2026-11-06 | ✅ 1416/1416 (unit 1346 + acceptance 70) |
+| `ab8d665` | Phase 3 audit tests (`phase3/audit`) | 2026-11-06 | ✅ 1416 + audit 142 |
+| `7a4d8f0` | Phase 3 fixes O6, O7, contract tests (`phase3/fixes`) | 2026-11-06 | ✅ 1501 + audit 142 |
+| `c11b465` | Human answers implemented: `phase4/core` @ `5e5f443` (contracts-v4 `eef4dcf`) + `phase4/understanding` @ `1f7e4a3` | 2026-11-06 | ✅ 1652/1652 + audit 154/154; no `it.fails` left; build ✅ |
 
 ## Acceptance results (A-01 … A-60)
 
@@ -90,6 +93,8 @@ A-08 asserts the §10.6 `expires_at` (SQ-D-15); A-30 asserts the §15 template (
 A-60: 0 hits for registered addresses, names, ENS names, amounts and prompt fragments ≥ 12 characters.
 
 ## Standing decisions and gotchas
+
+- Interim wording added by the core agent (not covered by an answer; confirm at final acceptance): the `Q_PAIR_AMOUNT` re-ask hint "That would leave {name} with nothing."; `Q_LIMIT_OVERRIDE` chips "Yes, this once" / "Yes, set it up" / "No"; the daily fragment "today's limit of {daily_max} (only {remaining} is left)".
 
 - 2026-11-06, human decision: the post-answers deep review swarm runs on **Opus** reviewers (an exception to the Sonnet-reviews rule, for this review only). The live-model evaluation runs against the local Ollama `qwen2.5:7b-instruct` (installed 2026-11-06).
 
