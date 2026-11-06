@@ -4,8 +4,8 @@ One line per numbered rule / table row / test ID in spec §§5–20. Every item 
 Reviewed 2026-11-06 against the resolved answers in `SPEC_QUESTIONS.md`, `SPEC_ANSWERS_FOLLOWUP.md`, and the
 current request to fix all review findings. See `COMPLIANCE_REPORT.md` for evidence and authorized differences.
 
-Status values: `implemented + tested` (deterministic evidence), `deviates (human-approved; tested)`, and
-`implemented; live acceptance pending`. Prompt changes under SQ-L-01 remain conditional on C-514.
+Status values: `implemented + tested` (deterministic or stated live evidence) and
+`deviates (human-approved; tested)`. Prompt retention under SQ-L-01 is accepted by the C-514 evidence below.
 
 ## Totals
 
@@ -15,12 +15,16 @@ Status values: `implemented + tested` (deterministic evidence), `deviates (human
 | Lane B | 123 | 123 | 0 | 0 |
 | Lane C | 73 | 73 | 0 | 0 |
 | Lane D | 152 | 152 | 0 | 0 |
-| Orchestrator | 85 | 81 | 3 | 1 |
-| **Total** | **514** | **510** | **3** | **1** |
+| Orchestrator | 85 | 82 | 3 | 0 |
+| **Total** | **514** | **511** | **3** | **0** |
 
 The three retained deviations describe approved differences from worked examples/acceptance prose, not open
-questions. All six former “implemented, no test” contracts now have passing guard tests. C-514 is implemented;
-its final acceptance, including the SQ-L-01 prompt condition, is tracked separately from deterministic tests.
+questions. All six former “implemented, no test” contracts now have passing guard tests. C-514's full 154-case run
+meets the zero-wrong-handoff and reduced-stop conditions (0 wrong; 25 stops versus 54); all 53 selected outcomes
+reproduce on the final source/toolchain. This evidence is separate from the 1,874 deterministic tests and 169 audit
+checks, which also pass in the clean `547a36e` checkout. This §§5–20 inventory is not blanket specification
+compliance: the live oracle's scope, uncaptured raw S8 semantic metric and unmet NFR-03 latency requirement are
+recorded in `COMPLIANCE_REPORT.md`.
 
 ## Items
 
@@ -167,13 +171,13 @@ its final acceptance, including the SQ-L-01 prompt condition, is tracked separat
 | C-139 | §8.9 | P8 split → SPLIT_UNSUPPORTED (no retry) | D | implemented + tested |
 | C-140 | §8.9 | P9 chain stated/pinned conflict → CHAIN_CONFLICT (no retry) | D | implemented + tested |
 | C-141 | §8.10 | Prompt builder: one function per call returning {system,user,schema}; slots only; fresh chat | B | implemented + tested |
-| C-142 | §8.10 | LLM #1 Amounts prompt verbatim | B | implemented + tested (SQ-L-01 system text; live acceptance pending C-514) |
-| C-143 | §8.10 | LLM #2 Request type prompt verbatim | B | implemented + tested (SQ-L-01 system text; live acceptance pending C-514) |
-| C-144 | §8.10 | LLM #3 Recipient spans prompt verbatim (CANDIDATES) | B | implemented + tested (SQ-L-01 system text; live acceptance pending C-514) |
+| C-142 | §8.10 | LLM #1 Amounts prompt verbatim | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
+| C-143 | §8.10 | LLM #2 Request type prompt verbatim | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
+| C-144 | §8.10 | LLM #3 Recipient spans prompt verbatim (CANDIDATES) | B | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
 | C-145 | §8.10 | Q-LLM prompt verbatim | B | implemented + tested |
 | C-146 | §8.10 | Call options temperature 0, seed, format schema, stream false | B | implemented + tested |
 | C-147 | §8.10 | Retries: error/timeout/invalid → one retry; second → MODEL_FAILED (Q-LLM: item yields nothing) | B | implemented + tested |
-| C-148 | §8.10 | LLM #4 Pair payments prompt verbatim with AMOUNTS/RECIPIENTS/DOCUMENT ITEMS/CHAINS/ACTION KINDS/SESSION/correction slots | D | implemented + tested (SQ-L-01 system text; live acceptance pending C-514) |
+| C-148 | §8.10 | LLM #4 Pair payments prompt verbatim with AMOUNTS/RECIPIENTS/DOCUMENT ITEMS/CHAINS/ACTION KINDS/SESSION/correction slots | D | implemented + tested (SQ-L-01 system text; retention accepted by C-514) |
 | C-149 | §8.13 | S11 builds summary from real DB1/DB3/DB4 values, returns awaiting_confirmation | D | implemented + tested |
 | C-150 | §8.14 | S12 step 1: swap_back allowlist; amount_ → {value,base_units,decimals}; address_ → checksummed | D | implemented + tested |
 | C-151 | §8.14 | S12 step 2: validate against hand-off schema; failure → HANDOFF_INVALID/internal error, FAILED | D | implemented + tested |
@@ -539,4 +543,4 @@ its final acceptance, including the SQ-L-01 prompt condition, is tracked separat
 | C-511 | §20.2 | A-58 | O | implemented + tested |
 | C-512 | §20.2 | A-59 | O | implemented + tested |
 | C-513 | §20.2 | A-60 | O | implemented + tested |
-| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | implemented; live acceptance pending (full 154-case run, SQ-L-01) |
+| C-514 | §20.3 | Live-model evaluation: acceptance prompts + 100 paraphrases; pairing exact-match, question rate, wrong-hand-off rate 0 | O | implemented + tested (154 cases: 0 wrong, 25 stops; 53 final-source repeats reproduce; semantic plan counts and S8 proxy/measurement limits in COMPLIANCE_REPORT) |
