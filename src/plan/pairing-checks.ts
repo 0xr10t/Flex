@@ -5,6 +5,7 @@
 import type { StepContext } from '../contracts/step.js';
 import type { AmountPh, ChainId, ErrorCode, Payment, RecipientPh } from '../contracts/types.js';
 import { chainName, isGroupPh, recipientNameOf } from './common.js';
+import { chainBindingProblems } from './chain-binding.js';
 
 export interface PairingContext {
   /** Confirmed pay amount placeholders of this request (the S8 amount enum without null). */
@@ -43,6 +44,7 @@ export function checkSplit(ctx: StepContext, pc: PairingContext): PairingOutcome
 /** P1–P4, P5 (`l` with a group) and the P9 enum part: problems that trigger the one retry. */
 export function retryableProblems(ctx: StepContext, pc: PairingContext, payments: Payment[]): string[] {
   const problems: string[] = [];
+  problems.push(...chainBindingProblems(ctx, payments));
   const distributive = ctx.req.scan.distributive.length > 0;
 
   // P1 kind fields.
