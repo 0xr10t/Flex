@@ -272,7 +272,7 @@ describe('§10.3 chain for each payment', () => {
     expect(plan.map((p) => asI(p).chain_id)).toEqual([BASE, ARB]);
   });
 
-  it('C-210 C-188 §10.3 rule 4 + §9.5: contact, no DB2 chain qualifies → any allowed ok chain; no DB2 write; DB3 reused_from_chain_id set; PlanI.reused_from_chain_id; note', async () => {
+  it('C-210 C-188 SQ-O-10 §10.3 rule 4 + §9.5: contact, no DB2 chain qualifies → any allowed ok chain; no DB2 write; DB3 reused_from_chain_id set; PlanI.reused_from_chain_id; note', async () => {
     const ctx = ctxD({ balances: usdc('100', '0', '0') });
     const a = addAradhya(ctx);
     const before = ctx.repos.db2.findByAddress(ARADHYA_CS).map((r) => r.chain_id);
@@ -282,9 +282,9 @@ describe('§10.3 chain for each payment', () => {
     expect([BASE, ARB]).toContain(i.reused_from_chain_id);
     expect(ctx.repos.db3.get(a)?.reused_from_chain_id).toBe(i.reused_from_chain_id);
     expect(ctx.repos.db2.findByAddress(ARADHYA_CS).map((r) => r.chain_id)).toEqual(before);
-    const from = i.reused_from_chain_id === BASE ? 'Base Sepolia' : 'Arbitrum Sepolia';
-    expect(ctx.req.notes).toContain(`Same address as on ${from}.`);
-    expect(ctx.req.notes).toContain(NOTES.SILENT_REUSE({ chains: from }));
+    // SQ-O-10: every other chain with a DB2 row for the address is named (Aradhya is saved on Base and Arbitrum)
+    expect(ctx.req.notes).toContain('Same address as on Base Sepolia and Arbitrum Sepolia.');
+    expect(ctx.req.notes).toContain(NOTES.SILENT_REUSE({ chains: 'Base Sepolia and Arbitrum Sepolia' }));
   });
 
   it('C-188 A-26 §9.5 stated chain without a DB2 row is also a silent reuse', async () => {

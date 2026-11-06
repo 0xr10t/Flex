@@ -56,7 +56,7 @@ describe('§15 error messages in their stated cases', () => {
     expect(msg).toBe('That schedule has no payment dates. Check the start and end.');
   });
 
-  it('C-381 §15 SQ-08 INSUFFICIENT_FUNDS: 50 USDC needed, 30 usable across chains', async () => {
+  it('C-381 §15 SQ-08 F-10 INSUFFICIENT_FUNDS: 50 USDC needed, 30 usable across the chains with a positive amount', async () => {
     const ctx = ctxD({ balances: usdc('0', '10', '20') });
     const r = addAradhya(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', {
@@ -65,7 +65,7 @@ describe('§15 error messages in their stated cases', () => {
       have: '30',
     });
     expect(msg).toBe(
-      "You don't have enough USDC: you need 50, and can use 30 across Sepolia, Base Sepolia and Arbitrum Sepolia.",
+      "You don't have enough USDC: you need 50, and can use 30 across Base Sepolia (10) and Arbitrum Sepolia (20).",
     );
   });
 
@@ -87,13 +87,14 @@ describe('§15 error messages in their stated cases', () => {
     expect(msg).toBe("Sepolia isn't in your allowed chains (Settings).");
   });
 
-  it('C-386 §15 LIMIT_AUTOPAY_PERIOD: daily 20 USDC = 140 a week over the limit of 100', async () => {
+  it('SQ-D-16 F-5 content amount: C-386 §15 LIMIT_AUTOPAY_PERIOD: daily 20 USDC = 140 a week over the limit of 100', async () => {
     const { ctx, payment } = kSetup({
       clause: 'pay mihir 20 usdc every day for 4 weeks',
       frequency: 'daily',
       days_of_week: null,
       amount: '20',
     });
+    markContent(ctx);
     const msg = expectError(await run(ctx, [payment]), 'LIMIT_AUTOPAY_PERIOD', {
       cap: '140',
       token: 'USDC',
@@ -102,17 +103,19 @@ describe('§15 error messages in their stated cases', () => {
     expect(msg).toBe('This pays 140 USDC a week, over your autopay limit of 100 a week.');
   });
 
-  it('C-387 §15 LIMIT_AUTOPAY_DURATION: "for 60 weeks" against 52', async () => {
+  it('SQ-D-16 F-5 content amount: C-387 §15 LIMIT_AUTOPAY_DURATION: "for 60 weeks" against 52', async () => {
     const { ctx, payment } = kSetup({ clause: 'pay mihir 10 usdc every friday for 60 weeks' });
+    markContent(ctx);
     const msg = expectError(await run(ctx, [payment]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     expect(msg).toBe('Repeating payments can run for at most 52 weeks.');
   });
 
-  it('C-388 §15 LIMIT_BRIDGES: two bridges with a limit of one', async () => {
+  it('SQ-D-16 F-5 content amount: C-388 §15 LIMIT_BRIDGES: two bridges with a limit of one', async () => {
     const ctx = ctxD({ balances: usdc('100', '30', '30') });
     setLimits(ctx, { max_bridges_per_request: 1 });
     const a = addAradhya(ctx);
     const mi = addMihir(ctx);
+    markContent(ctx);
     const msg = expectError(await run(ctx, [iPay(ctx, '40', a, BASE), iPay(ctx, '40', mi, ARB)]), 'LIMIT_BRIDGES', {
       n: '2',
       max: '1',
@@ -180,3 +183,8 @@ describe('§13.1 group lines keyed on group and amount (S9 → S11)', () => {
     ]);
   });
 });
+
+/** SQ-D-16 F-5: an amount from attached content in the request keeps the limit errors at S9 (typed amounts are left to S10). */
+function markContent(ctx: Parameters<typeof addAmount>[0]): void {
+  addAmount(ctx, '1', { source: 'untrusted' });
+}

@@ -491,8 +491,9 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(asK(planOf(ctx)[0]).schedule.end).toEqual({ type: 'after_count', count: 5 });
   });
 
-  it('C-231 §13.4 Q_AUTOPAY_COUNT 520 is accepted by the question but exceeds the duration limit → LIMIT_AUTOPAY_DURATION', async () => {
+  it('SQ-D-16 F-5 content amount: C-231 §13.4 Q_AUTOPAY_COUNT 520 is accepted by the question but exceeds the duration limit → LIMIT_AUTOPAY_DURATION', async () => {
     const { ctx, payment } = kSetup();
+    markContent(ctx);
     const q = expectQuestion(await run(ctx, [payment]), 'Q_AUTOPAY_END');
     const qc = expectQuestion((await answerAndReenter(ctx, q, chip(q.chips[0]?.id ?? ''))).answer, 'Q_AUTOPAY_COUNT');
     const r = await answerAndReenter(ctx, qc, text('520'));
@@ -555,18 +556,20 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expectError(await run(ctx, [payment]), 'AUTOPAY_NO_OCCURRENCES');
   });
 
-  it('C-234 §10.6 derived 3: "for 60 weeks" → LIMIT_AUTOPAY_DURATION {weeks: 52}; no DB1 mint', async () => {
+  it('SQ-D-16 F-5 content amount: C-234 §10.6 derived 3: "for 60 weeks" → LIMIT_AUTOPAY_DURATION {weeks: 52}; no DB1 mint', async () => {
     const { ctx, payment } = kSetup(withEnd({}, 'for 60 weeks'));
+    markContent(ctx);
     const before = db1Count(ctx);
     expectError(await run(ctx, [payment]), 'LIMIT_AUTOPAY_DURATION', { weeks: '52' });
     expect(db1Count(ctx)).toBe(before);
     expect(ctx.req.plan).toBeUndefined();
   });
 
-  it('C-234 §10.6 derived 3: 53 weekly payments end exactly on first + 52 weeks → allowed; 54 → LIMIT_AUTOPAY_DURATION', async () => {
+  it('SQ-D-16 F-5 content amount: C-234 §10.6 derived 3: 53 weekly payments end exactly on first + 52 weeks → allowed; 54 → LIMIT_AUTOPAY_DURATION', async () => {
     const ok = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 53 payments'));
     expect(asK((await runOk(ok.ctx, [ok.payment]))[0]).schedule.end).toEqual({ type: 'after_count', count: 53 });
     const bad = kSetup(withEnd({ balances: usdc('0', '5000', '0') }, 'for 54 payments'));
+    markContent(bad.ctx);
     expectError(await run(bad.ctx, [bad.payment]), 'LIMIT_AUTOPAY_DURATION');
   });
 
@@ -586,16 +589,18 @@ describe('S9 `k` fields (§10.6 table)', () => {
     expect(amountOf(ctx, k.limits.per_period_cap)).toBe(cap);
   });
 
-  it('C-235 §10.6 derived 4: per_period_cap above autopay_max_per_period → LIMIT_AUTOPAY_PERIOD {cap, token, max}', async () => {
+  it('SQ-D-16 F-5 content amount: C-235 §10.6 derived 4: per_period_cap above autopay_max_per_period → LIMIT_AUTOPAY_PERIOD {cap, token, max}', async () => {
     const { ctx, payment } = kSetup(withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }));
+    markContent(ctx);
     const before = db1Count(ctx);
     expectError(await run(ctx, [payment]), 'LIMIT_AUTOPAY_PERIOD', { cap: '140', token: 'USDC', max: '100' });
     expect(db1Count(ctx)).toBe(before);
   });
 
-  it('C-236 §10.6 derived 5: amount_per_payment > per_tx_max → LIMIT_PER_TX', async () => {
+  it('SQ-D-16 F-5 content amount: C-236 §10.6 derived 5: amount_per_payment > per_tx_max → LIMIT_PER_TX', async () => {
     const { ctx, payment } = kSetup(withEnd({}));
     setLimits(ctx, { per_tx_max: { USDC: '5', ETH: '0.05' } });
+    markContent(ctx);
     expectError(await run(ctx, [payment]), 'LIMIT_PER_TX', { amount: '10', token: 'USDC', max: '5' });
   });
 
@@ -827,5 +832,31 @@ describe('S9 cancel `l` (§10.7)', () => {
     expect(db1Count(ctx)).toBe(before);
     expect(DELEGATE_CS).toBe(asL(plan[0]).delegate_address);
     expect(NOW_E6).toBeTruthy();
+  });
+});
+
+/** SQ-D-16 F-5: an amount from attached content in the request keeps the limit errors at S9 (typed amounts are left to S10). */
+function markContent(ctx: Parameters<typeof addAmount>[0]): void {
+  addAmount(ctx, '1', { source: 'untrusted' });
+}
+
+describe('SQ-D-16 F-5 typed amounts: S9 lets the limit through (S10 asks)', () => {
+  it('SQ-D-16 F-3 S9 a 60-week repeating payment from typed amounts passes S9 (S10 asks about the 52-week limit)', async () => {
+    const { ctx, payment } = kSetup(withEnd({}, 'for 60 weeks'));
+    const plan = await runOk(ctx, [payment]);
+    expect(plan.map((p) => p.intent_id)).toEqual(['k']);
+  });
+
+  it('SQ-D-16 F-3 S9 a per-period cap over the autopay limit passes S9 for typed amounts', async () => {
+    const { ctx, payment } = kSetup(withEnd({ frequency: 'daily', days_of_week: null, amount: '20' }));
+    const plan = await runOk(ctx, [payment]);
+    expect(plan.map((p) => p.intent_id)).toEqual(['k']);
+  });
+
+  it('SQ-D-16 F-1 S9 a repeating amount over per_tx_max passes S9 for typed amounts', async () => {
+    const { ctx, payment } = kSetup(withEnd({}));
+    setLimits(ctx, { per_tx_max: { USDC: '5', ETH: '0.05' } });
+    const plan = await runOk(ctx, [payment]);
+    expect(plan.map((p) => p.intent_id)).toEqual(['k']);
   });
 });
