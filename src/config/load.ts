@@ -1,5 +1,5 @@
 // Implements: §6.1 config.json (path from env AGENT_CONFIG, default ~/.agent-layer/config.json; validated at
-// startup), §16.4 server bound to 127.0.0.1 only, §5 stack (Ajv draft 2020-12 shared instance).
+// startup), §16.4 server bound to 127.0.0.1 only, NFR-01 Ollama on 127.0.0.1 only, §5 stack (Ajv draft 2020-12 shared instance).
 // Owner: Lane A.
 
 import { readFileSync } from 'node:fs';
@@ -160,6 +160,11 @@ export function validateConfig(raw: unknown): Config {
     ...cfg.chains.map((c, i): [string, string] => [`/chains/${i}/rpc_url`, c.rpc_url]),
   ];
   for (const [field, url] of urls) if (!URL.canParse(url)) errors.push(`${field} not a parsable URL`);
+  // NFR-01 / ADR-004 / §16.4: Ollama is reached on 127.0.0.1 only, over plain http (§6.1 example).
+  if (URL.canParse(cfg.llm.ollama_url)) {
+    const u = new URL(cfg.llm.ollama_url);
+    if (u.protocol !== 'http:' || u.hostname !== '127.0.0.1') errors.push('/llm/ollama_url must be http://127.0.0.1');
+  }
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
 }

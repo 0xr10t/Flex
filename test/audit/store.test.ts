@@ -131,11 +131,9 @@ describe('§7.4 / §16.4 session close', () => {
     db.close();
   });
 
-  it('OBS: no PRAGMA wal_checkpoint(TRUNCATE) after VACUUM (journal_mode=WAL)', () => {
-    // With WAL, VACUUM's rewritten pages live in the -wal file until a checkpoint; deleted DB8 pages may stay in
-    // the main file. The file is SQLCipher-encrypted (§16.4), so this is defence in depth only.
+  it('O7 fixed: PRAGMA wal_checkpoint(TRUNCATE) runs after VACUUM (journal_mode=WAL)', () => {
     const src = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'db', 'repos', 'index.ts'), 'utf8');
-    expect(src).not.toMatch(/wal_checkpoint/);
+    expect(src).toMatch(/VACUUM[\s\S]*wal_checkpoint\(TRUNCATE\)/);
   });
 
   it('DELETE /v1/sessions/:id through the API empties DB1/DB3/DB8 after a hand-off and keeps DB2/DB5/DB6', async () => {

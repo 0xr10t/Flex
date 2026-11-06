@@ -436,7 +436,7 @@ describe('§19 worked examples end to end', () => {
     expect(ctx.repos.tables.db6).toEqual([]);
   });
 
-  it('C-440 E8: story context → hand-off contains only the 50 USDC transfer to Aradhya (no 500, no Kabir, no free text)', async () => {
+  it('C-439 E8: story context → hand-off contains only the 50 USDC transfer to Aradhya (no 500, no Kabir, no free text)', async () => {
     const ctx = ctxD({ balances: usdc('0', '100', '0') });
     setClauses(ctx, ['Pay Aradhya 50 usdc for the design work she did for my friend Kabir, she charged 500 last time']);
     const a = addAmount(ctx, '50');

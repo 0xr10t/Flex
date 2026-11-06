@@ -44,14 +44,11 @@ describe('§16.4 outbound network calls (static inventory)', () => {
     expect(offenders).toEqual(['pipeline/s0-balances.ts', 'recipients/ens-client.ts']);
   });
 
-  it('OBS: the Ollama client does not set redirect:"error" (execution client and indexer do); the URL comes from config', () => {
+  it("O6 fixed: the Ollama client sets redirect:'error' and config accepts only http://127.0.0.1 for ollama_url", () => {
     const o = files.find((f) => f.path === 'llm/ollama.ts')!.text;
-    expect(o).not.toMatch(/redirect:/);
-    for (const p of ['handoff/execution-client.ts', 'recipients/subnames.ts'])
-      expect(files.find((f) => f.path === p)!.text).toMatch(/redirect:\s*'error'/);
-    // config validation: only parsability is checked for ollama_url / execution.url, so a non-local Ollama is accepted.
+    expect(o.match(/redirect:\s*'error'/g)).toHaveLength(2);
     const cfg = testConfig();
-    expect(() => validateConfig({ ...cfg, llm: { ...cfg.llm, ollama_url: 'https://llm.example.com' } })).not.toThrow();
+    expect(() => validateConfig({ ...cfg, llm: { ...cfg.llm, ollama_url: 'https://llm.example.com' } })).toThrow();
   });
 });
 
