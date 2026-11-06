@@ -17,7 +17,7 @@ Machine: macOS arm64, **Node 25.9.0** (the human declined installing Node 22 on 
 
 ## Agents spawned (model check)
 
-Rule (NEXT_ORCHESTRATOR_PROMPT §0): code writers = Opus 5.5 (`model: "opus"`); testers/reviewers/auditors = Sonnet 5.5 (`model: "sonnet"`).
+Rule (see `Standing decisions and gotchas` below): code writers = Opus 5.5 (`model: "opus"`); testers/reviewers/auditors = Sonnet 5.5 (`model: "sonnet"`).
 
 | Agent | Role | Model | Branch | Started | Result |
 | --- | --- | --- | --- | --- | --- |
@@ -69,3 +69,26 @@ Lane follow-ups after rebasing onto `contracts-v3`: A — `newAgentRequest()` (`
 ## Acceptance results (A-01 … A-60)
 
 Not started (Phase 2).
+
+## Standing decisions and gotchas
+
+- Model rule, set by the human. Anyone who writes or changes production code under `src/**` (the four lane agents and
+  any fix-up agent) runs on Opus 5.5 (`model: "opus"`). Anyone who tests, reviews or verifies runs on Sonnet 5.5
+  (`model: "sonnet"`). That covers Lane Testers (even when they write `test/**`), Lane Reviewers, the Acceptance
+  Tester, the Privacy & Security Auditor, the Spec Compliance Reviewer and the Live-Model Evaluator.
+- Always pass `model` explicitly on every Agent call, because a sub-agent otherwise inherits its parent's model. Tell
+  each lane agent to start its tester and reviewer with `model: "sonnet"` and to name the model of each sub-agent in
+  its report. If an agent ran on the wrong model, discard its verdict and re-run it.
+- A tester that finds a bug reports it. It does not fix production code; the Opus lane or fix-up agent does. An Opus
+  agent does not grade its own work.
+- Skills that fit: `engineering:testing-strategy` for tests, `engineering:code-review` for reviews and merges,
+  `engineering:debug` for failures, `security-review` for the auditor, `simplify` for a clean-up pass,
+  `run` to drive the server end to end, `engineering:documentation` for `DEVELOPING.md`.
+- Ask the human before pushing to GitHub, and batch every spec question for the human into one message.
+- TypeScript is pinned to 5.9.3: the spec says 5.x, and 7.x conflicts with typescript-eslint.
+- Agent worktrees start from the remote default branch `master`, which has none of the project files. The first
+  command in a lane worktree must be `git checkout -b lane/<x> origin/lane/<x> && npm ci` (or branch from the right
+  contracts tag for a new lane).
+- Agent worktrees live under `.claude/worktrees/`, which is in `.gitignore` and excluded from lint, format and Vitest
+  on `agentic_layer`. Never edit files there from the main checkout.
+- `npm ci` is needed in every fresh checkout or worktree: `better-sqlite3-multiple-ciphers` is a native module.
