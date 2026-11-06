@@ -14,6 +14,7 @@ import { autopayHandler } from '../autopay/autopay-k.js';
 import { cancelHandler } from '../autopay/cancel-l.js';
 import { bridgeHandler } from '../bridge/bridge-j.js';
 import { accountProblem, ensureUpgraded } from '../chain/account.js';
+import { UPGRADED_CODE } from '../chain/addresses.js';
 import {
   ChainUnavailableError,
   SimulationUnavailableError,
@@ -249,6 +250,17 @@ export class Runner {
         const calls = decodeExecuteBatch(prepared.tx.data);
         if (!calls || prepared.tx.to.toLowerCase() !== this.deps.walletAddress.toLowerCase())
           throw new Error('unsupported wallet batch');
+        // MetaMask sends a single wallet_sendCalls entry directly. Preserve the checked executeBatch wrapper.
+        // A first-time account must be upgraded by its wallet before it can execute that single self-call.
+        if (
+          calls.length === 1 &&
+          (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
+        ) {
+          this.finish(id, intent, { status: 'failed', error_code: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' });
+          return false;
+        }
+        const walletCalls =
+          calls.length === 1 ? [{ target: prepared.tx.to, callData: prepared.tx.data, value: 0n }] : calls;
         const summaryKey = `${id}:${intent.step}`;
         this.deps.store.saveWalletBatch(
           id,
@@ -261,7 +273,7 @@ export class Runner {
               from: this.deps.walletAddress,
               chainId: toHex(handler.chainOf(intent)),
               atomicRequired: true,
-              calls: calls.map((c) => ({ to: c.target, data: c.callData, value: toHex(c.value) })),
+              calls: walletCalls.map((c) => ({ to: c.target, data: c.callData, value: toHex(c.value) })),
             },
             expectedTx: prepared.tx,
             sourceBlock: (await ctx.gateway.latestBlock()).number,

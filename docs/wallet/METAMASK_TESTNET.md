@@ -15,7 +15,7 @@ Open `http://127.0.0.1:8788` in the browser with MetaMask. Connect the configure
 
 The protected setup uses Alchemy, QuickNode and PublicNode simulation endpoints, requiring matching results from two of the three at the same block. Ordinary chain reads use the configured read RPC. This is provider redundancy, not a cryptographic proof of chain state. The CCIP fee ceiling is 0.003 test ETH per transfer; network gas is additional.
 
-Each request gets a durable batch ID before the wallet prompt. An uncertain wallet submission stays pending across restarts. It cannot be dispatched again. If MetaMask confirms but the app cannot retrieve its batch status, use the existing card's **Recover by hash** with the source transaction hash. The server verifies the actual sender, recipient, calldata, nonce, block and account implementation before accepting it. Do not create a replacement transfer to repair tracking.
+Each request gets a durable application ID before the wallet prompt. MetaMask can return its own batch ID, which is saved alongside it for status queries. An uncertain wallet submission stays pending across restarts. It cannot be dispatched again, even if the wallet ignores the supplied application ID. If MetaMask confirms but the app cannot retrieve its batch status, use the existing card's **Recover by hash** with the source transaction hash. The server verifies the actual sender, recipient, calldata, nonce, block and account implementation before accepting it. Do not create a replacement transfer to repair tracking.
 
 Delivery is checked against the exact CCIP 2.0 message, canonical finalized receipts and destination USDC transfer. Source confirmation alone is not delivery. A delay or failed destination execution remains tracked without resending source funds.
 
@@ -31,5 +31,7 @@ Delivery is checked against the exact CCIP 2.0 message, canonical finalized rece
 Real delivery still needs to be observed for every supported direction. Fund Arbitrum Sepolia with Circle test USDC before testing its outbound routes. The current browser transport supports direct MetaMask EIP-7702 batch transactions from the configured account to itself; different account implementations, relayed wrappers or gas-payment calls are not accepted as equivalent.
 
 Browser mode supports immediate payments and CCIP transfers. Recurring-payment creation and cancellation still need browser typed-data/transaction support and a configured executor, so intake rejects those requests in this mode. The existing local signing mode remains separate. CRE deployment access does not gate CCIP; CRE build/simulation and executor setup are separate work.
+
+For a single-recipient payment, MetaMask sends one call directly. The app supplies the checked batch wrapper as that call. This requires the account's MetaMask smart-account upgrade to already be active on that chain; otherwise the request stops with `BROWSER_ACCOUNT_UPGRADE_REQUIRED` before any wallet prompt. A multi-call CCIP approval/send can request the upgrade through MetaMask.
 
 This skill never signs or sends. You must sign and broadcast from your own wallet.

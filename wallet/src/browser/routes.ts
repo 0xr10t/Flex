@@ -42,7 +42,7 @@ export function registerBrowserWallet(app: FastifyInstance, controller: BrowserW
     if (!authenticated(req)) return reply.code(403).send({ error: 'LOCAL_SESSION_REQUIRED' });
     return reply.header('cache-control', 'no-store').send(controller.state());
   });
-  app.post<{ Params: { action: string }; Body: { id?: string; result?: unknown; hash?: unknown } }>(
+  app.post<{ Params: { action: string }; Body: { id?: string; walletId?: unknown; result?: unknown; hash?: unknown } }>(
     '/browser/:action',
     async (req, reply) => {
       if (!authenticated(req) || req.headers.origin !== `http://${req.headers.host}`)
@@ -53,6 +53,9 @@ export function registerBrowserWallet(app: FastifyInstance, controller: BrowserW
         if (typeof id !== 'string' || !/^0x[0-9a-f]{64}$/.test(id))
           return reply.code(400).send({ error: 'INVALID_BATCH' });
         switch (req.params.action) {
+          case 'wallet-id':
+            controller.rememberWalletId(id, req.body.walletId);
+            break;
           case 'claim':
             return { calls: controller.claim(id) };
           case 'refresh':

@@ -212,6 +212,18 @@ export class Store {
     return this.db.prepare('SELECT * FROM wallet_batches ORDER BY created_ms DESC LIMIT 100').all() as WalletBatchRow[];
   }
 
+  rememberWalletBatchId(id: string, providerId: string): boolean {
+    return this.db.transaction(() => {
+      const row = this.walletBatchById(id);
+      if (!row || !['dispatched', 'received'].includes(row.status)) return false;
+      const payload = JSON.parse(row.payload_json) as WalletBatchPayload;
+      if (payload.providerBatchId && payload.providerBatchId !== providerId) return false;
+      payload.providerBatchId = providerId;
+      this.db.prepare('UPDATE wallet_batches SET payload_json=? WHERE batch_id=?').run(JSON.stringify(payload), id);
+      return true;
+    })();
+  }
+
   saveWalletBatch(requestId: string, step: number, chainId: number, payload: WalletBatchPayload, now: number): void {
     this.db
       .prepare(

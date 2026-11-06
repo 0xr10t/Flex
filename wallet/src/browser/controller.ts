@@ -42,6 +42,7 @@ export class BrowserWalletController {
         const data = this.deps.store.stepData<Record<string, unknown>>(batch.request_id, batch.step);
         return {
           id: batch.batch_id,
+          walletId: payload.providerBatchId ?? batch.batch_id,
           requestId: batch.request_id,
           chainId: batch.chain_id,
           status: batch.status,
@@ -133,13 +134,22 @@ export class BrowserWalletController {
     this.deps.kick();
   }
 
+  rememberWalletId(id: string, providerId: unknown) {
+    if (
+      typeof providerId !== 'string' ||
+      !/^0x[0-9a-fA-F]{1,512}$/.test(providerId) ||
+      !this.deps.store.rememberWalletBatchId(id, providerId)
+    )
+      throw new BrowserWalletError('WALLET_ID_UNVERIFIED');
+  }
+
   async recover(id: string, hash: unknown) {
     const batch = this.deps.store.walletBatchById(id);
     if (!batch) throw new BrowserWalletError('BATCH_NOT_DISPATCHED');
     const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
     // The exact atomic calldata is independently verified by receive; a pasted hash never authorizes another send.
     return this.receive(id, {
-      id,
+      id: payload.providerBatchId ?? id,
       chainId: payload.calls.chainId,
       atomic: true,
       receipts: [{ transactionHash: hash }],
@@ -160,7 +170,7 @@ export class BrowserWalletController {
     const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
     if (
       !status ||
-      status.id !== id ||
+      status.id !== (payload.providerBatchId ?? id) ||
       status.chainId !== payload.calls.chainId ||
       status.atomic !== true ||
       !Array.isArray(status.receipts) ||

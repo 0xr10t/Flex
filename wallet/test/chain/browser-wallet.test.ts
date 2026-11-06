@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { encodeFunctionData, parseAbi, parseEther, type Hex } from 'viem';
 import { CCIP } from '../../src/schemas/bridge.v2.js';
 import type { WalletBatchPayload } from '../../src/browser/types.js';
-import { WALLET } from '../support/envelopes.js';
+import { ALEX, WALLET, envelope, payEth } from '../support/envelopes.js';
 import { userAccount } from './harness.js';
 import { startWorld, units, type World, type Wallet } from './world.js';
 
@@ -46,6 +46,33 @@ async function session(wallet: Wallet) {
 }
 
 describe('browser approved CCIP transfer', () => {
+  it('keeps a single-recipient payment inside its checked batch when the browser sends one call directly', async () => {
+    await world.upgrade(world.base, userAccount);
+    const wallet = await world.startWallet({ approval: 'metamask' });
+    const post = await session(wallet);
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    expect((await wallet.post(e)).status).toBe(202);
+    await vi.waitFor(() => expect(wallet.service.store.walletBatch(e.request_id, 0)).not.toBeNull(), {
+      timeout: 15000,
+    });
+    const batch = wallet.service.store.walletBatch(e.request_id, 0)!;
+    const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
+    expect(payload.calls.calls).toHaveLength(1);
+    const call = payload.calls.calls[0]!;
+    expect(call.to.toLowerCase()).toBe(WALLET.toLowerCase());
+    expect((await post('claim', { id: batch.batch_id })).statusCode).toBe(200);
+    const before = await world.base.ethOf(ALEX);
+    const hash = await world.base
+      .walletFor(userAccount)
+      .sendTransaction({ to: call.to, data: call.data, value: BigInt(call.value) });
+    await world.base.pub.waitForTransactionReceipt({ hash });
+    expect((await post('recover', { id: batch.batch_id, hash })).statusCode).toBe(200);
+    await world.base.rpc('anvil_mine', ['0x80']);
+    await vi.waitFor(() => expect(wallet.service.store.step(e.request_id, 0).status).toBe('executed'), {
+      timeout: 15000,
+    });
+    expect(await world.base.ethOf(ALEX)).toBe(before + parseEther('0.01'));
+  });
   it('checks a typed transfer, waits for external approval, recovers after restart, and confirms exact finalized delivery', async () => {
     let wallet = await world.startWallet({ approval: 'metamask', dbName: 'browser.db' });
     let post = await session(wallet);
@@ -62,6 +89,7 @@ describe('browser approved CCIP transfer', () => {
     });
     expect(await world.arbitrum.pub.getTransactionCount({ address: WALLET })).toBe(before);
     expect((await post('claim', { id: batch.batch_id })).statusCode).toBe(409);
+    expect((await post('wallet-id', { id: batch.batch_id, walletId: '0xabcdef123456' })).statusCode).toBe(200);
 
     // Acts only as the external approving wallet on this isolated local chain. The service has no signing key.
     await world.upgrade(world.arbitrum, userAccount);
@@ -75,6 +103,7 @@ describe('browser approved CCIP transfer', () => {
     wallet = await world.startWallet({ approval: 'metamask', dbName: 'browser.db' });
     post = await session(wallet);
     expect(wallet.service.store.walletBatch(id, 0)?.batch_id).toBe(batch.batch_id);
+    expect(JSON.parse(wallet.service.store.walletBatch(id, 0)!.payload_json).providerBatchId).toBe('0xabcdef123456');
     const result = await post('recover', { id: batch.batch_id, hash });
     expect(result.statusCode, result.body).toBe(200);
     await vi.waitFor(() => expect(wallet.service.store.step(id, 0).status).toBe('waiting'), { timeout: 15000 });

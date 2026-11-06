@@ -67,7 +67,7 @@ async function accountCheck(chainId) {
 }
 async function track(batch, quiet = false) {
   try {
-    const result = await provider.request({ method: 'wallet_getCallsStatus', params: [batch.id] });
+    const result = await provider.request({ method: 'wallet_getCallsStatus', params: [batch.walletId || batch.id] });
     if (result.receipts?.length) await api('/browser/receipt', { id: batch.id, result });
     else if (!quiet) notify('This batch is still pending in MetaMask. Its saved ID will be used for recovery.');
   } catch (e) {
@@ -98,10 +98,9 @@ async function send(batch) {
     claimed = true;
     notify('Review the amount, approval, CCIP fee and any account upgrade in MetaMask.');
     const result = await provider.request({ method: 'wallet_sendCalls', params: [prepared.calls] });
-    if ((result.id ?? result.batchId) !== batch.id)
-      throw new Error(
-        'MetaMask returned a different batch ID. Keep the saved request pending and recover by source transaction hash.',
-      );
+    const walletId = typeof result === 'string' ? result : (result.id ?? result.batchId);
+    await api('/browser/wallet-id', { id: batch.id, walletId });
+    batch.walletId = walletId;
     await track(batch);
   } catch (e) {
     if (claimed && [4001, 5750].includes(e.code)) {
@@ -124,6 +123,9 @@ function render() {
   $('prepare').disabled = !connected || sending;
   $('ceiling').textContent = `CCIP fee ceiling: ${state.feeMaxEth} test ETH. Network gas is additional.`;
   const container = $('batches');
+  // Polling must not erase a transaction hash while the user types, or collapse their call review.
+  if (container.querySelector('input:focus')) return;
+  const expanded = new Set([...container.querySelectorAll('details[open]')].map((d) => d.dataset.batchId));
   container.replaceChildren();
   const queued = state.requests.filter((r) => !state.batches.some((b) => b.requestId === r.id));
   const pending = queued.filter((r) => r.steps.some((s) => !['executed', 'failed'].includes(s.status)));
@@ -161,17 +163,33 @@ function render() {
             : batch.delayed
               ? 'Delivery delayed. Still tracking; no second send.'
               : batch.tracking
-                ? `Tracking: ${batch.tracking.replaceAll('_', ' ')}`
+                ? batch.tracking === 'source_unfinalized'
+                  ? 'Source confirmed. Waiting for source-chain finality.'
+                  : batch.tracking === 'in_transit'
+                    ? 'Waiting for verified, finalized delivery on the destination chain.'
+                    : `Tracking: ${batch.tracking.replaceAll('_', ' ')}`
                 : batch.status === 'draft'
                   ? 'Checked · ready for your review'
                   : 'Waiting for MetaMask / source confirmation';
     card.append(el('p', label));
+    if (intent?.intent_id === 'j' && intent.source_chain_id === 11155111 && !complete)
+      card.append(
+        el(
+          'p',
+          'Ethereum source finality typically takes 13–19 minutes. CCIP verification and destination finality follow.',
+          'muted',
+        ),
+      );
     if (batch.feeWei) card.append(el('p', `Quoted CCIP fee: ${eth(batch.feeWei)} test ETH`));
     if (intent?.intent_id === 'j') card.append(el('p', `Recipient: your wallet ${state.wallet}`, 'muted'));
     const details = el('details');
+    details.dataset.batchId = batch.id;
+    details.open = expanded.has(batch.id);
     details.append(el('summary', 'Review calls and recovery details'));
     for (const line of batch.summary) details.append(el('p', line, 'muted'));
     details.append(el('p', `Batch ID: ${batch.id}`, 'muted'));
+    if (batch.walletId && batch.walletId !== batch.id)
+      details.append(el('p', `MetaMask batch ID: ${batch.walletId}`, 'muted'));
     if (batch.txHash) details.append(el('p', `Source transaction: ${batch.txHash}`, 'muted'));
     if (batch.destinationTxHash)
       details.append(el('p', `Destination transaction: ${batch.destinationTxHash}`, 'muted'));

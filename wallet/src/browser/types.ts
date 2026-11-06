@@ -11,6 +11,8 @@ export interface WalletCalls {
 }
 
 export interface WalletBatchPayload {
+  /** Some wallets generate their own ID even when the request supplies one. This never permits a second dispatch. */
+  providerBatchId?: string;
   calls: WalletCalls;
   expectedTx: TxRequest;
   sourceBlock: number;

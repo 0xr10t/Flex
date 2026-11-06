@@ -70,6 +70,20 @@ function harness() {
 }
 
 describe('durable browser wallet batches', () => {
+  it('stops a first-time single-recipient self-call before prompting when the account is not upgraded', async () => {
+    const h = harness();
+    const original = h.chain.getCode.bind(h.chain);
+    vi.spyOn(h.chain, 'getCode').mockImplementation(async (address) =>
+      address.toLowerCase() === WALLET.toLowerCase() ? '0x' : original(address),
+    );
+    const e = envelope([payEth(0, [[ALEX, '0.01']])]);
+    h.store.insertRequest(e, e.created_at);
+    void h.runner.kick();
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).error_code).toBe('BROWSER_ACCOUNT_UPGRADE_REQUIRED'));
+    expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
+    expect(h.chain.signed).toHaveLength(0);
+    expect(h.chain.broadcasts).toHaveLength(0);
+  });
   it('prepares an atomic request without signing, broadcasting or upgrading, and rejects a second dispatch', async () => {
     const h = harness();
     const { batch } = await h.queue();
@@ -82,6 +96,11 @@ describe('durable browser wallet batches', () => {
       chainId: toHex(BASE),
     });
     expect(calls.calls).toHaveLength(1);
+    expect(calls.calls[0]).toMatchObject({
+      to: WALLET,
+      data: JSON.parse(batch.payload_json).expectedTx.data,
+      value: '0x0',
+    });
     expect(h.store.walletBatchById(batch.batch_id)?.status).toBe('dispatched');
     expect(() => h.controller.claim(batch.batch_id)).toThrow('REFRESH_OR_RECOVER_BATCH');
     expect(h.chain.signed).toHaveLength(0);
@@ -103,38 +122,54 @@ describe('durable browser wallet batches', () => {
     h.controller.claim(replacement.batch_id);
     expect(() => h.controller.refresh(replacement.batch_id)).toThrow('BATCH_ALREADY_DISPATCHED');
   });
-  it('preserves a dispatched request through restart and completes from an independently checked transaction', async () => {
+  it.each([undefined, toHex(123, { size: 16 })])(
+    'recovers after restart with wallet-generated ID %s and independently checks the transaction',
+    async (walletId) => {
+      const h = harness();
+      const { batch, e } = await h.queue();
+      h.controller.claim(batch.batch_id);
+      if (walletId) h.controller.rememberWalletId(batch.batch_id, walletId);
+      await h.runner.stop();
+      const restarted = h.start();
+      void restarted.kick();
+      const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
+      const hash = toHex(77, { size: 32 });
+      vi.spyOn(h.chain, 'getTransaction').mockResolvedValue({
+        ...payload.expectedTx,
+        from: WALLET,
+        value: 0n,
+        nonce: 0,
+        blockNumber: 2,
+      });
+      vi.spyOn(h.chain, 'getReceipt').mockResolvedValue({
+        status: 'success',
+        logs: [],
+        blockNumber: 2,
+        executedAt: new Date().toISOString(),
+      });
+      await h.controller.receive(batch.batch_id, {
+        id: walletId ?? batch.batch_id,
+        chainId: toHex(BASE),
+        atomic: true,
+        receipts: [{ transactionHash: hash }],
+      });
+      await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('executed'));
+      expect(h.store.walletBatch(e.request_id, 0)?.batch_id).toBe(batch.batch_id);
+      expect(h.controller.state().batches[0]?.walletId).toBe(walletId ?? batch.batch_id);
+      expect(h.chain.signed).toHaveLength(0);
+      expect(h.chain.broadcasts).toHaveLength(0);
+    },
+  );
+  it('binds a wallet-generated ID once, only after dispatch, without allowing another send', async () => {
     const h = harness();
-    const { batch, e } = await h.queue();
+    const { batch } = await h.queue();
+    const walletId = toHex(21, { size: 16 });
+    expect(() => h.controller.rememberWalletId(batch.batch_id, walletId)).toThrow('WALLET_ID_UNVERIFIED');
     h.controller.claim(batch.batch_id);
-    await h.runner.stop();
-    const restarted = h.start();
-    void restarted.kick();
-    const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
-    const hash = toHex(77, { size: 32 });
-    vi.spyOn(h.chain, 'getTransaction').mockResolvedValue({
-      ...payload.expectedTx,
-      from: WALLET,
-      value: 0n,
-      nonce: 0,
-      blockNumber: 2,
-    });
-    vi.spyOn(h.chain, 'getReceipt').mockResolvedValue({
-      status: 'success',
-      logs: [],
-      blockNumber: 2,
-      executedAt: new Date().toISOString(),
-    });
-    await h.controller.receive(batch.batch_id, {
-      id: batch.batch_id,
-      chainId: toHex(BASE),
-      atomic: true,
-      receipts: [{ transactionHash: hash }],
-    });
-    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('executed'));
-    expect(h.store.walletBatch(e.request_id, 0)?.batch_id).toBe(batch.batch_id);
-    expect(h.chain.signed).toHaveLength(0);
-    expect(h.chain.broadcasts).toHaveLength(0);
+    h.controller.rememberWalletId(batch.batch_id, walletId);
+    h.controller.rememberWalletId(batch.batch_id, walletId);
+    expect(() => h.controller.rememberWalletId(batch.batch_id, toHex(22))).toThrow('WALLET_ID_UNVERIFIED');
+    expect(() => h.controller.claim(batch.batch_id)).toThrow('REFRESH_OR_RECOVER_BATCH');
   });
   it('rejects wallet hints with a wrong identity, non-atomic execution, or an unrelated old transaction', async () => {
     const h = harness();
