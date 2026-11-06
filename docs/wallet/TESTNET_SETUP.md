@@ -41,7 +41,7 @@ node scripts/configure-rpc-providers.mjs --third-provider=publicnode
 node scripts/setup-testnet.mjs
 ```
 
-Both commands ran successfully. Protected agent, wallet and CRE configs exist in `.local`; wallet signing remains disabled pending the signing integration. The helper fills empty settings only; changing an existing selection requires an explicit configuration edit.
+Both commands ran successfully. Protected agent, wallet and CRE configs exist in `.local`; wallet config now selects browser MetaMask approval using only the public address. The discovery helper fills empty settings only; changing an existing provider selection requires an explicit configuration edit. See [the browser workflow and live evidence](METAMASK_TESTNET.md).
 
 The documented Alchemy URL formats are:
 
@@ -73,7 +73,7 @@ The configured bridge sends native USDC, with no arbitrary message data, to the 
 
 1. Working source and destination read RPCs and a working source simulation quorum.
 2. The correct Circle-issued test USDC on the source, plus enough source ETH for approval/account setup, transaction gas and the fresh CCIP fee quote. Have destination ETH for subsequent wallet transactions; ordinary delivery is covered by the CCIP fee. LINK is not needed by this branch's native-fee configuration.
-3. A wallet able to approve the actual source transaction. The browser MetaMask signing/recovery integration remains an application gate; CRE login does not supply a wallet signer.
+3. A wallet able to approve the actual source transaction. Browser MetaMask signing/recovery is implemented and has been exercised on Ethereum Sepolia → Base Sepolia. CRE login does not supply a wallet signer.
 4. Current router, selector, USDC and token-pool configurations. Verify each direction of each intended route, including rate limits, route status, CCIP version, verifier requirements and finality policy. Network presence alone does not establish token-route readiness.
 5. Quotas and availability sufficient for receipt/log polling, retries and simulation. One provider outage should not corrupt state or trigger another bridge send.
 
@@ -83,17 +83,14 @@ Sources: [Ethereum Sepolia](https://docs.chain.link/ccip/directory/testnet/chain
 
 ### Required application fixes and evidence
 
-- Add an `isChainSupported` check before quoting/sending in the application. Live read-only checks returned true on all six directions, and every router quoted a 1-USDC message; the handler itself still lacks the check.
-- Persist the exact source message ID, transaction hash, source/destination selectors, token, amount, receiver and ramp identity. Recover from the saved transaction without resending the transfer as a new request.
-- Verify destination execution for that message and its associated token delivery, then wait for the selected destination finality before releasing dependent payments. Equal-amount transfer matching is insufficient.
-- Keep delayed or unknown transfers pending. A local timeout is not proof of bridge failure and is not permission to resend.
-- Let pending bridges yield so unrelated payments and cancellation can progress. Maintain safe account nonce ordering and restart recovery.
-- Persist destination status/failure details and reconcile the exact message after outages. Preserve unknown state until reliable evidence resolves it.
+- Implemented: `isChainSupported` and version checks before quoting/sending, persistence of the exact message/ramps/selectors/tokens/amount/receiver, and source-transaction recovery without a replacement send.
+- Implemented: exact destination message and USDC delivery verification, provisional delivery display, canonical finalized completion and dependent-payment gating.
+- Implemented: recoverable delayed/unknown/failed destination states, nonblocking bridge polling, durable browser batch IDs, and log scanning that adapts to explicit provider range limits.
 - Exercise all six directed routes with small test amounts if the product enables every pair. Include provider outage, process restart, delayed arrival, duplicate observation and fee-cap rejection tests. Local simulated delivery does not replace this evidence.
 
 CCIP is asynchronous. Finality, verifier/Circle availability, rate limits and destination execution can delay delivery. Reliable operation means preserving funds and state through those delays and offering recovery; it cannot guarantee an instantaneous or failure-free bridge.
 
-Live wallet snapshot on 6 November: approximately 4.17854 ETH / 3.829557 USDC on Ethereum Sepolia, 4.12569 ETH / 10 USDC on Base Sepolia, and 1.33845 ETH / 0 USDC on Arbitrum Sepolia. Funding Arbitrum USDC or receiving a test bridge there precedes outbound USDC testing. The 1-USDC quotes back to Ethereum Sepolia were approximately 0.002026 ETH from Base and 0.002033 ETH from Arbitrum, slightly above the template's 0.002 ETH cap. Requote each actual message and explicitly review the cap; it has not been raised.
+The initial wallet snapshot on 6 November showed test ETH on all three networks and zero USDC on Arbitrum Sepolia. Balances and quotes change as tests run. Funding Arbitrum USDC or receiving a test bridge there precedes outbound USDC testing. The user authorized raising the fee ceiling to 0.003 test ETH. Requote each actual message; network gas is additional. The first 0.02 USDC Sepolia → Base transfer delivered with a quoted CCIP fee of 0.000228667847801883 test ETH; destination finality is tracked separately.
 
 Sources: [Service responsibilities](https://docs.chain.link/ccip/concepts/service-responsibility), [Fees and billing](https://docs.chain.link/ccip/concepts/fees-and-billing).
 
@@ -103,9 +100,9 @@ The code builds to WASM, but the native CRE workflow has not yet passed simulati
 
 1. Validate all configuration and deploy the application executor on each intended testnet. Bind the correct forwarder and private-registry organization owner. Resolve workflow identity without assuming that a configured ID survives rebuilding/changing configuration.
 2. Replace the deployment-to-head log scan in `autopay/main.ts:51` with bounded discovery that preserves older active plans and respects the log-range and capability quotas.
-3. Fix the zero transaction hash fallback in `main.ts:170`; unsuccessful or missing write results must not look successful. Verify `Buffer.from` compatibility in the actual WASM simulation or replace it with SDK-compatible encoding.
-4. Apply the CRE skill's latency review: independent chain log reads are serialized by `readEvents(...).result()` and the chain map (`main.ts:51,103`); start independent handles before resolving them. Secrets are fetched one at a time in the due-chain loop (`main.ts:116`); use one `getSecrets` batch. Headers are independent of those secrets (`main.ts:119`); initiate them together. Provider requests are serialized by the synchronous adapter (`lib/simulation.ts:48`, `main.ts:86`); initiate independent provider calls first while preserving each provider's before/after check. These changes reduce serial waiting and secret round trips. Do not parallelize same-account writes or reads whose inputs depend on earlier results.
-5. Exercise the actual handler, not only its pure helpers, including unavailable quorum, cancellation, duplicate slot and write failure. Resolve the pinned SDK dependency audit gate.
+3. Run native CRE simulation with real runtime configuration. Zero transaction-hash fallback removal, write-result validation and SDK-compatible encoding are implemented and unit-tested.
+4. Validate runtime quotas after the implemented batching/concurrency changes: independent log handles, batched secrets and concurrent provider reads now avoid unnecessary serial waiting. Keep same-account writes serialized.
+5. Extend the existing actual-handler tests with live simulation evidence and resolve the pinned SDK dependency audit gate.
 
 After real runtime configuration and executor addresses exist, the non-broadcast native simulation command from the repository root is:
 
@@ -113,4 +110,4 @@ After real runtime configuration and executor addresses exist, the non-broadcast
 .\.local\bin\cre.exe workflow simulate wallet/cre/autopay --project-root wallet/cre --env .env --target staging-settings --non-interactive --trigger-index 0
 ```
 
-This command is documented, not reported as passed. Only after simulation passes and Chainlink grants organization access should Vault secrets be configured through the browser-authenticated CLI and the private-registry workflow be published and verified end to end. Browser login is sufficient; a CRE API key is optional. No live wallet transaction or workflow publication has occurred.
+This command is documented, not reported as passed. Only after simulation passes and Chainlink grants organization access should Vault secrets be configured through the browser-authenticated CLI and the private-registry workflow be published and verified end to end. Browser login is sufficient; a CRE API key is optional. User-approved CCIP transactions have occurred independently of CRE; no workflow has been published.
