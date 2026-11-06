@@ -21,15 +21,7 @@ import {
   TOKENS,
 } from '../contracts/static-tables.js';
 import type { AnswerHandler, StepContext, StepEntry, StepResult } from '../contracts/step.js';
-import type {
-  AddressPh,
-  Answer,
-  Chip,
-  Question,
-  RecipientSpan,
-  Span,
-  SpanKind,
-} from '../contracts/types.js';
+import type { AddressPh, Answer, Chip, Question, RecipientSpan, Span, SpanKind } from '../contracts/types.js';
 import { buildSpansPrompt } from '../llm/prompt-builder/spans.js';
 import { ADDRESS_FULL_RE } from '../lexical/patterns.js';
 import { joinNames, qid } from '../lexical/step-util.js';
