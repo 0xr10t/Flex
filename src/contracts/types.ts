@@ -674,9 +674,10 @@ export interface AgentRequest {
   prepend_messages: string[];
   /**
    * Per-step resumable progress (e.g. S6: which payee is being resolved, sub-flow, counters).
-   * Each step owns its own slot and its own shape; the runner never reads it.
+   * Each step owns its own slot and its own shape; the runner never reads it. `s9_answers` (SQ-R-05): S9's answers kept
+   * after planning, so a re-plan at confirm time does not ask them again.
    */
-  step_state: Partial<Record<StepNameRef, unknown>>;
+  step_state: Partial<Record<StepNameRef | 's9_answers', unknown>>;
 }
 
 // ───────────────────────────── §13.1 summary, §14.1 AgentResponse ─────────────────────────────

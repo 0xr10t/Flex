@@ -129,6 +129,21 @@ export function enumerateOccurrences(s: Schedule, maxWeeks: number): Occurrences
   return { occurrences: out, exceedsMaxWeeks: false };
 }
 
+/**
+ * SQ-R-03: the most occurrences in any 7-day window [t, t + 7 days), counted on the wall clock of the occurrences'
+ * zone (so a DST change never widens the window).
+ */
+export function mostInAnyWeek(occurrences: readonly DateTime[]): number {
+  let best = 0;
+  let lo = 0;
+  for (let hi = 0; hi < occurrences.length; hi++) {
+    const t = occurrences[hi] as DateTime;
+    while (lo < hi && (occurrences[lo] as DateTime).plus({ days: 7 }) <= t) lo++;
+    best = Math.max(best, hi - lo + 1);
+  }
+  return best;
+}
+
 /** §10.6 derived 4: the most payments in any 7-day window. */
 export function paymentsPerWeek(s: Pick<Schedule, 'frequency' | 'interval' | 'days_of_week'>): bigint {
   if (s.frequency === 'daily') return BigInt(Math.ceil(7 / s.interval));
