@@ -1,6 +1,11 @@
-// Privacy fix 4 in S6: an ENS name from attached content goes to the network only after "Look it up".
-import { describe, expect, it } from 'vitest';
-import { COIN, Driver, EVIL_A, NEWADDR, RIYA, contact, expectQuestion, makeCtx } from './helpers.js';
+// Privacy fixes in S6: fix 4 (an ENS name from attached content goes to the network only after "Look it up") and fix 6 (no
+// indexer configured → group sends are off, before any question or lookup).
+import { describe, expect, it, vi } from 'vitest';
+import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
+import { IndexerUnavailable } from '../../../src/contracts/io.js';
+import { createSubnameSource } from '../../../src/recipients/subnames.js';
+import { testConfig } from '../../fakes/context.js';
+import { BASE, COIN, Driver, EVIL_A, NEWADDR, RIYA, contact, expectQuestion, makeCtx } from './helpers.js';
 
 const LOOKUP_TEXT = 'The attached content names bob.eth. Should I look it up? You can also paste the wallet address.';
 
@@ -135,5 +140,53 @@ describe('privacy fix 4: ENS names from attached content', () => {
     expect(ctx.ens.calls).toEqual([]);
     await d.chip('ens_lookup');
     expect(new Set(ctx.ens.calls.map((c) => c.name))).toEqual(new Set(['eve.eth']));
+  });
+});
+
+describe('privacy fix 6: no indexer → group sends are off', () => {
+  function groupCtx(indexer: string | null) {
+    const ctx = makeCtx({
+      text: 'send amount_aa to everyone under iitr.eth on base',
+      spans: [{ text: 'everyone under iitr.eth', kind: 'group' }],
+      groups: [{ text: 'everyone under iitr.eth', parent: 'iitr.eth' }],
+      chains: [{ word: 'base', chain_id: BASE }],
+    });
+    ctx.config.ens.indexer_url = indexer;
+    ctx.subnames.children.set('iitr.eth', ['alice.iitr.eth']);
+    ctx.ens.set('alice.iitr.eth', COIN[BASE], RIYA);
+    return { ctx, d: new Driver(ctx) };
+  }
+
+  it('GROUP_SENDS_OFF naming the parent, before any question, indexer query or lookup', async () => {
+    const { ctx, d } = groupCtx(null);
+    const spy = vi.spyOn(ctx.subnames, 'listChildren');
+    await d.start();
+    expect(d.last).toEqual({ kind: 'error', code: 'GROUP_SENDS_OFF', params: { parent: 'iitr.eth' } });
+    expect(spy).not.toHaveBeenCalled();
+    expect(ctx.ens.calls).toEqual([]);
+    expect(ERROR_MESSAGE.GROUP_SENDS_OFF({ parent: 'iitr.eth' })).toMatch(
+      /^Paying everyone under iitr\.eth is turned off/,
+    );
+  });
+
+  it('with an indexer configured, the group flow runs (control)', async () => {
+    const { ctx, d } = groupCtx('https://indexer.invalid/graphql');
+    const spy = vi.spyOn(ctx.subnames, 'listChildren');
+    await d.start();
+    expect(spy).toHaveBeenCalledWith('iitr.eth');
+    expectQuestion(d, 'Q_GROUP_MEMBERS');
+  });
+
+  it('the subname source itself refuses with no URL and never fetches', async () => {
+    const fetchFn = vi.fn();
+    const cfg = testConfig();
+    cfg.ens.indexer_url = null;
+    for (const kind of ['ens-subgraph', 'ensnode-omnigraph'] as const) {
+      cfg.ens.indexer_kind = kind;
+      await expect(createSubnameSource(cfg, fetchFn).listChildren('iitr.eth')).rejects.toBeInstanceOf(
+        IndexerUnavailable,
+      );
+    }
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });

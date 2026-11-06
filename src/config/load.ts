@@ -97,7 +97,7 @@ const CONFIG_SCHEMA = {
       properties: {
         rpc_chain_id: { enum: [...CHAIN_IDS] },
         universal_resolver_address: ADDRESS,
-        indexer_url: NON_EMPTY,
+        indexer_url: { oneOf: [NON_EMPTY, { type: 'null' }] },
         indexer_kind: { enum: ['ens-subgraph', 'ensnode-omnigraph'] },
       },
     },
@@ -157,7 +157,7 @@ export function validateConfig(raw: unknown): Config {
   const urls: Array<[string, string]> = [
     ['/llm/ollama_url', cfg.llm.ollama_url],
     ['/execution/url', cfg.execution.url],
-    ['/ens/indexer_url', cfg.ens.indexer_url],
+    ...(cfg.ens.indexer_url === null ? [] : [['/ens/indexer_url', cfg.ens.indexer_url] as [string, string]]),
     ...cfg.chains.map((c, i): [string, string] => [`/chains/${i}/rpc_url`, c.rpc_url]),
   ];
   for (const [field, url] of urls) if (!URL.canParse(url)) errors.push(`${field} not a parsable URL`);

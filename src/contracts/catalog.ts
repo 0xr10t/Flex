@@ -360,6 +360,9 @@ export const ERROR_MESSAGE: Record<ErrorCode, (p: P) => string> = {
   PAIRING_FAILED: () => "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?",
   SELF_PAYMENT: () => "That's your own address. Moving funds between your own chains isn't a payment I can make.",
   ENS_INDEXER_UNAVAILABLE: (p) => `I can't list the members of ${req(p, 'parent')} right now.`,
+  // Privacy fix 6: the ENS indexer can't be reached through anon-rpc, so group sends are off unless `ens.indexer_url` is set.
+  GROUP_SENDS_OFF: (p) =>
+    `Paying everyone under ${req(p, 'parent')} is turned off for privacy: listing its members needs a direct connection to an ENS indexer. Name each person instead.`,
   GROUP_EMPTY: (p) => `${req(p, 'parent')} has no members I can pay on ${req(p, 'chain')}.`,
   NO_ACTIVE_AUTOPAY: (p) => `There's no active repeating payment to ${req(p, 'name')}.`,
   AUTOPAY_NOT_READY: () => 'That repeating payment is still being set up. Try again shortly.',

@@ -56,7 +56,8 @@ export function createSubnameSource(config: Config, fetchFn: FetchFn = fetch): S
   const url = config.ens.indexer_url;
 
   async function post<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    if (!url.startsWith('https://')) throw new IndexerUnavailable();
+    // Privacy fix 6: no indexer configured means group sends are off (S6 says so before getting here).
+    if (url === null || !url.startsWith('https://')) throw new IndexerUnavailable();
     let body: GraphQlResponse<T>;
     try {
       const res = await fetchFn(url, {

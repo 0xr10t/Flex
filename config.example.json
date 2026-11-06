@@ -43,7 +43,7 @@
   "ens": {
     "rpc_chain_id": 11155111,
     "universal_resolver_address": "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
-    "indexer_url": "https://api.v2-sepolia.ensnode.io/api/omnigraph",
+    "indexer_url": null,
     "indexer_kind": "ensnode-omnigraph"
   },
   "execution": {

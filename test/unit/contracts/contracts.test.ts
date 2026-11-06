@@ -89,7 +89,7 @@ describe('contracts-v1', () => {
     }
     for (const c of ERROR_CODES) expect(ERROR_MESSAGE[c]).toBeTypeOf('function');
     expect(QUESTION_CODES).toHaveLength(28); // contracts-v4: -Q_GROUP_OVER_LIMIT, +Q_LIMIT_OVERRIDE, Q_PAIR_AMOUNT, Q_NAME_ROLE
-    expect(ERROR_CODES).toHaveLength(36); // privacy fix 5: +LINKS_OFF
+    expect(ERROR_CODES).toHaveLength(37); // privacy fixes 5 and 6: +LINKS_OFF, +GROUP_SENDS_OFF
   });
 
   it('§3.3 registry wires a real step for S0–S12 in fixed order (Phase 2)', async () => {

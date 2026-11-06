@@ -5,7 +5,7 @@
 // §7.2 / §16.4 DB2 written only by add_contact after "Yes" + name, §15 SELF_PAYMENT / ENS_INDEXER_UNAVAILABLE /
 // GROUP_EMPTY / TOO_MANY_RETRIES.
 // SQ-S-01: failed-payment corrections preserve the resolved recipient's ENS chain restrictions.
-// Privacy fix 4: an ENS name from attached content is looked up only after "Look it up".
+// Privacy fix 4: an ENS name from attached content is looked up only after "Look it up". Fix 6: no indexer → GROUP_SENDS_OFF.
 
 import {
   CHIPS,
@@ -551,6 +551,10 @@ async function startSpan(ctx: StepContext, span: RecipientSpan): Promise<Outcome
     case 'address':
       return addressFromText(ctx, span.text, origin);
     case 'group': {
+      // Privacy fix 6: listing members needs the indexer, which anon-rpc can't reach; null turns group sends off.
+      if (ctx.config.ens.indexer_url === null) {
+        return stop({ kind: 'error', code: 'GROUP_SENDS_OFF', params: { parent: groupParentText(span, ctx) } });
+      }
       const parent = normalizeEns(groupParentText(span, ctx));
       return groupAdvance(ctx, {
         t: 'group',

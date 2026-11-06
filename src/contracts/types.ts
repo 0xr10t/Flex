@@ -68,7 +68,8 @@ export interface Config {
   ens: {
     rpc_chain_id: ChainId;
     universal_resolver_address: Address;
-    indexer_url: string;
+    /** Null turns group sends off (privacy fix 6: the indexer is reached directly, not through anon-rpc). */
+    indexer_url: string | null;
     indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
@@ -539,6 +540,7 @@ export type ErrorCode =
   | 'PAIRING_FAILED'
   | 'SELF_PAYMENT'
   | 'ENS_INDEXER_UNAVAILABLE'
+  | 'GROUP_SENDS_OFF'
   | 'GROUP_EMPTY'
   | 'NO_ACTIVE_AUTOPAY'
   | 'AUTOPAY_NOT_READY'
@@ -577,6 +579,7 @@ export const ERROR_CODES: readonly ErrorCode[] = [
   'PAIRING_FAILED',
   'SELF_PAYMENT',
   'ENS_INDEXER_UNAVAILABLE',
+  'GROUP_SENDS_OFF',
   'GROUP_EMPTY',
   'NO_ACTIVE_AUTOPAY',
   'AUTOPAY_NOT_READY',

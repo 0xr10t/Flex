@@ -50,6 +50,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
   ['PAIRING_FAILED', {}, "I couldn't tell which amount goes to whom. Could you rephrase, one payment per line?"],
   ['SELF_PAYMENT', {}, "That's your own address. Moving funds between your own chains isn't a payment I can make."],
   ['ENS_INDEXER_UNAVAILABLE', { parent: 'acme.eth' }, "I can't list the members of acme.eth right now."],
+  [
+    'GROUP_SENDS_OFF',
+    { parent: 'iitr.eth' },
+    'Paying everyone under iitr.eth is turned off for privacy: listing its members needs a direct connection to an ENS indexer. Name each person instead.',
+  ],
   ['GROUP_EMPTY', { parent: 'acme.eth', chain: 'Base Sepolia' }, 'acme.eth has no members I can pay on Base Sepolia.'],
   ['NO_ACTIVE_AUTOPAY', { name: 'Mihir' }, "There's no active repeating payment to Mihir."],
   ['AUTOPAY_NOT_READY', {}, 'That repeating payment is still being set up. Try again shortly.'],
@@ -97,11 +102,11 @@ const CASES: Array<[ErrorCode, Record<string, string>, string]> = [
 ];
 
 describe('C-395 §15 error messages', () => {
-  it('C-395 §15: the catalogue has exactly 36 codes, each with a message', () => {
-    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 38 cases over 36 codes.
-    // Privacy fix 5 adds LINKS_OFF.
+  it('C-395 §15: the catalogue has exactly 37 codes, each with a message', () => {
+    // SQ-A-06 F-9: two extra EXECUTION_UNAVAILABLE `final` variants, so 39 cases over 37 codes.
+    // Privacy fixes 5 and 6 add LINKS_OFF and GROUP_SENDS_OFF.
     const codes = [...new Set(CASES.map(([c]) => c))].sort();
-    expect(codes).toHaveLength(36);
+    expect(codes).toHaveLength(37);
     expect([...ERROR_CODES].sort()).toEqual(codes);
     expect(Object.keys(ERROR_MESSAGE).sort()).toEqual(codes);
   });
