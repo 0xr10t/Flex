@@ -28,8 +28,10 @@ const t = (text: string, tone: Segment['tone'] = 0): Segment => ({ text, tone })
 const line = (...segs: Segment[]): Line => segs;
 const plain = (text: string, tone: Segment['tone'] = 0): Line => [t(text, tone)];
 
-const YES = /^(y|yes)$/i;
-const NO = /^(n|no)$/i;
+/** The words the agent accepts as yes and no to a summary, and as cancelling (§17.3). */
+const YES = /^(y|yes|confirm|go ahead|ok|okay|do it|send it)$/i;
+const NO = /^(n|no|don'?t|stop)$/i;
+const CANCEL = /^(cancel|abort|never ?mind|forget it)$/i;
 /** Codes after which the same request can be confirmed again (§17.3 HANDOFF_FAILED). */
 const RETRYABLE = new Set(['EXECUTION_UNAVAILABLE']);
 
@@ -102,11 +104,16 @@ export class Chat {
     const p = this.pending;
     const trimmed = text.trim();
 
-    if (p && (p.state === 'awaiting_confirmation' || (p.state === 'error' && RETRYABLE.has(p.error?.code ?? '')))) {
-      if (YES.test(trimmed)) return this.show(await api.confirm(sid, p.request_id, 'yes'), true);
-      if (NO.test(trimmed) && p.state === 'awaiting_confirmation')
-        return this.show(await api.confirm(sid, p.request_id, 'no'));
+    if (p?.state === 'awaiting_confirmation') {
+      const words = trimmed.toLowerCase().replace(/[.!]+$/, '');
+      if (YES.test(words)) return this.show(await api.confirm(sid, p.request_id, 'yes'), true);
+      if (NO.test(words)) return this.show(await api.confirm(sid, p.request_id, 'no'));
+      if (CANCEL.test(words)) return this.show(await api.cancel(sid, p.request_id));
+      // anything else would drop the plan and start a new request: keep the plan and ask again
+      return confirmAgain();
     }
+    if (p?.state === 'error' && RETRYABLE.has(p.error?.code ?? '') && YES.test(trimmed))
+      return this.show(await api.confirm(sid, p.request_id, 'yes'), true);
     if (p?.state === 'awaiting_answer' && p.question) {
       const body = answerFor(p.question, trimmed);
       if (body) return this.show(await api.answer(sid, body));
@@ -271,6 +278,14 @@ export function answerFor(q: Question, typed: string): AnswerBody | undefined {
   if (q.chips.length > 0 && /^\d+$/.test(typed) && usable(Number(typed)) && q.input === 'chips')
     return { question_id: q.question_id, chip_id: q.chips[Number(typed) - 1]!.id };
   return undefined;
+}
+
+/** The reply to anything but yes or no while a summary waits: the plan stays, and the question is asked again. */
+function confirmAgain(): Line[] {
+  return [
+    line(t('Please answer '), t('y', 2), t(' or '), t('n', 2), t('. The plan above is still waiting.')),
+    plain('To ask for something else, answer n first, then send your new request.', 1),
+  ];
 }
 
 /** An agent reply as conversation lines. */

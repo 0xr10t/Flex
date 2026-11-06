@@ -185,6 +185,45 @@ describe('the conversation', () => {
     ]);
   });
 
+  it('asks again for y or n when a summary gets any other reply, keeping the plan', async () => {
+    const api = new FakeApi();
+    const chat = new Chat({
+      connect: async () => endpoint(),
+      client: () => api,
+      timezone: 'UTC',
+      openPage: () => true,
+    });
+    const summary = { text: 'Please confirm:\n1. Send.\nConfirm?', lines: ['1. Send.'], notes: [], footer: [] };
+    api.replies = [
+      response({ state: 'awaiting_confirmation', summary }),
+      response({ messages: [{ type: 'text', text: 'Sent to your wallet for signing.' }] }),
+    ];
+    await chat.send('send 10 usdc to aradhya');
+    for (const typo of ['t', 'send 5 to mihir', 'yess']) {
+      expect(text(await chat.send(typo))).toEqual([
+        'Please answer y or n. The plan above is still waiting.',
+        'To ask for something else, answer n first, then send your new request.',
+      ]);
+    }
+    await chat.send('Go ahead.');
+    expect(api.calls.filter((c) => c !== 'open')).toEqual(['message send 10 usdc to aradhya', 'confirm yes']);
+  });
+
+  it('cancels a waiting summary with a cancel word', async () => {
+    const api = new FakeApi();
+    const chat = new Chat({
+      connect: async () => endpoint(),
+      client: () => api,
+      timezone: 'UTC',
+      openPage: () => true,
+    });
+    const summary = { text: 'Please confirm:\n1. Send.\nConfirm?', lines: ['1. Send.'], notes: [], footer: [] };
+    api.replies = [response({ state: 'awaiting_confirmation', summary })];
+    await chat.send('send 10 usdc to aradhya');
+    await chat.send('never mind');
+    expect(api.calls.at(-1)).toBe('cancel');
+  });
+
   it('answers a chip question by number and sends other text as a message', async () => {
     const api = new FakeApi();
     const chat = new Chat({
