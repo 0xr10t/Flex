@@ -88,6 +88,9 @@ function summaryOk(ls: string[], plan: Json[], setup: Json): { ok: boolean; why:
         if (sc.days && !sc.days.every((d: string) => m[4]!.includes(DAY[d]!))) return false;
         if (sc.end?.type === 'after_count' && !l.includes(`for ${sc.end.count} payments`)) return false;
         if (sc.freq === 'daily' && !/every day|daily/i.test(m[4]!)) return false;
+        // The reader also checks the repeat interval: "every 4 weeks" is not "every Monday".
+        const iv = /every (\d+) (day|week|month)s?/.exec(m[4]!);
+        if ((sc.interval ?? 1) === 1 ? iv !== null : !iv || Number(iv[1]) !== sc.interval) return false;
         return true;
       }
       return /^Stop paying /.test(l) && (!/^[A-Z]/.test(p.to) || l.includes(p.to));
