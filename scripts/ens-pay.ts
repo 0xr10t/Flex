@@ -13,14 +13,14 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { createPublicClient, formatEther, getAddress, http, parseEther, type Hex } from 'viem';
+import { BaseError, createPublicClient, formatEther, getAddress, http, parseEther, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { EnsUnavailable } from '../src/contracts/io.js';
 import type { ChainId, Config } from '../src/contracts/types.js';
 import { createEnsClient } from '../src/recipients/ens-client.js';
 import { resolveOnChain } from '../src/recipients/ens.js';
 import { accountProblem } from '../wallet/src/chain/account.js';
-import { createChainGateway, type ChainGateway } from '../wallet/src/chain/gateway.js';
+import { ChainUnavailableError, createChainGateway, type ChainGateway } from '../wallet/src/chain/gateway.js';
 import { runCheck } from '../wallet/src/guard/check.js';
 import { checkEnvelope } from '../wallet/src/mapping/check.js';
 import { paymentHandler } from '../wallet/src/payments/payment-i.js';
@@ -55,6 +55,8 @@ const keyEntry = new Entry('flex-wallet', keyAccount);
 const pendingFile = join(homedir(), '.flex-wallet', `ens-pay-pending-${keyAccount}.json`);
 
 class Stop extends Error {}
+/** What a sudden failure means for the money, so an error can never leave the user guessing. */
+let moneyState = 'Nothing was signed or sent.';
 const say = (line = '') => console.log(line);
 
 const configFor = (rpc: string) =>
@@ -196,6 +198,7 @@ async function pay(send: boolean) {
     const saved = JSON.parse(readFileSync(pendingFile, 'utf8')) as { raw: Hex; hash: Hex; nonce: number };
     say(`Finishing the payment saved earlier, instead of starting a new one.`);
     if (!send) throw new Stop('Run again with --send to finish it.');
+    moneyState = `A signed payment is saved. Run this again with --send to finish that same payment. It can't pay twice. Hash: ${saved.hash}`;
     if (!(await waitAndFinish(gateway, saved.raw, saved.hash, saved.nonce)))
       throw new Stop('The transaction reverted, so nobody was paid.');
     return;
@@ -257,9 +260,11 @@ async function pay(send: boolean) {
   // Saved before it reaches the network, so a crash here resumes this exact transaction instead of signing a second one.
   mkdirSync(join(homedir(), '.flex-wallet'), { recursive: true, mode: 0o700 });
   writeFileSync(pendingFile, JSON.stringify(signed), { mode: 0o600 });
+  moneyState = `A signed payment is saved. Run this again with --send to finish that same payment. It can't pay twice. Hash: ${signed.hash}`;
 
   const ok = await waitAndFinish(gateway, signed.raw, signed.hash, signed.nonce);
   if (!ok) throw new Stop('The transaction reverted, so nobody was paid.');
+  moneyState = `The payment went through, but the balances couldn't be read afterwards. Don't pay again. Check: https://sepolia.etherscan.io/tx/${signed.hash}`;
 
   say('\nBalance changes:');
   let allMoved = true;
@@ -276,9 +281,10 @@ try {
   if (args.includes('--import-key')) await importKey();
   else await pay(args.includes('--send'));
 } catch (e) {
-  if (e instanceof EnsUnavailable)
-    console.error('\nStopped: an ENS lookup failed on the RPC, so nothing was paid. Try again.');
-  else if (e instanceof Stop) console.error(`\nStopped: ${e.message}`);
+  if (e instanceof Stop) console.error(`\nStopped: ${e.message}`);
+  else if (e instanceof EnsUnavailable) console.error(`\nStopped: an ENS lookup failed on the RPC. ${moneyState}`);
+  else if (e instanceof BaseError || e instanceof ChainUnavailableError)
+    console.error(`\nStopped: the network failed. ${moneyState}`);
   else throw e;
   process.exitCode = 1;
 }
