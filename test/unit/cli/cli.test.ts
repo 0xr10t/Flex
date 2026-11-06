@@ -5,7 +5,9 @@ import { renderScene, renderSceneLayer, SCENE_COLS, SCENE_ROWS } from '../../../
 import { stageLayout } from '../../../src/cli/render/stage.js';
 import { snap, SNAP_SECONDS } from '../../../src/cli/render/snap.js';
 import { SplashAnimation, SPLASH_COLS, SPLASH_ROWS } from '../../../src/cli/render/splash.js';
-import { composeOpening, detectColorMode, parseInput, renderStatic } from '../../../src/cli/terminal.js';
+import { composeOpening, detectColorMode, renderStatic, type Phase } from '../../../src/cli/terminal.js';
+import { parseInput, type KeyEvent } from '../../../src/cli/input.js';
+import { Repl } from '../../../src/cli/repl.js';
 import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
 
 const ESC = '\u001b';
@@ -113,72 +115,134 @@ describe('snap', () => {
 });
 
 describe('opening', () => {
-  const still = { x: 0, y: 0, on: false };
-  const at = (phase: 'intro' | 'snap' | 'splash', snapS = 0): string[] => {
+  // 160 × 50: the 43-row opening starts on row 3
+  const top = 3;
+  const at = (phase: Phase, snapS = 0, repl = new Repl()): string[] => {
     const layout = stageLayout(160, 50)!;
-    const anim = new SplashAnimation();
-    anim.frame(0);
-    return frameLines(composeOpening(layout, phase, 6, snapS, anim, 6000, still, false));
+    const header = new SplashAnimation();
+    header.frame(0);
+    const pointer = { x: 0, y: 0, on: false };
+    const state = { phase, sceneT: 6, snapS, nowMs: 6000, pointer, starfield: false };
+    return frameLines(composeOpening(layout, state, header, repl));
   };
+  const header = (lines: string[]): string[] => lines.slice(top, top + 17);
 
-  it('opens on the whole scene centred in the terminal', () => {
+  it('opens with the cube and FLEXX above the globe, gateway and diamond', () => {
     const lines = at('intro');
     expect(lines).toHaveLength(50);
-    expect(lines[5 + 10]).toContain('THE ACCESS LAYER BETWEEN AI MODELS AND ETHEREUM');
-    expect(lines[5 + 17]!.indexOf('+- FLEX GATEWAY')).toBe(20 + 50);
-    expect(lines[5 + 35]).toContain('[ AI MODEL ]');
+    const hx = Math.floor((160 - 89) / 2) + 16 + 19;
+    expect(lines[top + 3]!.slice(hx)).toMatch(/^██████████ ██ {9}██████████ ██ {6}██ ██ {6}██/);
+    expect(lines[top + 11]).toContain('the access layer between AI and ethereum');
+    expect(lines.join('\n')).not.toContain('flex $');
+    const sceneY = top + 18 - 14;
+    expect(lines[sceneY + 17]!.indexOf('+- FLEX GATEWAY')).toBe(20 + 50);
+    expect(lines[sceneY + 35]).toContain('[ AI MODEL ]');
+    expect(lines[sceneY + 38]).toContain('flex.access');
   });
 
-  it('takes the title with the objects and keeps the footer', () => {
-    const all = at('snap', SNAP_SECONDS + 0.01).join('\n');
-    expect(all).not.toMatch(/THE ACCESS LAYER|█|FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
-    expect(all).toContain('flex.access');
+  it('turns only the globe, gateway and diamond to dust', () => {
+    const lines = at('snap', SNAP_SECONDS + 0.01);
+    expect(header(lines)).toEqual(header(at('intro')));
+    expect(lines.join('\n')).not.toMatch(/FLEX GATEWAY|\[ AI MODEL \]|\[ ETHEREUM \]/);
+    expect(lines.join('\n')).toContain('flex.access');
   });
 
-  it('brings the splash up centred above the footer', () => {
-    const lines = at('splash');
-    expect(lines.join('\n')).not.toContain('THE ACCESS LAYER');
-    const top = lines.findIndex((l) => l.includes('█'));
-    const prompt = lines.findIndex((l) => l.includes('flex $ █'));
-    // footer on row 5 + 38: the text block (13 rows) sits centred in the 43 rows above it
-    expect(top).toBe(Math.floor((43 - 13) / 2));
-    expect(prompt).toBe(top + 12);
-    expect(lines[5 + 38]).toContain('flex.access');
+  it('opens the command box where they were, header unmoved', () => {
+    const lines = at('box');
+    expect(header(lines)).toEqual(header(at('intro')));
+    expect(lines[top + 18]).toMatch(/╭─ flex ─+╮/);
+    expect(lines[top + 40]).toMatch(/╰─+╯/);
+    expect(lines[top + 39]).toContain('flex $ █');
+    expect(lines[top + 38]).toContain('type help to see the commands');
+    expect(lines[top + 42]).toContain('flex.access');
   });
 
-  it('keeps the stars in the background', () => {
-    const layout = stageLayout(160, 50)!;
-    const anim = new SplashAnimation();
-    const f = composeOpening(layout, 'splash', 6, 0, anim, 0, still, true);
-    expect(f.ch.filter((c, i) => (c === '.' || c === '+') && f.tone[i] === 1).length).toBeGreaterThan(100);
+  it('shows what was typed and run in the box', () => {
+    const repl = new Repl();
+    for (const c of 'help') repl.handle({ kind: 'key', key: 'char', char: c });
+    repl.handle({ kind: 'key', key: 'enter' });
+    for (const c of 'pay') repl.handle({ kind: 'key', key: 'char', char: c });
+    const all = at('box', 0, repl).join('\n');
+    expect(all).toContain('flex $ help');
+    expect(all).toMatch(/exit +leave flexx/);
+    expect(all).toContain('flex $ pay█');
   });
 });
 
 describe('stage layout', () => {
-  it('centres the opening scene when it fits', () => {
-    expect(stageLayout(120, 40)).toMatchObject({ scene: { x: 0, y: 0 }, footer: { x: 0, y: 0 } });
-    expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 10 } });
+  it('centres the full opening when it fits', () => {
+    expect(stageLayout(120, 43)).toMatchObject({ scene: { x: 0, y: 4 }, box: { x: 10, y: 18, w: 100, h: 23 } });
+    expect(stageLayout(200, 60)).toMatchObject({ scene: { x: 40, y: 12 } });
   });
 
-  it('keeps the footer without the scene on a mid-sized terminal', () => {
+  it('skips the opening below 120 × 43 but keeps the header and box', () => {
     const l = stageLayout(100, 32)!;
     expect(l.scene).toBeNull();
-    expect(l.footer).toMatchObject({ y: 30 - 38 });
-    expect(l.splash.objectX).not.toBeNull();
-  });
-
-  it('shows the splash alone, then without its logo, as the terminal shrinks', () => {
-    const l = stageLayout(80, 22)!;
     expect(l.footer).toBeNull();
-    expect(stageLayout(80, 24)!.splash.objectX).toBeNull();
-    expect(stageLayout(95, 20)!.splash.objectX).not.toBeNull();
-    expect(stageLayout(95, 16)!.splash.objectX).toBeNull();
-    expect(stageLayout(55, 20)).toBeNull();
-    expect(stageLayout(60, 13)).toBeNull();
+    expect(l.header?.objectX).not.toBeNull();
+    expect(l.box).toMatchObject({ y: 17, h: 14 });
   });
 
-  it('lays out the splash alone when asked', () => {
-    expect(stageLayout(200, 60, false)).toMatchObject({ scene: null, footer: null });
+  it('drops the cube, then the header, as the terminal shrinks', () => {
+    expect(stageLayout(80, 30)!.header?.objectX).toBeNull();
+    expect(stageLayout(100, 20)!.header?.objectX).toBeNull();
+    expect(stageLayout(80, 16)!.header).toBeNull();
+    expect(stageLayout(80, 16)!.box).toMatchObject({ y: 0, h: 16 });
+    expect(stageLayout(41, 20)).toBeNull();
+    expect(stageLayout(60, 5)).toBeNull();
+  });
+});
+
+describe('command box', () => {
+  const type = (repl: Repl, s: string): void => {
+    for (const ev of parseInput(s)) if (ev.kind === 'key') repl.handle(ev as KeyEvent);
+  };
+  const said = (repl: Repl): string[] => repl.output.map((l) => l.map((s) => s.text).join(''));
+
+  it('runs help and echoes the line', () => {
+    const repl = new Repl();
+    type(repl, 'help\r');
+    expect(said(repl)).toContain('flex $ help');
+    expect(said(repl).some((l) => l.includes('clear') && l.includes('clear the box'))).toBe(true);
+  });
+
+  it('reports unknown commands', () => {
+    const repl = new Repl();
+    type(repl, 'pay 5 usdc\r');
+    expect(said(repl).at(-1)).toBe('unknown command: pay · type help');
+  });
+
+  it('edits the line with the cursor keys', () => {
+    const repl = new Repl();
+    type(repl, `hlp${ESC}[D${ESC}[De${ESC}[F!`);
+    expect(repl.input).toBe('help!');
+    type(repl, '\u007f');
+    expect(repl.input).toBe('help');
+    type(repl, `${ESC}[H${ESC}[3~`);
+    expect(repl.input).toBe('elp');
+  });
+
+  it('recalls earlier lines with Up and Down', () => {
+    const repl = new Repl();
+    type(repl, 'one\rtwo\rdraft');
+    type(repl, `${ESC}[A`);
+    expect(repl.input).toBe('two');
+    type(repl, `${ESC}[A${ESC}[A`);
+    expect(repl.input).toBe('one');
+    type(repl, `${ESC}[B${ESC}[B`);
+    expect(repl.input).toBe('draft');
+  });
+
+  it('clears, and leaves on exit or Ctrl-C on an empty line', () => {
+    const repl = new Repl();
+    type(repl, 'help\rclear\r');
+    expect(repl.output).toHaveLength(0);
+    expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBe('quit');
+    type(repl, 'abc');
+    expect(repl.handle({ kind: 'key', key: 'interrupt' })).toBeUndefined();
+    expect(repl.input).toBe('');
+    type(repl, 'exit');
+    expect(repl.handle({ kind: 'key', key: 'enter' })).toBe('quit');
   });
 });
 
@@ -198,25 +262,40 @@ describe('painting', () => {
   it('prints plain text without colour', () => {
     const out = renderStatic({ view: 'opening', colorMode: 'none' });
     expect(out).not.toContain(ESC);
-    expect(out).not.toContain('THE ACCESS LAYER');
+    expect(out).toContain('the access layer between AI and ethereum');
     expect(out).toContain('flex $');
     expect(out).toContain('flex.access');
-    expect(out.split('\n')).toHaveLength(SCENE_ROWS + 1);
+    expect(out.split('\n')).toHaveLength(43 + 1);
   });
 });
 
 describe('terminal input', () => {
-  it('parses SGR mouse reports and keys', () => {
+  it('parses SGR mouse reports, editing keys and characters', () => {
     expect(parseInput(`${ESC}[<35;12;7M${ESC}[<35;13;8mq`)).toEqual([
       { kind: 'mouse', col: 12, row: 7 },
       { kind: 'mouse', col: 13, row: 8 },
-      { kind: 'key', key: 'quit' },
+      { kind: 'key', key: 'char', char: 'q' },
     ]);
-    expect(parseInput('\r')).toEqual([{ kind: 'key', key: 'enter' }]);
-    expect(parseInput('\u0003')).toEqual([{ kind: 'key', key: 'interrupt' }]);
-    expect(parseInput(ESC)).toEqual([{ kind: 'key', key: 'quit' }]);
-    expect(parseInput(`${ESC}[A`)).toEqual([]);
-    expect(parseInput(' ')).toEqual([{ kind: 'key', key: 'other' }]);
+    expect(parseInput('\r\n')).toEqual([{ kind: 'key', key: 'enter' }]);
+    expect(parseInput('\u0003\u0004\u000c\u007f')).toEqual([
+      { kind: 'key', key: 'interrupt' },
+      { kind: 'key', key: 'eof' },
+      { kind: 'key', key: 'clear' },
+      { kind: 'key', key: 'backspace' },
+    ]);
+    expect(parseInput(ESC)).toEqual([{ kind: 'key', key: 'escape' }]);
+    expect(parseInput(`${ESC}[A${ESC}[1;5C${ESC}OH${ESC}[4~${ESC}[3~`)).toEqual([
+      { kind: 'key', key: 'up' },
+      { kind: 'key', key: 'right' },
+      { kind: 'key', key: 'home' },
+      { kind: 'key', key: 'end' },
+      { kind: 'key', key: 'delete' },
+    ]);
+    expect(parseInput(`${ESC}[I`)).toEqual([]);
+    expect(parseInput('é✓')).toEqual([
+      { kind: 'key', key: 'char', char: 'é' },
+      { kind: 'key', key: 'char', char: '✓' },
+    ]);
   });
 
   it('picks the colour mode from the environment', () => {

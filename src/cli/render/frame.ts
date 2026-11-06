@@ -50,7 +50,15 @@ export function put(f: Frame, x: number, y: number, c: string, k: Tone = 0): voi
 }
 
 export function text(f: Frame, x: number, y: number, s: string, k: Tone = 0): void {
-  for (let i = 0; i < s.length; i++) put(f, x + i, y, s[i]!, k);
+  [...s].forEach((c, i) => put(f, x + i, y, c, k));
+}
+
+/** A rectangle of cells. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**

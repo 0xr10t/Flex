@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // `flexx` command-line entry (macOS already ships an unrelated `/usr/bin/flex`). It opens on the gateway scene
-// ("Flex ASCII"), turns its title and objects to dust and brings the splash ("Flex Terminal") up; the wallet
-// commands land behind the splash's `flex $` prompt next.
+// ("Flex ASCII") under the cube and FLEXX header ("Flex Terminal"), turns the globe, gateway and diamond to dust and
+// opens the command box in their place; the wallet commands plug into the box next.
 
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -13,12 +13,13 @@ import { detectColorMode, renderStatic, runInteractive, type View, type ViewOpti
 
 export const USAGE = `Usage: flexx [splash|scene] [options]
 
-With no view, opens on the gateway scene, turns the title, globe, gateway and
-diamond to dust and brings the splash up over the stars (any key skips ahead). It
-fills the terminal and fits itself to its size: below 120 × 40 the opening is skipped.
+With no view, opens on the gateway scene under the cube and FLEXX, turns the
+globe, gateway and diamond to dust and opens a command box in their place (any
+key skips ahead; type help in the box, exit or Ctrl-C to leave). It fills the
+terminal and fits itself to its size: below 120 × 43 the opening is skipped.
 
 Views:
-  splash            the splash alone: the logo beside FLEXX; move the mouse to steer
+  splash            the splash alone: the cube beside FLEXX; move the mouse to steer
   scene             the gateway scene alone (needs 120 × 40)
 
 Options:

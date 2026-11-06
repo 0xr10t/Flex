@@ -31,10 +31,10 @@ const GLYPHS = '0123456789abcdef#$%&*+=<>/\\';
 const LIGHT = norm([-0.5, 0.6, 0.65]);
 const SPHERE_X = 20;
 const OCTAHEDRON_X = 100;
-/** Rows the title layer uses (wordmark top to tagline) and the row of the footer, in scene coordinates. */
-export const SCENE_TITLE_TOP = 2;
-export const SCENE_TITLE_BOTTOM = 10;
+/** The footer's row, and the rows the objects layer spans, in scene coordinates. */
 export const SCENE_FOOTER_ROW = 38;
+export const SCENE_OBJECTS_TOP = 14;
+export const SCENE_OBJECTS_BOTTOM = 35;
 const LOGS = [
   '> infer   model.req',
   '  auth    flex.key',

@@ -109,8 +109,11 @@ export class SplashAnimation {
     return f;
   }
 
-  /** Draws the splash into `f` at `at` for wall-clock time `nowMs`; the first call starts its reveal. */
-  draw(f: Frame, nowMs: number, pointer: Pointer, at: SplashPlacement): void {
+  /**
+   * Draws the splash into `f` at `at` for wall-clock time `nowMs`; the first call starts its reveal. `prompt` false
+   * leaves out the `flex $` line (the command box has its own).
+   */
+  draw(f: Frame, nowMs: number, pointer: Pointer, at: SplashPlacement, prompt = true): void {
     if (this.t0 === undefined) {
       this.t0 = nowMs;
       this.prev = nowMs;
@@ -128,7 +131,7 @@ export class SplashAnimation {
     this.pitch += (tp - this.pitch) * Math.min(1, dt * 5);
 
     if (at.objectX !== null) this.drawObject(f, at.objectX, at.objectY);
-    this.drawText(f, t, at.textX, at.textY);
+    this.drawText(f, t, at.textX, at.textY, prompt);
   }
 
   private drawObject(f: Frame, cx: number, cy: number): void {
@@ -198,7 +201,7 @@ export class SplashAnimation {
     }
   }
 
-  private drawText(f: Frame, t: number, wx: number, wy: number): void {
+  private drawText(f: Frame, t: number, wx: number, wy: number, prompt: boolean): void {
     drawWordmark(f, t, {
       word: WORD,
       x: wx,
@@ -221,7 +224,7 @@ export class SplashAnimation {
     if (t > 3.2)
       for (let x = wx; x < wx + SPLASH_TEXT_WIDTH; x++) if (x - wx < (t - 3.2) * 80) put(f, x, wy + 10, '─', 1);
 
-    if (t > 4) {
+    if (prompt && t > 4) {
       text(f, wx, wy + 12, 'flex', 2);
       text(f, wx + 4, wy + 12, ' $ ', 1);
       if (Math.floor(t * 2) % 2 === 0) put(f, wx + 7, wy + 12, '█', 0);
