@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
-import { toHex, type Hex } from 'viem';
+import {
+  concat,
+  encodeAbiParameters,
+  encodeFunctionData,
+  pad,
+  parseAbiParameters,
+  parseEther,
+  toHex,
+  type Hex,
+} from 'viem';
+import { DELEGATION, DELEGATION_MANAGER_ABI } from '../../src/autopay/abi.js';
 import { autoApprove } from '../../src/approval.js';
 import { BrowserWalletController } from '../../src/browser/controller.js';
 import { registerBrowserWallet } from '../../src/browser/routes.js';
@@ -10,9 +20,40 @@ import { UPGRADED_CODE } from '../../src/chain/addresses.js';
 import { silentLogger } from '../../src/log.js';
 import { Runner } from '../../src/runner/runner.js';
 import { Store } from '../../src/store/store.js';
-import { ALEX, BASE, WALLET, envelope, payEth } from '../support/envelopes.js';
+import { encodeExecuteBatch } from '../../src/payments/payment-i.js';
+import { ALEX, BASE, BOB, WALLET, envelope, payEth } from '../support/envelopes.js';
 import { FakeChain } from '../support/fake-chain.js';
 import { tempDb } from '../support/temp-db.js';
+
+const MANAGER: Hex = '0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3';
+const SENT = { from: WALLET, to: ALEX, data: '0x' as Hex, value: parseEther('0.01'), nonce: 0, blockNumber: 2 };
+/** MetaMask's gas-sponsored shape: a relayer redeems the account's delegation to run its own `execute` batch. */
+const relayed = (delegator: Hex) => ({
+  from: BOB,
+  to: MANAGER,
+  value: 0n,
+  nonce: 9,
+  blockNumber: 2,
+  data: encodeFunctionData({
+    abi: DELEGATION_MANAGER_ABI,
+    functionName: 'redeemDelegations',
+    args: [
+      [
+        encodeAbiParameters(parseAbiParameters(`${DELEGATION}[]`), [
+          [{ delegate: BOB, delegator, authority: `0x${'ff'.repeat(32)}`, caveats: [], salt: 0n, signature: '0x' }],
+        ]),
+      ],
+      [pad('0x00')],
+      [
+        concat([
+          WALLET,
+          pad('0x00'),
+          encodeExecuteBatch([{ target: ALEX, value: parseEther('0.01'), callData: '0x' }]),
+        ]),
+      ],
+    ],
+  }),
+});
 
 const runners: Runner[] = [];
 afterEach(async () => {
@@ -46,6 +87,7 @@ function harness() {
     chainIds: [11155111, 84532, 421614],
     feeMaxEth: '0.003',
     gatewayFor: () => chain,
+    delegationManagerFor: () => MANAGER,
     now: () => now,
     kick: () => {
       void runner.kick();
@@ -223,6 +265,12 @@ describe('durable browser wallet batches', () => {
     expect(h.store.step(e.request_id, 0).status).toBe('failed');
     expect(h.store.walletBatch(e.request_id, 0)).toBeNull();
   });
+  it('sends a single ETH payment as its exact call, with no data and no account wrapper', async () => {
+    const h = harness();
+    const { batch } = await h.queue();
+    const { calls } = (JSON.parse(batch.payload_json) as WalletBatchPayload).calls;
+    expect(calls).toEqual([{ to: ALEX, value: toHex(parseEther('0.01')) }]);
+  });
   it('prepares an atomic request without signing, broadcasting or upgrading, and rejects a second dispatch', async () => {
     const h = harness();
     const { batch } = await h.queue();
@@ -235,11 +283,7 @@ describe('durable browser wallet batches', () => {
       chainId: toHex(BASE),
     });
     expect(calls.calls).toHaveLength(1);
-    expect(calls.calls[0]).toMatchObject({
-      to: WALLET,
-      data: JSON.parse(batch.payload_json).expectedTx.data,
-      value: '0x0',
-    });
+    expect(calls.calls[0]).toEqual({ to: ALEX, value: toHex(parseEther('0.01')) });
     expect(h.store.walletBatchById(batch.batch_id)?.status).toBe('dispatched');
     expect(() => h.controller.claim(batch.batch_id)).toThrow('REFRESH_OR_RECOVER_BATCH');
     expect(h.chain.signed).toHaveLength(0);
@@ -271,15 +315,8 @@ describe('durable browser wallet batches', () => {
       await h.runner.stop();
       const restarted = h.start();
       void restarted.kick();
-      const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
       const hash = toHex(77, { size: 32 });
-      vi.spyOn(h.chain, 'getTransaction').mockResolvedValue({
-        ...payload.expectedTx,
-        from: WALLET,
-        value: 0n,
-        nonce: 0,
-        blockNumber: 2,
-      });
+      vi.spyOn(h.chain, 'getTransaction').mockResolvedValue(SENT);
       vi.spyOn(h.chain, 'getReceipt').mockResolvedValue({
         status: 'success',
         logs: [],
@@ -299,6 +336,25 @@ describe('durable browser wallet batches', () => {
       expect(h.chain.broadcasts).toHaveLength(0);
     },
   );
+  it('accepts the same calls relayed by MetaMask through the account delegation', async () => {
+    const h = harness();
+    const { batch, e } = await h.queue();
+    h.controller.claim(batch.batch_id);
+    vi.spyOn(h.chain, 'getTransaction').mockResolvedValue(relayed(WALLET));
+    vi.spyOn(h.chain, 'getReceipt').mockResolvedValue({
+      status: 'success',
+      logs: [],
+      blockNumber: 2,
+      executedAt: new Date().toISOString(),
+    });
+    await h.controller.receive(batch.batch_id, {
+      id: batch.batch_id,
+      chainId: toHex(BASE),
+      atomic: true,
+      receipts: [{ transactionHash: toHex(79, { size: 32 }) }],
+    });
+    await vi.waitFor(() => expect(h.store.step(e.request_id, 0).status).toBe('executed'));
+  });
   it('binds a wallet-generated ID once, only after dispatch, without allowing another send', async () => {
     const h = harness();
     const { batch } = await h.queue();
@@ -314,7 +370,6 @@ describe('durable browser wallet batches', () => {
     const h = harness();
     const { batch } = await h.queue();
     h.controller.claim(batch.batch_id);
-    const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
     const hint = {
       id: batch.batch_id,
       chainId: toHex(BASE),
@@ -325,7 +380,6 @@ describe('durable browser wallet batches', () => {
       await expect(h.controller.receive(batch.batch_id, { ...hint, ...change })).rejects.toThrow(
         'WALLET_RESULT_UNVERIFIED',
       );
-    const tx = { ...payload.expectedTx, from: WALLET, value: 0n, nonce: 0, blockNumber: 2 };
     const transaction = vi.spyOn(h.chain, 'getTransaction');
     vi.spyOn(h.chain, 'getReceipt').mockResolvedValue({
       status: 'success',
@@ -333,8 +387,16 @@ describe('durable browser wallet batches', () => {
       blockNumber: 2,
       executedAt: new Date().toISOString(),
     });
-    for (const change of [{ from: ALEX }, { to: ALEX }, { data: '0x' as Hex }, { value: 1n }, { blockNumber: 1 }]) {
-      transaction.mockResolvedValue({ ...tx, ...change });
+    for (const tx of [
+      { ...SENT, from: ALEX },
+      { ...SENT, to: BOB },
+      { ...SENT, data: '0x12' as Hex },
+      { ...SENT, value: 1n },
+      { ...SENT, blockNumber: 1 },
+      relayed(ALEX),
+      { ...relayed(WALLET), to: BOB },
+    ]) {
+      transaction.mockResolvedValue(tx);
       await expect(h.controller.receive(batch.batch_id, hint)).rejects.toThrow('TRANSACTION_DOES_NOT_MATCH');
     }
     expect(h.store.walletBatchById(batch.batch_id)?.tx_hash).toBeNull();

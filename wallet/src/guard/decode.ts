@@ -7,11 +7,12 @@ import {
   erc20Abi,
   formatUnits,
   parseAbi,
+  parseAbiParameters,
   parseEventLogs,
   type Hex,
   type Log,
 } from 'viem';
-import { DELEGATION_MANAGER_ABI, EXECUTOR_ABI } from '../autopay/abi.js';
+import { DELEGATION, DELEGATION_MANAGER_ABI, EXECUTOR_ABI } from '../autopay/abi.js';
 import type { Execution } from '../chain/redeem.v2.js';
 
 export const ETH = 'ETH' as const;
@@ -66,6 +67,49 @@ export function decodeRedeemBatch(redeem: Hex): Execution[] | null {
   } catch {
     return null;
   }
+}
+
+const SINGLE_DEFAULT = `0x${'00'.repeat(32)}`;
+const DELEGATIONS = parseAbiParameters(`${DELEGATION}[]`);
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * The calls the account itself ran in a mined transaction, or null. MetaMask either sends from the account, or pays the
+ * gas itself: a relayer then redeems the account's own delegation, and the DelegationManager runs the call as the
+ * account (its root delegator). A call to the account is unwrapped from its `execute` batch. The receipt's status is
+ * checked separately.
+ */
+export function executedCalls(
+  tx: { from: Hex; to: Hex; data: Hex; value: bigint },
+  wallet: Hex,
+  manager: Hex,
+): Execution[] | null {
+  let call: Execution;
+  if (same(tx.from, wallet)) call = { target: tx.to, value: tx.value, callData: tx.data };
+  else {
+    if (!same(tx.to, manager) || tx.value !== 0n) return null;
+    try {
+      const { functionName, args } = decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: tx.data });
+      if (functionName !== 'redeemDelegations') return null;
+      const [contexts, modes, executions] = args as readonly [readonly Hex[], readonly Hex[], readonly Hex[]];
+      if (contexts.length !== 1 || modes.length !== 1 || executions.length !== 1) return null;
+      const chain = decodeAbiParameters(DELEGATIONS, contexts[0]!)[0];
+      if (!chain.length || !same(chain[chain.length - 1]!.delegator, wallet)) return null;
+      if (modes[0] === BATCH_DEFAULT) return [...decodeAbiParameters(EXECUTIONS, executions[0]!)[0]] as Execution[];
+      // ERC-7579 single execution: target (20 bytes) ‖ value (32 bytes) ‖ calldata.
+      const packed = executions[0]!;
+      if (modes[0] !== SINGLE_DEFAULT || packed.length < 106) return null;
+      call = {
+        target: `0x${packed.slice(2, 42)}`,
+        value: BigInt(`0x${packed.slice(42, 106)}`),
+        callData: `0x${packed.slice(106)}`,
+      };
+    } catch {
+      return null;
+    }
+  }
+  if (!same(call.target, wallet)) return [call];
+  return call.value === 0n ? decodeExecuteBatch(call.callData) : null;
 }
 
 /** One call in a batch, in plain terms. Anything not recognised is `unknown`, which never matches an intent. */

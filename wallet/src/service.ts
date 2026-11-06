@@ -2,7 +2,7 @@
 
 import { getSmartAccountsEnvironment, type SmartAccountsEnvironment } from '@metamask/smart-accounts-kit';
 import type { FastifyInstance } from 'fastify';
-import type { LocalAccount } from 'viem';
+import type { Hex, LocalAccount } from 'viem';
 import { autoApprove, rejectAll, type Approver } from './approval.js';
 import { createChainGateway, type ChainGateway } from './chain/gateway.js';
 import type { WalletConfig } from './config.js';
@@ -131,6 +131,7 @@ export function createService(
           if (!gateway) throw new Error('chain unavailable');
           return gateway;
         },
+        delegationManagerFor: (id) => envFor(id).DelegationManager as Hex,
         kick: () => {
           void runner.kick();
         },

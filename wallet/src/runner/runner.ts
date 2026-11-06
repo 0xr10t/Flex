@@ -25,7 +25,7 @@ import {
 import { runCheck } from '../guard/check.js';
 import { decodeExecuteBatch } from '../guard/decode.js';
 import type { Logger } from '../log.js';
-import { paymentHandler, encodeExecuteBatch } from '../payments/payment-i.js';
+import { paymentHandler } from '../payments/payment-i.js';
 import {
   browserDelegationSigner,
   SignaturePending,
@@ -302,26 +302,15 @@ export class Runner {
         return false;
       }
       if (this.deps.browserWallet) {
-        // Registration is one exact executor call, wrapped in the same account batch verified on receipt.
-        if (intent.intent_id === 'k')
-          prepared.tx = {
-            to: this.deps.walletAddress,
-            data: encodeExecuteBatch([{ target: prepared.tx.to, callData: prepared.tx.data, value: 0n }]),
-          };
-        const calls = decodeExecuteBatch(prepared.tx.data);
-        if (!calls || prepared.tx.to.toLowerCase() !== this.deps.walletAddress.toLowerCase())
-          throw new Error('unsupported wallet batch');
-        // MetaMask sends a single wallet_sendCalls entry directly. Preserve the checked executeBatch wrapper.
-        // A first-time account must be upgraded by its wallet before it can execute that single self-call.
-        if (
-          calls.length === 1 &&
-          (await ctx.gateway.getCode(this.deps.walletAddress))?.toLowerCase() !== UPGRADED_CODE
-        ) {
-          this.deps.store.awaitAccountUpgrade(id, intent.step);
-          return false;
-        }
-        const walletCalls =
-          calls.length === 1 ? [{ target: prepared.tx.to, callData: prepared.tx.data, value: 0n }] : calls;
+        // MetaMask runs the checked calls from the account. It refuses a data call to the account itself, so the
+        // account's `execute` batch is unwrapped; the receipt check compares exactly these calls.
+        const calls =
+          intent.intent_id === 'k'
+            ? [{ target: prepared.tx.to, callData: prepared.tx.data, value: 0n }]
+            : prepared.tx.to.toLowerCase() === this.deps.walletAddress.toLowerCase()
+              ? decodeExecuteBatch(prepared.tx.data)
+              : null;
+        if (!calls) throw new Error('unsupported wallet batch');
         const summaryKey = `${id}:${intent.step}`;
         this.deps.store.saveWalletBatch(
           id,
@@ -334,9 +323,12 @@ export class Runner {
               from: this.deps.walletAddress,
               chainId: toHex(handler.chainOf(intent)),
               atomicRequired: true,
-              calls: walletCalls.map((c) => ({ to: c.target, data: c.callData, value: toHex(c.value) })),
+              calls: calls.map((c) => ({
+                to: c.target,
+                value: toHex(c.value),
+                ...(c.callData === '0x' ? {} : { data: c.callData }),
+              })),
             },
-            expectedTx: prepared.tx,
             sourceBlock: (await ctx.gateway.latestBlock()).number,
             minNonce: await ctx.gateway.minedNonce(),
             summary: this.summaries.get(summaryKey) ?? [],

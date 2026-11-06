@@ -1,5 +1,4 @@
 import type { Hex } from 'viem';
-import type { TxRequest } from '../chain/gateway.js';
 
 export interface WalletCalls {
   version: '2.0.0';
@@ -7,14 +6,14 @@ export interface WalletCalls {
   from: Hex;
   chainId: Hex;
   atomicRequired: true;
-  calls: { to: Hex; data: Hex; value: Hex }[];
+  /** MetaMask rejects `data: "0x"`, so a plain ETH send omits it. */
+  calls: { to: Hex; data?: Hex; value: Hex }[];
 }
 
 export interface WalletBatchPayload {
   /** Some wallets generate their own ID even when the request supplies one. This never permits a second dispatch. */
   providerBatchId?: string;
   calls: WalletCalls;
-  expectedTx: TxRequest;
   sourceBlock: number;
   minNonce: number;
   summary: string[];

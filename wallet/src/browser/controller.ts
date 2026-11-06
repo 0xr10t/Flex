@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { formatUnits, parseUnits, type Hex } from 'viem';
 import { UPGRADED_CODE } from '../chain/addresses.js';
 import type { ChainGateway } from '../chain/gateway.js';
+import { executedCalls } from '../guard/decode.js';
 import { checkEnvelope } from '@flex/protocol/mapping/check';
 import { placeholderHashes } from '@flex/protocol/mapping/to-plan';
 import { validateEnvelope, type ChainId, type HandoffEnvelope } from '@flex/protocol/schemas/envelope';
@@ -25,6 +26,8 @@ export class BrowserWalletController {
       chainIds: readonly number[];
       feeMaxEth: string;
       gatewayFor: (chain: number) => ChainGateway;
+      /** MetaMask relays a gas-sponsored batch through this contract. */
+      delegationManagerFor: (chain: number) => Hex;
       kick: () => void;
       now?: () => number;
     },
@@ -245,12 +248,18 @@ export class BrowserWalletController {
     const tx = await gateway.getTransaction(hash);
     const receipt = await gateway.getReceipt(hash);
     if (!tx || !receipt) throw new BrowserWalletError('TRANSACTION_NOT_MINED');
+    const wallet = this.deps.walletAddress.toLowerCase();
+    const ran = executedCalls(tx, this.deps.walletAddress, this.deps.delegationManagerFor(batch.chain_id));
+    const expected = payload.calls.calls;
     if (
-      tx.from.toLowerCase() !== this.deps.walletAddress.toLowerCase() ||
-      tx.to.toLowerCase() !== payload.expectedTx.to.toLowerCase() ||
-      tx.data.toLowerCase() !== payload.expectedTx.data.toLowerCase() ||
-      tx.value !== 0n ||
-      tx.nonce < payload.minNonce ||
+      ran?.length !== expected.length ||
+      !ran.every(
+        (c, i) =>
+          c.target.toLowerCase() === expected[i]!.to.toLowerCase() &&
+          c.value === BigInt(expected[i]!.value) &&
+          c.callData.toLowerCase() === (expected[i]!.data ?? '0x').toLowerCase(),
+      ) ||
+      (tx.from.toLowerCase() === wallet && tx.nonce < payload.minNonce) ||
       tx.blockNumber === null ||
       tx.blockNumber <= payload.sourceBlock ||
       receipt.blockNumber !== tx.blockNumber ||

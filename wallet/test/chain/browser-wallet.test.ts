@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { encodeFunctionData, parseAbi, parseEther, type Hex } from 'viem';
 import { CCIP } from '@flex/protocol/schemas/bridge.v2';
 import type { WalletBatchPayload } from '../../src/browser/types.js';
+import { encodeExecuteBatch } from '../../src/payments/payment-i.js';
 import { ALEX, WALLET, envelope, payEth, autopay, cancelOf } from '../support/envelopes.js';
 import { pendingDelegations } from '../../src/browser/delegation.js';
 import { userAccount } from './harness.js';
@@ -27,6 +28,13 @@ beforeEach(async () => {
   await world.arbitrum.pub.waitForTransactionReceipt({ hash });
 });
 afterEach(() => world.reset());
+
+/** The transaction MetaMask sends for these calls: one call directly, several as the account's own batch. */
+function asSent({ calls }: WalletBatchPayload['calls']) {
+  if (calls.length === 1) return { to: calls[0]!.to, data: calls[0]!.data ?? '0x', value: BigInt(calls[0]!.value) };
+  const batch = calls.map((c) => ({ target: c.to, value: BigInt(c.value), callData: c.data ?? ('0x' as Hex) }));
+  return { to: WALLET, data: encodeExecuteBatch(batch), value: 0n };
+}
 
 async function session(wallet: Wallet) {
   const page = await wallet.service.app.inject({ method: 'GET', url: '/', headers: { host: HOST } });
@@ -76,7 +84,7 @@ describe('browser approved CCIP transfer', () => {
       const batch = wallet.service.store.walletBatch(requestId, 0)!;
       const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
       expect((await post('claim', { id: batch.batch_id })).statusCode).toBe(200);
-      const hash = await world.base.walletFor(userAccount).sendTransaction({ ...payload.expectedTx, value: 0n });
+      const hash = await world.base.walletFor(userAccount).sendTransaction(asSent(payload.calls));
       await world.base.pub.waitForTransactionReceipt({ hash });
       expect((await post('recover', { id: batch.batch_id, hash })).statusCode).toBe(200);
       await world.base.rpc('anvil_mine', ['0x80']);
@@ -95,7 +103,7 @@ describe('browser approved CCIP transfer', () => {
     await world.base.setTime(k.schedule.start_at);
     expect((await world.deliver(world.base, plan.redeem)).paid).toBe(false);
   });
-  it('keeps a single-recipient payment inside its checked batch when the browser sends one call directly', async () => {
+  it('sends a single-recipient payment as its exact call and verifies the transaction MetaMask sends', async () => {
     await world.upgrade(world.base, userAccount);
     const wallet = await world.startWallet({ approval: 'metamask' });
     const post = await session(wallet);
@@ -106,14 +114,10 @@ describe('browser approved CCIP transfer', () => {
     });
     const batch = wallet.service.store.walletBatch(e.request_id, 0)!;
     const payload = JSON.parse(batch.payload_json) as WalletBatchPayload;
-    expect(payload.calls.calls).toHaveLength(1);
-    const call = payload.calls.calls[0]!;
-    expect(call.to.toLowerCase()).toBe(WALLET.toLowerCase());
+    expect(payload.calls.calls).toEqual([{ to: ALEX, value: `0x${parseEther('0.01').toString(16)}` }]);
     expect((await post('claim', { id: batch.batch_id })).statusCode).toBe(200);
     const before = await world.base.ethOf(ALEX);
-    const hash = await world.base
-      .walletFor(userAccount)
-      .sendTransaction({ to: call.to, data: call.data, value: BigInt(call.value) });
+    const hash = await world.base.walletFor(userAccount).sendTransaction(asSent(payload.calls));
     await world.base.pub.waitForTransactionReceipt({ hash });
     expect((await post('recover', { id: batch.batch_id, hash })).statusCode).toBe(200);
     await world.base.rpc('anvil_mine', ['0x80']);
@@ -142,11 +146,7 @@ describe('browser approved CCIP transfer', () => {
 
     // Acts only as the external approving wallet on this isolated local chain. The service has no signing key.
     await world.upgrade(world.arbitrum, userAccount);
-    const hash = await world.arbitrum.walletFor(userAccount).sendTransaction({
-      to: payload.expectedTx.to,
-      data: payload.expectedTx.data,
-      value: 0n,
-    });
+    const hash = await world.arbitrum.walletFor(userAccount).sendTransaction(asSent(payload.calls));
     await world.arbitrum.pub.waitForTransactionReceipt({ hash });
     await wallet.stop();
     wallet = await world.startWallet({ approval: 'metamask', dbName: 'browser.db' });

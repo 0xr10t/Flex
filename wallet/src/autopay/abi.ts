@@ -16,7 +16,7 @@ export const EXECUTOR_ABI = parseAbi([
   'event Cancelled(bytes32 indexed intentId, address indexed delegator)',
 ]);
 
-const DELEGATION =
+export const DELEGATION =
   '(address delegate, address delegator, bytes32 authority, (address enforcer, bytes terms, bytes args)[] caveats, uint256 salt, bytes signature)';
 
 export const DELEGATION_MANAGER_ABI = parseAbi([
