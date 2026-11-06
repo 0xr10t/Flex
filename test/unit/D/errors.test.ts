@@ -69,6 +69,21 @@ describe('§15 error messages in their stated cases', () => {
     );
   });
 
+  it('SQ-08 F-10 INSUFFICIENT_FUNDS with no usable chain reads "can use 0." without an "across" part', async () => {
+    const ctx = ctxD({ balances: usdc('0', '0', '0') });
+    const r = addAradhya(ctx);
+    const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { have: '0' });
+    expect(msg).toBe("You don't have enough USDC: you need 50, and can use 0.");
+  });
+
+  it('SQ-08 F-10 INSUFFICIENT_FUNDS leaves an unreadable chain out of the list and the total', async () => {
+    const ctx = ctxD({ balances: usdc('0', '10', '20') });
+    ctx.repos.db4.markUnavailable(ARB, 'Arbitrum Sepolia', '2026-11-05T17:30:00.000Z');
+    const r = addAradhya(ctx);
+    const msg = expectError(await run(ctx, [iPay(ctx, '50', r)]), 'INSUFFICIENT_FUNDS', { have: '10' });
+    expect(msg).toBe("You don't have enough USDC: you need 50, and can use 10 across Base Sepolia (10).");
+  });
+
   it('C-382 §15 NO_GAS: a bridge source with ETH below the reserve', async () => {
     const ctx = ctxD({ balances: { ...usdc('0', '30', '60'), [ARB]: { USDC: '60', ETH: '0.001' } } });
     const r = addAradhya(ctx);
