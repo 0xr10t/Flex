@@ -126,7 +126,7 @@ function filterSpans(
   const usedByText = new Map<string, Range[]>();
   const claim = (text: string): Range | null => {
     const used = usedByText.get(text) ?? [];
-    const range = findUnused(masked, text, used, true);
+    const range = findUnused(masked, text, used, 'identifier');
     if (range !== null) usedByText.set(text, [...used, range]);
     return range;
   };
