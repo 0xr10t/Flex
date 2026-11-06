@@ -1,11 +1,12 @@
 // Tests: §8.1 S0 refresh balances — C-051 (parallel ETH + USDC per allowed chain), C-052 (bigint → decimal
 // strings, ETH 18 / USDC 6), C-053 (DB4 upsert ok), C-054 (failure → both rows unavailable, old values kept, note),
 // C-055 (all unavailable → BALANCES_UNAVAILABLE), C-056 (no AnswerHandler: S0 runs only for new messages),
-// C-294 (note wording), C-364 (BALANCES_UNAVAILABLE catalog message), §18 log labels.
+// C-357 (RPC clients: transport per chain, eth_getBalance, balanceOf eth_call, 10 s / no retries), C-294 (note wording), C-364 (BALANCES_UNAVAILABLE catalog message), §18 log labels.
+import { custom, encodeFunctionData, erc20Abi, getAddress, type Transport } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { ERROR_MESSAGE } from '../../../src/contracts/catalog.js';
-import { s0 } from '../../../src/pipeline/s0-balances.js';
-import { makeTestContext } from '../../fakes/context.js';
+import { RPC_TRANSPORT_OPTIONS, createRpcClients, s0 } from '../../../src/pipeline/s0-balances.js';
+import { makeTestContext, testConfig } from '../../fakes/context.js';
 import { seedBalances } from '../../fakes/repos.js';
 import { expectLabelsOk } from './helpers.js';
 
@@ -85,5 +86,73 @@ describe('S0 balances (§8.1)', () => {
 
   it('§8.1 (C-056): S0 asks no questions and has no AnswerHandler (runs only for new messages)', () => {
     expect(s0.onAnswer).toBeUndefined();
+  });
+});
+
+describe('S0 RPC clients (§14.5, C-357)', () => {
+  type Req = { method: string; params?: unknown };
+  function build() {
+    const cfg = testConfig();
+    // TEST_WALLET in test/fakes is not EIP-55 valid, which viem rejects; use a checksummed wallet here.
+    cfg.wallet.address = getAddress('0x00000000000000000000000000000000000000aa');
+    const urls: string[] = [];
+    const requests: Array<{ url: string; req: Req }> = [];
+    const factory = (url: string): Transport => {
+      urls.push(url);
+      return custom({
+        async request(req: Req) {
+          requests.push({ url, req });
+          if (req.method === 'eth_getBalance') return '0x1bc16d674ec80000'; // 2e18
+          if (req.method === 'eth_call') return '0x' + 123_456_789n.toString(16).padStart(64, '0');
+          throw new Error(`unexpected ${req.method}`);
+        },
+      });
+    };
+    return { cfg, urls, requests, rpc: createRpcClients(cfg, factory) };
+  }
+
+  it('one transport per configured chain, built from that chain rpc_url', () => {
+    const { cfg, urls } = build();
+    expect(urls).toEqual(cfg.chains.map((c) => c.rpc_url));
+  });
+
+  it('getEthBalance sends eth_getBalance for the wallet at latest and returns a bigint', async () => {
+    const { cfg, requests, rpc } = build();
+    const chain = cfg.chains[1]!;
+    const v = await rpc.getEthBalance(chain.chain_id);
+    expect(v).toBe(2n * 10n ** 18n);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(chain.rpc_url);
+    expect(requests[0]?.req.method).toBe('eth_getBalance');
+    const params = requests[0]?.req.params as string[];
+    expect(params[0]?.toLowerCase()).toBe(cfg.wallet.address.toLowerCase());
+    expect(params[1]).toBe('latest');
+  });
+
+  it('getUsdcBalance sends eth_call to usdc_address with balanceOf(wallet) data and decodes a bigint', async () => {
+    const { cfg, requests, rpc } = build();
+    const chain = cfg.chains[2]!;
+    const v = await rpc.getUsdcBalance(chain.chain_id);
+    expect(v).toBe(123_456_789n);
+    expect(typeof v).toBe('bigint');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(chain.rpc_url);
+    expect(requests[0]?.req.method).toBe('eth_call');
+    const call = (requests[0]?.req.params as Array<{ to: string; data: string }>)[0];
+    expect(call?.to.toLowerCase()).toBe(chain.usdc_address.toLowerCase());
+    expect(call?.data.startsWith('0x70a08231')).toBe(true);
+    expect(call?.data).toBe(
+      encodeFunctionData({ abi: erc20Abi, functionName: 'balanceOf', args: [cfg.wallet.address] }),
+    );
+    expect(call?.data.toLowerCase()).toContain(cfg.wallet.address.slice(2).toLowerCase());
+  });
+
+  it('an unknown chain id rejects (S0 then marks it unavailable)', async () => {
+    const { rpc } = build();
+    await expect(rpc.getEthBalance(1 as never)).rejects.toThrow();
+  });
+
+  it('RPC_TRANSPORT_OPTIONS = { timeout: 10000, retryCount: 0 }', () => {
+    expect(RPC_TRANSPORT_OPTIONS).toEqual({ timeout: 10000, retryCount: 0 });
   });
 });
