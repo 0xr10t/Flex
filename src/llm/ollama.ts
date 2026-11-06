@@ -50,6 +50,7 @@ class OllamaLlmClient implements LlmClient {
     try {
       const res = await fetch(`${baseUrl(this.config)}/api/tags`, {
         method: 'GET',
+        redirect: 'error',
         signal: AbortSignal.timeout(this.config.llm.timeout_ms),
       });
       if (!res.ok) {
@@ -70,6 +71,7 @@ class OllamaLlmClient implements LlmClient {
     const { llm } = this.config;
     const res = await fetch(`${baseUrl(this.config)}/api/chat`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: llm.model,
