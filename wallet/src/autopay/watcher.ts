@@ -90,13 +90,9 @@ export class RunWatcher {
 
     while (from <= latest.number && !this.stopped) {
       const to = Math.min(from + SCAN_BLOCKS - 1, latest.number);
-      const logs = await gateway.getLogs({
-        address: executor,
-        event: EXECUTED_EVENT,
-        args: { intentId: [...byPlan.keys()] },
-        fromBlock: from,
-        toBlock: to,
-      });
+      // Privacy fix 9: every run on the shared executor, not filtered by this user's plan ids, so the RPC can't tell which
+      // plans are being watched. Other users' runs are dropped below (`byPlan`).
+      const logs = await gateway.getLogs({ address: executor, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
       const ordered = [...logs].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
       const times = new Map<number, number>();
       for (const log of ordered) {
