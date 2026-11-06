@@ -12,7 +12,11 @@
     "start": "node dist/src/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:chain": "vitest run --config vitest.chain.config.ts"
+    "test:chain": "vitest run --config vitest.chain.config.ts",
+    "prebuild": "npm --prefix ../packages/protocol run build",
+    "pretypecheck": "npm --prefix ../packages/protocol run build",
+    "pretest": "npm --prefix ../packages/protocol run build",
+    "pretest:chain": "npm --prefix ../packages/protocol run build"
   },
   "dependencies": {
     "@metamask/smart-accounts-kit": "2.0.0",
@@ -22,7 +26,8 @@
     "better-sqlite3-multiple-ciphers": "13.0.3",
     "fastify": "5.12.8",
     "viem": "2.57.16",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@flex/protocol": "file:../packages/protocol"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.6.1",

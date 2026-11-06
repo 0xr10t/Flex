@@ -1,0 +1,49 @@
+{
+  "name": "@flex/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schemas/envelope": {
+      "types": "./dist/schemas/envelope.d.ts",
+      "import": "./dist/schemas/envelope.js"
+    },
+    "./schemas/intent.v2": {
+      "types": "./dist/schemas/intent.v2.d.ts",
+      "import": "./dist/schemas/intent.v2.js"
+    },
+    "./schemas/bridge.v2": {
+      "types": "./dist/schemas/bridge.v2.d.ts",
+      "import": "./dist/schemas/bridge.v2.js"
+    },
+    "./mapping/check": {
+      "types": "./dist/mapping/check.d.ts",
+      "import": "./dist/mapping/check.js"
+    },
+    "./mapping/to-plan": {
+      "types": "./dist/mapping/to-plan.d.ts",
+      "import": "./dist/mapping/to-plan.js"
+    },
+    "./schema": "./src/schemas/handoff-envelope.schema.json",
+    "./simulation": {
+      "types": "./dist/simulation.d.ts",
+      "import": "./dist/simulation.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node copy-assets.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "viem": "2.57.16",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
