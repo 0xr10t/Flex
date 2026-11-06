@@ -5,12 +5,11 @@ setup steps) and `docs/wallet/`.
 
 ## 1. Where things stand
 
-- **Repo** `~/Desktop/Flex`, branch **`CLI`** (pushed to `origin/CLI`, last pushed commit `e7a1eb8`). `CLI` contains
+- **Repo** `~/Desktop/Flex`, branch **`CLI`**, fully pushed to `origin/CLI`. `CLI` contains
   everything on `origin/master` as of 2026-11-07 (agent, wallet, protocol v2, Tor routing, CRE testnet runner,
   installer). The user asked to **leave `master` alone** for now; do not push to it.
-- **Uncommitted work (tested, not yet committed):** the Claude-Code-style UX pass on `flexx`, listed in section 4.
-  All 2827 tests pass, lint/typecheck/build clean. The user commits by saying "commit and push" after each change;
-  ask before committing.
+- The latest work is the Claude-Code-style UX pass on `flexx` (commit `f0206aa`, section 4). All 2827 tests pass,
+  lint/typecheck/build clean. The user commits by saying "commit and push" after each change; ask before committing.
 - **Untracked:** `Flex animated ASCII art-handoff.zip` (the Claude Design export the CLI animations came from). Leave it.
 
 ## 2. What `flexx` is
@@ -54,7 +53,7 @@ against the real agent app with recorded model replies).
   started by the user's earlier `flexx` session) still configured with the old wallet `0x5eBA…`. The user must exit
   that `flexx` (Ctrl-C twice) before payment tests, or the agent will plan for the wrong wallet.
 
-## 4. Uncommitted UX pass (commit message suggestion: `feat(cli): command palette, shortcuts and setup commands`)
+## 4. Latest UX pass (`f0206aa feat(cli): command palette, shortcuts and setup commands`)
 
 - `/` opens a command palette above the input (prefix, alias and substring matches; ↑↓, Tab completes with an
   argument hint, Enter runs, Esc closes). `?` on an empty line shows the shortcuts panel.
