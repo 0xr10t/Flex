@@ -14,8 +14,29 @@ export interface LinkRef {
 }
 
 const TYPED_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
-/** Sentence punctuation directly after a URL is not part of it. */
-const TRAILING_PUNCT_RE = /[.,;:!?)\]}]+$/;
+const CLOSERS: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+function count(s: string, ch: string): number {
+  return s.split(ch).length - 1;
+}
+
+/**
+ * Sentence punctuation directly after a URL is not part of it. A closing bracket is kept when it closes an opener
+ * inside the URL ("…/Foo_(bar)").
+ */
+function trimTrailing(url: string): string {
+  let u = url;
+  for (;;) {
+    const last = u[u.length - 1] ?? '';
+    const opener = CLOSERS[last];
+    if (opener !== undefined) {
+      if (count(u, opener) >= count(u, last)) return u;
+    } else if (!'.,;:!?'.includes(last) || last === '') {
+      return u;
+    }
+    u = u.slice(0, -1);
+  }
+}
 
 export interface UrlExtraction {
   typed_text: string;
@@ -27,7 +48,7 @@ export function extractUrls(text: string, urls: readonly string[]): UrlExtractio
   let out = '';
   let pos = 0;
   for (const m of text.matchAll(TYPED_URL_RE)) {
-    const url = m[0].replace(TRAILING_PUNCT_RE, '');
+    const url = trimTrailing(m[0]);
     const start = m.index;
     const n = links.length + 1;
     links.push({ n, url, from_typed_text: true });

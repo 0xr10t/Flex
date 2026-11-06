@@ -96,3 +96,34 @@ the phrase itself did not mark fiat.
 _Now:_ treated as fiat `OTHER` → `Q_FIAT_OTHER`. A fiat word inside the phrase (S2 rule 7) also sets `fiat` when LLM #1
 returned null. Rule (c) uses the clause's token words when they all name one token; rule (d) needs exactly one token
 word in the whole prompt.
+
+**SQB-23** · §8.6 rules 1, 4, 6 / §8.8 (see SQ-O-01, open with the human) — a span text that occurs more than once in
+`masked_text_s3`.
+_Now (no sweep, as instructed for SQ-O-01):_ each returned span takes the first whole-word occurrence not already
+taken by the same text; a text returned N times takes the first N occurrences. Occurrences not returned are left
+untagged (not payee, not mentioned), so a mentioned name returned once but written twice keeps its second occurrence
+visible in later masked texts. S2 candidates are de-duplicated by text: an address/ENS name written twice gives one
+payee span at its first occurrence (the same recipient is not resolved twice). Offsets are always exact in
+`masked_text_s3` and never overlap.
+
+**SQB-24** · §8.4 rules 4–5 — a numeric candidate that partly overlaps a returned phrase (e.g. phrase `5`, candidate
+`5k`) is "not inside any returned phrase", so `Q_AMOUNT_UNCOVERED` is asked; "Yes" would make two overlapping phrases
+that cannot both be replaced by placeholders.
+_Now:_ the question is asked as the spec says; "Yes" → `UNSUPPORTED_REQUEST` (`rule_id: S3_UNCOVERED_OVERLAPS_PHRASE`);
+"No" → ignored.
+
+**SQB-25** · §8.5 rule 3 / §8.4 output — the amount asked by S4's `Q_AMOUNT_MISSING` (i/k without pay amounts) has no
+phrase in `typed_text`.
+_Now:_ S4 mints it (DB1 `source='user'`, `origin='phrase'`, `confirmed=1`) and adds it to `req.amounts` with
+`phrase: null`, `span: null`; it does not appear in `masked_text_s3` (there is nothing to replace), so LLM #4 sees it
+only in its AMOUNTS list. Lane C/D: confirm S8 pairs such an amount.
+
+**SQB-26** · §8.4 rule 1 / §8.6 rule 1 — "occur verbatim … first unused occurrence" says nothing about word edges.
+_Now:_ an occurrence must not cut a word or a number: no letter next to a letter and no digit next to a digit at
+either edge (`5` is not found inside `50`, `riya` not inside `riyaz`; `50` is found in `50usdc`, `riya.eth` in
+`@riya.eth`).
+
+**SQB-27** · §8.2 step 2 keystore detector — "JSON-parsable text containing keys `crypto` (or `Crypto`),
+`ciphertext` and `kdf`" for a keystore pasted inside other text, or with the keys nested.
+_Now:_ the whole text, and also the outermost `{…}` slice of it, are tried; the keys may be at any depth. This blocks
+more than a literal reading (a keystore pasted with a sentence around it is still a secret).

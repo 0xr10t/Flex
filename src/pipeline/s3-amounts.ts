@@ -26,8 +26,8 @@ import {
   type WorkItem,
 } from '../amounts/verify.js';
 import { buildAmountsPrompt } from '../llm/prompt-builder/amounts.js';
-import { clauseIndexAt, findUnused, inside, replaceRanges, type Range } from '../lexical/text.js';
-import { qid } from '../lexical/step-util.js';
+import { clauseIndexAt, findUnused, inside, overlaps, replaceRanges, type Range } from '../lexical/text.js';
+import { qid, unsupported } from '../lexical/step-util.js';
 
 interface LlmAmount {
   phrase: string;
@@ -271,6 +271,8 @@ const s3Answer: AnswerHandler = async (ctx: StepContext, q: Question, answer: An
     const chip = matchChip(q, answer);
     if (chip === null) return { kind: 'question', question: reaskPending(q, pending) };
     if (chip.id === CHIPS.YES.id) {
+      // A number that partly overlaps a returned phrase cannot be masked as its own amount (SQB-24).
+      if (st.covered.some((r) => overlaps(r, u.span))) return unsupported(ctx, 's3', 'S3_UNCOVERED_OVERLAPS_PHRASE');
       u.decision = 'yes';
       const parsed = parseAmountText(u.span.text, null);
       st.items.push(

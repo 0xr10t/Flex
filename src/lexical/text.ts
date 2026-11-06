@@ -65,9 +65,16 @@ export function tokenAfter(text: string, offset: number): string | null {
   return m?.[1] ?? null;
 }
 
+/** True when `a` and `b` would join into one word or one number (letter–letter or digit–digit). */
+function glued(a: string, b: string): boolean {
+  return (/[A-Za-z]/.test(a) && /[A-Za-z]/.test(b)) || (/[0-9]/.test(a) && /[0-9]/.test(b));
+}
+
 /**
  * Finds `needle` in `haystack` at the first occurrence that does not overlap `used` (§8.4 rule 1 "first unused
- * occurrence"). With `wholeWord`, the occurrence must not be glued to letters/digits on either side.
+ * occurrence"). With `wholeWord`, the occurrence must not cut a word or a number: no letter next to a letter and no
+ * digit next to a digit at either edge ("5" is not found inside "50", "riya" not inside "riyaz", but "50" is found in
+ * "50usdc"). spec-questions/B.md SQB-26.
  */
 export function findUnused(haystack: string, needle: string, used: readonly Range[], wholeWord = false): Range | null {
   if (needle.length === 0) return null;
@@ -78,10 +85,8 @@ export function findUnused(haystack: string, needle: string, used: readonly Rang
     const r = { start: i, end: i + needle.length };
     const okWord =
       !wholeWord ||
-      ((i === 0 || !/[A-Za-z0-9]/.test(haystack[i - 1] ?? '') || !/[A-Za-z0-9]/.test(needle[0] ?? '')) &&
-        (r.end >= haystack.length ||
-          !/[A-Za-z0-9]/.test(haystack[r.end] ?? '') ||
-          !/[A-Za-z0-9]/.test(needle[needle.length - 1] ?? '')));
+      (!glued(haystack[i - 1] ?? '', needle[0] ?? '') &&
+        !glued(needle[needle.length - 1] ?? '', haystack[r.end] ?? ''));
     if (okWord && !overlapsAny(r, used)) return r;
     from = i + 1;
   }

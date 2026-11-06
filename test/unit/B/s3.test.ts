@@ -1,4 +1,4 @@
-// Tests: §8.4 S3 amounts — C-088 (prompt input is the unmasked typed text), C-089 (rule 1 verbatim, first unused
+// Tests: §8.4 S3 amounts (C-445 §20.1 amounts/verify) — C-088 (prompt input is the unmasked typed text), C-089 (rule 1 verbatim, first unused
 // occurrence), C-090 (rule 2 context dropped, [amount]), C-091 (rule 3 number null → Q_AMOUNT_MISSING; SQB-06),
 // C-092 (code parse equality → Q_AMOUNT_MISMATCH), C-093 (token inference (a)–(e), fiat rules), C-094 (precision, zero),
 // C-095 (uncovered numbers), C-096 (mint DB1 user/phrase/confirmed), C-097 (relative amounts, chain pinning, SQB-11,
