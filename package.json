@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "flex": "dist/src/cli/main.js"
+  },
   "engines": {
     "node": "^22.12.0 || >=24.0.0"
   },
@@ -18,6 +21,7 @@
     "ens:check": "wallet/node_modules/.bin/vite-node scripts/ens-check.ts",
     "ens:pay": "wallet/node_modules/.bin/vite-node scripts/ens-pay.ts",
     "start": "node dist/src/index.js",
+    "cli": "node dist/src/cli/main.js",
     "prebuild": "npm --prefix packages/protocol run build",
     "pretypecheck": "npm --prefix packages/protocol run build",
     "pretest": "npm --prefix packages/protocol run build"
