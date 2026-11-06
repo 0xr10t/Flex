@@ -69,10 +69,17 @@ and current local spending reservations. Cache timestamps stay in internal conte
 its question, attempt count and confirmation. A cold or unavailable cache is reported as unavailable, never zero.
 Unreadable networks are excluded from totals, which are labelled subtotals when incomplete.
 
-Weekly received-payment questions and explicit hash explanations also bypass Ollama. Incoming history requires
+Payment-status follow-ups (for example, “did the transaction go through?”) also read local state without Ollama
+or RPC. They preserve the open question, summary and retry state. The current payment, or the last payment when
+an unrelated request intervenes, is remembered only within the session. Handoff acceptance is separate from
+execution: the submission journal and DB6 reports distinguish pending, failed, partial and completed payments.
+Autopay schedule state is displayed separately from transaction confirmation. The demo execution adapter identifies
+locally captured requests explicitly. General chat receives a code-owned status summary, without transaction hashes.
+
+Received-payment questions for up to seven days and explicit hash explanations also bypass Ollama. Incoming history requires
 an opt-in Blockscout source and uses its own background cache; unknown hashes are inspected locally without
 being looked up or stored. See [received payments and identifiers](docs/agent/RECEIVED_PAYMENTS.md) for setup,
-coverage, week boundaries and the ambiguity between private keys and transaction hashes.
+coverage, the 168-hour limit, shorter ranges and the ambiguity between private keys and transaction hashes.
 
 With chat enabled, other contextual wallet questions use the read-only `wallet_info` path: the model selects
 verified fact IDs from the same local cache, and code renders their exact values. Mixed display/payment requests

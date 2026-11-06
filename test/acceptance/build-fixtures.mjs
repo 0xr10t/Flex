@@ -154,7 +154,7 @@ F['A-15'] = [
   S('pay this invoice'),
   P(K, pay('i', a0, r0)),
 ];
-F['A-17'] = [A("what's my balance"), T('balance', [], { type: 'balance' })];
+F['A-17'] = []; // SQ-CHAT-02: ordinary balance questions are answered locally, without model calls.
 F['A-18'] = [A('swap my eth for usdc'), T('swap', [], { type: 'unsupported' })];
 F['A-19'] = [
   A('send 10 usdc to aradhya and swap eth', ['10 usdc', '10', USDC]),
@@ -239,7 +239,7 @@ F['A-43'] = single(
 F['A-44'] = ten(`send 10 usdc to ${ADDR.wallet}`, [[ADDR.wallet, 'address']]).slice(0, 3); // ends at S6
 F['A-44-me'] = [A('send 10 usdc to me', ['10 usdc', '10', USDC]), T('to me', ['i']), S('to me', ['me', 'name'])];
 for (const id of ['A-47', 'A-49', 'A-51', 'A-52']) F[id] = F['A-01'];
-F['A-50'] = [...F['A-01'], A("what's my balance"), T('balance', [], { type: 'balance' })];
+F['A-50'] = [...F['A-01']]; // The balance query preserves this draft and makes no additional model calls.
 F['A-55'] = single('send 10 usdc to mihir', ['10 usdc', '10', USDC], [['mihir', 'name']], pay('i', a0, r0));
 F['A-56'] = aradhya50('send 50 usdc to aradhya');
 F['A-56-control'] = F['A-56'];

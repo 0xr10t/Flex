@@ -93,12 +93,15 @@ export async function main(factories: LaneFactories, opts: MainOptions = {}): Pr
   const rpc = factories.createRpc(config);
   // Privacy fix 8: balances are read on a jittered timer from here on, not when a message arrives.
   const refresher = startBalanceRefresher({ rpc, repos, config, log });
-  const history = config.history?.enabled ? new HistoryCache({
-    address: config.wallet.address,
-    chains: () => repos.db5.getAll().allowed_chain_ids.filter((id) => config.chains.some((chain) => chain.chain_id === id)),
-    source: createBlockscoutSource(config),
-    log,
-  }) : undefined;
+  const history = config.history?.enabled
+    ? new HistoryCache({
+        address: config.wallet.address,
+        chains: () =>
+          repos.db5.getAll().allowed_chain_ids.filter((id) => config.chains.some((chain) => chain.chain_id === id)),
+        source: createBlockscoutSource(config),
+        log,
+      })
+    : undefined;
   history?.start();
   const app = createApp({
     repos,

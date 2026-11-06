@@ -80,6 +80,7 @@ import { parseWalletQuery, renderWalletQuery } from './wallet-query.js';
 import type { HistoryReader } from '../history/types.js';
 import { parseReceivedQuery, renderReceivedQuery } from './received-query.js';
 import { explainIdentifierQuery } from './identifier-query.js';
+import { isPaymentRequest, isTransactionStatusQuery, readTransactionStatus } from './transaction-status.js';
 
 /** §13.4 `max_attempts`. */
 export const MAX_ATTEMPTS = 4;
@@ -136,6 +137,8 @@ interface OpenSession {
   walletAddress: Address;
   timezone: string;
   active: Active | null;
+  /** The last payment survives unrelated balance/unsupported requests, only within this session. */
+  lastPayment: Active | null;
   /** Opt-in generic exchanges only, bounded by rememberChat; never persisted or used as wallet answers. */
   chatHistory: ChatTurn[];
   /** Sticky until close so a follow-up knows that older generic exchanges have been dropped. */
@@ -204,6 +207,7 @@ export class SessionManager {
           walletAddress: getAddress(this.deps.config.wallet.address),
           timezone,
           active: null,
+          lastPayment: null,
           chatHistory: [],
           chatHistoryOmitted: false,
           busy: false,
@@ -261,6 +265,7 @@ export class SessionManager {
     const a = s.active;
     if (a !== null && !isTerminal(a.req)) this.markDiscarded(a.req);
     s.active = null;
+    s.lastPayment = null;
     s.chatHistory = [];
     s.chatHistoryOmitted = false;
     this.deps.repos.clearSessionStores();
@@ -428,9 +433,21 @@ export class SessionManager {
     // in chat memory: even a tx-shaped value may actually be a private key. All payment inputs still pass S1.
     const identifier = explainIdentifierQuery(input.text, info);
     if (identifier !== null) return this.chatReply(s, s.active, identifier);
+    if (
+      isTransactionStatusQuery(input.text) &&
+      detectSecret(input.text) === null &&
+      !extractUrls(input.text, []).links.length
+    ) {
+      const status = this.transactionStatus(s);
+      return this.chatReply(s, s.active, [status.summary, ...status.details].join('\n'));
+    }
     const received = parseReceivedQuery(input.text);
     if (received !== null && detectSecret(input.text) === null && !extractUrls(input.text, []).links.length) {
-      return this.chatReply(s, s.active, renderReceivedQuery(received, { ...info, now: this.clock().setZone(s.timezone) }));
+      return this.chatReply(
+        s,
+        s.active,
+        renderReceivedQuery(received, { ...info, now: this.clock().setZone(s.timezone) }),
+      );
     }
     const query = parseWalletQuery(input.text);
     if (query === null || detectSecret(input.text) !== null || extractUrls(input.text, []).links.length) return null;
@@ -461,6 +478,18 @@ export class SessionManager {
         urls: [],
       }),
       limits: this.deps.repos.db5.getAll(),
+    });
+  }
+
+  private transactionStatus(s: OpenSession) {
+    const active = s.active;
+    const payment = active && (!isTerminal(active.req) || isPaymentRequest(active.req)) ? active : s.lastPayment;
+    return readTransactionStatus(payment?.req, {
+      repos: this.deps.repos,
+      exec: this.deps.exec,
+      walletAddress: s.walletAddress,
+      chains: this.deps.config.chains,
+      lastError: payment?.lastError?.code,
     });
   }
 
@@ -518,10 +547,13 @@ export class SessionManager {
   /** Session's public wallet address and draft context; balance facts come from the local DB4 cache. */
   private chatContext(s: OpenSession, a: Active | null): ChatContext {
     const wallet_address = s.walletAddress;
-    if (a === null) return { state: 'IDLE', wallet_address, older_chat_omitted: s.chatHistoryOmitted };
+    const transaction_status = this.transactionStatus(s).summary;
+    if (a === null)
+      return { state: 'IDLE', wallet_address, transaction_status, older_chat_omitted: s.chatHistoryOmitted };
     const context: ChatContext = {
       state: isAwaitingAnswer(a.req) ? 'AWAITING_ANSWER' : a.req.state,
       wallet_address,
+      transaction_status,
       older_chat_omitted: s.chatHistoryOmitted,
     };
     const text = a.req.typed_text;
@@ -608,6 +640,7 @@ export class SessionManager {
   private async newRequest(s: OpenSession, input: MessageInput, prepend: string[]): Promise<AgentResponse> {
     const req = newAgentRequest(this.newId('request') as RequestId, s.session_id, input);
     const previous = s.active;
+    if (previous && isPaymentRequest(previous.req)) s.lastPayment = previous;
     if (
       previous?.req.state === 'FAILED' &&
       previous.failedPayment !== undefined &&

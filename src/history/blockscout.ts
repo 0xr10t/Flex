@@ -1,4 +1,4 @@
-// Blockscout API v2 address history: external ETH, internal ETH and the configured USDC contract.
+// Blockscout bounded legacy discovery and v2 transaction details: external ETH, internal ETH and configured USDC.
 // Configured endpoints only; pagination never supplies a URL. This is informational indexer data, not execution proof.
 import type { Address, ChainId, Config } from '../contracts/types.js';
 import { isolatedFetch } from '../util/isolated-fetch.js';
@@ -27,6 +27,10 @@ function address(value: unknown): Address {
   if (typeof raw !== 'string' || !ADDRESS.test(raw)) throw new Error('invalid history address');
   return raw.toLowerCase() as Address;
 }
+function recipient(row: Row): Address {
+  // Contract creation has no `to`; Blockscout supplies its actual recipient separately.
+  return address(row.to ?? row.created_contract);
+}
 function units(value: unknown): bigint {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value)) throw new Error('invalid history amount');
   return BigInt(value);
@@ -47,12 +51,21 @@ function successful(tx: Row): boolean {
   return true;
 }
 
-export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
-  proxy: config.network.socks_proxy, isolation: 'history',
-})): HistorySource {
+export function createBlockscoutSource(
+  config: Config,
+  fetcher = isolatedFetch({
+    proxy: config.network.socks_proxy,
+    isolation: 'history',
+  }),
+): HistorySource {
   return {
     async read(chainId: ChainId, fromMs: number, throughMs: number, signal: AbortSignal): Promise<ReceivedTransfer[]> {
-      if (!Number.isSafeInteger(fromMs) || !Number.isSafeInteger(throughMs) || throughMs < fromMs || throughMs - fromMs > HISTORY_LOOKBACK_MS)
+      if (
+        !Number.isSafeInteger(fromMs) ||
+        !Number.isSafeInteger(throughMs) ||
+        throughMs < fromMs ||
+        throughMs - fromMs > HISTORY_LOOKBACK_MS
+      )
         throw new Error('history is limited to seven days');
       const source = config.history?.enabled && config.history.sources.find((s) => s.chain_id === chainId);
       const chain = config.chains.find((c) => c.chain_id === chainId);
@@ -67,7 +80,11 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
 
       const get = async (url: URL): Promise<Row> => {
         if (++requests > MAX_REQUESTS) throw new Error('history request limit');
-        const response = await fetcher(url, { signal: AbortSignal.any([abort, AbortSignal.timeout(10_000)]), redirect: 'error', headers: { accept: 'application/json' } });
+        const response = await fetcher(url, {
+          signal: AbortSignal.any([abort, AbortSignal.timeout(10_000)]),
+          redirect: 'error',
+          headers: { accept: 'application/json' },
+        });
         if (response.status !== 200 || !response.body) {
           await response.body?.cancel();
           throw new Error('history unavailable');
@@ -84,7 +101,9 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
             chunks.push(next.value);
           }
           return object(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-        } finally { await reader.cancel().catch(() => undefined); }
+        } finally {
+          await reader.cancel().catch(() => undefined);
+        }
       };
 
       const parents = new Map<string, Promise<Row>>();
@@ -110,24 +129,48 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
       // The address-list v2 API has no time-bound filter. Use bounded legacy discovery first; only then inspect
       // individual public transactions from that interval with v2. Never page backward through all account history.
       const bound = async (ms: number, closest: 'before' | 'after'): Promise<bigint> => {
-        const reply = await get(legacyUrl({ module: 'block', action: 'getblocknobytime', timestamp: String(closest === 'after' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000)), closest }));
+        const reply = await get(
+          legacyUrl({
+            module: 'block',
+            action: 'getblocknobytime',
+            timestamp: String(closest === 'after' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000)),
+            closest,
+          }),
+        );
         if (reply.status !== '1') throw new Error('history time bounds unavailable');
         return units(typeof reply.result === 'string' ? reply.result : object(reply.result).blockNumber);
       };
       const discover = async (kind: Kind, startBlock: bigint, endBlock: bigint): Promise<string[]> => {
-        const action = kind === 'transactions' ? 'txlist' : kind === 'internal-transactions' ? 'txlistinternal' : 'tokentx';
+        const action =
+          kind === 'transactions' ? 'txlist' : kind === 'internal-transactions' ? 'txlistinternal' : 'tokentx';
         const found = new Set<string>();
         const pages = new Set<string>();
         const pageSize = 100;
         for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber++) {
-          const body = await get(legacyUrl({ module: 'account', action, address: wallet,
-            startblock: String(startBlock), endblock: String(endBlock),
-            start_timestamp: String(Math.ceil(fromMs / 1000)), end_timestamp: String(Math.floor(throughMs / 1000)),
-            page: String(pageNumber), offset: String(pageSize), sort: 'desc',
-            ...(kind === 'token-transfers' ? { contractaddress: usdc } : {}),
-          }));
+          const body = await get(
+            legacyUrl({
+              module: 'account',
+              action,
+              address: wallet,
+              startblock: String(startBlock),
+              endblock: String(endBlock),
+              start_timestamp: String(Math.ceil(fromMs / 1000)),
+              end_timestamp: String(Math.floor(throughMs / 1000)),
+              page: String(pageNumber),
+              offset: String(pageSize),
+              sort: 'desc',
+              ...(kind === 'token-transfers' ? { contractaddress: usdc } : {}),
+            }),
+          );
           if (!Array.isArray(body.result)) throw new Error('invalid history discovery');
-          if (body.status === '0' && body.result.length === 0 && ['No transactions found', 'No internal transactions found', 'No token transfers found'].includes(String(body.message))) return [...found];
+          if (
+            body.status === '0' &&
+            body.result.length === 0 &&
+            ['No transactions found', 'No internal transactions found', 'No token transfers found'].includes(
+              String(body.message),
+            )
+          )
+            return [...found];
           if (body.status !== '1' || body.result.length > pageSize) throw new Error('history discovery unavailable');
           const fingerprint = JSON.stringify(body.result);
           if (pages.has(fingerprint)) throw new Error('repeated history page');
@@ -138,8 +181,11 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
             const block = units(row.blockNumber);
             if (!Number.isSafeInteger(ms) || ms < fromMs || ms > throughMs || block < startBlock || block > endBlock)
               throw new Error('history outside requested window');
-            if (typeof row.to !== 'string' || typeof row.from !== 'string') throw new Error('invalid history discovery address');
-            if (row.to.toLowerCase() !== wallet || row.from.toLowerCase() === wallet || units(row.value) === 0n) continue;
+            if (typeof row.to !== 'string' || typeof row.from !== 'string')
+              throw new Error('invalid history discovery address');
+            const to = kind !== 'token-transfers' && !row.to ? row.contractAddress : row.to;
+            if (typeof to !== 'string') throw new Error('invalid history discovery recipient');
+            if (to.toLowerCase() !== wallet || row.from.toLowerCase() === wallet || units(row.value) === 0n) continue;
             found.add(hash(kind === 'internal-transactions' ? row.transactionHash : row.hash));
           }
           if (body.result.length < pageSize) return [...found];
@@ -158,7 +204,8 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
         const transfers = new Map<string, ReceivedTransfer>();
         for (let page = 0; page < MAX_PAGES; page++) {
           const body = kind === 'transactions' ? { items: [tx], next_page_params: null } : await get(url);
-          if (!Array.isArray(body.items) || body.items.length > 1000 || !('next_page_params' in body)) throw new Error('invalid history page');
+          if (!Array.isArray(body.items) || body.items.length > 1000 || !('next_page_params' in body))
+            throw new Error('invalid history page');
           // Blockscout reports incomplete internal indexing via meta.status=2. Never report a partial page as complete.
           if (body.meta !== undefined && object(body.meta).status !== 1) throw new Error('history still indexing');
           for (const value of body.items) {
@@ -168,10 +215,18 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
             if (ms > previousTime) throw new Error('unordered history');
             previousTime = ms;
             if (ms < fromMs || ms > throughMs) throw new Error('history outside requested window');
-            const to = address(row.to);
+            if (kind === 'internal-transactions') {
+              if (row.success === false) continue;
+              if (row.success !== true) throw new Error('unknown internal status');
+              if (row.type === 'delegatecall' || row.type === 'callcode' || row.type === 'staticcall') continue;
+              if (!['call', 'create', 'create2', 'selfdestruct', 'suicide'].includes(String(row.type)))
+                throw new Error('unknown internal transfer');
+            }
+            const to = kind === 'token-transfers' ? address(row.to) : recipient(row);
             const from = address(row.from);
             if (to !== wallet || from === wallet) continue;
-            if (hash(kind === 'transactions' ? row.hash : row.transaction_hash) !== txHash) throw new Error('mismatched history transaction');
+            if (hash(kind === 'transactions' ? row.hash : row.transaction_hash) !== txHash)
+              throw new Error('mismatched history transaction');
             let token: 'USDC' | 'ETH' = 'ETH';
             let amount: bigint;
             let suffix: string;
@@ -188,12 +243,6 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
               amount = units(row.value);
               suffix = kind === 'transactions' ? 'external' : String(index(row.index));
               if (kind === 'transactions' && !successful(row)) continue;
-              if (kind === 'internal-transactions') {
-                if (row.success === false) continue;
-                if (row.success !== true) throw new Error('unknown internal status');
-                if (row.type === 'delegatecall' || row.type === 'callcode' || row.type === 'staticcall') continue;
-                if (!['call', 'create', 'create2', 'selfdestruct', 'suicide'].includes(String(row.type))) throw new Error('unknown internal transfer');
-              }
             }
             if (amount === 0n) continue;
             // A successful inner call does not prove its outer transaction committed.
@@ -202,12 +251,20 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
               if (!successful(tx)) continue;
               if (timestamp(tx.timestamp) !== ms) throw new Error('history timestamp mismatch');
               // Some indexers expose the top-level value again as trace zero.
-              if (kind === 'internal-transactions' && row.index === 0 && tx.to !== null && address(tx.from) === from && address(tx.to) === to && units(tx.value) === amount) continue;
+              if (
+                kind === 'internal-transactions' &&
+                row.index === 0 &&
+                address(tx.from) === from &&
+                recipient(tx) === to &&
+                units(tx.value) === amount
+              )
+                continue;
             }
             const id = `${kind}:${txHash}:${suffix}`;
             const transfer = { id, hash: txHash, from, to, token, units: amount, timestampMs: ms };
             const existing = transfers.get(id);
-            if (existing && (existing.units !== amount || existing.timestampMs !== ms || existing.from !== from)) throw new Error('conflicting history duplicate');
+            if (existing && (existing.units !== amount || existing.timestampMs !== ms || existing.from !== from))
+              throw new Error('conflicting history duplicate');
             transfers.set(id, transfer);
           }
           if (body.next_page_params === null) return [...transfers.values()];
@@ -215,7 +272,8 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
           if (!Object.keys(cursor).length || !body.items.length) throw new Error('invalid history pagination');
           const next = new URL(endpoint);
           for (const [key, value] of Object.entries(cursor)) {
-            if (!CURSOR_FIELDS.has(key) || !/^[0-9]{1,16}$/.test(String(value))) throw new Error('invalid history cursor');
+            if (!CURSOR_FIELDS.has(key) || !/^[0-9]{1,16}$/.test(String(value)))
+              throw new Error('invalid history cursor');
             next.searchParams.set(key, String(value));
           }
           if (cursors.has(next.href)) throw new Error('repeated history page');
@@ -231,10 +289,12 @@ export function createBlockscoutSource(config: Config, fetcher = isolatedFetch({
         const results: ReceivedTransfer[] = [];
         for (const kind of ['transactions', 'internal-transactions', 'token-transfers'] as const) {
           const hashes = await discover(kind, startBlock, endBlock);
-          for (const txHash of hashes) results.push(...await readPages(kind, txHash));
+          for (const txHash of hashes) results.push(...(await readPages(kind, txHash)));
         }
         return results;
-      } finally { controller.abort(); }
+      } finally {
+        controller.abort();
+      }
     },
   };
 }

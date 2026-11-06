@@ -29,21 +29,37 @@ function ensAllChains(h: Harness, name: string, a: `0x${string}`): void {
 
 export function registerA17toA32(): void {
   describe('A-17 … A-32', () => {
-    it('A-17: "what\'s my balance" -> balance answer, no intents', async () => {
+    it('A-17: balance and spendable queries use local data without a model, RPC read or payment', async () => {
       const h = await harness('A-17');
+      h.llm.available = false;
       const r = await h.say("what's my balance");
       expect(r.body.state).toBe('done');
-      expect(h.llm.names()).toEqual(['amounts', 'request_type']);
+      expect(r.body.reply_source).toBe('local');
       expect(r.body.summary).toBeUndefined();
       expect(r.body.messages).toHaveLength(1);
-      // §13.2, allowed_chain_ids order; spendable = balance minus the gas reserve (§10.1).
-      const t = r.body.messages[0]!.text.split('\n');
-      expect(t[0]).toBe('Your balances:');
-      expect(t[1]).toMatch(/^- Sepolia: 0\.1 ETH \(0\.09 spendable.*\), 0 USDC$/);
-      expect(t[2]).toMatch(/^- Base Sepolia: 0\.1 ETH \(0\.098 spendable.*\), 80 USDC$/);
-      expect(t[3]).toMatch(/^- Arbitrum Sepolia: 0\.1 ETH \(0\.098 spendable.*\), 60 USDC$/);
-      expect(t[4]).toBe('Total: 0.3 ETH, 140 USDC');
-      expect(t).toHaveLength(5);
+      expect(r.body.messages[0]!.text.split('\n')).toEqual([
+        'Sepolia: 0.1 ETH balance.',
+        'Sepolia: 0 USDC balance.',
+        'Base Sepolia: 0.1 ETH balance.',
+        'Base Sepolia: 80 USDC balance.',
+        'Arbitrum Sepolia: 0.1 ETH balance.',
+        'Arbitrum Sepolia: 60 USDC balance.',
+        'Total balance across your allowed test networks: 0.3 ETH.',
+        'Total balance across your allowed test networks: 140 USDC.',
+      ]);
+      // SQ-CHAT-02: spendable facts are requested explicitly; §10.1 still reserves gas exactly.
+      const available = await h.say('What can I spend?');
+      expect(available.body.reply_source).toBe('local');
+      const text = available.body.messages[0]!.text;
+      for (const fact of ['Sepolia: 0.09 ETH', 'Base Sepolia: 0.098 ETH', 'Arbitrum Sepolia: 0.098 ETH'])
+        expect(text).toContain(`${fact} available to send after pending spending and any gas reserve.`);
+      expect(text).toContain('Available to send across your allowed test networks: 0.286 ETH,');
+      expect(text).toContain('Available to send across your allowed test networks: 140 USDC,');
+      expect(h.llm.names()).toEqual([]);
+      expect(h.rpc.calls).toEqual([]);
+      expect(h.count('db8_prompts')).toBe(0);
+      expect(h.count('db8_history')).toBe(0);
+      expect((await h.confirm(r, 'yes')).http).toBe(409);
       noSubmission(h);
       expect(spend(h)).toEqual([]);
       await h.finish();

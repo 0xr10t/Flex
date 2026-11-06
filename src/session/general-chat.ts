@@ -17,6 +17,8 @@ export interface ChatContext {
   state: string;
   wallet_address?: string;
   wallet?: WalletContext;
+  /** Code-owned summary only; transaction hashes and raw reports stay out of model context. */
+  transaction_status?: string;
   original_request?: string;
   pending_summary?: { text: string; notes: readonly string[] };
   question_code?: QuestionCode;
@@ -83,12 +85,18 @@ function promptContext(text: string, context: ChatContext, history: readonly Cha
   if (context.wallet_address !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(context.wallet_address))
     throw new LlmFailed('chat');
   if (context.wallet !== undefined && !guarded(JSON.stringify(context.wallet))) throw new LlmFailed('chat');
+  if (
+    context.transaction_status !== undefined &&
+    (!guarded(context.transaction_status) || byteLength(context.transaction_status) > 1000)
+  )
+    throw new LlmFailed('chat');
   return JSON.stringify({
     latest_message: text,
     wallet_context: {
       state: context.state,
       wallet_address: context.wallet_address ?? null,
       wallet: context.wallet ?? null,
+      transaction_status: context.transaction_status ?? null,
       original_request: byteLength(original) <= 4000 ? original : null,
       original_request_omitted: byteLength(original) > 4000,
       pending_summary: summaryTooLarge ? null : (summary ?? null),

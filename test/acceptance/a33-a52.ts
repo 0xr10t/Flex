@@ -287,23 +287,38 @@ recipients: [{ amount: eth('0.049'), recipient: MIHIR }]
       await h.finish();
     });
 
-    it('A-50: summary -> new unrelated message -> old discarded, new request starts', async () => {
+    it('A-50: a local balance query preserves the pending plan until explicit confirmation', async () => {
       const h = await harness('A-50');
       const r1 = await h.say('Send 50 USDc to ARADHYA');
+      expect(r1.body.state).toBe('awaiting_confirmation');
+      const tables = [
+        'db1_amount_placeholders',
+        'db3_address_placeholders',
+        'db6_spend_log',
+        'db7_autopays',
+        'db8_prompts',
+        'db8_history',
+        'handoff_journal',
+      ];
+      const before = h.snapshot(tables);
+      const calls = h.llm.names();
       const r2 = await h.say("what's my balance");
-      expect(r2.body.request_id).not.toBe(r1.body.request_id);
-      expect(r2.body.state).toBe('done');
-      expect(r2.body.messages[0]!.text).toBe('I dropped the previous plan and started on your new request.');
-      expect(r2.body.messages[1]!.text.startsWith('Your balances:')).toBe(true);
-      expect(
-        (
-          await h.http('POST', `/v1/sessions/${h.sessionId}/confirm`, {
-            body: { request_id: r1.body.request_id, decision: 'yes' },
-          })
-        ).status,
-      ).toBe(409);
+      expect(r2.body.request_id).toBe(r1.body.request_id);
+      expect(r2.body.state).toBe('awaiting_confirmation');
+      expect(r2.body.reply_source).toBe('local');
+      expect(r2.body.summary).toEqual(r1.body.summary);
+      expect(r2.body.messages).toHaveLength(1);
+      expect(r2.body.messages[0]!.text).toContain('Base Sepolia: 80 USDC balance.');
+      expect(h.snapshot(tables)).toBe(before);
+      expect(h.llm.names()).toEqual(calls);
+      expect(h.rpc.calls).toEqual([]);
       noSubmission(h);
       expect(h.count('db8_history')).toBe(0);
+      expectHandedOff(await h.confirm(r1, 'yes'));
+      expect(h.exec.submissions).toHaveLength(1);
+      expectEnvelope(h, r1.body.request_id, [
+        usdcIntent({ step: 0, chain: BASE, token_address: USDC_ADDR[BASE], amount: usdc('50'), recipient: ARADHYA }),
+      ]);
       await h.finish();
     });
 
