@@ -1,4 +1,4 @@
-/* Same tokens, fonts and sharp edges as wallet/src/browser/ui.css: black and gold. */
+/* Green-tinted black with the emerald of assets/logo.png as the accent. Fonts from the wallet page. */
 @font-face {
   font-family: 'Archivo';
   src: url('fonts/archivo.woff2') format('woff2');
@@ -13,40 +13,41 @@
   font-display: swap;
 }
 :root {
-  --black: #000;
-  --surface: #0d0b07;
-  --raised: #15120b;
-  --line: #2b2415;
-  --line-strong: #4a3c1b;
-  --gold: #f0b429;
-  --gold-hi: #ffd23f;
-  --text: #f7f0dc;
-  --text-2: #d2c39f;
-  --muted: #9d8f6e;
+  --bg: #040907;
+  --surface: #08120d;
+  --raised: #0c1a13;
+  --line: #142a1f;
+  --line-strong: #1e4331;
+  --accent: #40d090;
+  --accent-hi: #70f0a0;
+  --accent-ink: #03140c;
+  --text: #f2f8f4;
+  --text-2: #b4cdbf;
+  --muted: #7a9787;
   --sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-family: var(--sans);
   color: var(--text);
-  background: var(--black);
+  background: var(--bg);
   font-synthesis: none;
   color-scheme: dark;
-  scrollbar-color: var(--line-strong) var(--black);
+  scrollbar-color: var(--line-strong) var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 * {
   box-sizing: border-box;
 }
 ::selection {
-  background: var(--gold);
-  color: var(--black);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1000px 560px at 92% -12%, rgba(240, 180, 41, 0.14), transparent 68%),
-    radial-gradient(600px 400px at -8% 30%, rgba(240, 180, 41, 0.05), transparent 70%), var(--black);
-  border-top: 2px solid var(--gold);
+    radial-gradient(1000px 560px at 92% -12%, rgba(64, 208, 144, 0.13), transparent 68%),
+    radial-gradient(600px 400px at -8% 30%, rgba(112, 240, 160, 0.06), transparent 70%), var(--bg);
+  border-top: 2px solid var(--accent);
 }
 main {
   width: min(100%, 1160px);
@@ -54,14 +55,14 @@ main {
   padding: 32px 28px 40px;
 }
 a {
-  color: var(--gold);
+  color: var(--accent);
   text-underline-offset: 4px;
 }
 a:hover {
-  color: var(--gold-hi);
+  color: var(--accent-hi);
 }
 :focus-visible {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
 code,
@@ -79,12 +80,20 @@ header {
   border-bottom: 1px solid var(--line);
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   font-size: 26px;
   font-weight: 850;
   font-stretch: 125%;
   letter-spacing: 0.04em;
-  color: var(--gold);
+  color: var(--text);
   text-decoration: none;
+}
+.brand img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
 }
 header nav {
   display: flex;
@@ -98,7 +107,7 @@ header nav a {
 }
 header nav a:hover,
 header nav a[aria-current] {
-  color: var(--gold);
+  color: var(--accent);
 }
 footer {
   display: flex;
@@ -119,7 +128,7 @@ footer a {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: var(--gold);
+  color: var(--accent);
   margin: 0;
 }
 .hero {
@@ -152,7 +161,7 @@ h1 {
   transition: border-color 0.15s;
 }
 .command:hover {
-  border-color: var(--gold);
+  border-color: var(--accent);
 }
 #command {
   flex: 1;
@@ -163,7 +172,7 @@ h1 {
   user-select: all;
 }
 #command .tool {
-  color: var(--gold);
+  color: var(--accent);
 }
 #command .flag,
 #command .pipe {
@@ -186,15 +195,15 @@ button {
 }
 button:hover,
 button.done {
-  color: var(--black);
-  background: var(--gold);
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 button:disabled {
   visibility: hidden;
 }
 #status {
   min-height: 22px;
-  color: var(--gold);
+  color: var(--accent);
   font-size: 13px;
   margin: 14px 0 8px;
 }
@@ -237,8 +246,8 @@ button:disabled {
   color: var(--text);
 }
 .sidebar a[aria-current] {
-  color: var(--gold);
-  border-left-color: var(--gold);
+  color: var(--accent);
+  border-left-color: var(--accent);
   font-weight: 600;
 }
 article {
@@ -280,7 +289,7 @@ article li {
   margin-bottom: 6px;
 }
 article li::marker {
-  color: var(--gold);
+  color: var(--accent);
 }
 article strong {
   color: var(--text);
@@ -305,7 +314,7 @@ article :not(pre) > code {
 pre {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--gold);
+  border-left: 2px solid var(--accent);
   padding: 18px 20px;
   margin: 0 0 20px;
   overflow-x: auto;
@@ -370,7 +379,7 @@ pre {
     padding: 10px 12px;
   }
   .sidebar a[aria-current] {
-    border-bottom-color: var(--gold);
+    border-bottom-color: var(--accent);
   }
   .command {
     padding: 16px 8px 16px 16px;
