@@ -3,20 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Install Flex in your terminal with one command." />
-    <title>Install Flex</title>
-    <link rel="stylesheet" href="./install.css" />
+    <meta
+      name="description"
+      content="Install Flex, a private AI agent layer for your Ethereum wallet, with one command."
+    />
+    <title>Flex</title>
+    <link rel="stylesheet" href="./site.css" />
     <script src="./install.js" defer></script>
   </head>
   <body>
     <main>
       <header>
-        <a class="brand" href="./" aria-label="Flex home">FLEX</a>
-        <nav aria-label="Page"><a href="#docs">Docs</a><a href="./install.sh">install.sh</a></nav>
+        <a class="brand" href="./" aria-label="Flex home"><img src="./logo.png" alt="" width="40" height="40" />FLEX</a>
+        <nav aria-label="Site"><a href="./docs/">Docs</a><a href="./installer/">install.sh</a></nav>
       </header>
 
       <section class="hero" aria-labelledby="heading">
-        <p class="eyebrow">YOUR WALLET. YOUR TERMINAL.</p>
+        <p class="eyebrow">A PRIVATE AI AGENT LAYER FOR YOUR ETHEREUM WALLET</p>
         <h1 id="heading">Tell your wallet what you want, in plain words.</h1>
         <div class="command">
           <code id="command" tabindex="0" aria-label="Install command"></code>
@@ -30,15 +33,15 @@
               stroke-width="1.5"
               aria-hidden="true"
             >
-              <rect x="7" y="7" width="10" height="10" rx="2" />
-              <path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+              <rect x="7" y="7" width="10" height="10" />
+              <path d="M13 7V3H3v10h4" />
             </svg>
           </button>
         </div>
         <p id="status" role="status" aria-live="polite"></p>
         <p class="intro">
-          A model on your own machine turns your request into a plan. You check it, MetaMask signs it. Installs into
-          <code>~/.flex</code> for your user, no sudo.
+          A model on your own machine works out the plan. Code checks every value, you approve it, and MetaMask signs
+          it.
         </p>
         <noscript
           ><p class="intro">
@@ -46,123 +49,12 @@
             <code>bash install.sh</code>.
           </p></noscript
         >
-      </section>
-
-      <section id="docs" class="docs" aria-labelledby="docs-heading">
-        <p class="eyebrow">DOCS</p>
-        <h2 id="docs-heading">Getting going</h2>
-
-        <article>
-          <h3>What you're installing</h3>
-          <p>
-            Flex lets you type something like <q>send 40 usdc to aradhya on base</q> and turns it into real transactions
-            on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia. It works out who you mean, which chain your money is
-            on and whether it has to bridge first. Then it shows you a summary. Nothing moves until you say yes, and
-            MetaMask asks you once more before anything is signed.
-          </p>
-          <p>
-            The model runs locally through Ollama, so your requests, contacts and balances never go to someone else's
-            API. Chain reads, ENS lookups and fetched pages go out through Tor by default.
-          </p>
-        </article>
-
-        <article>
-          <h3>Before you run the command</h3>
-          <ul>
-            <li>macOS or Linux, with Git, Python 3 and npm.</li>
-            <li>Node 24, or 22.12 or later on the 22.x line.</li>
-            <li>
-              A C/C++ compiler. The encrypted database is built on your machine. On macOS run
-              <code>xcode-select --install</code>; on Debian or Ubuntu, <code>sudo apt install build-essential</code>.
-            </li>
-            <li><a href="https://ollama.com">Ollama</a> and Tor. Flex starts both itself when it needs them.</li>
-            <li>MetaMask in your default browser, with some test ETH and test USDC.</li>
-          </ul>
-        </article>
-
-        <article>
-          <h3>What the installer does</h3>
-          <p>
-            It clones the latest Flex into a private folder under <code>~/.flex</code>, installs dependencies from the
-            lockfiles, builds the agent and the wallet, and checks that <code>flexx</code> starts. Only then does it
-            switch <code>~/.flex/current</code> over. If any step fails, nothing is activated and the half-built copy is
-            deleted.
-          </p>
-          <p>
-            It never uses sudo, never edits your shell files, never starts services and never downloads models. The
-            whole script is read before any of it runs, so a dropped connection can't leave you with half an install.
-          </p>
-        </article>
-
-        <article>
-          <h3>First run</h3>
-          <p>
-            Add your testnet RPC URLs to <code>~/.flex/current/.env</code>. The installer already created it from the
-            template. Then start Flex:
-          </p>
-          <pre><code>~/.flex/bin/flexx</code></pre>
-          <p>
-            The first run opens your browser to connect MetaMask. Flex only needs your <em>public</em> address. Then it
-            writes its configs and starts everything else for you.
-          </p>
-          <p>
-            Add <code>~/.flex/bin</code> to your <code>PATH</code> and it's just <code>flexx</code>. The first start
-            downloads the model, which takes a while.
-          </p>
-        </article>
-
-        <article>
-          <h3>Talking to it</h3>
-          <pre><code>send 50 usdc to aradhya on base
-what's my balance on arbitrum?
-pay mihir 10 usdc every friday for 8 weeks
-stop paying mihir</code></pre>
-          <p>
-            Type <code>/</code> to see the commands and <code>?</code> for keyboard shortcuts. When you say yes to a
-            summary, the approval page opens and MetaMask pops up for that exact plan.
-          </p>
-        </article>
-
-        <article>
-          <h3>When something goes wrong</h3>
-          <ul>
-            <li>
-              <strong>Something in Flex isn't working.</strong> Run <code>/doctor</code> inside <code>flexx</code>. It
-              checks Node, the config, the model, Tor and the wallet, and tells you how to fix what failed.
-            </li>
-            <li>
-              <strong>The build failed.</strong> It's almost always the compiler. Install the build tools above and run
-              the command again.
-            </li>
-            <li>
-              <strong><q>Flex is already installed here.</q></strong> The installer won't overwrite an install or your
-              settings. See below to reinstall.
-            </li>
-            <li>
-              <strong><q>another install holds .install-lock</q></strong
-              >. Another install is running, or one was killed. If nothing is running, remove
-              <code>~/.flex/.install-lock</code>.
-            </li>
-          </ul>
-        </article>
-
-        <article>
-          <h3>Updating and removing</h3>
-          <p>
-            There's no in-place update yet. Your settings live in <code>~/.flex/current/.env</code>, and your contacts
-            and history in <code>~/.flex/current/.local</code>. To update, copy both somewhere safe, remove
-            <code>~/.flex</code>, run the command again, then copy them back.
-          </p>
-          <p>
-            To uninstall, delete <code>~/.flex</code>. Flex keeps its database key in your system keychain under the
-            service <code>agent-layer</code>; you can remove that entry too. Nothing else on your system was changed.
-          </p>
-        </article>
+        <a class="more" href="./docs/">Read the docs <span aria-hidden="true">→</span></a>
       </section>
 
       <footer>
-        <a href="./install.sh">Read the installer <span aria-hidden="true">↗</span></a
-        ><span>Testnets only. Built to run locally.</span>
+        <span>Testnets only. Everything runs on your machine.</span>
+        <a href="./installer/">Read the installer</a>
       </footer>
     </main>
   </body>

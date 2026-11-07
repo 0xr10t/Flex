@@ -1,0 +1,42 @@
+<p class="eyebrow">GUIDES</p>
+<h1>Recurring payments</h1>
+<p class="lead">Set up a payment once, and it runs on schedule while the money stays in your wallet.</p>
+
+<pre><code>pay mihir 10 usdc every friday for 8 weeks
+stop paying mihir</code></pre>
+
+<h2>How it works</h2>
+<p>
+  You approve one MetaMask permission for the plan. It's capped at each run's total and expires after the last run. Then
+  you register the plan from your wallet. A Chainlink CRE workflow pays each run when it's due, through your own
+  <code>IntentExecutorV4</code> contract, which can only pay the recipients and schedule you registered.
+</p>
+<p>
+  Saying <q>stop paying mihir</q> cancels the plan and revokes the permission. A run that misses its window is skipped,
+  not paid late.
+</p>
+
+<h2>What you need</h2>
+<ul>
+  <li><a href="https://getfoundry.sh">Foundry</a></li>
+  <li>The CRE CLI, logged in with <code>cre login</code></li>
+  <li>
+    A test-only key in <code>CRE_ETH_PRIVATE_KEY</code>, funded with test ETH on all three chains. Never use a real
+    wallet's key here.
+  </li>
+  <li><code>FLEX_SOCKS_PROXY=direct</code>, because the local CRE runner can't go through Tor</li>
+</ul>
+
+<h2>Set it up once</h2>
+<pre><code>cd ~/.flex/current
+forge build --root wallet/contracts
+npm run testnet:onboard</code></pre>
+<p>
+  Open <code>http://127.0.0.1:8792</code> in the browser where MetaMask lives and deploy your executor. Then set
+  <code>FLEX_CRE_MODE=broadcast</code> in <code>.env</code>, and <code>flexx</code> starts the recurring runner along
+  with everything else.
+</p>
+<p class="note">
+  Use <code>FLEX_CRE_MODE=dry-run</code> to check your schedules without sending anything. The runner only works while
+  <code>flexx</code> is open.
+</p>

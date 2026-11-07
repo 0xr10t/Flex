@@ -1,39 +1,129 @@
-// Static install page only; never serve repository files or local configuration.
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+// Builds the static install site and docs into dist/install/; --serve previews only that built folder.
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import console from 'node:console';
 
-const root = new URL('../', import.meta.url);
-const output = new URL('dist/install/', root);
-mkdirSync(output, { recursive: true });
-for (const name of ['index.html', 'install.css', 'install.js']) {
-  copyFileSync(new URL(`frontend/${name}`, root), new URL(name, output));
-}
-copyFileSync(new URL('install.sh', root), new URL('install.sh', output));
+const root = fileURLToPath(new URL('../', import.meta.url));
+const source = join(root, 'frontend');
+const output = join(root, 'dist/install');
+
+// The docs, in sidebar order. Each page's body lives in frontend/docs/<slug>.html.
+const pages = [
+  ['', 'Overview'],
+  ['install', 'Installation'],
+  ['first-run', 'First run'],
+  ['using', 'Using Flex'],
+  ['recurring', 'Recurring payments'],
+  ['security', 'Security'],
+  ['troubleshooting', 'Troubleshooting'],
+  ['updating', 'Updating and removing'],
+];
+
+rmSync(output, { recursive: true, force: true });
+mkdirSync(join(output, 'fonts'), { recursive: true });
+for (const name of ['index.html', 'site.css', 'install.js']) copyFileSync(join(source, name), join(output, name));
+copyFileSync(join(root, 'install.sh'), join(output, 'install.sh'));
+copyFileSync(join(root, 'assets/logo.png'), join(output, 'logo.png'));
+// The same self-hosted fonts as the wallet's approval page, so the two look alike without a second copy in the repo.
+for (const name of ['archivo.woff2', 'jetbrains-mono.woff2', 'OFL-archivo.txt', 'OFL-jetbrains-mono.txt'])
+  copyFileSync(join(root, 'wallet/src/browser/fonts', name), join(output, 'fonts', name));
+
+const layout = readFileSync(join(source, 'docs/layout.html'), 'utf8');
+pages.forEach(([slug, title], index) => {
+  const base = slug ? '../../' : '../';
+  const link = (target) => `${base}docs/${target ? `${target}/` : ''}`;
+  const nav = pages
+    .map(([other, label]) => `<a href="${link(other)}"${other === slug ? ' aria-current="page"' : ''}>${label}</a>`)
+    .join('\n');
+  const [previous, next] = [pages[index - 1], pages[index + 1]];
+  const pager = [
+    previous
+      ? `<a class="previous" href="${link(previous[0])}"><span>Previous</span>${previous[1]}</a>`
+      : '<span></span>',
+    next ? `<a class="next" href="${link(next[0])}"><span>Next</span>${next[1]}</a>` : '',
+  ].join('\n');
+  const html = layout
+    .replaceAll('{{root}}', base)
+    .replace('{{title}}', title)
+    .replace('{{nav}}', nav)
+    .replace('{{pager}}', pager)
+    .replace('{{content}}', () => readFileSync(join(source, 'docs', `${slug || 'index'}.html`), 'utf8'));
+  mkdirSync(join(output, 'docs', slug), { recursive: true });
+  writeFileSync(join(output, 'docs', slug, 'index.html'), html);
+});
+
+// The installer as a readable page: line numbers and light Bash colouring. Heredoc bodies are either text the script
+// prints (cat <<, coloured like a string) or embedded Python (left plain).
+const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const token =
+  /('[^']*'|"(?:\\.|[^"\\])*")|(#.*$)|(\$\{?[A-Za-z_]\w*\}?|\$[@#?*\d])|\b(if|then|else|elif|fi|for|in|do|done|while|case|esac|return|exit|local|trap|set|shift)\b/g;
+const kinds = ['str', 'com', 'var', 'key'];
+const script = readFileSync(join(root, 'install.sh'), 'utf8').replace(/\n$/, '').split('\n');
+let heredoc = null;
+let printed = false;
+const code = script
+  .map((line) => {
+    if (heredoc) {
+      if (line === heredoc) heredoc = null;
+      return `<span class="line here${printed && heredoc ? ' text' : ''}">${escape(line)}</span>`;
+    }
+    heredoc = /<<-?'?(\w+)'?/.exec(line)?.[1] ?? null;
+    printed = /\bcat\s+<</.test(line); // cat straight to the screen, not cat > file
+    let html = '';
+    let last = 0;
+    for (const match of line.matchAll(token)) {
+      const kind = kinds[match.slice(1).findIndex(Boolean)];
+      html += `${escape(line.slice(last, match.index))}<span class="${kind}">${escape(match[0])}</span>`;
+      last = match.index + match[0].length;
+    }
+    return `<span class="line">${html}${escape(line.slice(last))}</span>`;
+  })
+  .join(''); // each line is a block, so no newlines between them
+mkdirSync(join(output, 'installer'), { recursive: true });
+writeFileSync(
+  join(output, 'installer/index.html'),
+  readFileSync(join(source, 'installer.html'), 'utf8')
+    .replaceAll('{{lines}}', String(script.length))
+    .replace('{{code}}', () => code),
+);
 
 if (process.argv.includes('--serve')) {
-  const files = new Map([
-    ['/', ['index.html', 'text/html; charset=utf-8']],
-    ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-    ['/install.css', ['install.css', 'text/css; charset=utf-8']],
-    ['/install.js', ['install.js', 'text/javascript; charset=utf-8']],
-    ['/install.sh', ['install.sh', 'text/plain; charset=utf-8']],
-  ]);
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.sh': 'text/plain; charset=utf-8',
+    '.txt': 'text/plain; charset=utf-8',
+    '.woff2': 'font/woff2',
+    '.png': 'image/png',
+  };
   const server = createServer((request, response) => {
-    const file = files.get(new URL(request.url, 'http://localhost').pathname);
-    if (!file || !['GET', 'HEAD'].includes(request.method)) {
-      response.writeHead(404).end('Not found');
-      return;
+    const notFound = () => response.writeHead(404).end('Not found');
+    if (!['GET', 'HEAD'].includes(request.method)) return notFound();
+    let pathname;
+    try {
+      pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    } catch {
+      return notFound();
     }
+    // Only files inside the built folder are reachable, never the repository or its .env.
+    let file = resolve(output, `.${pathname}`);
+    if (file !== output && !file.startsWith(output + sep)) return notFound();
+    if (existsSync(file) && statSync(file).isDirectory()) {
+      if (!pathname.endsWith('/')) return response.writeHead(301, { Location: `${pathname}/` }).end();
+      file = join(file, 'index.html');
+    }
+    if (!existsSync(file) || !statSync(file).isFile() || !types[extname(file)]) return notFound();
     response.writeHead(200, {
-      'Content-Type': file[1],
+      'Content-Type': types[extname(file)],
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     });
-    response.end(request.method === 'HEAD' ? undefined : readFileSync(new URL(file[0], output)));
+    response.end(request.method === 'HEAD' ? undefined : readFileSync(file));
   });
   server.on('error', (error) => {
     console.error(`Install page: ${error.message}`);
@@ -43,5 +133,5 @@ if (process.argv.includes('--serve')) {
     console.log(`Flex install page: http://127.0.0.1:${server.address().port}`);
   });
 } else {
-  console.log(`Built Flex install page: ${fileURLToPath(output)}`);
+  console.log(`Built Flex install page and docs: ${relative(process.cwd(), output) || output}`);
 }

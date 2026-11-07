@@ -1,0 +1,57 @@
+<p class="eyebrow">GET STARTED</p>
+<h1>First run</h1>
+<p class="lead">
+  Flex needs one thing from you before it starts: RPC endpoints for the three testnets. Everything else it sets up on
+  its own.
+</p>
+
+<h2>RPC endpoints</h2>
+<p>For each of Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, Flex needs two things:</p>
+<ul>
+  <li>a normal RPC URL for reading the chain and sending transactions</li>
+  <li>
+    a list of RPC URLs that support <code>eth_simulateV1</code>, which the wallet uses to check every transaction before
+    you sign. Ideally these are three independent providers, and two of them have to agree.
+  </li>
+</ul>
+<p>
+  They all go in <code>~/.flex/current/.env</code>. The installer already created that file from the template, with a
+  comment above every setting.
+</p>
+
+<h2>The quick way</h2>
+<p>
+  Put an Alchemy API key and a QuickNode API key in <code>.env</code> as <code>ALCHEMY_API_KEY</code> and
+  <code>QUICKNODE_API_KEY</code>. The QuickNode one is the management key from your account, not a node token. Then let
+  Flex find and test the endpoints:
+</p>
+<pre><code>cd ~/.flex/current
+node scripts/configure-rpc-providers.mjs --third-provider=publicnode</code></pre>
+<p>
+  It tries every endpoint, checks that their simulations agree, and writes only the ones that pass into
+  <code>.env</code>. Your other settings stay as they are. PublicNode needs no key.
+</p>
+
+<h2>Start Flex</h2>
+<pre><code>~/.flex/bin/flexx</code></pre>
+<p>On the first run, Flex does the rest of the setup:</p>
+<ul>
+  <li>
+    It opens a page in your browser to connect MetaMask. Flex only needs your <strong>public</strong> address. No
+    signature or payment is requested.
+  </li>
+  <li>It writes its agent, wallet and CRE configs.</li>
+  <li>
+    It starts Tor and Ollama, and downloads the model (<code>qwen2.5:7b-instruct</code>), which takes a while once.
+  </li>
+</ul>
+<p>
+  If a setting is still missing, Flex tells you which ones and the exact file to put them in. After the first run,
+  <code>flexx</code> starts straight into the chat.
+</p>
+
+<h2>Without Tor</h2>
+<p>
+  Tor is on by default. To connect directly instead, set <code>FLEX_SOCKS_PROXY=direct</code> in <code>.env</code>, then
+  run <code>npm run testnet:setup</code> from <code>~/.flex/current</code> so the configs pick it up.
+</p>
