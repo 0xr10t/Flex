@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Flexx logo" width="104" />
+  <img src="frontend/logo.png" alt="Flexx logo" width="104" />
 </p>
 
 <h1 align="center">Flexx</h1>

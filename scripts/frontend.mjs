@@ -24,9 +24,9 @@ const pages = [
 
 rmSync(output, { recursive: true, force: true });
 mkdirSync(join(output, 'fonts'), { recursive: true });
-for (const name of ['index.html', 'site.css', 'install.js']) copyFileSync(join(source, name), join(output, name));
+for (const name of ['index.html', 'site.css', 'install.js', 'logo.png'])
+  copyFileSync(join(source, name), join(output, name));
 copyFileSync(join(root, 'install.sh'), join(output, 'install.sh'));
-copyFileSync(join(root, 'assets/logo.png'), join(output, 'logo.png'));
 // The same self-hosted fonts as the wallet's approval page, so the two look alike without a second copy in the repo.
 for (const name of ['archivo.woff2', 'jetbrains-mono.woff2', 'OFL-archivo.txt', 'OFL-jetbrains-mono.txt'])
   copyFileSync(join(root, 'wallet/src/browser/fonts', name), join(output, 'fonts', name));
