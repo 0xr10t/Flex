@@ -18,3 +18,7 @@ test_frontend/
 .local/
 .playwright-cli/
 output/playwright/
+
+# Generated model-run reports
+test/live/results/
+test/edge/results/
