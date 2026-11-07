@@ -3,9 +3,10 @@
 
 /**
  * 0 = foreground, 1 = dim, 2 = accent, 3 = marked (dark text on a light bar, for your messages), 4 = selected,
- * 5 = went through (green), 6 = did not go through (red).
+ * 5 = went through (green), 6 = did not go through (red), 7 = a detail (an address, ENS name, hash or id) in blue and
+ * 8 = an amount in crimson, both on a pale mint background so they read as highlighted, like a code diff.
  */
-export type Tone = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type Tone = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface Frame {
   readonly cols: number;

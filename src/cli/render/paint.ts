@@ -5,7 +5,7 @@ import type { Frame } from './frame.js';
 
 export type ColorMode = 'truecolor' | '256' | 'basic' | 'none';
 
-export type Ink = 'fg' | 'dim' | 'accent' | 'mark' | 'selection' | 'ok' | 'bad';
+export type Ink = 'fg' | 'dim' | 'accent' | 'mark' | 'selection' | 'ok' | 'bad' | 'detail' | 'amount';
 
 export interface Palette {
   bg: string;
@@ -18,6 +18,11 @@ export interface Palette {
   /** A transaction that went through, and one that did not. */
   ok: string;
   bad: string;
+  /** Highlighted details (addresses, ENS names, hashes, ids) and amounts: coloured text on a pale mint background. */
+  detail: string;
+  detailBg: string;
+  amount: string;
+  amountBg: string;
 }
 
 /** "Flex Terminal": window #1b1918, text #f3f2f2, dim #7d7979, accent #e1ad66, title #9b9797. */
@@ -30,6 +35,10 @@ export const SPLASH_PALETTE: Palette = {
   mark: '#1b1918',
   ok: '#7fd18b',
   bad: '#ff7a6b',
+  detail: '#1b5e8c',
+  detailBg: '#e6ffe0',
+  amount: '#b0245a',
+  amountBg: '#e6ffe0',
 };
 
 /** "Flex ASCII": page #0b0c0a, text #d9d6cc, dim #5f6159, accent #f2b45a. */
@@ -42,6 +51,10 @@ export const SCENE_PALETTE: Palette = {
   mark: '#0b0c0a',
   ok: '#7fd18b',
   bad: '#ff7a6b',
+  detail: '#1b5e8c',
+  detailBg: '#e6ffe0',
+  amount: '#b0245a',
+  amountBg: '#e6ffe0',
 };
 
 /** Accent swatches each design offers. */
@@ -55,9 +68,12 @@ export interface Run {
 
 export type Row = Run[];
 
-const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark', 'selection', 'ok', 'bad'];
+const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark', 'selection', 'ok', 'bad', 'detail', 'amount'];
 const HEX_RE = /^#([0-9a-fA-F]{6})$/;
 const ESC = '\u001b[';
+/** Inks drawn on a background of their own; spaces never borrow them, so the background stops exactly at their edges. */
+const BAR_INKS: ReadonlySet<Ink> = new Set(['mark', 'selection', 'detail', 'amount']);
+const BAR_TONES: ReadonlySet<number> = new Set([3, 4, 7, 8]);
 
 export function isHexColor(s: string): boolean {
   return HEX_RE.test(s);
@@ -83,20 +99,55 @@ export function to256(hex: string): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30, selection: 30, ok: 92, bad: 91 };
+const BASIC_FG: Record<Ink, number> = {
+  fg: 97,
+  dim: 90,
+  accent: 33,
+  mark: 30,
+  selection: 30,
+  ok: 92,
+  bad: 91,
+  detail: 34,
+  amount: 35,
+};
+/** Text attributes per ink (none today: highlights are told apart by colour, like a code diff). */
+const ATTRS: Partial<Record<Ink, string>> = {};
+
+function inkColor(palette: Palette, ink: Ink): string {
+  return palette[ink === 'selection' ? 'mark' : ink];
+}
 
 function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   if (mode === 'none') return '';
   if (mode === 'basic') return `${ESC}${BASIC_FG[ink]}m`;
-  if (mode === '256') return `${ESC}38;5;${to256(palette[ink === 'selection' ? 'mark' : ink])}m`;
-  return `${ESC}38;2;${rgb(palette[ink === 'selection' ? 'mark' : ink]).join(';')}m`;
+  if (mode === '256') return `${ESC}38;5;${to256(inkColor(palette, ink))}m`;
+  return `${ESC}38;2;${rgb(inkColor(palette, ink)).join(';')}m`;
 }
 
-function bgCode(mode: ColorMode, palette: Palette, marked: boolean | 'selection' = false): string {
-  const bg = marked === 'selection' ? palette.accent : marked ? palette.markBg : palette.bg;
+/** The background an ink sits on: the page, the light bar, the selection, or a highlight's own colour. */
+function bgCode(mode: ColorMode, palette: Palette, ink?: Ink): string {
+  const bg =
+    ink === 'selection'
+      ? palette.accent
+      : ink === 'mark'
+        ? palette.markBg
+        : ink === 'detail'
+          ? palette.detailBg
+          : ink === 'amount'
+            ? palette.amountBg
+            : palette.bg;
   if (mode === '256') return `${ESC}48;5;${to256(bg)}m`;
   if (mode === 'truecolor') return `${ESC}48;2;${rgb(bg).join(';')}m`;
-  if (mode === 'basic') return marked === 'selection' ? `${ESC}43m` : marked ? `${ESC}47m` : `${ESC}49m`;
+  if (mode === 'basic')
+    return ink === 'selection'
+      ? `${ESC}43m`
+      : ink === 'amount'
+        ? `${ESC}102m`
+        : ink === 'mark'
+          ? `${ESC}47m`
+          : ink === 'detail'
+            ? `${ESC}102m`
+            : `${ESC}49m`;
   return '';
 }
 
@@ -113,10 +164,7 @@ export function frameRows(f: Frame): Row[] {
       const i = y * f.cols + x;
       const c = f.ch[i]!;
       const tone = f.tone[i]!;
-      const ink =
-        c === ' ' && cur && cur.ink !== 'mark' && cur.ink !== 'selection' && tone !== 3 && tone !== 4
-          ? cur.ink
-          : TONE_INK[tone]!;
+      const ink = c === ' ' && cur && !BAR_INKS.has(cur.ink) && !BAR_TONES.has(tone) ? cur.ink : TONE_INK[tone]!;
       if (cur && cur.ink === ink) cur.text += c;
       else {
         cur = { text: c, ink };
@@ -133,7 +181,7 @@ export function rowWidth(row: Row): number {
   return row.reduce((n, r) => n + [...r.text].length, 0);
 }
 
-/** Paints one row on the palette background (marked runs on their bar), padded to `width`; ends with a reset. */
+/** Paints one row on the palette background (barred runs on their own background), padded to `width`; ends with a reset. */
 export function paintRow(row: Row, width: number, palette: Palette, mode: ColorMode): string {
   const pad = Math.max(0, width - rowWidth(row));
   if (mode === 'none') return row.map((r) => r.text).join('') + ' '.repeat(pad);
@@ -141,13 +189,16 @@ export function paintRow(row: Row, width: number, palette: Palette, mode: ColorM
   let ink: Ink | undefined;
   for (const r of row) {
     if (r.ink !== ink) {
-      if (r.ink === 'mark' || ink === 'mark' || r.ink === 'selection' || ink === 'selection')
-        out += bgCode(mode, palette, r.ink === 'selection' ? 'selection' : r.ink === 'mark');
+      if (ink !== undefined && ATTRS[ink]) out += `${ESC}22;23m`;
+      if (BAR_INKS.has(r.ink) || (ink !== undefined && BAR_INKS.has(ink)))
+        out += bgCode(mode, palette, BAR_INKS.has(r.ink) ? r.ink : undefined);
       out += fgCode(mode, palette, r.ink);
+      if (ATTRS[r.ink]) out += `${ESC}${ATTRS[r.ink]}m`;
       ink = r.ink;
     }
     out += r.text;
   }
-  if (ink === 'mark' || ink === 'selection') out += bgCode(mode, palette);
+  if (ink !== undefined && ATTRS[ink]) out += `${ESC}22;23m`;
+  if (ink !== undefined && BAR_INKS.has(ink)) out += bgCode(mode, palette);
   return out + ' '.repeat(pad) + `${ESC}0m`;
 }

@@ -11,8 +11,9 @@
 
 import { put, text, type Frame, type Rect, type Tone } from './render/frame.js';
 import { bounds, pasteText, transcriptMap, type Selection, type TextRow } from './selection.js';
-import type { CliPanel } from './panel.js';
+import type { CliPanel, PanelResult } from './panel.js';
 import type { InputEvent, KeyEvent } from './input.js';
+import { highlight } from './highlight.js';
 
 export interface Segment {
   text: string;
@@ -43,6 +44,27 @@ export interface Command {
   run(args: string[], ctx: CommandContext): CommandResult | Promise<CommandResult>;
 }
 
+/** One answer offered under the input while a question waits: ↑↓ to it, Enter sends `value` as if typed. */
+export interface Choice {
+  label: string;
+  detail?: string;
+  value: string;
+  disabled?: boolean;
+  /** Ticked at the start (multi-choice lists). */
+  selected?: boolean;
+}
+
+/**
+ * The answers a waiting question offers. `key` names the question, so the highlight and ticks reset when a new one
+ * arrives. With `multi`, Space ticks rows and Enter sends the ticked values joined by commas.
+ */
+export interface ChoiceMenu {
+  key: string;
+  title: string;
+  items: Choice[];
+  multi?: boolean;
+}
+
 /** One turn of the conversation. */
 export type Entry = { kind: 'user'; text: string } | { kind: 'reply'; lines: Line[] } | { kind: 'note'; line: Line };
 
@@ -52,7 +74,8 @@ const t = (s: string, tone: Tone = 0): Segment => ({ text: s, tone });
 export const SHORTCUTS: ReadonlyArray<[string, string]> = [
   ['/', 'commands (↑↓ choose · tab complete · enter run · esc close)'],
   ['?', 'these shortcuts'],
-  ['↑ ↓', 'earlier lines you typed'],
+  ['↑ ↓', 'choose an answer while a question waits; otherwise earlier lines you typed'],
+  ['space', 'tick or untick a row in a list of people'],
   ['pgup pgdn · wheel', 'scroll the conversation'],
   ['ctrl-a ctrl-e', 'start / end of the line'],
   ['ctrl-u ctrl-k', 'delete to the start / end of the line'],
@@ -118,6 +141,8 @@ export interface ReplOptions {
   onMessage?: (text: string) => Promise<Line[]>;
   /** Called when an asynchronous command asks to leave. */
   onQuit?: () => void;
+  /** The answers the waiting question offers, shown above the empty input to pick with the arrow keys. */
+  choices?: () => ChoiceMenu | undefined;
   /** The clock for the working line's timer and the Ctrl-C window (milliseconds). */
   now?: () => number;
 }
@@ -157,6 +182,11 @@ export class Repl {
   private clipboardNote = '';
   private transcriptView: { rect: Rect; first: number; rows: TextRow[]; chars: string[] } | undefined;
   private inputView: { x: number; y: number; w: number; from: number } | undefined;
+  /** The answer menu: which question it shows, the highlighted row, the ticked rows, and a question Esc closed. */
+  private choiceKey: string | undefined;
+  private choiceIndex = 0;
+  private choiceTicks = new Set<number>();
+  private choiceClosed: string | undefined;
 
   constructor(private readonly opts: ReplOptions = {}) {
     this.commands = [
@@ -250,10 +280,7 @@ export class Repl {
 
   /** Applies one key; returns 'quit' when the session should end. */
   handle(ev: KeyEvent): 'quit' | undefined {
-    if (this.panel) {
-      if (this.panel.handle(ev) === 'close') this.panel = undefined;
-      return undefined;
-    }
+    if (this.panel) return this.panelResult(this.panel.handle(ev));
     if (ev.key !== 'interrupt' && ev.key !== 'eof') this.exitArmedUntil = 0;
     // the shortcuts panel: ? or Esc closes it; any other key closes it and does its usual thing
     if (this.shortcutsOpen) {
@@ -306,6 +333,11 @@ export class Repl {
     ) {
       this.edit(() => this.removeSelectedInput());
       return undefined;
+    }
+    const choices = this.choiceMenu;
+    if (choices) {
+      const picked = this.handleChoice(choices, ev);
+      if (picked !== false) return picked;
     }
     const menu = this.menu;
     if (menu.length) {
@@ -418,6 +450,73 @@ export class Repl {
     return undefined;
   }
 
+  /** Closes the panel when it asks, and runs the line it hands back as if it had been typed. */
+  private panelResult(result: PanelResult): 'quit' | undefined {
+    if (!result) return undefined;
+    this.panel = undefined;
+    if (result === 'close') return undefined;
+    this.setInput([...result.run]);
+    return this.submit();
+  }
+
+  /**
+   * The answer menu, when it should show: a question offers answers, nothing is typed yet, no reply is on its way and
+   * nothing else (the palette, the shortcuts, a panel) is open.
+   */
+  get choiceMenu(): ChoiceMenu | undefined {
+    if (this.panel || this.busy || this.buffer.length || this.shortcutsOpen || this.selection) return undefined;
+    const menu = this.opts.choices?.();
+    if (!menu || !menu.items.some((c) => !c.disabled) || menu.key === this.choiceClosed) return undefined;
+    if (menu.key !== this.choiceKey) {
+      this.choiceKey = menu.key;
+      this.choiceIndex = Math.max(
+        0,
+        menu.items.findIndex((c) => !c.disabled),
+      );
+      this.choiceTicks = new Set(menu.items.flatMap((c, i) => (c.selected && !c.disabled ? [i] : [])));
+    }
+    return menu;
+  }
+
+  /** One key on the answer menu; false when the key isn't the menu's (typing starts a free-text answer). */
+  private handleChoice(menu: ChoiceMenu, ev: KeyEvent): 'quit' | undefined | false {
+    const usable = menu.items.flatMap((c, i) => (c.disabled ? [] : [i]));
+    const at = usable.indexOf(this.choiceIndex);
+    switch (ev.key) {
+      case 'up':
+      case 'backtab':
+        this.choiceIndex = usable[(at - 1 + usable.length) % usable.length]!;
+        return undefined;
+      case 'down':
+      case 'tab':
+        this.choiceIndex = usable[(at + 1) % usable.length]!;
+        return undefined;
+      case 'char':
+        if (menu.multi && ev.char === ' ') {
+          if (!this.choiceTicks.delete(this.choiceIndex)) this.choiceTicks.add(this.choiceIndex);
+          return undefined;
+        }
+        return false;
+      case 'escape':
+        this.choiceClosed = menu.key;
+        return undefined;
+      case 'enter': {
+        const value = menu.multi
+          ? [...this.choiceTicks]
+              .sort((a, b) => a - b)
+              .map((i) => menu.items[i]!.value)
+              .join(',')
+          : menu.items[this.choiceIndex]!.value;
+        if (!value) return undefined;
+        this.choiceClosed = menu.key;
+        this.setInput([...value]);
+        return this.submit();
+      }
+      default:
+        return false;
+    }
+  }
+
   private mapTranscript(width: number): ReturnType<typeof transcriptMap> {
     if (this.mapping?.version !== this.entryVersion || this.mapping.width !== width)
       this.mapping = { version: this.entryVersion, width, value: transcriptMap(this.entries, width) };
@@ -469,7 +568,10 @@ export class Repl {
   }
   /** Mouse coordinates are terminal cells (one based). Text selections use stable source offsets. */
   mouse(ev: Extract<InputEvent, { kind: 'mouse' }>): void {
-    if (this.panel) return this.panel.mouse(ev);
+    if (this.panel) {
+      this.panelResult(this.panel.mouse(ev));
+      return;
+    }
     if (ev.button !== 0) return;
     const x = ev.col - 1,
       y = ev.row - 1;
@@ -660,7 +762,7 @@ export class Repl {
       // your messages sit on a light bar across the whole width
       else if (entry.kind === 'user')
         out.push(...hang(t(USER_MARK, 3), [[t(entry.text, 3)]], width).map((row) => fill(row, width)));
-      else out.push(...hang(t(REPLY_MARK), entry.lines, width));
+      else out.push(...hang(t(REPLY_MARK), entry.lines.map(highlight), width));
     });
     if (this.busySince !== undefined) {
       if (out.length) out.push([]);
@@ -750,6 +852,10 @@ export class Repl {
     else {
       const menu = this.menu;
       if (menu.length) this.drawMenu(f, x, y - 2, w, menu);
+      else {
+        const choices = this.choiceMenu;
+        if (choices) this.drawChoices(f, x, y - 2, w, choices);
+      }
     }
   }
 
@@ -774,6 +880,21 @@ export class Repl {
         t(' close ', 1),
       ];
     if (this.shortcutsOpen) return [t(' esc', 2), t(' close ', 1)];
+    const choices = this.choiceMenu;
+    if (choices)
+      return [
+        t(' ↑↓', 2),
+        t(' choose', 1),
+        sep,
+        ...(choices.multi ? [t('space', 2), t(' tick', 1), sep] : []),
+        t('enter', 2),
+        t(' send', 1),
+        sep,
+        t('esc', 2),
+        t(' hide', 1),
+        sep,
+        t('or type an answer ', 1),
+      ];
     if (this.scroll > 0) return [t(' pgdn', 2), t(' scroll down ', 1)];
     return [t(' /', 2), t(' commands', 1), sep, t('?', 2), t(' shortcuts', 1), sep, t('↑↓', 2), t(' history ', 1)];
   }
@@ -803,6 +924,28 @@ export class Repl {
         t(c.summary.slice(0, Math.max(0, w - width - 4)), on ? 3 : 1),
       ]);
     });
+  }
+
+  /** The answer menu, bottom row just above `bottom`: a title rule, then one row per answer, the highlighted one on a bar. */
+  private drawChoices(f: Frame, x: number, bottom: number, w: number, menu: ChoiceMenu): void {
+    const rows = menu.items.slice(0, MENU_ROWS * 2);
+    const width = Math.max(...rows.map((c) => [...c.label].length)) + 3;
+    rows.forEach((c, i) => {
+      const y = bottom - rows.length + 1 + i;
+      const on = i === this.choiceIndex;
+      for (let col = x; col < x + w; col++) put(f, col, y, ' ', on ? 3 : 0);
+      const tone: Tone = on ? 3 : c.disabled ? 1 : 0;
+      const tick = menu.multi ? (this.choiceTicks.has(i) ? '[x] ' : '[ ] ') : '';
+      drawLine(f, x + 2, y, [
+        t(on ? '❯ ' : '  ', on ? 3 : 2),
+        t(tick, on ? 3 : 2),
+        t(c.label.padEnd(width), tone),
+        t((c.detail ?? '').slice(0, Math.max(0, w - width - tick.length - 6)), on ? 3 : 1),
+      ]);
+    });
+    const top = bottom - rows.length;
+    for (let col = x; col < x + w; col++) put(f, col, top, '─', 1);
+    text(f, x + 2, top, ` ${menu.title} `.slice(0, Math.max(0, w - 4)), 2);
   }
 
   /** A panel of lines (the shortcuts), bottom row just above `bottom`, with a blank row above it. */

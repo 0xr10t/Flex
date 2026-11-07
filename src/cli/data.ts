@@ -1,4 +1,5 @@
 import { DATA_RESOURCES, parseDataQuery, type DataPage, type DataQuery } from '@flex/protocol';
+import { PickerPanel } from './picker.js';
 import type { Line } from './repl.js';
 const line = (text: string, tone: 0 | 1 | 2 = 0): Line => [{ text, tone }];
 export function dataCatalog(): Line[] {
@@ -16,6 +17,21 @@ export function dataCatalog(): Line[] {
     ),
     line('Only filters listed for a resource are accepted. /get <resource> --help lists them.', 1),
   ];
+}
+/** /db: every database and cache in a list; ↑↓ to one, Enter shows its records (runs `/get <resource>`). */
+export function dataPicker(): PickerPanel {
+  return new PickerPanel(
+    'Databases · choose one to see its records',
+    DATA_RESOURCES.map((s) => ({
+      label: s.resource,
+      detail: `${s.source} · ${s.tables.join(', ')}${s.sessionScoped ? ' · current session' : ''}`,
+      run: `/get ${s.resource}`,
+    })),
+    [
+      'Filters can be typed after the name: /get <resource> --chain base --token USDC --limit 10 --json',
+      '/get <resource> --help lists the filters a resource accepts.',
+    ],
+  );
 }
 export function parseGetter(
   args: string[],
@@ -65,13 +81,23 @@ export function parseGetter(
     ? { resource: spec.resource, query, json }
     : [line('Invalid filters for this resource. Use /get <resource> --help.')];
 }
-export function renderData(page: DataPage, json = false): Line[] {
+/** What the CLI knows that the agent doesn't: whether this flexx started the recurring-payment runner. */
+export interface DataContext {
+  recurringOff?: boolean;
+}
+export function renderData(page: DataPage, json = false, context: DataContext = {}): Line[] {
   if (json)
     return JSON.stringify(page, null, 2)
       .split('\n')
       .map((s) => line(s));
   const out: Line[] = [line(`${page.resource} · ${page.source} · ${page.status}`, 2)];
   if (page.as_of) out.push(line(`Snapshot: ${page.as_of}`, 1));
+  if (page.status === 'unavailable' && page.source === 'cre' && context.recurringOff)
+    return [
+      ...out,
+      line('The recurring-payment runner is off (FLEX_CRE_MODE=off in .env), so it has written no records.', 1),
+      line('Set FLEX_CRE_MODE=dry-run and restart flexx to see its status and plans here.', 1),
+    ];
   if (page.status === 'unavailable') return [...out, line('This source is unavailable. Check /status or /doctor.', 1)];
   if (page.status === 'disabled') return [...out, line('Incoming history is disabled in the agent configuration.', 1)];
   if (page.status === 'stale' || page.status === 'partial')

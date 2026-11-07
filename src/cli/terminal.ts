@@ -8,7 +8,7 @@ import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
 import { copyText, readClipboard } from './open.js';
 import { InputDecoder, type InputEvent, type KeyEvent } from './input.js';
-import { drawFrame, Repl, type Command, type Line } from './repl.js';
+import { drawFrame, Repl, type ChoiceMenu, type Command, type Line } from './repl.js';
 import { createFrame, overlay, text, type Frame } from './render/frame.js';
 import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
 import { renderScene, SCENE_COLS, SCENE_ROWS, type SceneOptions } from './render/scene.js';
@@ -34,6 +34,8 @@ export interface Conversation {
   connect(onStatus?: (note: string) => void): Promise<Line[]>;
   send(text: string): Promise<Line[]>;
   commands(): Command[];
+  /** The answers the waiting question offers, picked with the arrow keys above the input. */
+  choices?(): ChoiceMenu | undefined;
   /** Lines that arrive later on their own, such as the outcome of transactions you approved in MetaMask. */
   onUpdate?(listener: (lines: Line[]) => void): void;
 }
@@ -184,6 +186,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     paste: readClipboard,
     commands: conversation?.commands() ?? [],
     onMessage: conversation ? (text) => conversation.send(text) : undefined,
+    choices: conversation?.choices ? () => conversation.choices!() : undefined,
     onQuit: () => quit(),
   });
   conversation?.onUpdate?.((lines) => repl.notify(lines));

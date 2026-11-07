@@ -5,7 +5,7 @@
 
 import { ContactsPanel } from './contacts.js';
 import { copyText, readClipboard } from './open.js';
-import { dataCatalog, parseGetter, renderData } from './data.js';
+import { dataCatalog, dataPicker, parseGetter, renderData } from './data.js';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import type { Question } from '../contracts/types.js';
@@ -20,7 +20,7 @@ import {
 } from './agent/client.js';
 import { LaunchError, type AgentEndpoint } from './agent/launcher.js';
 import { namesFromSummary, watchRequest, type Watch } from './agent/progress.js';
-import type { Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
+import type { ChoiceMenu, Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
 
 export interface ChatDeps {
   connect: (signal: AbortSignal, onStatus?: (note: string) => void) => Promise<AgentEndpoint>;
@@ -87,6 +87,8 @@ export class Chat {
   private connecting: Promise<Line[]> | undefined;
   /** The last reply while it waits for you: a question or a summary to confirm. */
   private pending: AgentResponse | undefined;
+  /** Counts replies that wait on you, so each new question gets a fresh answer menu. */
+  private pendingVersion = 0;
   /** The lines of the last summary shown, so results can name recipients the way you confirmed them. */
   private summaryLines: string[] = [];
   /** Requests handed to the wallet that the CLI is still following. */
@@ -120,6 +122,46 @@ export class Chat {
     if (health && !health.ollama)
       lines.push(plain('The local model is not ready, so requests will fail until Ollama has it.', 1));
     return lines;
+  }
+
+  /**
+   * The answers the reply waiting on you offers, for the menu above the input: Yes or No on a summary, the chips of a
+   * question (members ticked, as the agent offers them), or Try again after the wallet was unreachable.
+   */
+  choices(): ChoiceMenu | undefined {
+    const p = this.pending;
+    if (!p) return undefined;
+    const key = `${this.sessionId ?? ''}:${this.pendingVersion}`;
+    if (p.state === 'awaiting_confirmation')
+      return {
+        key,
+        title: 'Confirm this plan?',
+        items: [
+          { label: 'Yes', detail: 'send it to your wallet to approve in MetaMask', value: 'y' },
+          { label: 'No', detail: 'cancel it; nothing is sent', value: 'n' },
+        ],
+      };
+    if (p.state === 'error')
+      return {
+        key,
+        title: 'The wallet did not answer',
+        items: [
+          { label: 'Try again', value: 'y' },
+          { label: 'Cancel', value: 'cancel' },
+        ],
+      };
+    const q = p.question;
+    if (p.state !== 'awaiting_answer' || !q || !q.chips.length) return undefined;
+    const items = q.chips.map((c, i) => ({
+      label: c.label,
+      detail: c.detail || undefined,
+      value: String(i + 1),
+      disabled: c.disabled,
+      selected: q.input === 'multiselect' && !c.disabled,
+    }));
+    if (q.input === 'multiselect') return { key, title: q.text.split('\n')[0]!, items, multi: true };
+    if (q.input === 'chips') return { key, title: q.text.split('\n')[0]!, items };
+    return undefined;
   }
 
   /** Where lines that arrive on their own go: what happened to the transactions you approved or rejected. */
@@ -178,6 +220,7 @@ export class Chat {
       r.state === 'awaiting_confirmation' ||
       (r.state === 'error' && RETRYABLE.has(r.error?.code ?? ''));
     this.pending = waiting ? r : undefined;
+    this.pendingVersion++;
     if (r.state === 'awaiting_confirmation' && r.summary) this.summaryLines = r.summary.lines;
     const lines = render(r);
     if (confirmed && r.state === 'done' && !r.error && this.endpoint) {
@@ -240,7 +283,9 @@ export class Chat {
     if (Array.isArray(parsed)) return parsed;
     if (!this.api?.readData) return [plain('This agent client does not support data getters yet.', 1)];
     try {
-      return renderData(await this.api.readData(parsed.resource, parsed.query), parsed.json);
+      return renderData(await this.api.readData(parsed.resource, parsed.query), parsed.json, {
+        recurringOff: this.endpoint?.recurring === 'off',
+      });
     } catch (e) {
       // Read failures must not clear the question/confirmation held by this client.
       if (e instanceof AgentHttpError && e.status === 404)
@@ -463,12 +508,17 @@ export class Chat {
   commands(): Command[] {
     const wrap = (f: () => Promise<Line[]> | Line[]) => async (): Promise<CommandResult> => f();
     return [
-      { name: 'db', summary: 'list the databases, caches and getter commands', run: () => dataCatalog() },
+      {
+        name: 'db',
+        summary: 'choose a database with ↑↓ and show its records',
+        run: () => ({ kind: 'panel', panel: dataPicker() }),
+      },
       {
         name: 'get',
         summary: 'read local records without changing the pending payment',
         args: '<resource> [filters] [--json]',
-        run: (args) => this.getData(args),
+        // with no resource named, choose one from the list
+        run: (args) => (args.length ? this.getData(args) : { kind: 'panel', panel: dataPicker() }),
       },
       { name: 'contacts', summary: 'read or edit saved contacts and their networks', run: () => this.contacts() },
       { name: 'balance', summary: 'show your balances', aliases: ['balances'], run: wrap(() => this.balance()) },
@@ -550,7 +600,9 @@ export function render(r: AgentResponse): Line[] {
       const mark = t(`[${i + 1}] `, c.disabled ? 1 : 2);
       out.push(line(mark, t(c.label, c.disabled ? 1 : 0), t(c.detail ? `  ${c.detail}` : '', 1)));
     });
-    const hint = q.prefill ? `${HINT[q.input]}, e.g. ${q.prefill}` : HINT[q.input];
+    // a chips question with nothing to pick (e.g. "What is the wallet address for …?") takes typed text
+    const input = q.input === 'chips' && q.chips.length === 0 ? 'text' : q.input;
+    const hint = q.prefill ? `${HINT[input]}, e.g. ${q.prefill}` : HINT[input];
     out.push(plain(`${hint} · or cancel`, 1));
   }
   if (r.error) {
