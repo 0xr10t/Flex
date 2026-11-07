@@ -130,17 +130,19 @@ export async function runCli(argv: string[]): Promise<number> {
   const chat =
     args.view === 'opening'
       ? new Chat({
-          connect: (signal) => connectAgent({ onboard: true, signal }),
+          connect: (signal, onStatus) => connectAgent({ onboard: true, signal, onStatus }),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           openPage: (url) => openLocalPage(url),
           copy: (text) => copyText(text),
           version: packageVersion(),
         })
       : undefined;
-  const reason = await runInteractive({ ...opts, conversation: chat }, process.stdin, process.stdout);
-  // close the session (the agent clears its data) and stop an agent flexx started
-  await chat?.close();
-  return reason === 'interrupt' ? 130 : 0;
+  try {
+    const reason = await runInteractive({ ...opts, conversation: chat }, process.stdin, process.stdout);
+    return reason === 'interrupt' ? 130 : 0;
+  } finally {
+    await chat?.close();
+  }
 }
 
 /** True when this module is the program being run, including through the `flexx` bin symlink npm installs. */

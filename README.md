@@ -64,7 +64,7 @@ The repo has three parts:
 ### You'll need
 
 - Node 24 (see `.nvmrc`), or 22.12+ on the 22.x line
-- [Ollama](https://ollama.com) with the model pulled: `ollama pull qwen2.5:7b-instruct`
+- [Ollama](https://ollama.com) installed. `flexx` starts it and downloads the configured model if needed.
 - Tor installed (macOS: `brew install tor`), unless you switch it off (see below). Setup and `flexx` start it automatically when needed.
 - MetaMask, plus test USDC ([faucet.circle.com](https://faucet.circle.com)) and test ETH on the chains you want to use
 - RPC URLs for the three testnets, and RPCs that support `eth_simulateV1`
@@ -107,10 +107,15 @@ If no wallet address is saved, `flexx` opens a local connection page in your **d
 Interactive `npm run testnet:setup` offers the same connection step when `FLEX_WALLET_ADDRESS` is blank. Noninteractive setup (`--non-interactive`, or without a TTY) reports missing settings instead of opening a browser. If MetaMask is unavailable in the default browser, the connection page explains how to continue.
 
 ```sh
-npm link                                                 # once, puts flexx on your PATH
-node wallet/dist/src/main.js .local/wallet.config.json   # the wallet, on 127.0.0.1:8788
-flexx                                                    # in a second terminal; starts the agent on 127.0.0.1:8787
+npm link  # once, puts flexx on your PATH
+flexx
 ```
+
+`flexx` starts and checks Tor (when enabled), Ollama, the wallet service and the agent while the opening animation plays. It downloads missing configured models, checks that they load, and waits for authenticated wallet and agent health checks before opening the chat session. Startup progress and errors appear in the terminal. An unrelated process on a service port or a mismatched wallet config is reported instead of being treated as ready.
+
+The wallet config defaults to `wallet.config.json` beside the agent config; set `FLEX_WALLET_CONFIG` in your shell for another location. The wallet and agent must agree on the public wallet address, ports, tokens and network routing. Run `npm run testnet:build` after updating the source. `--help`, `--static`, `splash` and `scene` do not start services.
+
+Services that were already running are reused. When you exit, `flexx` cancels unfinished startup and stops the wallet, agent and optional recurring runner it started. Ollama and Tor stay running for other sessions. If startup fails, its newly started Ollama, wallet, agent and recurring processes are cleaned up; existing services are left alone.
 
 Then just talk to it:
 
@@ -137,10 +142,11 @@ Recurring payments need a few more things:
 ```sh
 forge build --root wallet/contracts
 npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser
-npm run testnet:start -- --broadcast  # the agent, the wallet and the CRE runner together
 ```
 
-Use `testnet:start` instead of starting the wallet by hand, then run `flexx` in another terminal. Keep everything running. A run that misses its window is skipped, not paid late.
+Set `FLEX_CRE_MODE=broadcast` in `.env` once, then run `flexx`. It starts the recurring runner after the wallet and agent are ready. Use `FLEX_CRE_MODE=dry-run` to check registered schedules without sending payments, or `off` (the default) to leave recurring execution disabled. Enabling the runner does not change Tor settings: explicitly choose `FLEX_SOCKS_PROXY=direct` and rerun setup first. The runner still requires the CRE CLI login and a funded test transmitter key for broadcasts.
+
+Keep `flexx` open for recurring payments when it started the runner. A run that misses its window is skipped, not paid late. The separate `npm run testnet:start -- --broadcast` launcher remains available for a persistent foreground service session; `flexx` reuses services that are already running.
 
 ## Tests
 

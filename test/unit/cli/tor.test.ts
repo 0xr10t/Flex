@@ -32,6 +32,22 @@ function child() {
 }
 
 describe('Tor startup', () => {
+  it('stops its new Tor process promptly when startup is cancelled', async () => {
+    const abort = new AbortController();
+    const process = child();
+    await expect(
+      ensureTor(proxy, folder(), {
+        executable: '/test/tor',
+        signal: abort.signal,
+        probeImpl: async () => false,
+        spawnImpl: (() => {
+          setImmediate(() => abort.abort());
+          return process;
+        }) as unknown as typeof spawn,
+      }),
+    ).rejects.toBeInstanceOf(TorStartError);
+    expect(process.killed).toEqual(['SIGTERM']);
+  });
   it('does nothing in explicit direct mode', async () => {
     const dir = folder();
     await ensureTor(null, dir, {

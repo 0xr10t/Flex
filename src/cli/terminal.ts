@@ -30,7 +30,7 @@ export type View = 'opening' | 'splash' | 'scene';
 
 /** What the command box talks to: the agent conversation (see chat.ts). */
 export interface Conversation {
-  connect(): Promise<Line[]>;
+  connect(onStatus?: (note: string) => void): Promise<Line[]>;
   send(text: string): Promise<Line[]>;
   commands(): Command[];
 }
@@ -177,7 +177,8 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     onQuit: () => quit(),
   });
   // connect while the opening plays, so the agent is ready by the time the box opens
-  if (conversation && opts.view === 'opening') void conversation.connect().then((lines) => repl.notify(lines));
+  if (conversation && opts.view === 'opening')
+    void conversation.connect((note) => repl.notify([[{ text: note, tone: 1 }]])).then((lines) => repl.notify(lines));
   const sceneSpeed = opts.sceneSpeed ?? 1;
   const starfield = opts.scene?.starfield ?? true;
   const t0 = performance.now();
@@ -288,6 +289,8 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
       output.off('resize', onResize);
       process.off('exit', restore);
       process.off('SIGTERM', onTerm);
+      process.off('SIGINT', onTerm);
+      process.off('SIGHUP', onTerm);
       restore();
       input.pause();
       resolve(reason);
@@ -333,6 +336,8 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     output.on('resize', onResize);
     process.on('exit', restore);
     process.on('SIGTERM', onTerm);
+    process.on('SIGINT', onTerm);
+    process.on('SIGHUP', onTerm);
     draw();
     const timer = setInterval(draw, FRAME_MS);
   });

@@ -61,6 +61,21 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ message: MESSAGE.badRequest }));
 
+  app.get('/v1/health', (request, reply) => {
+    if (!tokenMatches(request.headers.authorization, deps.inboundToken))
+      return reply.code(401).send({ message: MESSAGE.unauthorized });
+    const db = deps.store.readable();
+    return reply
+      .header('cache-control', 'no-store')
+      .code(db ? 200 : 503)
+      .send({
+        service: 'flex-wallet',
+        ok: db,
+        db,
+        wallet_address: deps.walletAddress,
+      });
+  });
+
   app.post('/v1/intents', (request, reply) => {
     if (!tokenMatches(request.headers.authorization, deps.inboundToken)) {
       return reply.code(401).send({ message: MESSAGE.unauthorized });

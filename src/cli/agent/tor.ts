@@ -6,6 +6,7 @@ import { connect } from 'node:net';
 import { delimiter, join } from 'node:path';
 import { isTorSocks } from '../../config/load.js';
 import { protectPrivateFile } from '../../util/private-file.js';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export class TorStartError extends Error {
   constructor(readonly reason: 'missing' | 'start' | 'timeout') {
@@ -26,6 +27,7 @@ export interface TorOptions {
   spawnImpl?: typeof spawn;
   probeImpl?: typeof socksListening;
   onStatus?: (note: string) => void;
+  signal?: AbortSignal;
 }
 
 /** A SOCKS5 greeting checks the listener without contacting any external host. */
@@ -88,10 +90,12 @@ function bootstrapped(path: string, offset: number): boolean {
 
 /** Direct mode does nothing. New clients must finish bootstrapping before the agent starts reading balances. */
 export async function ensureTor(proxy: string | null, dataDir: string, opts: TorOptions = {}): Promise<void> {
+  opts.signal?.throwIfAborted();
   if (proxy === null) return;
   if (!isTorSocks(proxy)) throw new TorStartError('start');
   const probe = opts.probeImpl ?? socksListening;
   if (await probe(proxy)) return;
+  opts.signal?.throwIfAborted();
   const executable = opts.executable ?? torExecutable();
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const logFile = join(dataDir, 'startup.log');
@@ -137,6 +141,7 @@ export async function ensureTor(proxy: string | null, dataDir: string, opts: Tor
   const deadline = Date.now() + (opts.startTimeoutMs ?? 120_000);
   try {
     while (true) {
+      opts.signal?.throwIfAborted();
       if (failure) {
         // Another flexx may have won the race to start the same Tor client.
         if (await probe(proxy)) return;
@@ -147,7 +152,7 @@ export async function ensureTor(proxy: string | null, dataDir: string, opts: Tor
         return;
       }
       if (Date.now() >= deadline) throw new TorStartError('timeout');
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await delay(250, undefined, { signal: opts.signal });
     }
   } catch (err) {
     if (child.exitCode === null) child.kill('SIGTERM');

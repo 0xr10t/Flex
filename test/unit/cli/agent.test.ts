@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { spawn } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Question } from '../../../src/contracts/types.js';
 import {
   AgentClient,
@@ -18,7 +18,9 @@ import {
   connectAgent,
   LaunchError,
   type AgentEndpoint,
+  type LaunchOptions,
 } from '../../../src/cli/agent/launcher.js';
+import { reusedService } from '../../../src/cli/agent/process.js';
 import { answerFor, Chat, nodeSupported, render } from '../../../src/cli/chat.js';
 import { openCommand, openLocalPage } from '../../../src/cli/open.js';
 import { testConfig } from '../../fakes/context.js';
@@ -307,7 +309,41 @@ describe('agent client', () => {
   });
 });
 
+describe('startup progress and cancellation', () => {
+  it('shows startup progress and cleans up a connection that finishes after the CLI closes', async () => {
+    const stop = vi.fn();
+    const api = new FakeApi();
+    const notes: string[] = [];
+    const chat = new Chat({
+      connect: async (signal, onStatus) => {
+        onStatus?.('Starting the wallet service...');
+        return new Promise<AgentEndpoint>((resolve) => {
+          signal.addEventListener('abort', () => resolve(endpoint({ stop })), { once: true });
+        });
+      },
+      client: () => api,
+      timezone: 'UTC',
+      openPage: () => true,
+    });
+    const pending = chat.connect((note) => notes.push(note));
+    await chat.close();
+    await pending;
+    expect(notes).toEqual(['Starting the wallet service...']);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(api.calls).toEqual([]);
+    expect(chat.connected).toBe(false);
+  });
+});
+
 describe('agent launcher', () => {
+  // Dependency services are tested separately; these cases exercise the agent's lifecycle.
+  const launch = (opts: LaunchOptions) =>
+    connectAgent({
+      ensureOllamaImpl: async () => reusedService(),
+      ensureWalletImpl: async () => reusedService(),
+      ensureRecurringImpl: async () => ({ ...reusedService(), mode: 'off' }),
+      ...opts,
+    });
   /** A valid config in a temp folder, its UI token file written, the agent on `port`. */
   const setup = (port = 8787, proxy: string | null = null): { file: string; tokenFile: string } => {
     const dir = mkdtempSync(join(tmpdir(), 'flexx-launch-'));
@@ -320,7 +356,8 @@ describe('agent launcher', () => {
       JSON.stringify({
         ...config,
         server: { ...config.server, port },
-        auth: { ...config.auth, ui_token_file: tokenFile },
+        auth: { ...config.auth, ui_token_file: tokenFile, execution_report_token_file: join(dir, 'report_token') },
+        execution: { ...config.execution, outbound_token_file: join(dir, 'outbound_token') },
         network: { socks_proxy: proxy },
       }),
     );
@@ -338,7 +375,7 @@ describe('agent launcher', () => {
     child.kill = (sig: string) => void child.killed.push(sig);
     return child;
   };
-  const answering = (async () => new Response(null, { status: 401 })) as unknown as typeof fetch;
+  const answering = (async () => Response.json({ ok: true, ollama: true, db: true })) as typeof fetch;
   const silent = (async () => {
     throw new TypeError('fetch failed');
   }) as unknown as typeof fetch;
@@ -355,7 +392,7 @@ describe('agent launcher', () => {
     const file = join(dir, 'config.json');
     writeFileSync(file, '{"server": {}}');
     let spawned = 0;
-    const err = await connectAgent({
+    const err = await launch({
       configFile: file,
       fetchImpl: silent,
       spawnImpl: (() => (spawned++, fakeChild())) as unknown as typeof spawn,
@@ -369,7 +406,7 @@ describe('agent launcher', () => {
   it('uses an agent that is already running and leaves it alone', async () => {
     const { file } = setup(8799);
     let spawned = 0;
-    const e = await connectAgent({
+    const e = await launch({
       configFile: file,
       fetchImpl: answering,
       spawnImpl: (() => (spawned++, fakeChild())) as unknown as typeof spawn,
@@ -382,7 +419,7 @@ describe('agent launcher', () => {
   it('ensures Tor is ready before contacting even an already running agent', async () => {
     const { file } = setup(8787, 'socks5h://127.0.0.1:19050');
     const order: string[] = [];
-    await connectAgent({
+    await launch({
       configFile: file,
       ensureTorImpl: async (proxy, dir) => {
         expect(proxy).toBe('socks5h://127.0.0.1:19050');
@@ -393,7 +430,7 @@ describe('agent launcher', () => {
       },
       fetchImpl: (async () => {
         order.push('agent');
-        return new Response(null, { status: 401 });
+        return Response.json({ ok: true, ollama: true, db: true });
       }) as typeof fetch,
     });
     expect(order).toEqual(['tor-starting', 'tor-ready', 'agent']);
@@ -403,7 +440,7 @@ describe('agent launcher', () => {
     const { file } = setup(8787, 'socks5h://127.0.0.1:19050');
     let contacted = false;
     let spawned = false;
-    const error = await connectAgent({
+    const error = await launch({
       configFile: file,
       ensureTorImpl: async () => {
         throw new Error('private-provider-key');
@@ -426,7 +463,7 @@ describe('agent launcher', () => {
   it('skips Tor entirely for direct configurations', async () => {
     const { file } = setup();
     await expect(
-      connectAgent({
+      launch({
         configFile: file,
         fetchImpl: answering,
         ensureTorImpl: async () => {
@@ -441,12 +478,12 @@ describe('agent launcher', () => {
     const child = fakeChild();
     let up = false;
     let launched: { args: string[]; env: NodeJS.ProcessEnv } | undefined;
-    const e = await connectAgent({
+    const e = await launch({
       configFile: file,
       entry: '/x/dist/src/index.js',
       fetchImpl: (async () => {
         if (!up) throw new TypeError('fetch failed');
-        return new Response(null, { status: 401 });
+        return Response.json({ ok: true, ollama: true, db: true });
       }) as unknown as typeof fetch,
       spawnImpl: ((_cmd: string, args: string[], o: { env: NodeJS.ProcessEnv }) => {
         launched = { args, env: o.env };
@@ -464,7 +501,7 @@ describe('agent launcher', () => {
   it('gives up when the started agent exits', async () => {
     const { file } = setup();
     const child = fakeChild();
-    const err = await connectAgent({
+    const err = await launch({
       configFile: file,
       fetchImpl: silent,
       spawnImpl: (() => {
@@ -551,10 +588,8 @@ describe('setup commands', () => {
       },
     });
     const bad = text(await broken.doctor()).join('\n');
-    expect(bad).toContain(`✗ model     ${model} isn't pulled; run: ollama pull ${model}`);
-    expect(bad).toContain(
-      '✗ wallet    not running; start it with: node wallet/dist/src/main.js .local/wallet.config.json',
-    );
+    expect(bad).toContain(`✗ model     ${model} isn't available; reopen flexx to download and load it`);
+    expect(bad).toContain('✗ wallet    not running; reopen flexx to start it');
   });
 
   it('/doctor says why the agent is unreachable', async () => {
