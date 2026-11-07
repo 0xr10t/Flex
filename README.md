@@ -70,30 +70,26 @@ frontend/            Static install page
 - MetaMask, with testnet ETH and [test USDC](https://faucet.circle.com)
 - RPC URLs for the three testnets, including endpoints that support `eth_simulateV1`
 
-### Install
+### Install and run
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash
 ```
 
-This builds Flex into `~/.flex`. It doesn't use sudo, edit your shell profile or start anything.
-
-### Configure and run
+This builds Flex into `~/.flex` without sudo, shell edits or background services. Add your testnet RPC URLs to `~/.flex/current/.env`, then start it:
 
 ```bash
-cd ~/.flex/current
-cp .env.example .env      # your public wallet address and RPC URLs
-npm run testnet:setup     # writes the agent, wallet and CRE configs
 ~/.flex/bin/flexx
 ```
 
-`flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
+The first run connects MetaMask in your browser and finishes setup. After that, `flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
 
 ### Recurring payments
 
 Recurring payments also need Foundry, the CRE CLI (`cre login`), a funded test key in `CRE_ETH_PRIVATE_KEY`, and `FLEX_SOCKS_PROXY=direct`, because the local CRE runner can't use Tor.
 
 ```bash
+cd ~/.flex/current
 forge build --root wallet/contracts
 npm run testnet:onboard   # open http://127.0.0.1:8792 and deploy your IntentExecutorV4
 ```

@@ -96,15 +96,15 @@
 
         <article>
           <h3>First run</h3>
-          <p>Fill in your settings and let setup write the configs:</p>
-          <pre><code>cd ~/.flex/current
-cp .env.example .env     # your public wallet address and RPC URLs
-npm run testnet:setup</code></pre>
           <p>
-            Flex only needs your wallet's <em>public</em> address. Leave it blank and setup opens a page in your browser
-            to connect MetaMask instead. Then start it:
+            Add your testnet RPC URLs to <code>~/.flex/current/.env</code>. The installer already created it from the
+            template. Then start Flex:
           </p>
           <pre><code>~/.flex/bin/flexx</code></pre>
+          <p>
+            The first run opens your browser to connect MetaMask. Flex only needs your <em>public</em> address. Then it
+            writes its configs and starts everything else for you.
+          </p>
           <p>
             Add <code>~/.flex/bin</code> to your <code>PATH</code> and it's just <code>flexx</code>. The first start
             downloads the model, which takes a while.
