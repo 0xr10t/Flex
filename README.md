@@ -63,17 +63,13 @@ Anything Flex didn't get from you directly, such as pasted text, a web page or a
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash
-```
-
-This builds Flex into `~/.flex` without sudo, shell edits or background services. Add your testnet RPC URLs to `~/.flex/current/.env`, then start it:
-
-```bash
 ~/.flex/bin/flexx
 ```
 
-The first run connects MetaMask in your browser and finishes setup. After that, `flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
+That's it. The installer builds Flex into `~/.flex` without sudo, shell edits or background services. The first `flexx` run connects MetaMask in your browser and writes its own configs. If your testnet RPC URLs aren't set yet, it tells you exactly which ones are missing and the file to put them in. After that, `flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
 
-### Recurring payments
+<details>
+<summary>Recurring payments</summary>
 
 Recurring payments also need Foundry, the CRE CLI (`cre login`), a funded test key in `CRE_ETH_PRIVATE_KEY`, and `FLEX_SOCKS_PROXY=direct`, because the local CRE runner can't use Tor.
 
@@ -85,7 +81,10 @@ npm run testnet:onboard   # open http://127.0.0.1:8792 and deploy your IntentExe
 
 Then set `FLEX_CRE_MODE=broadcast` in `.env` and start `flexx`.
 
-### Tests
+</details>
+
+<details>
+<summary>Tests</summary>
 
 ```bash
 npm run typecheck && npm run lint
@@ -93,6 +92,8 @@ npm test                  # unit and acceptance, no model or network needed
 npm run test:audit        # privacy, logging, network and storage checks
 (cd wallet && npm test)
 ```
+
+</details>
 
 These are testnet builds only. There are no swaps, NFTs or mainnet support, and recurring payments are broadcast by a local CRE CLI rather than a deployed DON.
 
