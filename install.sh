@@ -5,10 +5,11 @@ umask 077
 
 usage() {
   cat <<'HELP'
-Usage: bash install.sh --version VERSION --sha256 DIGEST [options]
-       bash install.sh --source [--prefix PATH]
+Usage: curl -fsSL https://HOST/install.sh | bash
+       bash install.sh [--source] [--prefix PATH]
+       bash install.sh --version VERSION --sha256 DIGEST [options]
 
-  --source           Build the master branch with local Node and npm
+  --source           Build the master branch with local Node and npm (the default)
   --version VERSION  Release tag, such as v0.1.0 (required for releases)
   --sha256 DIGEST    Trusted SHA-256 (required for releases)
   --archive PATH     Install a local archive instead of downloading
@@ -25,6 +26,9 @@ Native dependencies may require a compiler and build tools on your machine.
 HELP
 }
 fail() { printf 'flex installer: %s\n' "$*" >&2; exit 1; }
+# Everything runs inside main, called on the last line: a truncated download runs nothing, and with
+# `curl | bash` Bash has read the whole script before any command can consume stdin.
+main() {
 version=''
 digest=''
 archive=''
@@ -46,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     *) fail "unknown argument: $1" ;;
   esac
 done
+[[ -n "$version$digest$archive" ]] || source_install=true
 if "$source_install"; then
   [[ -z "$version$digest$archive" ]] || fail '--source cannot be combined with --version, --sha256, or --archive'
   for dependency in git node npm; do
@@ -260,6 +265,10 @@ printf 'Add this directory to your PATH: %s/bin\n' "$prefix"
 printf 'No shell files, configuration, or services were changed.\n'
 printf 'Run: %q --help\n' "$prefix/bin/flexx"
 if "$source_install"; then
-  printf '\nBefore first use, fill the RPC settings in %s/current/.env (copy .env.example).\n' "$prefix"
-  printf 'Install Ollama and Tor; use MetaMask in your default browser. See current/README.md for setup.\n'
+  printf '\nBefore first use (Ollama, Tor and MetaMask must be installed):\n'
+  printf '  cd %q\n' "$prefix/current"
+  printf '  cp .env.example .env    # your public wallet address and RPC URLs\n'
+  printf '  npm run testnet:setup\n'
 fi
+}
+main "$@"

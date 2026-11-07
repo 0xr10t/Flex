@@ -182,8 +182,9 @@ test('requires a version and trusted digest; help works without installation', (
   const { root } = fixture(t);
   const env = { ...process.env, HOME: root };
   assert.equal(spawnSync('bash', [installer, '--help'], { env }).status, 0);
-  assert.notEqual(spawnSync('bash', [installer], { env }).status, 0);
   assert.notEqual(spawnSync('bash', [installer, '--version'], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', [installer, '--version', 'v0.1.0'], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', [installer, '--sha256', '0'.repeat(64)], { env }).status, 0);
   assert.ok(!existsSync(join(root, '.flex')));
 });
 
@@ -345,6 +346,7 @@ import json, os, sys
 args = sys.argv[1:]
 with open(os.environ['SOURCE_LOG'], 'a') as f: f.write(json.dumps(['npm'] + args) + '\\n')
 key = args[1] if args[0] == '--prefix' else args[0]
+if os.environ.get('SOURCE_DRAIN_STDIN'): sys.stdin.read()
 sys.exit(1 if os.environ.get('SOURCE_FAIL') == key else 0)
 `,
   );
@@ -432,5 +434,30 @@ test('source installation validates Node before creating the prefix', (t) => {
   const result = run();
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Node 22.12/);
+  assert.ok(!existsSync(prefix));
+});
+
+test('curl | bash: no arguments means a source install, and a child reading stdin cannot eat the script', (t) => {
+  const { prefix, log } = sourceFixture(t);
+  const env = { ...process.env, PATH: `${join(log, '..', 'tools')}:${process.env.PATH}`, SOURCE_LOG: log };
+  const result = spawnSync('bash', [], {
+    input: readFileSync(installer),
+    encoding: 'utf8',
+    env: { ...env, HOME: join(prefix, '..'), SOURCE_DRAIN_STDIN: '1' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(active(join(prefix, '..', '.flex')), 'flexx 0.1.0');
+  assert.match(result.stdout, /npm run testnet:setup/);
+});
+
+test('a truncated download runs nothing', (t) => {
+  const { prefix } = fixture(t);
+  const script = readFileSync(installer, 'utf8');
+  const result = spawnSync('bash', ['-s', '--', '--prefix', prefix], {
+    input: script.slice(0, script.lastIndexOf('main "$@"')),
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout + result.stderr, '');
   assert.ok(!existsSync(prefix));
 });
