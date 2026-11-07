@@ -60,6 +60,8 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
   const otherSetup = { requestId: other.request_id, step: 0, chainId: BASE, intent: other.intents[0] };
   let upgraded = false;
   let pending = !sent;
+  let cancelled = false;
+  const close = vi.fn();
   const providerCalls: string[] = [];
   const apiCalls: { url: string; body: unknown }[] = [];
   const state = () => ({
@@ -69,7 +71,11 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
     upgrades: [...(pending ? [setup] : []), ...(unrelated ? [otherSetup] : [])],
     requests: pending
       ? [{ id: e.request_id, steps: [{ step: 0, status: 'pending', error: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' }] }]
-      : [],
+      : cancelled
+        ? [{ id: e.request_id, steps: [{ step: 0, status: 'failed', error: 'USER_REJECTED' }] }]
+        : sent
+          ? [{ id: e.request_id, steps: [{ step: 0, status: 'approved', error: null }] }]
+          : [],
     delegations: [],
     batches: sent
       ? [
@@ -104,10 +110,15 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
       createElement: (name: string) => new Element(name),
       body: { classList: { toggle: vi.fn() } },
     },
-    window: { ethereum: provider, location: { hash: focused ? `#approve=${e.request_id}` : '', reload: vi.fn() } },
+    window: {
+      ethereum: provider,
+      location: { hash: focused ? `#approve=${e.request_id}` : '', reload: vi.fn() },
+      close,
+    },
     URL,
     URLSearchParams,
     setInterval: () => 0,
+    setTimeout: (fn: () => void) => fn(),
     fetch: async (url: string, options: { body?: string }) => {
       if (url === '/browser/state') return { ok: true, json: async () => state() };
       expect(url).toBe('/browser/account-upgrade');
@@ -116,6 +127,7 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
       if (body.decision === 'check' && !upgraded)
         return { ok: false, json: async () => ({ error: 'BROWSER_ACCOUNT_UPGRADE_REQUIRED' }) };
       pending = false;
+      cancelled = body.decision === 'cancel';
       return { ok: true, json: async () => ({ ok: true }) };
     },
   });
@@ -135,6 +147,7 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
     providerCalls,
     apiCalls,
     setup,
+    close,
     upgrade: () => {
       upgraded = true;
     },
@@ -216,5 +229,26 @@ describe('browser transfer status', () => {
       (Element & { href?: string }) | undefined;
     expect(link?.href).toBe(`https://sepolia.basescan.org/tx/${TX}`);
     expect(b.providerCalls).toEqual([]);
+  });
+});
+
+describe('closing the approval tab', () => {
+  it('closes the CLI-opened tab once every step of the request is decided, so flexx can report it', async () => {
+    const b = await browser({ focused: true });
+    expect(b.close).not.toHaveBeenCalled();
+    await b.button('Cancel payment').click();
+    expect(b.close).toHaveBeenCalledTimes(1);
+    expect(b.get('notice').text()).toContain('flexx shows what happens next');
+  });
+
+  it('stays open on a request that was already settled when the page opened', async () => {
+    const b = await browser({ focused: true, sent: true });
+    expect(b.close).not.toHaveBeenCalled();
+  });
+
+  it('never closes the full wallet page', async () => {
+    const b = await browser();
+    await b.button('Cancel payment').click();
+    expect(b.close).not.toHaveBeenCalled();
   });
 });

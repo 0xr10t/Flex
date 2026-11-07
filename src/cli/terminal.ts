@@ -34,6 +34,8 @@ export interface Conversation {
   connect(onStatus?: (note: string) => void): Promise<Line[]>;
   send(text: string): Promise<Line[]>;
   commands(): Command[];
+  /** Lines that arrive later on their own, such as the outcome of transactions you approved in MetaMask. */
+  onUpdate?(listener: (lines: Line[]) => void): void;
 }
 
 export interface ViewOptions {
@@ -184,6 +186,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
     onMessage: conversation ? (text) => conversation.send(text) : undefined,
     onQuit: () => quit(),
   });
+  conversation?.onUpdate?.((lines) => repl.notify(lines));
   // connect while the opening plays, so the agent is ready by the time the box opens
   if (conversation && opts.view === 'opening')
     void conversation.connect((note) => repl.notify([[{ text: note, tone: 1 }]])).then((lines) => repl.notify(lines));

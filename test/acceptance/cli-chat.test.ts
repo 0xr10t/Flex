@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient } from '../../src/cli/agent/client.js';
 import type { AgentEndpoint } from '../../src/cli/agent/launcher.js';
 import { Chat } from '../../src/cli/chat.js';
+import type { WatchOptions } from '../../src/cli/agent/progress.js';
 import type { Line } from '../../src/cli/repl.js';
 import { harness, TZ, UI_TOKEN, type Harness } from './harness.js';
 
@@ -17,7 +18,10 @@ afterEach(async () => {
   h = undefined;
 });
 
-async function chatOn(fixture: string): Promise<{ chat: Chat; opened: string[] }> {
+async function chatOn(
+  fixture: string,
+  extra: { walletToken?: string; watches?: WatchOptions[] } = {},
+): Promise<{ chat: Chat; opened: string[] }> {
   h = await harness(fixture);
   await h.app.listen({ host: '127.0.0.1', port: 0 });
   const address = h.app.server.address();
@@ -26,6 +30,7 @@ async function chatOn(fixture: string): Promise<{ chat: Chat; opened: string[] }
     baseUrl: `http://127.0.0.1:${port}`,
     token: UI_TOKEN,
     walletUrl: WALLET_URL,
+    ...(extra.walletToken ? { walletToken: extra.walletToken } : {}),
     started: false,
     stop: () => undefined,
   };
@@ -35,6 +40,10 @@ async function chatOn(fixture: string): Promise<{ chat: Chat; opened: string[] }
     client: (e) => new AgentClient(e.baseUrl, e.token),
     timezone: TZ,
     openPage: (url) => (opened.push(url), true),
+    watch: (options) => {
+      extra.watches?.push(options);
+      return { stop: () => undefined, done: new Promise(() => undefined) };
+    },
   });
   return { chat, opened };
 }
@@ -60,6 +69,37 @@ describe('CLI conversation with the agent', () => {
     expect(done.at(-1)).toBe(`Opened your wallet to approve it in MetaMask: ${approveUrl}`);
     expect(opened).toEqual([approveUrl]);
     expect(h!.exec.submissions).toHaveLength(1);
+    await chat.close();
+  });
+
+  it('follows the handed-off request in the wallet and prints what happens in the conversation', async () => {
+    const watches: WatchOptions[] = [];
+    const { chat } = await chatOn('A-01', { walletToken: 'wallet-token', watches });
+    const updates: Line[][] = [];
+    chat.onUpdate((lines) => updates.push(lines));
+    await chat.send('Send 50 USDc to ARADHYA');
+    const done = text(await chat.send('y'));
+    expect(done.at(-1)).toBe('I will show here what happens once you approve or reject it.');
+    expect(watches).toHaveLength(1);
+    expect(watches[0]).toMatchObject({
+      walletUrl: WALLET_URL,
+      token: 'wallet-token',
+      requestId: h!.exec.submissions[0]!.envelope.request_id,
+    });
+    expect([...watches[0]!.names!]).toEqual([['0x3fa9…c21e', 'Aradhya']]);
+    watches[0]!.onLines([[{ text: '✓ Went through', tone: 5 }]]);
+    expect(updates).toEqual([[[{ text: '✓ Went through', tone: 5 }]]]);
+    await chat.close();
+  });
+
+  it('does not promise to follow a request without the wallet token', async () => {
+    const watches: WatchOptions[] = [];
+    const { chat } = await chatOn('A-01', { watches });
+    chat.onUpdate(() => undefined);
+    await chat.send('Send 50 USDc to ARADHYA');
+    const done = text(await chat.send('y'));
+    expect(done.at(-1)).toMatch(/^Opened your wallet/);
+    expect(watches).toEqual([]);
     await chat.close();
   });
 

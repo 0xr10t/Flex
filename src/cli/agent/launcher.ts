@@ -59,6 +59,8 @@ export interface AgentEndpoint {
   token: string;
   /** The wallet (execution layer); its root serves the MetaMask approval page. */
   walletUrl: string;
+  /** The token the agent submits to the wallet with; the CLI uses it to follow a request's progress. */
+  walletToken?: string;
   /** True when this CLI started the agent (and so stops it on exit). */
   started: boolean;
   /** The setup, for /config and /doctor; absent for endpoints made without a config (tests). */
@@ -216,6 +218,7 @@ export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpo
       baseUrl,
       token: tokens.ui,
       walletUrl,
+      walletToken: tokens.outbound,
       started: agent.started,
       info: agentInfo(config, file),
       recurring: recurring.mode,

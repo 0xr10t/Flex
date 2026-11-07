@@ -5,7 +5,7 @@ import type { Frame } from './frame.js';
 
 export type ColorMode = 'truecolor' | '256' | 'basic' | 'none';
 
-export type Ink = 'fg' | 'dim' | 'accent' | 'mark' | 'selection';
+export type Ink = 'fg' | 'dim' | 'accent' | 'mark' | 'selection' | 'ok' | 'bad';
 
 export interface Palette {
   bg: string;
@@ -15,6 +15,9 @@ export interface Palette {
   /** The bar behind your messages, and the text on it. */
   markBg: string;
   mark: string;
+  /** A transaction that went through, and one that did not. */
+  ok: string;
+  bad: string;
 }
 
 /** "Flex Terminal": window #1b1918, text #f3f2f2, dim #7d7979, accent #e1ad66, title #9b9797. */
@@ -25,6 +28,8 @@ export const SPLASH_PALETTE: Palette = {
   accent: '#e1ad66',
   markBg: '#f3f2f2',
   mark: '#1b1918',
+  ok: '#7fd18b',
+  bad: '#ff7a6b',
 };
 
 /** "Flex ASCII": page #0b0c0a, text #d9d6cc, dim #5f6159, accent #f2b45a. */
@@ -35,6 +40,8 @@ export const SCENE_PALETTE: Palette = {
   accent: '#f2b45a',
   markBg: '#e8e6df',
   mark: '#0b0c0a',
+  ok: '#7fd18b',
+  bad: '#ff7a6b',
 };
 
 /** Accent swatches each design offers. */
@@ -48,7 +55,7 @@ export interface Run {
 
 export type Row = Run[];
 
-const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark', 'selection'];
+const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark', 'selection', 'ok', 'bad'];
 const HEX_RE = /^#([0-9a-fA-F]{6})$/;
 const ESC = '\u001b[';
 
@@ -76,7 +83,7 @@ export function to256(hex: string): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30, selection: 30 };
+const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30, selection: 30, ok: 92, bad: 91 };
 
 function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   if (mode === 'none') return '';

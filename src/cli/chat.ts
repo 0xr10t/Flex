@@ -19,6 +19,7 @@ import {
   type Limits,
 } from './agent/client.js';
 import { LaunchError, type AgentEndpoint } from './agent/launcher.js';
+import { namesFromSummary, watchRequest, type Watch } from './agent/progress.js';
 import type { Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
 
 export interface ChatDeps {
@@ -34,6 +35,8 @@ export interface ChatDeps {
   version?: string;
   /** How /doctor reaches Ollama and the wallet, and checks Tor's port (tests replace them). */
   probe?: { fetch?: typeof fetch; port?: (host: string, port: number) => Promise<boolean> };
+  /** How the CLI follows a handed-off request in the wallet (tests replace it). */
+  watch?: typeof watchRequest;
 }
 
 /** True when something listens on `host:port` (Tor's SOCKS port). */
@@ -84,6 +87,11 @@ export class Chat {
   private connecting: Promise<Line[]> | undefined;
   /** The last reply while it waits for you: a question or a summary to confirm. */
   private pending: AgentResponse | undefined;
+  /** The lines of the last summary shown, so results can name recipients the way you confirmed them. */
+  private summaryLines: string[] = [];
+  /** Requests handed to the wallet that the CLI is still following. */
+  private readonly watches = new Set<Watch>();
+  private listener: ((lines: Line[]) => void) | undefined;
 
   constructor(private readonly deps: ChatDeps) {}
 
@@ -112,6 +120,11 @@ export class Chat {
     if (health && !health.ollama)
       lines.push(plain('The local model is not ready, so requests will fail until Ollama has it.', 1));
     return lines;
+  }
+
+  /** Where lines that arrive on their own go: what happened to the transactions you approved or rejected. */
+  onUpdate(listener: (lines: Line[]) => void): void {
+    this.listener = listener;
   }
 
   /** True once a session is open. */
@@ -165,6 +178,7 @@ export class Chat {
       r.state === 'awaiting_confirmation' ||
       (r.state === 'error' && RETRYABLE.has(r.error?.code ?? ''));
     this.pending = waiting ? r : undefined;
+    if (r.state === 'awaiting_confirmation' && r.summary) this.summaryLines = r.summary.lines;
     const lines = render(r);
     if (confirmed && r.state === 'done' && !r.error && this.endpoint) {
       // the wallet's approval view for this request: its details filled in, MetaMask opening by itself
@@ -174,8 +188,27 @@ export class Chat {
           ? line(t('Opened your wallet to approve it in MetaMask: ', 1), t(url, 2))
           : line(t('Approve it in MetaMask: ', 1), t(url, 2)),
       );
+      if (this.follow(r.request_id))
+        lines.push(plain('I will show here what happens once you approve or reject it.', 1));
     }
     return lines;
+  }
+
+  /** Follows a handed-off request in the wallet, printing each step's outcome as it is known. */
+  private follow(requestId: string): boolean {
+    const endpoint = this.endpoint;
+    const listener = this.listener;
+    if (!endpoint?.walletToken || !listener) return false;
+    const watch = (this.deps.watch ?? watchRequest)({
+      walletUrl: endpoint.walletUrl,
+      token: endpoint.walletToken,
+      requestId,
+      names: namesFromSummary(this.summaryLines),
+      onLines: listener,
+    });
+    this.watches.add(watch);
+    void watch.done.finally(() => this.watches.delete(watch));
+    return true;
   }
 
   private failure(err: unknown): Line[] {
@@ -396,6 +429,7 @@ export class Chat {
 
   /** Cancels startup, closes the session, and releases the services owned by this CLI. */
   async close(): Promise<void> {
+    for (const watch of this.watches) watch.stop();
     this.connectionAbort.abort();
     await this.connecting;
     if (this.api && this.sessionId) await this.api.closeSession(this.sessionId).catch(() => undefined);

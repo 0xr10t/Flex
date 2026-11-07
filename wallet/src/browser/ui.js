@@ -1,4 +1,4 @@
-/* global window, document, fetch, setInterval, URL, URLSearchParams */
+/* global window, document, fetch, setInterval, setTimeout, URL, URLSearchParams */
 const names = { 11155111: 'Ethereum Sepolia', 84532: 'Base Sepolia', 421614: 'Arbitrum Sepolia' };
 // Public endpoints MetaMask uses only when the network is missing; the wallet's own RPC URLs never reach the page.
 const rpcs = {
@@ -24,6 +24,9 @@ const focusId = (() => {
 })();
 /** Steps this page has already opened MetaMask for (or refreshed), so a rejection never reopens it. */
 const autoTried = new Set();
+/** The focused request had something waiting on you or on MetaMask while this page was open. */
+let focusWasOpen = false;
+let closing = false;
 const errors = {
   INVALID_BRIDGE: 'Choose two different testnets and enter a positive USDC amount with up to six decimals.',
   REFRESH_OR_RECOVER_BATCH:
@@ -676,6 +679,36 @@ function render() {
     container.append(card);
   }
 }
+/**
+ * True when nothing in the focused request needs this page any more: every step has finished, or its transaction is
+ * back from MetaMask (the wallet follows it from there), or you rejected it.
+ */
+function focusSettled() {
+  const request = state.requests.find((r) => r.id === focusId);
+  if (!request || !request.steps.length) return false;
+  return request.steps.every((s) => {
+    if (['executed', 'failed', 'waiting'].includes(s.status)) return true;
+    const batch = state.batches.find((b) => b.requestId === focusId && b.step === s.step);
+    return batch?.status === 'received' || batch?.status === 'rejected';
+  });
+}
+/** flexx follows the request from here, so the approval tab closes once you have decided on every step. */
+function closeWhenDecided() {
+  if (!focusId || closing) return;
+  if (!focusSettled()) {
+    focusWasOpen = true;
+    return;
+  }
+  // A request that was already settled when the page opened stays on screen.
+  if (!focusWasOpen) return;
+  closing = true;
+  notify('Done. flexx shows what happens next. Closing this tab…');
+  setTimeout(() => {
+    window.close();
+    // Browsers only let a page close a tab it was opened into; otherwise say so.
+    setTimeout(() => notify('Done. flexx shows what happens next. You can close this tab.'), 500);
+  }, 1500);
+}
 async function refresh() {
   if (refreshing) return;
   refreshing = true;
@@ -685,6 +718,7 @@ async function refresh() {
     if (connected && !sending)
       for (const batch of state.batches.filter((b) => b.status === 'dispatched')) await track(batch, true);
     void autoApprove();
+    closeWhenDecided();
   } catch (e) {
     notify(e.message);
   } finally {
