@@ -94,6 +94,10 @@ npm ci
 
 The database and keychain packages use native bindings, so install on the machine that will run Flex.
 
+### Install page
+
+`npm run frontend:dev` serves the command-only install page at `http://127.0.0.1:4173`. It matches the CLI's wallet approval page. `npm run frontend:build` produces a standalone static site in `dist/install/`, including the current `install.sh`; publish that directory on an HTTPS host. The command downloads the installer from the page's own URL and only executes it after a successful complete download. Subdirectory hosting is supported. The local server serves only these public assets, never `.env` or other repository files.
+
 ### Configure
 
 ```sh
