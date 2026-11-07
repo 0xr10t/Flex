@@ -108,6 +108,11 @@ if (missing.length) {
   cfg.llm.ollama_url = env.OLLAMA_URL || cfg.llm.ollama_url;
   cfg.llm.model = env.OLLAMA_MODEL || cfg.llm.model;
   cfg.ens.indexer_url = env.ENS_INDEXER_URL || cfg.ens.indexer_url;
+  // An Omnigraph URL left over from an older .env keeps its own kind instead of being read as an RPC.
+  cfg.ens.indexer_kind =
+    env.ENS_INDEXER_KIND ||
+    (env.ENS_INDEXER_URL?.endsWith('/api/omnigraph') ? 'ensnode-omnigraph' : cfg.ens.indexer_kind);
+  if (env.ENS_REGISTRY_START_BLOCK) cfg.ens.registry_start_block = Number(env.ENS_REGISTRY_START_BLOCK);
   cfg.autopay = {
     late_window_seconds: Number(env.AUTOPAY_LATE_WINDOW_SECONDS || cfg.autopay.late_window_seconds),
     fee: { USDC: env.AUTOPAY_FEE_USDC || cfg.autopay.fee.USDC, ETH: env.AUTOPAY_FEE_ETH || cfg.autopay.fee.ETH },

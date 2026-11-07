@@ -83,7 +83,13 @@ export interface Config {
     universal_resolver_address: Address;
     /** Null turns group sends off (privacy fix 6). Through Tor when `network.socks_proxy` is set. */
     indexer_url: string | null;
-    indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph';
+    /**
+     * `ensv2-registry` reads ENSv2 registries' logs through `indexer_url` (a JSON-RPC URL for `rpc_chain_id`) instead of
+     * asking a hosted indexer.
+     */
+    indexer_kind: 'ens-subgraph' | 'ensnode-omnigraph' | 'ensv2-registry';
+    /** `ensv2-registry` only: the block the ENSv2 root registry was deployed at; logs are read from here on. */
+    registry_start_block?: number;
   };
   execution: { url: string; outbound_token_file: string; timeout_ms: number };
   /**

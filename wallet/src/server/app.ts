@@ -13,6 +13,7 @@ import { placeholderHashes } from '@flex/protocol/mapping/to-plan';
 import { validateEnvelope, type HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import { DATA_RESOURCES, parseDataQuery } from '@flex/protocol';
 import { envelopeHash, type Store } from '../store/store.js';
+import type { statusReader } from './status.js';
 
 export interface AppDeps {
   store: Store;
@@ -23,6 +24,8 @@ export interface AppDeps {
   /** Chains with an executor deployed. Autopay and cancel can't work without one. */
   executorChainIds: readonly number[];
   onAccepted: () => void;
+  /** What happened to each step of a request; without it GET /v1/intents/:id answers 404. */
+  requestStatus?: ReturnType<typeof statusReader>;
   log: Logger;
   now?: () => Date;
 }
@@ -85,6 +88,16 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         db,
         wallet_address: deps.walletAddress,
       });
+  });
+
+  // Read-only progress for the caller that submitted the request (the agent's token; the CLI holds the same one).
+  app.get<{ Params: { request_id: string } }>('/v1/intents/:request_id', async (request, reply) => {
+    if (!tokenMatches(request.headers.authorization, deps.inboundToken))
+      return reply.code(401).send({ message: MESSAGE.unauthorized });
+    const id = request.params.request_id;
+    const status = /^req_[0-9a-f]{12}$/.test(id) ? await deps.requestStatus?.(id) : null;
+    if (!status) return reply.code(404).send({ message: MESSAGE.badRequest });
+    return reply.header('cache-control', 'no-store').send(status);
   });
 
   app.post('/v1/intents', (request, reply) => {

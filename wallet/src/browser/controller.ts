@@ -73,6 +73,7 @@ export class BrowserWalletController {
           id: batch.batch_id,
           walletId: payload.providerBatchId ?? batch.batch_id,
           requestId: batch.request_id,
+          step: batch.step,
           chainId: batch.chain_id,
           status: batch.status,
           stepStatus: step.status,

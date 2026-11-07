@@ -73,12 +73,15 @@ const payer = (payerArg ? getAddress(payerArg) : throwaway.address) as Hex;
 const configWith = (sepoliaRpc: string) =>
   ({
     wallet: { address: payer },
+    // Direct by default; set FLEX_SOCKS_PROXY=socks5h://127.0.0.1:9050 to check the Tor path.
+    network: { socks_proxy: process.env.FLEX_SOCKS_PROXY ?? null },
     chains: CHAINS.map((c) => ({ ...c, rpc_url: c.chain_id === SEPOLIA ? sepoliaRpc : c.rpc })),
     ens: {
       rpc_chain_id: SEPOLIA,
       universal_resolver_address: '0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe',
-      indexer_url: process.env.ENS_INDEXER_URL ?? 'https://api.v2-sepolia.ensnode.io/api/omnigraph',
-      indexer_kind: 'ensnode-omnigraph',
+      indexer_url: process.env.ENS_INDEXER_URL ?? 'https://eth-sepolia.api.onfinality.io/public',
+      indexer_kind: (process.env.ENS_INDEXER_KIND ?? 'ensv2-registry') as Config['ens']['indexer_kind'],
+      registry_start_block: Number(process.env.ENS_REGISTRY_START_BLOCK ?? 11_820_291),
     },
   }) as unknown as Config;
 

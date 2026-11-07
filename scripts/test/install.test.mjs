@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   rmSync,
@@ -39,10 +40,13 @@ with tarfile.open(path, 'w:gz') as bundle:
     body = {'broken': 'exit 1\\n', 'hang': 'sleep 30\\n'}.get(kind, 'printf "%s\\\\n" "' + version + '"\\n')
     script = ('#!/bin/sh\\n' + body).encode()
     entry.size = len(script)
-    entry.mode = 0o755
+    entry.mode = 0o644 if kind == 'nonexec' else 0o755
+    if kind == 'missing': entry.name = 'bin/other'
+    if kind == 'invalidexec': script = b'not an executable'; entry.size = len(script)
     bundle.addfile(entry, io.BytesIO(script))
-    if kind in ('traversal', 'absolute', 'symlink', 'hardlink', 'duplicate', 'conflict'):
-        entry = tarfile.TarInfo({'traversal': '../escaped', 'absolute': '/tmp/flex-escaped', 'duplicate': 'bin/flexx', 'conflict': 'bin'}.get(kind, 'evil'))
+    if kind in ('traversal', 'absolute', 'symlink', 'hardlink', 'duplicate', 'conflict', 'fifo', 'normalized-duplicate'):
+        entry = tarfile.TarInfo({'traversal': '../escaped', 'absolute': '/tmp/flex-escaped', 'duplicate': 'bin/flexx', 'normalized-duplicate': './bin//flexx', 'conflict': 'bin'}.get(kind, 'evil'))
+        if kind == 'fifo': entry.type = tarfile.FIFOTYPE
         if kind in ('symlink', 'hardlink'):
             entry.type = tarfile.SYMTYPE if kind == 'symlink' else tarfile.LNKTYPE
             entry.linkname = '/tmp'
@@ -79,7 +83,10 @@ function install(prefix, version, bundle, extra = [], env = {}) {
   );
 }
 function active(prefix) {
-  return spawnSync(join(prefix, 'bin/flexx'), ['--version'], { encoding: 'utf8' }).stdout.trim();
+  const result = spawnSync(join(prefix, 'bin/flexx'), ['--version'], { encoding: 'utf8' });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  return result.stdout.trim();
 }
 
 test('installs and upgrades under a path with spaces, retaining old release and user files', (t) => {
@@ -110,7 +117,7 @@ test('failed checksum and failed smoke check leave the previous release active',
   assert.ok(!existsSync(join(prefix, '.install-lock')));
 });
 
-for (const kind of ['traversal', 'absolute', 'symlink', 'hardlink', 'duplicate']) {
+for (const kind of ['traversal', 'absolute', 'symlink', 'hardlink', 'duplicate', 'fifo', 'normalized-duplicate']) {
   test(`rejects ${kind} archive entries before activation`, (t) => {
     const { root, prefix } = fixture(t);
     const result = install(prefix, 'v0.1.0', archive(root, 'v0.1.0', kind));
@@ -175,8 +182,9 @@ test('requires a version and trusted digest; help works without installation', (
   const { root } = fixture(t);
   const env = { ...process.env, HOME: root };
   assert.equal(spawnSync('bash', [installer, '--help'], { env }).status, 0);
-  assert.notEqual(spawnSync('bash', [installer], { env }).status, 0);
   assert.notEqual(spawnSync('bash', [installer, '--version'], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', [installer, '--version', 'v0.1.0'], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', [installer, '--sha256', '0'.repeat(64)], { env }).status, 0);
   assert.ok(!existsSync(join(root, '.flex')));
 });
 
@@ -283,4 +291,173 @@ test('refuses the root directory however it is spelled', (t) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /cannot install into \//);
   }
+});
+
+for (const kind of ['nonexec', 'missing', 'invalidexec']) {
+  test(`rejects a ${kind} launcher without a traceback or activation`, (t) => {
+    const { root, prefix } = fixture(t);
+    const result = install(prefix, 'v0.1.0', archive(root, 'v0.1.0', kind));
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /Traceback/);
+    assert.ok(!existsSync(join(prefix, 'current')));
+    assert.deepEqual(readdirSync(prefix), []);
+  });
+}
+
+test('refuses an unrelated current symlink and a prefix that is a regular file', (t) => {
+  const { root, prefix } = fixture(t);
+  const bundle = archive(root, 'v0.1.0');
+  writeFileSync(prefix, 'keep');
+  const fileResult = install(prefix, 'v0.1.0', bundle);
+  assert.notEqual(fileResult.status, 0);
+  assert.doesNotMatch(fileResult.stderr, /Traceback/);
+  assert.equal(readFileSync(prefix, 'utf8'), 'keep');
+  const other = join(root, 'other');
+  mkdirSync(other);
+  symlinkSync('../outside', join(other, 'current'));
+  assert.notEqual(install(other, 'v0.1.0', bundle).status, 0);
+  assert.equal(readlinkSync(join(other, 'current')), '../outside');
+});
+
+function sourceFixture(t) {
+  const { root, prefix } = fixture(t);
+  const tools = join(root, 'tools');
+  mkdirSync(tools);
+  const log = join(root, 'commands.jsonl');
+  writeFileSync(
+    join(tools, 'git'),
+    `#!/usr/bin/env python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+with open(os.environ['SOURCE_LOG'], 'a') as f: f.write(json.dumps(['git'] + args) + '\\n')
+if args[0] == 'clone':
+    if os.environ.get('SOURCE_FAIL') == 'clone': sys.exit(1)
+    root = pathlib.Path(args[-1])
+    (root / 'dist/src/cli').mkdir(parents=True)
+    (root / 'dist/src/cli/main.js').write_text("console.log(process.argv[2] === '--version' ? 'flexx 0.1.0' : JSON.stringify({cwd: process.cwd(), args: process.argv.slice(2)}));")
+elif args[0] == '-C': print('a' * 40)
+else: sys.exit(2)
+`,
+  );
+  writeFileSync(
+    join(tools, 'npm'),
+    `#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ['SOURCE_LOG'], 'a') as f: f.write(json.dumps(['npm'] + args) + '\\n')
+key = args[1] if args[0] == '--prefix' else args[0]
+if os.environ.get('SOURCE_DRAIN_STDIN'): sys.stdin.read()
+sys.exit(1 if os.environ.get('SOURCE_FAIL') == key else 0)
+`,
+  );
+  for (const name of ['git', 'npm']) chmodSync(join(tools, name), 0o700);
+  const env = { ...process.env, PATH: `${tools}:${process.env.PATH}`, SOURCE_LOG: log };
+  const run = (extra = [], overrides = {}) =>
+    spawnSync('bash', [installer, '--source', '--prefix', prefix, ...extra], {
+      encoding: 'utf8',
+      env: { ...env, ...overrides },
+    });
+  return { root, prefix, tools, log, run };
+}
+
+test('source install builds all project components and launches after relocation from any directory', (t) => {
+  const { root, prefix, log, run } = sourceFixture(t);
+  const result = run([], { NODE_ENV: 'production' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(active(prefix), 'flexx 0.1.0');
+  const calls = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(calls[0].slice(0, -1), [
+    'git',
+    'clone',
+    '--depth',
+    '1',
+    '--branch',
+    'master',
+    '--',
+    'https://github.com/0xr10t/Flex.git',
+  ]);
+  assert.deepEqual(
+    calls.filter(([tool]) => tool === 'npm'),
+    [
+      ['npm', 'ci', '--include=dev'],
+      ['npm', '--prefix', 'wallet', 'ci', '--include=dev'],
+      ['npm', '--prefix', 'wallet/cre/autopay', 'ci', '--include=dev'],
+      ['npm', 'run', 'testnet:build'],
+    ],
+  );
+  const launched = spawnSync(join(prefix, 'bin/flexx'), ['--help', 'an argument with spaces'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.equal(launched.status, 0, launched.stderr);
+  assert.deepEqual(JSON.parse(launched.stdout), {
+    cwd: join(prefix, 'versions', `source-${'a'.repeat(40)}`),
+    args: ['--help', 'an argument with spaces'],
+  });
+  assert.ok(!existsSync(join(prefix, '.install-lock')));
+  const config = join(prefix, 'current', '.env');
+  writeFileSync(config, 'user configuration');
+  assert.notEqual(run().status, 0);
+  assert.equal(readFileSync(config, 'utf8'), 'user configuration');
+});
+
+for (const stage of ['clone', 'ci', 'wallet', 'wallet/cre/autopay', 'run']) {
+  test(`source failure at ${stage} stops immediately and removes staging and lock`, (t) => {
+    const { prefix, log, run } = sourceFixture(t);
+    const result = run([], { SOURCE_FAIL: stage });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(readdirSync(prefix), []);
+    const calls = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    const last = calls.at(-1);
+    assert.equal(last[1] === '--prefix' ? last[2] : last[1], stage);
+  });
+}
+
+test('source options cannot bypass release checksum requirements', (t) => {
+  const { prefix, run } = sourceFixture(t);
+  for (const args of [
+    ['--version', 'v0.1.0'],
+    ['--sha256', '0'.repeat(64)],
+    ['--archive', '/tmp/archive'],
+  ]) {
+    const result = run(args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /cannot be combined/);
+    assert.ok(!existsSync(prefix));
+  }
+});
+
+test('source installation validates Node before creating the prefix', (t) => {
+  const { prefix, tools, run } = sourceFixture(t);
+  writeFileSync(join(tools, 'node'), '#!/bin/sh\nexit 1\n');
+  chmodSync(join(tools, 'node'), 0o700);
+  const result = run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Node 22.12/);
+  assert.ok(!existsSync(prefix));
+});
+
+test('curl | bash: no arguments means a source install, and a child reading stdin cannot eat the script', (t) => {
+  const { prefix, log } = sourceFixture(t);
+  const env = { ...process.env, PATH: `${join(log, '..', 'tools')}:${process.env.PATH}`, SOURCE_LOG: log };
+  const result = spawnSync('bash', [], {
+    input: readFileSync(installer),
+    encoding: 'utf8',
+    env: { ...env, HOME: join(prefix, '..'), SOURCE_DRAIN_STDIN: '1' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(active(join(prefix, '..', '.flex')), 'flexx 0.1.0');
+  assert.match(result.stdout, /npm run testnet:setup/);
+});
+
+test('a truncated download runs nothing', (t) => {
+  const { prefix } = fixture(t);
+  const script = readFileSync(installer, 'utf8');
+  const result = spawnSync('bash', ['-s', '--', '--prefix', prefix], {
+    input: script.slice(0, script.lastIndexOf('main "$@"')),
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout + result.stderr, '');
+  assert.ok(!existsSync(prefix));
 });

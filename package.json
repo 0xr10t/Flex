@@ -10,6 +10,8 @@
     "node": "^22.12.0 || >=24.0.0"
   },
   "scripts": {
+    "frontend:build": "node scripts/frontend.mjs",
+    "frontend:dev": "node scripts/frontend.mjs --serve",
     "testnet:build": "npm run build && npm --prefix wallet run build",
     "testnet:setup": "node scripts/setup-testnet.mjs",
     "testnet:onboard": "node scripts/cre-onboard.mjs",

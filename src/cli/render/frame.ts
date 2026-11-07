@@ -1,8 +1,11 @@
 // Character grid shared by the CLI's ASCII renderers. A frame holds one glyph and one tone per cell; painters turn the
 // tones into colours. Ported from the Claude Design handoff "Flex animated ASCII art" (Flex ASCII / Flex Terminal).
 
-/** 0 = foreground, 1 = dim, 2 = accent, 3 = marked (dark text on a light bar, for your messages). */
-export type Tone = 0 | 1 | 2 | 3 | 4;
+/**
+ * 0 = foreground, 1 = dim, 2 = accent, 3 = marked (dark text on a light bar, for your messages), 4 = selected,
+ * 5 = went through (green), 6 = did not go through (red).
+ */
+export type Tone = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Frame {
   readonly cols: number;

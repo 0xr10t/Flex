@@ -12,6 +12,7 @@ import type { Deployment } from './runner/handler.js';
 import { ReportSender } from './runner/reports.js';
 import { Runner } from './runner/runner.js';
 import { buildApp } from './server/app.js';
+import { statusReader } from './server/status.js';
 import { openDatabase, Store } from './store/store.js';
 import { BrowserWalletController } from './browser/controller.js';
 import { registerBrowserWallet } from './browser/routes.js';
@@ -116,6 +117,10 @@ export function createService(
     chainIds: config.chains.map((c) => c.chain_id),
     executorChainIds: [...deployments.keys()],
     onAccepted: () => void runner.kick(),
+    requestStatus: statusReader(store, async (chainId, hash) => {
+      const receipt = await gateways.get(chainId)?.getReceipt(hash);
+      return receipt ? receipt.status : null;
+    }),
     log,
   });
   if (config.approval.mode === 'metamask') {
