@@ -1,4 +1,4 @@
-/* Green-tinted black with the emerald of assets/logo.png as the accent. Fonts from the wallet page. */
+/* Black with the gold of assets/logo.png's ring, the same gold as the wallet page. Fonts from the wallet page. */
 @font-face {
   font-family: 'Archivo';
   src: url('fonts/archivo.woff2') format('woff2');
@@ -13,17 +13,17 @@
   font-display: swap;
 }
 :root {
-  --bg: #040907;
-  --surface: #08120d;
-  --raised: #0c1a13;
-  --line: #142a1f;
-  --line-strong: #1e4331;
-  --accent: #40d090;
-  --accent-hi: #70f0a0;
-  --accent-ink: #03140c;
-  --text: #f2f8f4;
-  --text-2: #b4cdbf;
-  --muted: #7a9787;
+  --bg: #0a0a0a;
+  --surface: #110f0b;
+  --raised: #17140d;
+  --line: #2b2415;
+  --line-strong: #4a3c1b;
+  --accent: #f0b429;
+  --accent-hi: #ffd23f;
+  --accent-ink: #1a1203;
+  --text: #f7f0dc;
+  --text-2: #d2c39f;
+  --muted: #9d8f6e;
   --sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-family: var(--sans);
@@ -45,10 +45,10 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1100px 640px at 88% -14%, rgba(64, 208, 144, 0.32), transparent 66%),
-    radial-gradient(900px 560px at -12% 34%, rgba(32, 176, 112, 0.2), transparent 70%),
-    radial-gradient(1000px 520px at 50% 118%, rgba(112, 240, 160, 0.14), transparent 70%),
-    linear-gradient(180deg, #06120c 0%, var(--bg) 55%, #030806 100%);
+    radial-gradient(1100px 640px at 88% -14%, rgba(240, 180, 41, 0.24), transparent 66%),
+    radial-gradient(900px 560px at -12% 34%, rgba(192, 120, 0, 0.16), transparent 70%),
+    radial-gradient(1000px 520px at 50% 118%, rgba(255, 210, 63, 0.1), transparent 70%),
+    linear-gradient(180deg, #110d06 0%, var(--bg) 55%, #060606 100%);
   background-attachment: fixed;
   border-top: 2px solid var(--accent);
 }
@@ -282,14 +282,14 @@ pre.code .here {
   color: var(--text-2);
 }
 pre.code .here.text {
-  color: #e2cf8e;
+  color: #efe0a0;
 }
 pre.code .com {
   color: var(--muted);
   font-style: italic;
 }
 pre.code .str {
-  color: #e2cf8e;
+  color: #efe0a0;
 }
 pre.code .var {
   color: var(--accent-hi);
