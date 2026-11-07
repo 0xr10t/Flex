@@ -311,6 +311,18 @@ function accountSetup(request) {
   return card;
 }
 const short = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+/** A link to a transaction on the chain's block explorer; plain text when the chain or hash is unknown. */
+function txLink(text, chainId, hash) {
+  const explorer = rpcs[chainId]?.[1];
+  if (!explorer || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return el('p', `${text}: ${hash}`, 'muted');
+  const link = el('a', `${text} on ${new URL(explorer).hostname} ↗`);
+  link.href = `${explorer}/tx/${hash}`;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  const wrap = el('p');
+  wrap.append(link);
+  return wrap;
+}
 /** What a step does, in words, from the request the agent sent: the heading and the filled-in details. */
 function describe(intent, chainId) {
   if (intent?.intent_id === 'i') {
@@ -502,7 +514,21 @@ function render() {
                     : batch.txHash
                       ? 'Source confirmed. Waiting for source-chain finality.'
                       : 'Waiting for MetaMask / source confirmation';
-    card.append(el('p', label));
+    // A payment on one chain has no "source": say plainly that it is on-chain and what is left.
+    const sameChain = intent?.intent_id !== 'j';
+    card.append(
+      el(
+        'p',
+        sameChain && label === 'Source confirmed. Waiting for source-chain finality.'
+          ? `Sent and confirmed on ${names[batch.chainId] || `chain ${batch.chainId}`}. Flex marks it verified once the block is final.`
+          : sameChain && label === 'Waiting for MetaMask / source confirmation'
+            ? 'Waiting for MetaMask and the network to confirm.'
+            : label,
+      ),
+    );
+    if (batch.txHash) card.append(txLink('View transaction', batch.chainId, batch.txHash));
+    if (batch.destinationTxHash && intent?.dest_chain_id)
+      card.append(txLink('View destination transaction', intent.dest_chain_id, batch.destinationTxHash));
     if (intent?.intent_id === 'j' && intent.source_chain_id === 11155111 && !complete)
       card.append(
         el(
