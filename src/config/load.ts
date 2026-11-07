@@ -114,7 +114,8 @@ const CONFIG_SCHEMA = {
         rpc_chain_id: { enum: [...CHAIN_IDS] },
         universal_resolver_address: ADDRESS,
         indexer_url: { oneOf: [NON_EMPTY, { type: 'null' }] },
-        indexer_kind: { enum: ['ens-subgraph', 'ensnode-omnigraph'] },
+        indexer_kind: { enum: ['ens-subgraph', 'ensnode-omnigraph', 'ensv2-registry'] },
+        registry_start_block: { type: 'integer', minimum: 0 },
       },
     },
     execution: {
@@ -292,6 +293,10 @@ export function validateConfig(raw: unknown): Config {
     new URL(cfg.ens.indexer_url).protocol !== 'https:'
   ) {
     errors.push('/ens/indexer_url must be https');
+  }
+  // Without a start block every listing would scan the chain from genesis.
+  if (cfg.ens.indexer_kind === 'ensv2-registry' && cfg.ens.registry_start_block === undefined) {
+    errors.push('/ens/registry_start_block is required when /ens/indexer_kind is ensv2-registry');
   }
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;

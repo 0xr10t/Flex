@@ -181,7 +181,7 @@ describe('privacy fix 6: no indexer → group sends are off', () => {
     const fetchFn = vi.fn();
     const cfg = testConfig();
     cfg.ens.indexer_url = null;
-    for (const kind of ['ens-subgraph', 'ensnode-omnigraph'] as const) {
+    for (const kind of ['ens-subgraph', 'ensnode-omnigraph', 'ensv2-registry'] as const) {
       cfg.ens.indexer_kind = kind;
       await expect(createSubnameSource(cfg, fetchFn).listChildren('iitr.eth')).rejects.toBeInstanceOf(
         IndexerUnavailable,

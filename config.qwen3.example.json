@@ -55,8 +55,9 @@
   "ens": {
     "rpc_chain_id": 11155111,
     "universal_resolver_address": "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
-    "indexer_url": "https://api.v2-sepolia.ensnode.io/api/omnigraph",
-    "indexer_kind": "ensnode-omnigraph"
+    "indexer_url": "https://eth-sepolia.api.onfinality.io/public",
+    "indexer_kind": "ensv2-registry",
+    "registry_start_block": 11820291
   },
   "execution": {
     "url": "http://127.0.0.1:8788",
