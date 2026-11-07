@@ -80,6 +80,7 @@ import { parseWalletQuery, renderWalletQuery } from './wallet-query.js';
 import type { HistoryReader } from '../history/types.js';
 import { parseReceivedQuery, renderReceivedQuery } from './received-query.js';
 import { explainIdentifierQuery } from './identifier-query.js';
+import { lexicalScan } from '../lexical/scan.js';
 import { isPaymentRequest, isTransactionStatusQuery, readTransactionStatus } from './transaction-status.js';
 
 /** §13.4 `max_attempts`. */
@@ -169,6 +170,12 @@ export async function modelReady(llm: LlmClient): Promise<boolean> {
 }
 
 /** An instant as the ISO-8601 UTC string stored in the DB (§7). */
+/** True when the text asks to pay the members of an ENS name (S2 rule 4's group markers). */
+function namesEnsGroup(text: string, chains: Config['chains'], now: DateTime): boolean {
+  const scan = lexicalScan(text, { chains, now });
+  return scan.ok && scan.scan.groups.length > 0;
+}
+
 export const toIsoUtc = (t: DateTime): string => t.toUTC().toISO() ?? new Date().toISOString();
 
 export class SessionManager {
@@ -519,6 +526,9 @@ export class SessionManager {
     if (!text.trim()) return null;
     // Native confirmation words and literal field answers must never depend on model classification.
     if (classifyConfirmationText(text) !== 'other') return null;
+    // Neither does an unmistakable ENS group payment ("pay everyone under iitr.eth"): the small routing model has sent
+    // such requests to chat, so the lexical group markers decide before it is asked.
+    if (namesEnsGroup(text, this.deps.config.chains, this.clock().setZone(s.timezone))) return null;
     const a = s.active;
     if (
       a !== null &&

@@ -74,6 +74,14 @@ describe('SQ-CHAT-01 independent HTTP boundaries', () => {
     },
   );
 
+  it('an ENS group payment goes to the wallet without asking the routing model, which has sent it to chat', async () => {
+    const h = make('ens-group', [route('chat'), chat('You need to give me the addresses.')]);
+    await h.open();
+    await h.say('I want to pay people under the iitr.eth ENS name, everyone that there is under that org');
+    expect(h.llm.names()).not.toContain('chat_route');
+    expect(h.llm.names()).not.toContain('chat');
+  });
+
   it('keeps generic follow-ups in bounded in-memory history, with no wallet or durable storage changes', async () => {
     const h = make('idle-history', [route('chat'), chat('USDC is a token.'), route('chat'), chat('More context.')]);
     await h.open();
