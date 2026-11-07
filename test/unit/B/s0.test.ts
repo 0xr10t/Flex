@@ -1,4 +1,4 @@
-// Privacy fix 8: S0 reads DB4; balances are read by a jittered background timer, and during a message only at a cold start.
+// Privacy fix 8: healthy balances stay cached; cold or unavailable chains are read during a message.
 // Tests: §8.1 S0 refresh balances — C-051 (parallel ETH + USDC per allowed chain), C-052 (bigint → decimal
 // strings, ETH 18 / USDC 6), C-053 (DB4 upsert ok), C-054 (failure → both rows unavailable, old values kept, note),
 // C-055 (all unavailable → BALANCES_UNAVAILABLE), C-056 (no AnswerHandler: S0 runs only for new messages),
@@ -75,12 +75,18 @@ describe('S0 balances (§8.1, privacy fix 8)', () => {
     expect(new Set(ctx.rpc.calls.map((c) => c.chain_id))).toEqual(new Set([ARB]));
   });
 
-  it('§8.1 step 4 (C-054, C-294): a chain DB4 marks unavailable adds the note and the log, without an RPC call', async () => {
+  it('§8.1 step 4 (C-054, C-294): an unavailable chain is read once; a repeated failure keeps old values, note and log', async () => {
     const ctx = makeTestContext();
     seedBalances(ctx.repos, ALL, '2026-11-05T10:00:00.000Z');
     ctx.repos.db4.markUnavailable(BASE, 'Base Sepolia', '2026-11-05T11:00:00.000Z');
+    ctx.rpc.down.add(BASE);
     expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
-    expect(ctx.rpc.calls).toEqual([]);
+    expect(ctx.rpc.calls).toEqual([
+      { fn: 'eth', chain_id: BASE },
+      { fn: 'usdc', chain_id: BASE },
+    ]);
+    expect(ctx.repos.db4.get(BASE, 'ETH')).toMatchObject({ status: 'unavailable', balance: '1' });
+    expect(ctx.repos.db4.get(BASE, 'USDC')).toMatchObject({ status: 'unavailable', balance: '10' });
     expect(ctx.req.notes).toEqual(["Base Sepolia balance couldn't be read right now, so it wasn't used."]);
     expect(ctx.log.lines.some((l) => JSON.stringify(l.chain_ids_unavailable) === JSON.stringify([BASE]))).toBe(true);
     expect(ctx.log.lines.some((l) => l.event === 'balances_unavailable')).toBe(true);
@@ -109,12 +115,48 @@ describe('S0 balances (§8.1, privacy fix 8)', () => {
     );
   });
 
-  it('§8.1 step 5: every chain unavailable in DB4 → BALANCES_UNAVAILABLE, still no RPC call', async () => {
+  it('§8.1 step 5: all cached chains unavailable and still failing → BALANCES_UNAVAILABLE after one read each', async () => {
     const ctx = makeTestContext();
     seedBalances(ctx.repos, ALL);
     for (const c of [SEP, BASE, ARB] as const) ctx.repos.db4.markUnavailable(c, String(c), '2026-11-05T11:00:00.000Z');
+    ctx.rpc.down.add(SEP).add(BASE).add(ARB);
     expect((await s0.step(ctx)).kind).toBe('error');
-    expect(ctx.rpc.calls).toEqual([]);
+    expect(ctx.rpc.calls).toHaveLength(6);
+  });
+
+  it.each(['ETH', 'USDC'] as const)(
+    'recovers a chain when its cached %s balance is unavailable, without reading healthy chains',
+    async (token) => {
+      const ctx = makeTestContext();
+      seedBalances(ctx.repos, ALL);
+      ctx.repos.db4.markUnavailable(BASE, 'Base Sepolia', '2026-11-05T11:00:00.000Z');
+      seedBalances(ctx.repos, { [BASE]: { [token === 'ETH' ? 'USDC' : 'ETH']: '10' } });
+      ctx.rpc.eth.set(BASE, 2n * 10n ** 18n);
+      ctx.rpc.usdc.set(BASE, 25_000_000n);
+      expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+      expect(ctx.rpc.calls).toEqual([
+        { fn: 'eth', chain_id: BASE },
+        { fn: 'usdc', chain_id: BASE },
+      ]);
+      expect(ctx.repos.db4.get(BASE, 'ETH')).toMatchObject({ status: 'ok', balance: '2' });
+      expect(ctx.repos.db4.get(BASE, 'USDC')).toMatchObject({ status: 'ok', balance: '25' });
+      expect(ctx.req.notes).toEqual([]);
+      ctx.rpc.calls.length = 0;
+      await s0.step(ctx);
+      expect(ctx.rpc.calls).toEqual([]);
+    },
+  );
+
+  it('the next request recovers immediately after every cold-start read failed', async () => {
+    const ctx = makeTestContext();
+    ctx.rpc.down.add(SEP).add(BASE).add(ARB);
+    expect((await s0.step(ctx)).kind).toBe('error');
+    ctx.rpc.down.clear();
+    ctx.rpc.calls.length = 0;
+    expect(await s0.step(ctx)).toEqual({ kind: 'continue' });
+    expect(ctx.rpc.calls).toHaveLength(6);
+    expect(ctx.repos.db4.listAll().every((row) => row.status === 'ok')).toBe(true);
+    expect(ctx.req.notes).toEqual([]);
   });
 
   it('only the allowed chains (DB5) are read and checked', async () => {

@@ -42,6 +42,8 @@ export class FakeSocks {
   readonly connects: SocksConnect[] = [];
   /** hostname → local port to dial. */
   readonly hosts = new Map<string, number>();
+  /** Optional SOCKS reply code for a refused CONNECT, before any HTTP request can reach the target. */
+  rejectConnect: (request: SocksConnect) => number | undefined = () => undefined;
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
   port = 0;
@@ -97,7 +99,13 @@ export class FakeSocks {
         atyp = 'ipv6';
       }
       const port = (await read(2)).readUInt16BE(0);
-      this.connects.push({ user, pass, atyp, host, port });
+      const request = { user, pass, atyp, host, port };
+      this.connects.push(request);
+      const rejection = this.rejectConnect(request);
+      if (rejection !== undefined) {
+        client.end(Buffer.from([5, rejection, 0, 1, 0, 0, 0, 0, 0, 0]));
+        return;
+      }
       const target = atyp === 'domain' ? this.hosts.get(host) : undefined;
       if (cmd !== 1 || target === undefined) {
         client.end(Buffer.from([5, 4, 0, 1, 0, 0, 0, 0, 0, 0])); // host unreachable

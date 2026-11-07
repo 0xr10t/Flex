@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { createPublicClient, getAddress, http } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isolatedFetch, randomizeRpcId } from '../../../src/util/isolated-fetch.js';
+import { FakeSocks } from '../../fakes/socks-server.js';
 
 interface Seen {
   port: number;
@@ -153,5 +154,108 @@ describe('isolatedFetch over a real socket', () => {
     reply = () => ({ text: JSON.stringify({ jsonrpc: '2.0', id: 123456, result: '0x5' }) });
     const client = createPublicClient({ transport: http(base, { fetchFn: isolatedFetch(), retryCount: 0 }) });
     expect(await client.getBlockNumber({ cacheTime: 0 })).toBe(5n);
+  });
+});
+
+describe('isolatedFetch recovery from a refused Tor connection', () => {
+  let socks: FakeSocks;
+
+  beforeEach(async () => {
+    socks = await new FakeSocks().start();
+    socks.hosts.set('rpc.test', (server.address() as AddressInfo).port);
+    base = `http://rpc.test:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => socks.stop());
+
+  it('retries on fresh credentials for the same purpose, keeps that route, and leaves other purposes alone', async () => {
+    const balances = isolatedFetch({ proxy: socks.url, isolation: 'balances' });
+    const ens = isolatedFetch({ proxy: socks.url, isolation: 'ens' });
+    await (await post(balances, 1)).text();
+    let failedPassword: string | undefined;
+    socks.rejectConnect = (request) => {
+      if (request.user !== 'ens') return;
+      failedPassword ??= request.pass;
+      return request.pass === failedPassword ? 1 : undefined; // General SOCKS failure, as reported by Tor.
+    };
+    expect(await (await post(ens, 2)).json()).toMatchObject({ result: '0x1' });
+    await (await post(ens, 3)).text();
+    await (await post(balances, 4)).text();
+    const [balanceBefore, failed, retried, next, balanceAfter] = socks.connects;
+    expect(socks.connects.map((c) => c.user)).toEqual(['balances', 'ens', 'ens', 'ens', 'balances']);
+    expect(retried?.pass).not.toBe(failed?.pass);
+    expect(next?.pass).toBe(retried?.pass);
+    expect(balanceAfter?.pass).toBe(balanceBefore?.pass);
+    expect(socks.connects.every((c) => c.atyp === 'domain' && c.host === 'rpc.test')).toBe(true);
+    expect(seen).toHaveLength(4);
+    expect(seen.every((s) => s.body.method === 'eth_chainId')).toBe(true);
+  });
+
+  it('stops after one retry when both routes are refused, without reaching the RPC', async () => {
+    socks.rejectConnect = () => 1;
+    await expect(post(isolatedFetch({ proxy: socks.url, isolation: 'ens' }), 1)).rejects.toThrow(
+      'Socks5 proxy rejected connection - Failure',
+    );
+    expect(socks.connects).toHaveLength(2);
+    expect(socks.connects[1]?.pass).not.toBe(socks.connects[0]?.pass);
+    expect(seen).toEqual([]);
+  });
+
+  it('concurrent failures share the replacement route within their purpose', async () => {
+    const ens = isolatedFetch({ proxy: socks.url, isolation: 'ens' });
+    let failedPassword: string | undefined;
+    socks.rejectConnect = (request) => {
+      failedPassword ??= request.pass;
+      return request.pass === failedPassword ? 1 : undefined;
+    };
+    await Promise.all([1, 2].map(async (id) => (await post(ens, id)).text()));
+    expect(new Set(socks.connects.map((c) => c.pass)).size).toBe(2);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('does not retry a rejected connection after cancellation', async () => {
+    const ctrl = new AbortController();
+    socks.rejectConnect = () => {
+      ctrl.abort();
+      return 1;
+    };
+    const fetchFn = isolatedFetch({ proxy: socks.url, isolation: 'ens' });
+    await expect(fetchFn(base, { signal: ctrl.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(socks.connects).toHaveLength(1);
+    expect(seen).toEqual([]);
+  });
+
+  it('keeps the original cancellation signal on the retry', async () => {
+    const ctrl = new AbortController();
+    socks.rejectConnect = () => (socks.connects.length === 1 ? 1 : undefined);
+    server.removeAllListeners('request');
+    server.on('request', () => ctrl.abort());
+    const fetchFn = isolatedFetch({ proxy: socks.url, isolation: 'ens' });
+    await expect(fetchFn(base, { signal: ctrl.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(socks.connects).toHaveLength(2);
+  });
+
+  it('does not retry an HTTP error', async () => {
+    reply = () => ({ status: 503, text: 'unavailable' });
+    const res = await post(isolatedFetch({ proxy: socks.url, isolation: 'ens' }), 1);
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe('unavailable');
+    expect(socks.connects).toHaveLength(1);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('does not replay a request after the upstream connection drops', async () => {
+    let received = 0;
+    server.removeAllListeners('request');
+    server.on('request', (req) => {
+      req.resume();
+      req.on('end', () => {
+        received++;
+        req.socket.destroy();
+      });
+    });
+    await expect(post(isolatedFetch({ proxy: socks.url, isolation: 'ens' }), 1)).rejects.toThrow();
+    expect(socks.connects).toHaveLength(1);
+    expect(received).toBe(1);
   });
 });

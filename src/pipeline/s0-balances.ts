@@ -1,9 +1,9 @@
 // Implements: §8.1 S0 — Balances (code). Privacy fix 8: balances are read on a background timer with jitter
-// (`startBalanceRefresher`), never because a message arrived, so the RPC can't tell when you use the agent. S0 reads DB4;
-// only a chain that has never been read is read during a message (cold start). `refreshBalances` is §8.1 steps 1–4:
+// (`startBalanceRefresher`). S0 uses healthy cached rows from DB4, but reads a cold or unavailable chain once during a
+// message so a failed route cannot block recovery until the next timer. `refreshBalances` is §8.1 steps 1–4:
 // parallel eth_getBalance + USDC balanceOf per chain via anon-rpc, bigint → decimal strings, DB4 upsert ok, failure → both
 // rows unavailable (old values kept). S0 adds the §13.1 note for each unavailable chain; all unavailable →
-// BALANCES_UNAVAILABLE. §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s timeout, no retries; the
+// BALANCES_UNAVAILABLE. §14.5 RPC part: one viem public client per chain, http(rpc_url), 10 s timeout, no RPC retries; the
 // clients share one connection pool of their own with random JSON-RPC ids (fix 7) and never follow CCIP-Read (fix 3).
 // FR-02, NFR-07, I-12. S0 runs only for new messages (the runner never calls it for answers; it asks no questions).
 // SQ-CHAT-02 also reads cached balances on a disposable context for wallet questions, preserving any active draft.
@@ -20,7 +20,7 @@ import { TOKEN_DECIMALS, type ChainId, type Config } from '../contracts/types.js
 import { chainName } from './step-util.js';
 import { isolatedHttp } from '../util/isolated-fetch.js';
 
-/** §14.5: 10 s timeout, no retries inside a request. */
+/** §14.5: 10 s timeout, including a possible retry of a refused SOCKS connection. */
 const RPC_TIMEOUT_MS = 10_000;
 
 /** §14.5 transport options: 10 s timeout, no retries. */
@@ -170,16 +170,14 @@ export function startBalanceRefresher(
 async function s0Step(ctx: StepContext): Promise<StepResult> {
   const { req, repos, config, limits } = ctx;
   const chains = limits.allowed_chain_ids;
-  const hasRows = (c: ChainId): boolean =>
-    repos.db4.get(c, 'ETH') !== undefined && repos.db4.get(c, 'USDC') !== undefined;
-  // Cold start only: a chain the refresher has never read is read now, once.
-  const unread = chains.filter((c) => !hasRows(c));
+  const needsRead = (c: ChainId): boolean =>
+    repos.db4.get(c, 'ETH')?.status !== 'ok' || repos.db4.get(c, 'USDC')?.status !== 'ok';
+  // Read cold or unavailable chains once. Healthy rows keep the background refresh cadence.
+  const unread = chains.filter(needsRead);
   if (unread.length > 0) {
     await refreshBalances(ctx, unread, ctx.now().toUTC().toISO() ?? new Date().toISOString());
   }
-  const unavailable = chains.filter(
-    (c) => repos.db4.get(c, 'ETH')?.status !== 'ok' || repos.db4.get(c, 'USDC')?.status !== 'ok',
-  );
+  const unavailable = chains.filter(needsRead);
   if (unavailable.length > 0) {
     ctx.log.warn({
       event: 'balances_unavailable',

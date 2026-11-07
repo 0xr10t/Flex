@@ -3,7 +3,8 @@
 // the hostname is sent to Tor (DNS never happens here), and each isolation class uses its own SOCKS username, which Tor
 // (IsolateSOCKSAuth, on by default) turns into its own circuit. A proxied request opens a new stream each time (no
 // keep-alive), so one long-lived connection can't tie lookups together; Tor still reuses a class's circuit for up to 10
-// minutes. If the proxy can't be reached the request fails: nothing ever falls back to a direct connection. Requests to
+// minutes. A refused SOCKS CONNECT gets one retry with fresh credentials for that class, before any HTTP data was sent.
+// If the proxy can't be reached the request fails: nothing ever falls back to a direct connection. Requests to
 // 127.0.0.1 / ::1 (a node on this machine) go direct, each class with its own keep-alive pool.
 // JSON-RPC ids are replaced with random ones (viem numbers every request in the process from one counter, which links
 // them). Redirects are not followed.
@@ -34,11 +35,11 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 /** The SOCKS agent for one isolation class: Tor resolves the hostname, and the username picks the circuit. */
-export function proxyAgent(proxy: string, isolation: string): SocksProxyAgent {
+export function proxyAgent(proxy: string, isolation: string, circuitToken = PROCESS_TOKEN): SocksProxyAgent {
   const url = new URL(proxy);
   if (url.protocol !== 'socks5h:') throw new Error('the proxy must be socks5h:// so the proxy resolves hostnames');
   url.username = encodeURIComponent(isolation);
-  url.password = PROCESS_TOKEN;
+  url.password = circuitToken;
   return new SocksProxyAgent(url);
 }
 
@@ -73,38 +74,60 @@ function toResponse(res: IncomingMessage): Response {
 /** A `fetch` (e.g. viem's `fetchFn`) for one isolation class: Tor for remote hosts when configured, random JSON-RPC ids. */
 export function isolatedFetch(o: NetOptions = { proxy: null, isolation: 'direct' }): typeof fetch {
   const direct = { 'http:': new HttpAgent({ keepAlive: true }), 'https:': new HttpsAgent({ keepAlive: true }) };
-  const tor = o.proxy === null ? null : proxyAgent(o.proxy, o.isolation);
-  const isolated = (input: string | URL | Request, init: RequestInit = {}): Promise<Response> =>
-    new Promise<Response>((resolve, reject) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        reject(new TypeError(`unsupported protocol ${url.protocol}`));
-        return;
-      }
-      const body = typeof init.body === 'string' ? randomizeRpcId(init.body) : undefined;
-      const headers = Object.fromEntries(new Headers(init.headers));
-      if (body !== undefined) headers['content-length'] = String(Buffer.byteLength(body));
-      const agent = tor !== null && !isLoopbackHost(url.hostname) ? tor : direct[url.protocol];
-      const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
-      const req = send(
-        url,
-        { method: init.method ?? 'GET', headers, agent, signal: init.signal ?? undefined },
-        (res) => {
-          try {
-            resolve(toResponse(res));
-          } catch (e) {
-            res.destroy();
-            reject(e);
-          }
-        },
-      );
-      req.on('error', reject);
-      req.end(body);
-    });
+  let tor = o.proxy === null ? null : proxyAgent(o.proxy, o.isolation);
+  const isolated = async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new TypeError(`unsupported protocol ${url.protocol}`);
+    }
+    init.signal?.throwIfAborted();
+    const body = typeof init.body === 'string' ? randomizeRpcId(init.body) : undefined;
+    const headers = Object.fromEntries(new Headers(init.headers));
+    if (body !== undefined) headers['content-length'] = String(Buffer.byteLength(body));
+    const useTor = tor !== null && !isLoopbackHost(url.hostname);
+    const agent = useTor && tor !== null ? tor : direct[url.protocol];
+    const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const attempt = (agent: HttpAgent): Promise<Response> =>
+      new Promise<Response>((resolve, reject) => {
+        const req = send(
+          url,
+          { method: init.method ?? 'GET', headers, agent, signal: init.signal ?? undefined },
+          (res) => {
+            try {
+              resolve(toResponse(res));
+            } catch (e) {
+              res.destroy();
+              reject(e);
+            }
+          },
+        );
+        req.on('error', reject);
+        req.end(body);
+      });
+    try {
+      return await attempt(agent);
+    } catch (error) {
+      init.signal?.throwIfAborted();
+      // socks emits this only when CONNECT is refused, before the HTTP request reaches the destination. Other errors
+      // may follow a successfully sent request, so retrying them could duplicate a write.
+      if (
+        !useTor ||
+        tor === null ||
+        o.proxy === null ||
+        !(error instanceof Error) ||
+        !error.message.startsWith('Socks5 proxy rejected connection - ')
+      )
+        throw error;
+      // Another in-flight request may already have replaced this failed route. Keep its replacement, and leave other
+      // purposes and existing streams alone. The same AbortSignal bounds both attempts, including viem's timeout.
+      if (tor === agent) tor = proxyAgent(o.proxy, o.isolation, randomBytes(8).toString('hex'));
+      return attempt(tor);
+    }
+  };
   return isolated as typeof fetch;
 }
 
-/** viem HTTP transports for one isolation class (§14.5: no retries). */
+/** viem HTTP transports for one isolation class: no RPC retries; only refused SOCKS CONNECTs are retried above. */
 export function isolatedHttp(timeout: number, net: NetOptions): (url: string) => Transport {
   const fetchFn = isolatedFetch(net);
   return (url) => http(url, { timeout, retryCount: 0, fetchFn });
