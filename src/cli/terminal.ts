@@ -6,7 +6,8 @@
 
 import { performance } from 'node:perf_hooks';
 import type { ReadStream, WriteStream } from 'node:tty';
-import { parseInput, type KeyEvent } from './input.js';
+import { copyText, readClipboard } from './open.js';
+import { InputDecoder, type InputEvent, type KeyEvent } from './input.js';
 import { drawFrame, Repl, type Command, type Line } from './repl.js';
 import { createFrame, overlay, text, type Frame } from './render/frame.js';
 import { frameRows, paintRow, SCENE_PALETTE, SPLASH_PALETTE, type ColorMode, type Palette } from './render/paint.js';
@@ -137,6 +138,11 @@ export function composeOpening(layout: StageLayout, s: OpeningState, header: Spl
     header.drawMorph(f, s.nowMs, s.pointer, blendMorph(headerMorph(layout.header), logo.morph, s.shrinkP));
     return f;
   }
+  if (repl.hasPanel) {
+    repl.drawConversation(f, { x: 2, y: 1, w: layout.cols - 4, h: layout.rows - 5 });
+    repl.drawInput(f, 1, layout.rows - 2, layout.cols - 2, s.nowMs);
+    return f;
+  }
   drawFrame(f, frame, gap);
   if (logo) {
     header.drawMorph(f, s.nowMs, s.pointer, logo.morph);
@@ -172,6 +178,8 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
   let quit = (): void => undefined;
   const conversation = opts.conversation;
   const repl = new Repl({
+    copy: copyText,
+    paste: readClipboard,
     commands: conversation?.commands() ?? [],
     onMessage: conversation ? (text) => conversation.send(text) : undefined,
     onQuit: () => quit(),
@@ -186,6 +194,8 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
   let shrinkAt = 0;
   let mouse: { col: number; row: number; at: number } | undefined;
   let painted: string[] = [];
+  const decoder = new InputDecoder();
+  let escapeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const sceneTime = (now: number): number => ((now - t0) / 1000) * sceneSpeed;
   const snapTime = (now: number): number => ((now - snapAt) / 1000) * sceneSpeed;
@@ -284,6 +294,7 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
       quit = () => undefined;
       done = true;
       clearInterval(timer);
+      clearTimeout(escapeTimer);
       input.off('data', onData);
       output.off('resize', onResize);
       process.off('exit', restore);
@@ -309,16 +320,25 @@ export function runInteractive(opts: ViewOptions, input: ReadStream, output: Wri
       if (repl.handle(ev) === 'quit') finish(ev.key === 'interrupt' ? 'interrupt' : 'quit');
     };
 
-    const onData = (buf: Buffer): void => {
-      for (const ev of parseInput(buf.toString('utf8'))) {
+    const dispatch = (events: InputEvent[]): void => {
+      for (const ev of events) {
         if (done) return;
-        if (ev.kind === 'mouse') mouse = { col: ev.col, row: ev.row, at: performance.now() };
-        else if (ev.kind === 'wheel') repl.wheel(ev.delta);
+        if (ev.kind === 'mouse') {
+          mouse = { col: ev.col, row: ev.row, at: performance.now() };
+          if (opts.view === 'opening' && phase === 'box') repl.mouse(ev);
+        } else if (ev.kind === 'wheel') repl.wheel(ev.delta);
         else if (opts.view === 'opening') openingKey(ev);
         else viewKey(ev);
       }
       // echo typing at once rather than on the next tick
       if (!done) draw();
+    };
+    const onData = (buf: Buffer): void => {
+      clearTimeout(escapeTimer);
+      dispatch(decoder.feed(buf));
+      escapeTimer = setTimeout(() => {
+        if (!done) dispatch(decoder.flush());
+      }, 35);
     };
     const onResize = (): void => {
       painted = [];

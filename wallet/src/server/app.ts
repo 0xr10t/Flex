@@ -11,6 +11,7 @@ import type { Logger } from '../log.js';
 import { checkEnvelope } from '@flex/protocol/mapping/check';
 import { placeholderHashes } from '@flex/protocol/mapping/to-plan';
 import { validateEnvelope, type HandoffEnvelope } from '@flex/protocol/schemas/envelope';
+import { DATA_RESOURCES, parseDataQuery } from '@flex/protocol';
 import { envelopeHash, type Store } from '../store/store.js';
 
 export interface AppDeps {
@@ -60,6 +61,16 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return reply.code(400).send({ message: MESSAGE.badRequest });
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ message: MESSAGE.badRequest }));
+
+  app.get<{ Params: { resource: string } }>('/v1/data/:resource', (request, reply) => {
+    if (!tokenMatches(request.headers.authorization, deps.inboundToken))
+      return reply.code(401).send({ message: MESSAGE.unauthorized });
+    const spec = DATA_RESOURCES.find((s) => s.resource === request.params.resource && s.source === 'wallet');
+    if (!spec) return reply.code(404).send({ message: MESSAGE.badRequest });
+    const query = parseDataQuery(request.query, spec);
+    if (!query) return reply.code(400).send({ message: MESSAGE.badRequest });
+    return reply.header('cache-control', 'no-store').send(deps.store.readData(spec.resource, query));
+  });
 
   app.post('/v1/intents', (request, reply) => {
     if (!tokenMatches(request.headers.authorization, deps.inboundToken)) {

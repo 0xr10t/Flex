@@ -33,6 +33,18 @@ async function rejectedMessage(res: Response): Promise<string> {
 export function createExecutionClient(config: Config, outboundToken: string): ExecutionClient {
   const url = `${config.execution.url.replace(/\/+$/, '')}/v1/intents`;
   return {
+    async readData(resource, query) {
+      const target = new URL(`${config.execution.url.replace(/\/+$/, '')}/v1/data/${encodeURIComponent(resource)}`);
+      for (const [key, value] of Object.entries(query))
+        if (value !== undefined) target.searchParams.set(key, String(value));
+      const res = await fetch(target, {
+        headers: { Authorization: `Bearer ${outboundToken}` },
+        redirect: 'error',
+        signal: AbortSignal.timeout(config.execution.timeout_ms),
+      });
+      if (!res.ok) throw new Error('wallet data unavailable');
+      return (await res.json()) as import('@flex/protocol').DataPage;
+    },
     async submit(envelope, idempotencyKey): Promise<SubmitResult> {
       let res: Response;
       try {

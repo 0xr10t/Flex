@@ -10,6 +10,8 @@ import type { Database } from 'better-sqlite3';
 import type { HandoffEnvelope, Hex } from '@flex/protocol/schemas/envelope';
 import type { WalletBatchRow, WalletBatchPayload } from '../browser/types.js';
 import type { ChainId, Token, ExecutionReport, IntentResultReport } from '@flex/protocol';
+import { readWalletData } from './data.js';
+import type { DataQuery } from '@flex/protocol';
 import { ACCOUNT_UPGRADE_REQUIRED } from '../browser/upgrade.js';
 
 export type StepStatus = 'pending' | 'approved' | 'signed' | 'waiting' | 'executed' | 'failed';
@@ -183,6 +185,10 @@ export function openDatabase(path: string, keyHex: string): Database {
 
 export class Store {
   constructor(private readonly db: Database) {}
+
+  readData(resource: string, query: DataQuery) {
+    return readWalletData(this.db, resource, query);
+  }
 
   /** The hash stored for this request, or null when the key is new. */
   storedHash(requestId: string): string | null {

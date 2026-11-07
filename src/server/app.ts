@@ -29,6 +29,8 @@ import {
   validateReport,
 } from './bodies.js';
 import { applyReport } from './reports.js';
+import { registerContactRoutes } from './contacts.js';
+import { registerDataRoutes } from './data.js';
 import { validateLimits } from './settings.js';
 
 /** §14.1 "Max body 20 MB". */
@@ -95,6 +97,9 @@ export function createApp(deps: AppDeps): FastifyInstance {
     return httpError(reply, status);
   });
   app.setNotFoundHandler((_request, reply) => httpError(reply, 404));
+
+  registerDataRoutes(app, deps);
+  registerContactRoutes(app, deps);
 
   // ── sessions (§14.1, §17.1) ──
   app.post('/v1/sessions', async (request, reply) => {

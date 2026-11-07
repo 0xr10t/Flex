@@ -448,8 +448,8 @@ describe('painting', () => {
 describe('terminal input', () => {
   it('parses SGR mouse reports, editing keys and characters', () => {
     expect(parseInput(`${ESC}[<35;12;7M${ESC}[<35;13;8mq`)).toEqual([
-      { kind: 'mouse', col: 12, row: 7 },
-      { kind: 'mouse', col: 13, row: 8 },
+      { kind: 'mouse', col: 12, row: 7, action: 'move', button: 3 },
+      { kind: 'mouse', col: 13, row: 8, action: 'up', button: 3 },
       { kind: 'key', key: 'char', char: 'q' },
     ]);
     expect(parseInput('\r\n')).toEqual([{ kind: 'key', key: 'enter' }]);
@@ -522,9 +522,19 @@ describe('command palette and keys', () => {
   it('opens on /, filters as you type, and finds aliases and words inside names', () => {
     const repl = make();
     type(repl, '/');
-    expect(repl.menu.map((c) => c.name)).toEqual(['help', 'shortcuts', 'clear', 'exit', 'balance', 'limits', 'doctor']);
+    expect(repl.menu.map((c) => c.name)).toEqual([
+      'help',
+      'shortcuts',
+      'clear',
+      'exit',
+      'select',
+      'paste',
+      'balance',
+      'limits',
+      'doctor',
+    ]);
     type(repl, 'l');
-    expect(repl.menu.map((c) => c.name)).toEqual(['limits', 'help', 'clear', 'balance']);
+    expect(repl.menu.map((c) => c.name)).toEqual(['limits', 'help', 'clear', 'select', 'balance']);
     type(repl, 'imits ');
     expect(repl.menu).toEqual([]);
     const aliased = make();
@@ -645,7 +655,7 @@ describe('command palette and keys', () => {
     expect(parseInput(`${ESC}[<64;10;5M${ESC}[<65;10;5M${ESC}[<0;10;5M`)).toEqual([
       { kind: 'wheel', delta: -1 },
       { kind: 'wheel', delta: 1 },
-      { kind: 'mouse', col: 10, row: 5 },
+      { kind: 'mouse', col: 10, row: 5, action: 'down', button: 0 },
     ]);
     expect(parseInput(`a${ESC}[200~x\ny${ESC}[201~b`)).toEqual([
       { kind: 'key', key: 'char', char: 'a' },

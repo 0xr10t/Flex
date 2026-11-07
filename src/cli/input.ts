@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder';
 // Raw terminal input to events: SGR mouse reports (position and wheel), editing keys (arrows, Home/End, Page Up/Down,
 // Delete, Backspace, Tab), the readline control keys (Ctrl-A/E/U/K/W), bracketed paste, and typed characters, so the
 // command box can be edited like a shell line.
@@ -5,6 +6,9 @@
 export type Key =
   | 'char'
   | 'paste'
+  | 'cut'
+  | 'save'
+  | 'clipboard-paste'
   | 'enter'
   | 'backspace'
   | 'delete'
@@ -27,9 +31,9 @@ export type Key =
   | 'clear';
 
 /** A key; `char` carries the typed character, or the pasted text for `paste`. */
-export type KeyEvent = { kind: 'key'; key: Key; char?: string };
+export type KeyEvent = { kind: 'key'; key: Key; char?: string; shift?: boolean };
 export type InputEvent =
-  | { kind: 'mouse'; col: number; row: number }
+  | { kind: 'mouse'; col: number; row: number; action?: 'down' | 'move' | 'up'; button?: number }
   /** One notch of the mouse wheel: -1 up (back through the conversation), 1 down. */
   | { kind: 'wheel'; delta: -1 | 1 }
   | KeyEvent;
@@ -62,6 +66,9 @@ const CONTROL_KEYS: Record<string, Key> = {
   '\u000b': 'kill-end',
   '\u0017': 'kill-word',
   '\u0003': 'interrupt',
+  '\u0018': 'cut',
+  '\u0013': 'save',
+  '\u0016': 'clipboard-paste',
   '\u0004': 'eof',
   '\u000c': 'clear',
 };
@@ -120,11 +127,18 @@ function parseKeys(data: string): InputEvent[] {
           if ((button & 3) <= 1) events.push({ kind: 'wheel', delta: button & 1 ? 1 : -1 });
           continue;
         }
-        events.push({ kind: 'mouse', col, row });
+        events.push({
+          kind: 'mouse',
+          col,
+          row,
+          action: final === 'm' ? 'up' : button & 32 ? 'move' : 'down',
+          button: button & 3,
+        });
         continue;
       }
-      const key = final === '~' ? TILDE_KEYS[params] : final !== undefined ? CSI_KEYS[final] : undefined;
-      if (key) events.push({ kind: 'key', key });
+      const key = final === '~' ? TILDE_KEYS[params.split(';')[0]!] : final !== undefined ? CSI_KEYS[final] : undefined;
+      if (key)
+        events.push({ kind: 'key', key, ...((Number(params.split(';')[1] ?? 1) - 1) & 1 ? { shift: true } : {}) });
       continue;
     }
     // a CR LF pair is one Enter
@@ -138,4 +152,80 @@ function parseKeys(data: string): InputEvent[] {
     i++;
   }
   return events;
+}
+
+/** Stateful decoder: a split paste marker or UTF-8 code point must never become submitted keystrokes. */
+export class InputDecoder {
+  private readonly utf8 = new StringDecoder('utf8');
+  private pending = '';
+  private pasted = '';
+  private inPaste = false;
+  private overflow = false;
+  private previousCr = false;
+  private flushedEscape = false;
+  feed(chunk: Buffer | string): InputEvent[] {
+    let text = typeof chunk === 'string' ? chunk : this.utf8.write(chunk);
+    if (this.previousCr && text.startsWith('\n')) text = text.slice(1);
+    this.previousCr = false;
+    if (this.flushedEscape && (text.startsWith('[') || text.startsWith('O'))) this.pending = ESC;
+    if (text) this.flushedEscape = false;
+    this.pending += text;
+    const events: InputEvent[] = [];
+    while (this.pending) {
+      if (this.inPaste) {
+        const end = this.pending.indexOf(PASTE_END);
+        if (end < 0) {
+          const keep = Math.min(PASTE_END.length - 1, this.pending.length);
+          this.pasted += this.pending.slice(0, this.pending.length - keep);
+          this.pending = this.pending.slice(-keep);
+          if (this.pasted.length > 1_000_000) {
+            this.pasted = '';
+            this.overflow = true;
+          }
+          return events;
+        }
+        const pasted = this.pasted + this.pending.slice(0, end);
+        if (!this.overflow && pasted.length <= 1_000_000 && pasted)
+          events.push({ kind: 'key', key: 'paste', char: pasted });
+        this.pending = this.pending.slice(end + PASTE_END.length);
+        this.pasted = '';
+        this.inPaste = false;
+        this.overflow = false;
+        continue;
+      }
+      if (this.pending.startsWith(PASTE_START)) {
+        this.pending = this.pending.slice(PASTE_START.length);
+        this.inPaste = true;
+        continue;
+      }
+      const esc = this.pending.indexOf(ESC);
+      if (esc !== 0) {
+        const prefix = esc < 0 ? this.pending : this.pending.slice(0, esc);
+        events.push(...parseInput(prefix));
+        this.previousCr = prefix.endsWith('\r');
+        this.pending = esc < 0 ? '' : this.pending.slice(esc);
+        continue;
+      }
+      if (this.pending.length === 1) break;
+      const tail = /^(?:\[[0-?]*[ -/]*[@-~]|O[A-Za-z])/.exec(this.pending.slice(1))?.[0];
+      const sequence = tail ? ESC + tail : undefined;
+      if (!sequence) {
+        if (this.pending[1] === '[' || this.pending[1] === 'O') break;
+        events.push(...parseInput(this.pending.slice(0, 2)));
+        this.pending = this.pending.slice(2);
+        continue;
+      }
+      events.push(...parseInput(sequence));
+      this.pending = this.pending.slice(sequence.length);
+    }
+    return events;
+  }
+  /** Distinguish a standalone Escape from a sequence split across data events. Never flush an unfinished paste. */
+  flush(): InputEvent[] {
+    if (this.inPaste) return [];
+    if (this.pending !== ESC) return [];
+    this.pending = '';
+    this.flushedEscape = true;
+    return [{ kind: 'key', key: 'escape' }];
+  }
 }

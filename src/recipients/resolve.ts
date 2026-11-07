@@ -153,7 +153,7 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
   const fresh = different[0];
   if (fresh !== undefined) {
     return ask(
-      { t: 'ens_changed', name_key, ens, saved, fresh },
+      { t: 'ens_changed', name_key, ens, saved, fresh, rows },
       buildQuestion({
         question_id: qid(),
         code: 'Q_ENS_CHANGED',
@@ -164,7 +164,7 @@ async function recheck(ctx: StepContext, resolved: Resolved, rows: Db2Row[]): Pr
   }
   if (results.some((a) => a !== null)) return { k: 'resolved', r: resolved };
   return ask(
-    { t: 'ens_changed', name_key, ens, saved, fresh: null },
+    { t: 'ens_changed', name_key, ens, saved, fresh: null, rows },
     buildQuestion({
       question_id: qid(),
       code: 'Q_ENS_CHANGED',
@@ -881,6 +881,13 @@ function answerEnsChain(
   );
 }
 
+/** Called inside a repository transaction after the user chooses the new ENS address. */
+function updateEnsContactAfterConfirmation(ctx: StepContext, flow: Extract<Flow, { t: 'ens_changed' }>) {
+  const current = ctx.repos.db2.findByNameKey(flow.name_key);
+  if (JSON.stringify(current) !== JSON.stringify(flow.rows)) return null;
+  return ctx.repos.db2.updateAddressForName(flow.name_key, flow.fresh!);
+}
+
 function answerEnsChanged(
   ctx: StepContext,
   st: S6State,
@@ -899,13 +906,20 @@ function answerEnsChanged(
   if (chip.id === CHIPS.ENS_USE_NEW.id && flow.fresh !== null) {
     if (isSelf(flow.fresh, ctx.config.wallet.address))
       return proceed(ctx, st, stop({ kind: 'error', code: 'SELF_PAYMENT' }));
-    const upd = ctx.repos.db2.updateAddressForName(flow.name_key, flow.fresh);
+    // A later manual edit must not be overwritten by an older ENS question.
+    const upd = ctx.repos.transaction(() => updateEnsContactAfterConfirmation(ctx, flow));
+    if (upd === null) {
+      st.flow = null;
+      st.pending = null;
+      return { kind: 'discard', messages: [REPLY.CONTACT_CHANGED()] };
+    }
     // SQ-C-03: the new address is already saved under another name (§7.1 invariant).
     if (!upd.ok) return proceed(ctx, st, unsupported(ctx, 'ens_new_address_saved_under_other_name'));
     noteAdded(st, flow.fresh);
+    return proceed(ctx, st, { k: 'resolved', r: contactResolved(upd.rows) });
   }
-  const rows = ctx.repos.db2.findByNameKey(flow.name_key);
-  return proceed(ctx, st, { k: 'resolved', r: contactResolved(rows) });
+  // Keep the exact saved recipient and networks shown when the question was asked.
+  return proceed(ctx, st, { k: 'resolved', r: contactResolved(flow.rows) });
 }
 
 async function answerGroup(

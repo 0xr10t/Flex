@@ -51,6 +51,10 @@ export type SubmitResult =
 
 /** §14.2 POST {execution.url}/v1/intents with Idempotency-Key. */
 export interface ExecutionClient {
+  readData?: (
+    resource: string,
+    query: import('@flex/protocol').DataQuery,
+  ) => Promise<import('@flex/protocol').DataPage>;
   submit(envelope: HandoffEnvelope, idempotencyKey: string): Promise<SubmitResult>;
   /** Local demo adapters only: a synchronous fact about this request, never a network lookup. */
   wasCapturedLocally?(requestId: string): boolean;

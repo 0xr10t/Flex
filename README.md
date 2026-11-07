@@ -115,6 +115,79 @@ Type `/` for the command palette (filtered as you type; ↑↓ choose, Tab compl
 
 `flexx splash` and `flexx scene` show the animations alone; `flexx --static` prints one still frame.
 
+### Read data from the terminal
+
+`/db` lists every implemented database, cache and getter. `/get <resource>` reads local state through authenticated
+GET endpoints. It does not run the model, refresh RPC data, submit transactions, answer questions or change a pending
+payment. Wallet getters use the separate wallet service; if it is offline they report `unavailable`.
+
+| Store | Resources for `/get` |
+| --- | --- |
+| Agent DB1–DB3 | `amounts`, `contacts`, `recipients` |
+| Agent DB4–DB7 | `balances`, `limits`, `transactions`, `autopays` |
+| Agent DB8 | `session`, `prompts`, `history` (handed-off requests) |
+| Agent delivery journal | `handoffs` |
+| Wallet execution database | `requests`, `steps`, `reports`, `wallet-autopays`, `watchers`, `approvals` |
+| Incoming-transfer cache | `received` |
+| CRE snapshots | `cre-status`, `cre-plans`, `cre-submissions`, `cre-build` |
+
+Examples:
+
+```text
+/get contacts --chain base
+/get transactions --status executed --token USDC --limit 10
+/get steps --request req_0123456789ab
+/get autopays --status active --json
+/get received --chain arbitrum
+/get cre-submissions
+```
+
+Use `/get <resource> --help` for the filters that resource accepts. Lists default to 25 records, with a maximum of
+100 per page; repeat the filters with `--offset <n>` to continue. `--json` shows the structured response, including
+pagination, source availability and snapshot time. `/copy` copies the selected text, or the latest full reply when
+nothing is selected. Amounts remain decimal strings and addresses remain complete.
+
+Temporary amount/recipient records, prompts and history are restricted to the current session and retain the
+existing session-clear lifecycle. The getters project readable request details and execution progress; they omit
+credentials, signed transaction bytes, executable wallet-call payloads and signed delegations. Missing balance reads
+show unavailable amounts rather than old values or invented zeroes. Incoming history is opt-in and limited to its
+existing seven-day cache. CRE submissions are observations, not proof of a finalized payment.
+
+### Edit the address book
+
+`/contacts` opens an interactive table in **Read** mode. Each contact shows its wallet address and all saved networks.
+Use ↑/↓ or click a row to select a contact, then press **E** or click **Edit**. Tab moves between the name, address and
+network checkboxes; Space toggles a network. **Ctrl+S / Save** writes the changes, and **Esc / Cancel** discards them.
+Esc in Read mode returns to the conversation. PgUp/PgDn changes pages; R reloads contacts.
+
+Names and addresses are validated, duplicate names/addresses are rejected, and at least one configured network must
+remain selected. Saved networks removed from configuration are shown so you can explicitly uncheck them. The save updates all network rows together. If another operation changed the contact while it was
+open, cancel and reload before editing again. Changing an address clears its old ENS association. Existing payment
+summaries keep their original recipients; create a new payment to use an updated contact. An open ENS question also
+keeps its displayed saved address. Choosing its new ENS address after a contact edit asks you to start the payment
+again, so the older question cannot overwrite your edits.
+
+The editor supports mouse-drag and Shift+Arrow/Home/End selection, Ctrl+C/X/V, and safe terminal paste. In Read mode,
+Ctrl+C copies the selected contact's full address. `/get contacts` remains available for inspecting individual rows.
+Restart the agent and CLI after rebuilding to use the new editor.
+
+### Select, copy and paste
+
+Drag across conversation text or the input to select it. Shift+Left/Right/Home/End extends an input selection;
+`Ctrl+C` copies the selection, and `Ctrl+X` cuts selected input only after copying succeeds. With no selection, the
+existing Ctrl+C behavior remains: clear a typed draft, or press twice on an empty line to exit. `Ctrl+A` still moves
+to the beginning of the input. Esc clears a selection before clearing the input.
+
+`Ctrl+V` or `/paste` reads the system clipboard into the input. Your terminal's normal paste shortcut also works
+(e.g. Cmd+V on macOS). Pasted newlines become spaces and controls are removed; paste never submits a request.
+Bracketed paste and UTF-8 are buffered across terminal input chunks. Paste reads are limited to 1 MB; an oversized
+bracketed paste is discarded. `/select all` selects the conversation, `/select clear` clears it, and `/copy` without
+a selection copies the latest reply. Drag-copy removes UI marks and preserves addresses across soft line wraps.
+
+Clipboard access uses `pbcopy`/`pbpaste` on macOS, `clip`/PowerShell on Windows, and `wl-copy`/`wl-paste` or
+`xclip` on Linux (`xsel` is an additional read fallback). If a clipboard tool is unavailable, the CLI reports that
+and preserves the input. Mouse scrolling and cube steering remain available.
+
 ### Wallet information and the shared contract
 
 Common address and balance questions bypass Ollama and RPC, even with chat disabled or the model offline. Each

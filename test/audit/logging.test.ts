@@ -77,11 +77,13 @@ describe('log call sites (static search)', () => {
     expect(bad).toEqual([]);
   });
 
-  it('no console.* / stdout writes in src; stderr only the fixed startup-failed line', () => {
+  it('service code has no console or stdout writes; the CLI entry owns terminal output', () => {
     const hits: string[] = [];
     for (const f of files)
       for (const l of code(f.text).split('\n'))
-        if (/console\.|process\.std(out|err)/.test(l)) hits.push(`${f.path}: ${l.trim()}`);
+        // CLI output is the user interface. Console logging remains forbidden everywhere.
+        if (/console\./.test(l) || (f.path !== 'cli/main.ts' && /process\.std(out|err)/.test(l)))
+          hits.push(`${f.path}: ${l.trim()}`);
     expect(hits).toEqual(["index.ts: process.stderr.write('agent-layer: startup failed\\n');"]);
   });
 

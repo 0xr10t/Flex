@@ -451,6 +451,8 @@ export const SKIP_REASON = {
 // ───────────────────────────── §13.3 fixed replies, §8.14, §13.1 framing ─────────────────────────────
 
 export const REPLY = {
+  CONTACT_CHANGED: () =>
+    'The contact changed while this question was open. Please start the payment again to use its current details.',
   /** SQ-CHAT-01/02: failures only; successful general replies are model-authored. */
   CHAT_TOO_LONG: () => 'Please shorten your message and try again.',
   CHAT_UNAVAILABLE: () => "I couldn't answer that right now. Please try again.",

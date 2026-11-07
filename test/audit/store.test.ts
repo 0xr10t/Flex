@@ -228,7 +228,7 @@ describe('§7.2 / §16.4 write paths', () => {
       { path: 'recipients/resolve.ts', function: 'answerName', method: 'addContact' },
     ]);
     expect(calls.filter((site) => site.method === 'updateAddressForName')).toEqual([
-      { path: 'recipients/resolve.ts', function: 'answerEnsChanged', method: 'updateAddressForName' },
+      { path: 'recipients/resolve.ts', function: 'updateEnsContactAfterConfirmation', method: 'updateAddressForName' },
     ]);
     expect(
       calls.filter((site) => !/^(?:find|list|get)|^(?:addContact|updateAddressForName)$/.test(site.method)),

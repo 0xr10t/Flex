@@ -3,6 +3,9 @@
 // its number, members by their numbers, or your own words), or a Yes/No on a summary. It renders every reply as lines
 // for the conversation, and when a plan has gone to the wallet it opens the wallet's MetaMask approval page.
 
+import { ContactsPanel } from './contacts.js';
+import { copyText, readClipboard } from './open.js';
+import { dataCatalog, parseGetter, renderData } from './data.js';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import type { Question } from '../contracts/types.js';
@@ -26,6 +29,7 @@ export interface ChatDeps {
   openPage: (url: string) => boolean;
   /** Puts text on the clipboard, for /copy. */
   copy?: (text: string) => Promise<boolean>;
+  paste?: () => Promise<string | undefined>;
   /** flexx's version, for /version. */
   version?: string;
   /** How /doctor reaches Ollama and the wallet, and checks Tor's port (tests replace them). */
@@ -186,6 +190,29 @@ export class Chat {
     return [plain('Something went wrong talking to the agent.')];
   }
 
+  async getData(args: string[]): Promise<Line[]> {
+    if (!args.length) return dataCatalog();
+    const ready = await this.ensureSession();
+    if (ready) return ready;
+    const parsed = parseGetter(args, this.sessionId!);
+    if (Array.isArray(parsed)) return parsed;
+    if (!this.api?.readData) return [plain('This agent client does not support data getters yet.', 1)];
+    try {
+      return renderData(await this.api.readData(parsed.resource, parsed.query), parsed.json);
+    } catch (e) {
+      // Read failures must not clear the question/confirmation held by this client.
+      if (e instanceof AgentHttpError && e.status === 404)
+        return [
+          plain('This getter is unavailable on the running agent.', 1),
+          plain('Restart the updated agent and wallet services, or check /status.', 1),
+        ];
+      return [
+        plain('Could not read this data. Your pending request is unchanged.', 1),
+        plain('Check /status or /doctor.', 1),
+      ];
+    }
+  }
+
   /** `/balance`: asks the agent for the balances. */
   balance(): Promise<Line[]> {
     return this.send('what is my balance');
@@ -344,9 +371,12 @@ export class Chat {
 
   /** `/copy`: puts the latest reply on the clipboard. */
   async copyLast(ctx: CommandContext): Promise<Line[]> {
-    if (!ctx.lastReply) return [plain('There is no reply to copy yet.', 1)];
-    const copied = await (this.deps.copy?.(ctx.lastReply) ?? Promise.resolve(false));
-    return copied ? [plain('Copied the last reply to the clipboard.', 1)] : [plain("Couldn't reach the clipboard.", 1)];
+    const text = ctx.selectedText ?? ctx.lastReply;
+    if (!text) return [plain('There is no reply to copy yet.', 1)];
+    const copied = await (this.deps.copy?.(text) ?? Promise.resolve(false));
+    return copied
+      ? [plain(ctx.selectedText ? 'Copied selection to the clipboard.' : 'Copied the last reply to the clipboard.', 1)]
+      : [plain("Couldn't reach the clipboard.", 1)];
   }
 
   /** Closes the session (the agent clears its data) and stops an agent this CLI started. */
@@ -356,10 +386,40 @@ export class Chat {
     this.endpoint?.stop();
   }
 
+  async contacts(): Promise<CommandResult> {
+    const status = await this.ensureSession();
+    if (status) return status;
+    const api = this.api!;
+    if (!api.listContacts || !api.updateContact)
+      return [plain('Address-book editing is unavailable. Restart the agent after updating.')];
+    try {
+      const page = await api.listContacts();
+      return {
+        kind: 'panel',
+        panel: new ContactsPanel(page, {
+          list: (offset) => api.listContacts!(offset),
+          save: (id, edit) => api.updateContact!(id, edit),
+          copy: this.deps.copy ?? copyText,
+          paste: this.deps.paste ?? readClipboard,
+        }),
+      };
+    } catch {
+      return [plain('Could not load contacts. Check /status and restart the agent after updating.')];
+    }
+  }
+
   /** The slash commands this conversation adds to the box. */
   commands(): Command[] {
     const wrap = (f: () => Promise<Line[]> | Line[]) => async (): Promise<CommandResult> => f();
     return [
+      { name: 'db', summary: 'list the databases, caches and getter commands', run: () => dataCatalog() },
+      {
+        name: 'get',
+        summary: 'read local records without changing the pending payment',
+        args: '<resource> [filters] [--json]',
+        run: (args) => this.getData(args),
+      },
+      { name: 'contacts', summary: 'read or edit saved contacts and their networks', run: () => this.contacts() },
       { name: 'balance', summary: 'show your balances', aliases: ['balances'], run: wrap(() => this.balance()) },
       {
         name: 'limits',

@@ -78,6 +78,9 @@ describe('§16.4 outbound network calls (static inventory)', () => {
       .sort();
     // quarantine/ssrf.ts imports node:net only for BlockList (no sockets).
     expect(hits).toEqual([
+      // The terminal's authenticated local API client and setup/health probes.
+      'cli/agent/client.ts',
+      'cli/chat.ts',
       'handoff/execution-client.ts',
       'llm/ollama.ts',
       'quarantine/fetch.ts',

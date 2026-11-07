@@ -1,6 +1,7 @@
 // Implements: §9.7 (one question at a time, in payee order; attempt counting) — the resumable S6 progress kept in
 // `req.step_state.s6` (contracts step.ts: an AnswerHandler returning `continue` re-enters S6, which resumes here).
 
+import type { Db2Row } from '../contracts/repos.js';
 import type { Address, AgentRequest, ChainId, GroupPh, Question, Span } from '../contracts/types.js';
 import type { ChainAddress } from './ens.js';
 import type { MemberLookup } from './group.js';
@@ -40,7 +41,7 @@ export type Flow =
   /** Q_ENS_CHAIN pending (§9.3 step 6). */
   | { t: 'ens_chain'; name: string; found: ChainAddress[]; origin: Origin; attempt: number }
   /** Q_ENS_CHANGED pending (§9.4). `fresh` null = "no address now" variant. */
-  | { t: 'ens_changed'; name_key: string; ens: string; saved: Address; fresh: Address | null }
+  | { t: 'ens_changed'; name_key: string; ens: string; saved: Address; fresh: Address | null; rows: Db2Row[] }
   /** §9.6 group flow; `stage` names the pending question. */
   | {
       t: 'group';

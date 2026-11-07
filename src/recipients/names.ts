@@ -36,7 +36,7 @@ export type NameCheck = { ok: true; name: string } | { ok: false; reason: 'inval
  * back-reference word, or a string starting with `0x`; `name_key` not already used in DB2.
  * The answer is trimmed before checking; the stored name is the trimmed text.
  */
-export function checkContactName(text: string, config: Config, repos: Repos): NameCheck {
+export function checkContactName(text: string, config: Config, repos: Repos, exceptNameKey?: string): NameCheck {
   const name = text.trim();
   if (!NAME_RE.test(name)) return { ok: false, reason: 'invalid' };
   const key = nameKey(name);
@@ -46,6 +46,6 @@ export function checkContactName(text: string, config: Config, repos: Repos): Na
   const tokenAliases = [...TOKENS.USDC.aliases, ...TOKENS.ETH.aliases, 'usdc', 'eth'].map(nameKey);
   if (tokenAliases.includes(key)) return { ok: false, reason: 'invalid' };
   if (BACK_REFERENCE_WORDS.map(nameKey).includes(key)) return { ok: false, reason: 'invalid' };
-  if (repos.db2.findByNameKey(key).length > 0) return { ok: false, reason: 'taken' };
+  if (key !== exceptNameKey && repos.db2.findByNameKey(key).length > 0) return { ok: false, reason: 'taken' };
   return { ok: true, name };
 }

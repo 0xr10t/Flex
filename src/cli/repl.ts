@@ -10,7 +10,9 @@
 // conversation. A line starting with `/` runs a command from the table; anything else goes to `onMessage` (the agent).
 
 import { put, text, type Frame, type Rect, type Tone } from './render/frame.js';
-import type { KeyEvent } from './input.js';
+import { bounds, pasteText, transcriptMap, type Selection, type TextRow } from './selection.js';
+import type { CliPanel } from './panel.js';
+import type { InputEvent, KeyEvent } from './input.js';
 
 export interface Segment {
   text: string;
@@ -20,13 +22,14 @@ export interface Segment {
 /** One line of output, possibly in several tones. */
 export type Line = Segment[];
 
-export type CommandResult = Line[] | 'clear' | 'quit';
+export type CommandResult = Line[] | 'clear' | 'quit' | { kind: 'panel'; panel: CliPanel };
 
 /** What a command can reach in the box besides its arguments. */
 export interface CommandContext {
   commands: readonly Command[];
   /** The text of the latest reply, for /copy. */
   lastReply: string | undefined;
+  selectedText?: string;
 }
 
 export interface Command {
@@ -54,6 +57,9 @@ export const SHORTCUTS: ReadonlyArray<[string, string]> = [
   ['ctrl-a ctrl-e', 'start / end of the line'],
   ['ctrl-u ctrl-k', 'delete to the start / end of the line'],
   ['ctrl-w', 'delete the previous word'],
+  ['drag · shift-arrows', 'select text'],
+  ['ctrl-c · ctrl-x', 'copy selection · cut selected input'],
+  ['ctrl-v', 'paste clipboard without sending'],
   ['esc', 'clear the line'],
   ['ctrl-l', 'clear the conversation'],
   ['ctrl-c ctrl-c', 'leave flexx'],
@@ -104,6 +110,8 @@ const MENU_ROWS = 8;
 const WHEEL_ROWS = 3;
 
 export interface ReplOptions {
+  copy?: (text: string) => Promise<boolean>;
+  paste?: () => Promise<string | undefined>;
   /** Commands typed as `/name`, after the built-in help, shortcuts, clear and exit. */
   commands?: readonly Command[];
   /** Where anything that isn't a command goes; without it such lines are unknown commands. */
@@ -117,6 +125,7 @@ export interface ReplOptions {
 const SCROLLBACK = 300;
 
 export class Repl {
+  private panel: CliPanel | undefined;
   private entries: Entry[] = [WELCOME];
   /** The input line as code points, and the cursor's index into it. */
   private buffer: string[] = [];
@@ -139,13 +148,52 @@ export class Repl {
   private scroll = 0;
   private pageRows = 10;
   private pendingWork: Promise<void> | undefined;
+  private clipboardWork: Promise<void> | undefined;
+  private selection: Selection | undefined;
+  private dragging = false;
+  private editVersion = 0;
+  private entryVersion = 0;
+  private mapping: { version: number; width: number; value: ReturnType<typeof transcriptMap> } | undefined;
+  private clipboardNote = '';
+  private transcriptView: { rect: Rect; first: number; rows: TextRow[]; chars: string[] } | undefined;
+  private inputView: { x: number; y: number; w: number; from: number } | undefined;
 
   constructor(private readonly opts: ReplOptions = {}) {
-    this.commands = [...BUILTIN_COMMANDS, ...(opts.commands ?? [])];
+    this.commands = [
+      ...BUILTIN_COMMANDS,
+      {
+        name: 'select',
+        summary: 'select the transcript, or clear selection',
+        args: '[all|clear]',
+        run: (args) => {
+          if (args.length > 1 || (args[0] && !['all', 'clear'].includes(args[0])))
+            return [[t('Use /select all or /select clear.')]];
+          if (args[0] === 'clear') this.selection = undefined;
+          else {
+            const map = this.mapTranscript(this.transcriptView?.rect.w ?? 80);
+            this.selection = { kind: 'transcript', anchor: 0, focus: map.chars.length };
+          }
+          return [];
+        },
+      },
+      {
+        name: 'paste',
+        summary: 'paste the clipboard into the input without sending',
+        run: () => {
+          this.pasteClipboard();
+          return [];
+        },
+      },
+      ...(opts.commands ?? []),
+    ];
   }
 
   private now(): number {
     return this.opts.now?.() ?? Date.now();
+  }
+
+  get hasPanel(): boolean {
+    return this.panel !== undefined;
   }
 
   /** True while a reply is on its way; Enter waits until it has arrived. */
@@ -159,8 +207,9 @@ export class Repl {
   }
 
   /** Resolves once no reply is on its way (for tests and shutdown). */
-  idle(): Promise<void> {
-    return this.pendingWork ?? Promise.resolve();
+  async idle(): Promise<void> {
+    await Promise.all([this.pendingWork, this.clipboardWork]);
+    await this.panel?.idle();
   }
 
   /** The current input line. */
@@ -201,11 +250,62 @@ export class Repl {
 
   /** Applies one key; returns 'quit' when the session should end. */
   handle(ev: KeyEvent): 'quit' | undefined {
+    if (this.panel) {
+      if (this.panel.handle(ev) === 'close') this.panel = undefined;
+      return undefined;
+    }
     if (ev.key !== 'interrupt' && ev.key !== 'eof') this.exitArmedUntil = 0;
     // the shortcuts panel: ? or Esc closes it; any other key closes it and does its usual thing
     if (this.shortcutsOpen) {
       this.shortcutsOpen = false;
       if (ev.key === 'escape' || (ev.key === 'char' && ev.char === '?')) return undefined;
+    }
+    if (ev.key === 'interrupt' && this.selectedText()) {
+      this.copySelection(false);
+      return undefined;
+    }
+    if (ev.key === 'cut') {
+      this.copySelection(true);
+      return undefined;
+    }
+    if (ev.key === 'clipboard-paste') {
+      this.pasteClipboard();
+      return undefined;
+    }
+    if (ev.key === 'escape' && this.selection) {
+      this.selection = undefined;
+      this.dragging = false;
+      return undefined;
+    }
+    if (['left', 'right', 'home', 'end'].includes(ev.key)) {
+      const previous = this.cursor;
+      const selected = this.selection?.kind === 'input' ? this.selection : undefined;
+      if (ev.shift) {
+        const anchor = selected?.anchor ?? previous;
+        this.cursor =
+          ev.key === 'left'
+            ? Math.max(0, previous - 1)
+            : ev.key === 'right'
+              ? Math.min(this.buffer.length, previous + 1)
+              : ev.key === 'home'
+                ? 0
+                : this.buffer.length;
+        this.selection = anchor === this.cursor ? undefined : { kind: 'input', anchor, focus: this.cursor };
+        return undefined;
+      }
+      if (selected) {
+        const [from, to] = bounds(selected);
+        this.cursor = ev.key === 'left' ? from : ev.key === 'right' ? to : ev.key === 'home' ? 0 : this.buffer.length;
+        this.selection = undefined;
+        return undefined;
+      }
+    }
+    if (
+      ['backspace', 'delete', 'kill-start', 'kill-end', 'kill-word'].includes(ev.key) &&
+      this.selection?.kind === 'input'
+    ) {
+      this.edit(() => this.removeSelectedInput());
+      return undefined;
     }
     const menu = this.menu;
     if (menu.length) {
@@ -241,7 +341,7 @@ export class Repl {
         break;
       case 'paste':
         // a pasted newline must never send the line: paste lands as one line of text
-        this.edit(() => this.insert([...(ev.char ?? '').replace(/\s+/g, ' ')]));
+        this.edit(() => this.insert([...pasteText(ev.char ?? '')]));
         break;
       case 'backspace':
         this.edit(() => this.cursor > 0 && this.buffer.splice(--this.cursor, 1));
@@ -293,6 +393,8 @@ export class Repl {
         break;
       case 'clear':
         this.entries = [];
+        this.entryVersion++;
+        this.selection = undefined;
         this.scroll = 0;
         break;
       case 'escape':
@@ -316,8 +418,109 @@ export class Repl {
     return undefined;
   }
 
+  private mapTranscript(width: number): ReturnType<typeof transcriptMap> {
+    if (this.mapping?.version !== this.entryVersion || this.mapping.width !== width)
+      this.mapping = { version: this.entryVersion, width, value: transcriptMap(this.entries, width) };
+    return this.mapping.value;
+  }
+  selectedText(): string | undefined {
+    if (!this.selection) return undefined;
+    const [from, to] = bounds(this.selection);
+    const chars =
+      this.selection.kind === 'input' ? this.buffer : this.mapTranscript(this.transcriptView?.rect.w ?? 80).chars;
+    const text = chars.slice(from, to).join('');
+    return text || undefined;
+  }
+  private removeSelectedInput(): void {
+    if (this.selection?.kind !== 'input') return;
+    const [from, to] = bounds(this.selection);
+    this.buffer.splice(from, to - from);
+    this.cursor = from;
+    this.selection = undefined;
+  }
+  private copySelection(cut: boolean): void {
+    const selected = this.selectedText();
+    if (!selected || (cut && this.selection?.kind !== 'input')) return;
+    const version = this.editVersion;
+    const selection = this.selection;
+    this.clipboardWork = (this.opts.copy?.(selected) ?? Promise.resolve(false))
+      .catch(() => false)
+      .then((ok) => {
+        this.clipboardNote = ok ? 'Copied selection.' : 'Clipboard unavailable.';
+        if (ok && cut && version === this.editVersion && this.selection === selection)
+          this.edit(() => this.removeSelectedInput());
+      });
+  }
+  private pasteClipboard(): void {
+    const version = this.editVersion;
+    this.clipboardWork = (this.opts.paste?.() ?? Promise.resolve(undefined))
+      .catch(() => undefined)
+      .then((text) => {
+        if (text === undefined) {
+          this.clipboardNote = 'Clipboard unavailable; use your terminal paste shortcut.';
+          return;
+        }
+        if (version !== this.editVersion) {
+          this.clipboardNote = 'Input changed; paste again when ready.';
+          return;
+        }
+        this.handle({ kind: 'key', key: 'paste', char: text });
+      });
+  }
+  /** Mouse coordinates are terminal cells (one based). Text selections use stable source offsets. */
+  mouse(ev: Extract<InputEvent, { kind: 'mouse' }>): void {
+    if (this.panel) return this.panel.mouse(ev);
+    if (ev.button !== 0) return;
+    const x = ev.col - 1,
+      y = ev.row - 1;
+    const input = this.inputView;
+    const view = this.transcriptView;
+    if (ev.action === 'down') {
+      this.clipboardNote = '';
+      if (input && y === input.y && x >= input.x && x <= input.x + input.w) {
+        const at = Math.min(this.buffer.length, Math.max(0, input.from + x - input.x));
+        this.cursor = at;
+        this.selection = { kind: 'input', anchor: at, focus: at };
+        this.dragging = true;
+      } else if (
+        view &&
+        x >= view.rect.x &&
+        x < view.rect.x + view.rect.w &&
+        y >= view.rect.y &&
+        y < view.rect.y + view.rect.h
+      ) {
+        const at = this.transcriptOffset(x, y);
+        this.selection = { kind: 'transcript', anchor: at, focus: at };
+        this.dragging = true;
+      } else {
+        this.selection = undefined;
+        this.dragging = false;
+      }
+    } else if (this.dragging && this.selection) {
+      if (this.selection.kind === 'input' && input) {
+        this.cursor = Math.min(this.buffer.length, Math.max(0, input.from + x - input.x));
+        this.selection.focus = this.cursor;
+      } else if (view) {
+        this.selection.focus = this.transcriptOffset(x, y);
+        if (y < view.rect.y) this.scrollBy(1);
+        else if (y >= view.rect.y + view.rect.h) this.scrollBy(-1);
+      }
+      if (ev.action === 'up') {
+        this.dragging = false;
+        if (this.selection.anchor === this.selection.focus) this.selection = undefined;
+      }
+    }
+  }
+  private transcriptOffset(x: number, y: number): number {
+    const v = this.transcriptView!;
+    const index = v.first + Math.max(0, Math.min(v.rect.h - 1, y - v.rect.y));
+    const row = v.rows[Math.min(index, v.rows.length - 1)];
+    return row ? Math.min(row.end, row.start + Math.max(0, x - v.rect.x - row.prefix)) : 0;
+  }
+
   /** One wheel notch: back through the conversation (-1) or forward (1). */
   wheel(delta: -1 | 1): void {
+    if (this.panel) return this.panel.wheel(delta);
     this.scrollBy(-delta * WHEEL_ROWS);
   }
 
@@ -338,17 +541,21 @@ export class Repl {
   /** An edit to the line: it reopens the palette and moves its highlight back to the best match. */
   private edit(change: () => unknown): void {
     change();
+    this.editVersion++;
+    this.clipboardNote = '';
     this.menuClosed = false;
     this.menuIndex = 0;
   }
 
   private insert(chars: string[]): void {
-    this.buffer.splice(this.cursor, 0, ...chars);
+    this.removeSelectedInput();
+    this.buffer = this.buffer.slice(0, this.cursor).concat(chars, this.buffer.slice(this.cursor));
     this.cursor += chars.length;
   }
 
   private setInput(chars: string[]): void {
     this.buffer = chars;
+    if (this.selection?.kind === 'input') this.selection = undefined;
     this.cursor = chars.length;
   }
 
@@ -384,7 +591,11 @@ export class Repl {
       this.push({ kind: 'reply', lines: [unknownCommand('/' + name)] });
       return undefined;
     }
-    const result = command.run(args, { commands: this.commands, lastReply: this.lastReply() });
+    const result = command.run(args, {
+      commands: this.commands,
+      lastReply: this.lastReply(),
+      selectedText: this.selectedText(),
+    });
     if (result instanceof Promise) {
       this.work(result);
       return undefined;
@@ -405,8 +616,15 @@ export class Repl {
     if (result === 'quit') return 'quit';
     if (result === 'clear') {
       this.entries = [];
+      this.entryVersion++;
+      this.selection = undefined;
       this.scroll = 0;
-    } else this.push({ kind: 'reply', lines: result });
+    } else if (!Array.isArray(result)) {
+      this.panel = result.panel;
+      this.selection = undefined;
+      this.dragging = false;
+      this.exitArmedUntil = 0;
+    } else if (result.length) this.push({ kind: 'reply', lines: result });
     return undefined;
   }
 
@@ -426,7 +644,11 @@ export class Repl {
 
   private push(entry: Entry): void {
     this.entries.push(entry);
-    if (this.entries.length > SCROLLBACK) this.entries.splice(0, this.entries.length - SCROLLBACK);
+    this.entryVersion++;
+    if (this.entries.length > SCROLLBACK) {
+      this.entries.splice(0, this.entries.length - SCROLLBACK);
+      this.selection = undefined;
+    }
   }
 
   /** The conversation as display rows `width` columns wide: marks, wrapping and the blank rows between turns. */
@@ -454,12 +676,29 @@ export class Repl {
    * wheel scrolls back, with a marker on the last row saying how much newer conversation is below.
    */
   drawConversation(f: Frame, r: Rect): void {
+    if (this.panel) {
+      this.transcriptView = undefined;
+      return this.panel.draw(f, r);
+    }
     const rows = this.rows(r.w);
+    const mapping = this.mapTranscript(r.w);
     this.pageRows = Math.max(2, r.h);
     const maxScroll = Math.max(0, rows.length - r.h);
     this.scroll = Math.min(this.scroll, maxScroll);
     const end = rows.length - this.scroll;
-    rows.slice(Math.max(0, end - r.h), end).forEach((line, i) => drawLine(f, r.x, r.y + i, line));
+    const first = Math.max(0, end - r.h);
+    this.transcriptView = { rect: r, first, rows: mapping.rows, chars: mapping.chars };
+    rows.slice(first, end).forEach((line, i) => drawLine(f, r.x, r.y + i, line));
+    if (this.selection?.kind === 'transcript') {
+      const [from, to] = bounds(this.selection);
+      mapping.rows.slice(first, end).forEach((row, i) => {
+        for (let at = Math.max(from, row.start); at < Math.min(to, row.end); at++) {
+          const x = r.x + row.prefix + at - row.start;
+          const y = r.y + i;
+          if (y < r.y + r.h && x < r.x + r.w) f.tone[y * f.cols + x] = 4;
+        }
+      });
+    }
     if (this.scroll > 0) {
       const y = r.y + r.h - 1;
       for (let x = r.x; x < r.x + r.w; x++) put(f, x, y, ' ');
@@ -478,19 +717,28 @@ export class Repl {
       put(f, col, y - 1, '─', 1);
       put(f, col, y + 1, '─', 1);
     }
+    if (this.panel) {
+      this.inputView = undefined;
+      text(f, x + 1, y, this.panel.hint.slice(0, Math.max(0, w - 2)), 1);
+      return;
+    }
     drawLine(f, x + 2, y + 1, this.hints());
 
     text(f, x + 1, y, USER_MARK, 2);
     const start = x + 1 + USER_MARK.length;
     const room = x + w - 1 - start;
-    const cursorOn = Math.floor(nowMs / 500) % 2 === 0;
+    const from = Math.max(0, this.cursor - room + 1);
+    this.inputView = { x: start, y, w: room, from };
+    const cursorOn = !this.selection && Math.floor(nowMs / 500) % 2 === 0;
     if (this.buffer.length === 0) {
       text(f, start, y, PLACEHOLDER.slice(0, room), 1);
       if (cursorOn) put(f, start, y, '█', 0);
     } else {
       // scrolled so the cursor stays visible
-      const from = Math.max(0, this.cursor - room + 1);
-      this.buffer.slice(from, from + room).forEach((c, i) => put(f, start + i, y, c, 0));
+      this.buffer.slice(from, from + room).forEach((c, i) => {
+        const range = this.selection?.kind === 'input' ? bounds(this.selection) : undefined;
+        put(f, start + i, y, c, range && from + i >= range[0] && from + i < range[1] ? 4 : 0);
+      });
       // after `/name `, the arguments it takes
       const hint = this.argHint();
       if (hint && this.cursor === this.buffer.length)
@@ -508,6 +756,8 @@ export class Repl {
   /** The key hints on the rule under the input: what the keys do right now. */
   private hints(): Line {
     const sep = t(' · ', 1);
+    if (this.clipboardNote) return [t(' ' + this.clipboardNote + ' ', 2)];
+    if (this.selection && this.selectedText()) return [t(' Ctrl-C copy · Esc clear selection ', 2)];
     if (this.exitArmed) return [t(' Press Ctrl-C again to exit ', 2)];
     if (this.menu.length)
       return [

@@ -5,7 +5,7 @@ import type { Frame } from './frame.js';
 
 export type ColorMode = 'truecolor' | '256' | 'basic' | 'none';
 
-export type Ink = 'fg' | 'dim' | 'accent' | 'mark';
+export type Ink = 'fg' | 'dim' | 'accent' | 'mark' | 'selection';
 
 export interface Palette {
   bg: string;
@@ -48,7 +48,7 @@ export interface Run {
 
 export type Row = Run[];
 
-const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark'];
+const TONE_INK: readonly Ink[] = ['fg', 'dim', 'accent', 'mark', 'selection'];
 const HEX_RE = /^#([0-9a-fA-F]{6})$/;
 const ESC = '\u001b[';
 
@@ -76,20 +76,20 @@ export function to256(hex: string): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30 };
+const BASIC_FG: Record<Ink, number> = { fg: 97, dim: 90, accent: 33, mark: 30, selection: 30 };
 
 function fgCode(mode: ColorMode, palette: Palette, ink: Ink): string {
   if (mode === 'none') return '';
   if (mode === 'basic') return `${ESC}${BASIC_FG[ink]}m`;
-  if (mode === '256') return `${ESC}38;5;${to256(palette[ink])}m`;
-  return `${ESC}38;2;${rgb(palette[ink]).join(';')}m`;
+  if (mode === '256') return `${ESC}38;5;${to256(palette[ink === 'selection' ? 'mark' : ink])}m`;
+  return `${ESC}38;2;${rgb(palette[ink === 'selection' ? 'mark' : ink]).join(';')}m`;
 }
 
-function bgCode(mode: ColorMode, palette: Palette, marked = false): string {
-  const bg = marked ? palette.markBg : palette.bg;
+function bgCode(mode: ColorMode, palette: Palette, marked: boolean | 'selection' = false): string {
+  const bg = marked === 'selection' ? palette.accent : marked ? palette.markBg : palette.bg;
   if (mode === '256') return `${ESC}48;5;${to256(bg)}m`;
   if (mode === 'truecolor') return `${ESC}48;2;${rgb(bg).join(';')}m`;
-  if (mode === 'basic') return marked ? `${ESC}47m` : `${ESC}49m`;
+  if (mode === 'basic') return marked === 'selection' ? `${ESC}43m` : marked ? `${ESC}47m` : `${ESC}49m`;
   return '';
 }
 
@@ -106,7 +106,10 @@ export function frameRows(f: Frame): Row[] {
       const i = y * f.cols + x;
       const c = f.ch[i]!;
       const tone = f.tone[i]!;
-      const ink = c === ' ' && cur && cur.ink !== 'mark' && tone !== 3 ? cur.ink : TONE_INK[tone]!;
+      const ink =
+        c === ' ' && cur && cur.ink !== 'mark' && cur.ink !== 'selection' && tone !== 3 && tone !== 4
+          ? cur.ink
+          : TONE_INK[tone]!;
       if (cur && cur.ink === ink) cur.text += c;
       else {
         cur = { text: c, ink };
@@ -131,12 +134,13 @@ export function paintRow(row: Row, width: number, palette: Palette, mode: ColorM
   let ink: Ink | undefined;
   for (const r of row) {
     if (r.ink !== ink) {
-      if (r.ink === 'mark' || ink === 'mark') out += bgCode(mode, palette, r.ink === 'mark');
+      if (r.ink === 'mark' || ink === 'mark' || r.ink === 'selection' || ink === 'selection')
+        out += bgCode(mode, palette, r.ink === 'selection' ? 'selection' : r.ink === 'mark');
       out += fgCode(mode, palette, r.ink);
       ink = r.ink;
     }
     out += r.text;
   }
-  if (ink === 'mark') out += bgCode(mode, palette);
+  if (ink === 'mark' || ink === 'selection') out += bgCode(mode, palette);
   return out + ' '.repeat(pad) + `${ESC}0m`;
 }

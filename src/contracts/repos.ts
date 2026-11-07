@@ -286,7 +286,21 @@ export interface HandoffJournal {
   update(request_id: string, patch: Partial<Pick<HandoffJournalRow, 'status' | 'history'>>): void;
 }
 
+export interface ContactBook {
+  get(id: number): import('@flex/protocol').ContactRecord | undefined;
+  list(limit: number, offset: number): { contacts: import('@flex/protocol').ContactRecord[]; total: number };
+  edit(
+    id: number,
+    draft: import('@flex/protocol').ContactEdit,
+  ):
+    | { ok: true; contact: import('@flex/protocol').ContactRecord }
+    | { ok: false; reason: 'not_found' | 'stale' | 'name_taken' | 'address_has_other_name' };
+}
+
 export interface Repos {
+  contacts?: ContactBook;
+  /** Read-only UI inspection, implemented by the SQL repository factory. */
+  readData?: (resource: string, query: import('@flex/protocol').DataQuery) => import('@flex/protocol').DataPage;
   db1: Db1AmountPlaceholders;
   db2: Db2AddressBook;
   db3: Db3AddressPlaceholders;

@@ -7,6 +7,8 @@ import type { ChainId } from '../../contracts/types.js';
 import { newPlaceholder } from '../../util/ids.js';
 import type { Database } from '../database.js';
 import type { RepoOptions } from './common.js';
+import { createContactBook } from './contacts.js';
+import { createDataReader } from './data.js';
 import { createDb1 } from './db1.js';
 import { createDb2 } from './db2.js';
 import { createDb3 } from './db3.js';
@@ -48,6 +50,8 @@ export function createRepos(db: Database, options: Partial<RepoOptions> = {}): R
   });
 
   return {
+    readData: createDataReader(db),
+    contacts: createContactBook(db, opts),
     db1: createDb1(db, opts),
     db2: createDb2(db, opts),
     db3: createDb3(db, opts),

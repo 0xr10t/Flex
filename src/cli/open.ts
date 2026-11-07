@@ -35,16 +35,82 @@ export function copyCommand(platform: NodeJS.Platform): [string, string[]] {
 }
 
 /** Puts `text` on the clipboard; resolves false when no clipboard command is available. */
-export function copyText(text: string, spawnImpl: typeof spawn = spawn): Promise<boolean> {
-  const [cmd, args] = copyCommand(process.platform);
-  return new Promise((resolve) => {
-    try {
-      const child = spawnImpl(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
-      child.on('error', () => resolve(false));
-      child.on('close', (code) => resolve(code === 0));
-      child.stdin?.end(text);
-    } catch {
-      resolve(false);
-    }
-  });
+export async function copyText(text: string, spawnImpl: typeof spawn = spawn): Promise<boolean> {
+  const commands: Array<[string, string[]]> =
+    process.platform === 'linux' ? [['wl-copy', []], copyCommand(process.platform)] : [copyCommand(process.platform)];
+  for (const [cmd, args] of commands) {
+    const copied = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      let child: ReturnType<typeof spawn> | undefined;
+      const done = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => {
+        done(false);
+        child?.kill();
+      }, 3000);
+      try {
+        child = spawnImpl(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+        child.on('error', () => done(false));
+        child.on('close', (code) => done(code === 0));
+        child.stdin?.on('error', () => done(false));
+        child.stdin?.end(text);
+      } catch {
+        done(false);
+      }
+    });
+    if (copied) return true;
+  }
+  return false;
+}
+
+/** Reads only when the user asks to paste. Limit output and subprocess lifetime. */
+export async function readClipboard(spawnImpl: typeof spawn = spawn): Promise<string | undefined> {
+  const commands: Array<[string, string[]]> =
+    process.platform === 'darwin'
+      ? [['pbpaste', []]]
+      : process.platform === 'win32'
+        ? [['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Raw']]]
+        : [
+            ['wl-paste', ['--no-newline']],
+            ['xclip', ['-selection', 'clipboard', '-o']],
+            ['xsel', ['--clipboard', '--output']],
+          ];
+  for (const [command, args] of commands) {
+    const result = await new Promise<string | undefined>((resolve) => {
+      let settled = false;
+      let size = 0;
+      const chunks: Buffer[] = [];
+      const done = (value: string | undefined) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        done(undefined);
+        child?.kill();
+      }, 3000);
+      let child: ReturnType<typeof spawn> | undefined;
+      try {
+        child = spawnImpl(command, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+        child.on('error', () => done(undefined));
+        child.stdout?.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > 1_000_000) {
+            done(undefined);
+            child?.kill();
+          } else chunks.push(Buffer.from(chunk));
+        });
+        child.on('close', (code) => done(code === 0 ? Buffer.concat(chunks).toString('utf8') : undefined));
+      } catch {
+        done(undefined);
+      }
+    });
+    if (result !== undefined) return result;
+  }
+  return undefined;
 }

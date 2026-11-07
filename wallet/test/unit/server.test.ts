@@ -184,3 +184,62 @@ describe('a repeated key (rule 7)', () => {
     expect(accepted).toBe(1);
   });
 });
+
+describe('read-only wallet data', () => {
+  it('exposes execution progress without executable transaction data', async () => {
+    const e = good();
+    await post(e, e.request_id);
+    store.markApproved(e.request_id, 0);
+    store.saveSigned(e.request_id, 0, { raw: '0xdeadbeef', hash: `0x${'ab'.repeat(32)}`, nonce: 4 });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/data/steps',
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().rows[0].status).toBe('signed');
+    expect(res.body).not.toContain('deadbeef');
+    expect(res.body).not.toContain('raw_tx');
+    expect(accepted).toBe(1);
+  });
+  it('authenticates reads and rejects unknown filters', async () => {
+    expect((await app.inject({ method: 'GET', url: '/v1/data/requests' })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/v1/data/requests?limit=999',
+          headers: { authorization: `Bearer ${TOKEN}` },
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+});
+it('reads each wallet table without starting execution or exposing payloads', async () => {
+  for (const resource of ['requests', 'steps', 'reports', 'wallet-autopays', 'watchers', 'approvals']) {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/data/${resource}`,
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.statusCode, resource).toBe(200);
+    expect(res.json().rows).toEqual([]);
+  }
+  expect(accepted).toBe(0);
+});
+it('includes readable request and bridge context while omitting signing material', async () => {
+  const e = good();
+  await post(e, e.request_id);
+  store.saveStepData(e.request_id, 0, {
+    tracking_status: 'in_transit',
+    signature: 'SECRET_SIGNATURE',
+    redeem: 'SECRET_REDEEM',
+    message: { message_id: 'ccip-id', receiver: WALLET },
+  });
+  const headers = { authorization: `Bearer ${TOKEN}` };
+  const step = await app.inject({ method: 'GET', url: '/v1/data/steps', headers });
+  expect(step.json().rows[0].data).toMatchObject({ tracking_status: 'in_transit', message: { message_id: 'ccip-id' } });
+  expect(step.body).not.toMatch(/SECRET_SIGNATURE|SECRET_REDEEM/);
+  const request = await app.inject({ method: 'GET', url: '/v1/data/requests', headers });
+  expect(request.json().rows[0].intents[0].recipients).toHaveLength(2);
+});

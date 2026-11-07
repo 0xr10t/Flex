@@ -534,6 +534,9 @@ describe('setup commands', () => {
       .commands()
       .map((c) => c.name);
     expect(names).toEqual([
+      'db',
+      'get',
+      'contacts',
       'balance',
       'limits',
       'cancel',
@@ -550,5 +553,19 @@ describe('setup commands', () => {
         .commands()
         .find((c) => c.name === 'limits')?.args,
     ).toBe('[name] [token] [value]');
+  });
+});
+
+describe('database getter commands', () => {
+  it('offers a data catalog and read-only getter in the command palette', () => {
+    const chat = new Chat({
+      connect: async () => {
+        throw new Error('offline');
+      },
+      timezone: 'UTC',
+      openPage: () => false,
+    });
+    expect(chat.commands().find((c) => c.name === 'db')).toBeDefined();
+    expect(chat.commands().find((c) => c.name === 'get')).toBeDefined();
   });
 });

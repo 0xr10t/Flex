@@ -21,6 +21,15 @@ export type AnswerBody =
   | { question_id: string; selected_ids: string[] };
 
 export interface AgentApi {
+  listContacts?: (offset?: number) => Promise<import('@flex/protocol').ContactsPage>;
+  updateContact?: (
+    id: number,
+    edit: import('@flex/protocol').ContactEdit,
+  ) => Promise<import('@flex/protocol').ContactRecord>;
+  readData?: (
+    resource: string,
+    query: import('@flex/protocol').DataQuery,
+  ) => Promise<import('@flex/protocol').DataPage>;
   health(): Promise<Health>;
   openSession(timezone: string): Promise<string>;
   closeSession(sessionId: string): Promise<void>;
@@ -78,6 +87,23 @@ export class AgentClient implements AgentApi {
       throw new AgentHttpError(res.status, Array.isArray(errors) ? errors.map(String) : []);
     }
     return json as T;
+  }
+
+  readData(resource: string, query: import('@flex/protocol').DataQuery): Promise<import('@flex/protocol').DataPage> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    return this.call('GET', `/v1/data/${encodeURIComponent(resource)}?${params}`);
+  }
+
+  listContacts(offset = 0): Promise<import('@flex/protocol').ContactsPage> {
+    return this.call('GET', `/v1/contacts?offset=${offset}`);
+  }
+
+  updateContact(
+    id: number,
+    edit: import('@flex/protocol').ContactEdit,
+  ): Promise<import('@flex/protocol').ContactRecord> {
+    return this.call('PATCH', `/v1/contacts/${id}`, edit);
   }
 
   health(): Promise<Health> {
