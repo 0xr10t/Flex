@@ -45,6 +45,11 @@
     "pretest:audit": "npm --prefix packages/protocol run build",
     "pretest:live": "npm --prefix packages/protocol run build"
   },
+  "prettier": {
+    "singleQuote": true,
+    "printWidth": 120,
+    "trailingComma": "all"
+  },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
     "@scure/base": "2.4.0",
