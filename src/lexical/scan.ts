@@ -31,6 +31,7 @@ import {
   DISTRIBUTIVE_RE,
   ENS_SCAN_RE,
   GROUP_AT_MARKER_RE,
+  GROUP_BACK_REFERENCE_RE,
   GROUP_MEMBERS_MARKER_RE,
   GROUP_WORD_MARKER_RE,
   LINK_MARKER_RE,
@@ -193,15 +194,27 @@ export function lexicalScan(text: string, opts: ScanOptions): ScanResult {
 
   // ── rule 4: group markers ──
   const groups: GroupCandidate[] = [];
+  const addGroup = (r: Range & { text: string }) => {
+    if (groups.some((g) => overlaps(g, r)) || overlapsAny(r, urlMatches)) return;
+    groups.push({ ...span(r, clauses), parent: r.text });
+  };
   for (const re of [GROUP_WORD_MARKER_RE, GROUP_AT_MARKER_RE, GROUP_MEMBERS_MARKER_RE]) {
     for (const m of matches(re, text)) {
-      const parent = m.m[1] ?? '';
+      // The members pattern has one alternative per word order; whichever matched holds the parent.
+      const parent = m.m.slice(1).find((g) => g !== undefined) ?? '';
       const start = m.start + m.text.lastIndexOf(parent);
-      const r = { start, end: start + parent.length, text: parent };
-      if (groups.some((g) => overlaps(g, r))) continue;
-      if (overlapsAny(r, urlMatches)) continue;
-      groups.push({ ...span(r, clauses), parent });
+      addGroup({ start, end: start + parent.length, text: parent });
     }
+  }
+  // "…, everyone under that org": the group is the one ENS name the message mentions (none or several: no guess).
+  if (groups.length === 0 && matches(GROUP_BACK_REFERENCE_RE, text).length > 0) {
+    const named = ensRaw.filter((m) => {
+      if (overlapsAny(m, urlMatches) || overlapsAny(m, addressMatches)) return false;
+      const prev = text[m.start - 1] ?? '';
+      return !(prev === '@' && /\S/.test(text[m.start - 2] ?? '')) && text[m.end] !== '@';
+    });
+    const distinct = new Set(named.map((m) => m.text.toLowerCase()));
+    if (distinct.size === 1) addGroup(named[0]!);
   }
   groups.sort((a, b) => a.start - b.start);
 

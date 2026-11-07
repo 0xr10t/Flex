@@ -301,3 +301,54 @@ describe('lexical (§8.3, C-443)', () => {
     });
   });
 });
+
+describe('ENS group wording (how people ask to pay everyone under a name)', () => {
+  it.each([
+    // The prompt that used to be read as a single payment to iitr.eth itself.
+    'I want to pay people under the iitr.eth ENS name, everyone that there is under that org',
+    'pay people under iitr.eth',
+    'pay the members of iitr.eth',
+    'pay everybody in the iitr.eth org',
+    'send to each member of iitr.eth',
+    'send to all the people under the ens organisation iitr.eth',
+    'send to everyone who is under iitr.eth',
+    'pay all members registered under iitr.eth',
+    'send to all subnames of iitr.eth',
+    'send to the subdomains under iitr.eth',
+    'pay everyone belonging to the iitr.eth community',
+    'pay iitr.eth subnames',
+    'pay all iitr.eth people',
+    "pay iitr.eth's members",
+    "pay iitr.eth's team",
+    'pay *.iitr.eth',
+    'iitr.eth, pay everyone under that org',
+    'pay everyone in this ENS domain: iitr.eth',
+  ])('"%s" is a payment to the members of iitr.eth', (typed) => {
+    const s = scan(typed);
+    expect(s.groups.map((g) => g.parent)).toEqual(['iitr.eth']);
+    expect(typed.slice(s.groups[0]!.start, s.groups[0]!.end).toLowerCase()).toBe('iitr.eth');
+    expect(s.ens).toEqual([]);
+  });
+
+  it.each([
+    'send 1 usdc to iitr.eth',
+    'send 1 usdc to vitalik.eth on base',
+    'send 1 usdc each to alice.eth and bob.eth',
+    'send 1 usdc to all of alice.eth and bob.eth',
+    'send 1 usdc to all of alice.eth, bob.eth',
+    'send 5 usdc to vitalik.eth and everyone in the team',
+    'pay everyone under that org',
+    'pay alice.eth and bob.eth, everyone under that domain',
+    'ask all iitr.eth memberships to renew',
+    'send 1 usdc to alice@iitr.eth',
+    'send 1 eth to everyone under alice@iitr.eth',
+    'send all my usdc to alice.eth',
+  ])('"%s" names no group', (typed) => {
+    expect(scan(typed).groups).toEqual([]);
+  });
+
+  it('a back-reference with several ENS names is not guessed', () => {
+    const s = scan('pay alice.eth and bob.eth, everyone under that domain');
+    expect(s.ens.map((e) => e.normalized)).toEqual(['alice.eth', 'bob.eth']);
+  });
+});

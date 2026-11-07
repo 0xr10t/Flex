@@ -34,19 +34,49 @@ export const PLACEHOLDER_TOKEN_RE = /(?:amount|address|group)_[0-9a-f]{8}|\[amou
 /** A dotted name (parent of a group marker). */
 const DOTTED = '[a-z0-9-]+(?:\\.[a-z0-9-]+)+';
 
+/** Who is being paid when it is "everyone" of something: the quantifier, plural or singular. */
+const MEMBER_PLURAL =
+  '(?:people|persons|members|recipients|users|wallets|addresses|accounts|holders|folks|subnames|subdomains)';
+const MEMBER_SINGULAR = '(?:person|member|recipient|user|wallet|address|account|holder|subname|subdomain|one)';
+const QUANTIFIER = `(?:everyone|everybody|(?:every|each)\\s+${MEMBER_SINGULAR}|all\\s+(?:(?:of\\s+)?the\\s+)?${MEMBER_PLURAL}|all|(?:the\\s+)?${MEMBER_PLURAL})`;
+/** "everyone that there is under", "the people who are in", "all members registered under". */
+const RELATIVE = '(?:\\s+(?:that|who|which)(?:\\s+(?:there\\s+)?(?:is|are|exists?))?|\\s+(?:registered|listed))?';
+const UNDER = '(?:under|in|of|within|inside|from|at|beneath|belonging\\s+to)';
+/** What an ENS name is called when it groups people. */
+const ORG_NOUN = '(?:org|organi[sz]ation|domain|name|namespace|group|team|community)';
+/** "the ENS org (called)" before the name. */
+const DESCRIPTOR = `(?:(?:the|that|this)\\s+)?(?:ens\\s+)?(?:${ORG_NOUN}\\s+(?:(?:of|called|named)\\s+)?)?`;
+/** "all of alice.eth and bob.eth" lists people; it is not alice.eth's members. */
+const NOT_A_LIST = '(?!\\s*(?:,|&|and\\s|or\\s)\\s*\\.?[a-z0-9-]+\\.[a-z])';
+
 /**
- * Group markers take the following dotted name as the parent, including "every person under the ENS domain of
- * .X". A leading dot is presentation, not part of the parent name. A bare "@X" (not part of an email) also
- * identifies a group. Keep the captured parent separate so offsets stay in the original text.
+ * Group markers take the following dotted name as the parent: "everyone under iitr.eth", "every person under the ENS domain
+ * of .X", "the people in the iitr.eth org", "all members registered under X". A leading dot is presentation, not part of the
+ * parent name. A bare "@X" (not part of an email) also identifies a group. Keep the captured parent separate so offsets stay in
+ * the original text.
  */
 export const GROUP_WORD_MARKER_RE = new RegExp(
-  `(?<![A-Za-z0-9_])(?:(?:everyone|every\\s+(?:person|member|recipient|user|wallet|address)|all\\s+(?:people|members|recipients|users|wallets|addresses))\\s+(?:under|in|of)|all\\s+of)\\s+(?:the\\s+)?(?:(?:ens\\s+)?(?:domain|name)(?:\\s+of)?\\s+)?\\.?(${DOTTED})`,
+  `(?<![A-Za-z0-9_])${QUANTIFIER}${RELATIVE}\\s+${UNDER}\\s+${DESCRIPTOR}\\.?(${DOTTED})(?![A-Za-z0-9_-])${NOT_A_LIST}`,
   'gi',
 );
 export const GROUP_AT_MARKER_RE = new RegExp(`(?<![A-Za-z0-9._%+-])@(${DOTTED})`, 'gi');
-/** Handoff LIVE-P084/P085: the same parent group expressed as "all X members". */
+/**
+ * Handoff LIVE-P084/P085: the parent named first: "all X members", "iitr.eth subnames", "iitr.eth's members", "everyone at
+ * X" is above; a wildcard "*.iitr.eth" also means every subname.
+ */
 export const GROUP_MEMBERS_MARKER_RE = new RegExp(
-  `(?<![A-Za-z0-9_])all\\s+(${DOTTED})\\s+members(?![A-Za-z0-9_])`,
+  `(?<![A-Za-z0-9_.])(?:(?:all|every|each)\\s+(?:of\\s+)?(?:the\\s+)?)?(${DOTTED})(?:'s|’s)?\\s+(?:ens\\s+)?(?:members|subnames|subdomains)(?![A-Za-z0-9_])` +
+    `|(?<![A-Za-z0-9_.])(?:all|every|each)\\s+(?:of\\s+)?(?:the\\s+)?(${DOTTED})\\s+(?:ens\\s+)?(?:people|folks|holders|users|accounts|wallets)(?![A-Za-z0-9_])` +
+    `|(?<![A-Za-z0-9_.])(${DOTTED})(?:'s|’s)\\s+(?:people|folks|holders|users|accounts|wallets|team|org|organi[sz]ation|community)(?![A-Za-z0-9_])` +
+    `|(?<![A-Za-z0-9_.@])\\*\\.(${DOTTED})(?![A-Za-z0-9_-])`,
+  'gi',
+);
+/**
+ * A group named by reference: "everyone under that org", "all the people in this ENS domain". It points at the one ENS name the
+ * message mentions, so the scan only uses it when there is exactly one.
+ */
+export const GROUP_BACK_REFERENCE_RE = new RegExp(
+  `(?<![A-Za-z0-9_])${QUANTIFIER}${RELATIVE}\\s+${UNDER}\\s+(?:(?:that|this|said)\\s+(?:ens\\s+)?(?:${ORG_NOUN}|ens)|the\\s+(?:ens\\s+(?:${ORG_NOUN}|name)|org|organi[sz]ation|domain|namespace))(?![A-Za-z0-9_])`,
   'gi',
 );
 

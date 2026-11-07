@@ -64,15 +64,18 @@ against the real agent app with recorded model replies).
 
 ## 5. Open problems found, not fixed
 
-1. **ENS group sends are blocked: the indexer is down.** `ens.indexer_url` (`config.example.json`, `.env.example`, the
-   user's `.env`) is `https://api.v2-sepolia.ensnode.io/api/omnigraph`. That host now serves Railway's default
-   certificate (`CN=*.up.railway.app`), directly and over Tor, so TLS fails and the agent reports
-   `ENS_INDEXER_UNAVAILABLE`. `api.alpha-sepolia.ensnode.io` / `api.sepolia.ensnode.io` also failed over Tor in a
-   quick probe (not diagnosed further; may be Tor-specific). Next step: find a working Sepolia ENSNode Omnigraph
-   endpoint (see https://ensnode.io/docs/hosted-instances; NameHash recommends pinning enssdk@1.13.1 against hosted
-   instances) or self-host ENSNode, then update `.env` `ENS_INDEXER_URL`, re-run the setup script, and test.
-   The test group is `iitr.eth` with `alpha`, `beta`, `gamma`, `delta.iitr.eth` (owner `0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20`,
-   see `scripts/ens-check.iitr.json`). Whether each subname has an address record per chain was not yet checked.
+1. **ENS group sends: fixed (2026-11-07) by reading ENSv2 registries on-chain.** Every hosted ENSNode instance is gone
+   (`*.ensnode.io` serves Railway's default certificate and the Railway origins answer "Application not found"; the
+   namehash/ensnode repo is archived). `ens.indexer_kind = "ensv2-registry"` now lists subnames from the parent's ENSv2
+   registry: root (the Universal Resolver's `ROOT_REGISTRY()`) → `getSubregistry` per label → replay that registry's
+   `LabelRegistered` / `LabelReserved` / `LabelUnregistered` / `ExpiryUpdated` logs since `ens.registry_start_block`
+   (11820291, the 2026-10-01 Sepolia ENSv2 deploy). `indexer_url` is a JSON-RPC whose `eth_getLogs` serves that history
+   over Tor: `https://eth-sepolia.api.onfinality.io/public` (Tenderly's gateway serves it too but 403s Tor exits; free
+   Alchemy/dRPC/1rpc and publicnode refuse the range). Over Tor a listing takes ~15-20 s. `npm run ens:check` passes the
+   listing step. The test group `iitr.eth` has `alpha`, `beta`, `gamma`, `delta` (owner
+   `0x89cE79730f8a1F4B05B4EF9334ef4f53E237dE20`); each resolves on Sepolia only (no Base/Arbitrum Sepolia records), so
+   group payments to it go on Sepolia. Wording: the S2 group patterns now also accept "people under X", "the members of
+   X", "X's members", "X subnames", "*.X", and "everyone under that org" when the message names exactly one ENS name.
 2. **Funding.** The new wallet's balances were not read yet. The user wants test USDC on several chains for CCIP
    tests. An agent must not move funds itself; the user funds via faucet.circle.com (USDC, Sepolia / Base Sepolia /
    Arbitrum Sepolia) and an ETH faucet (Alchemy / Chainlink) for gas and CCIP fees. The old wallet `0x5eBA…` held
