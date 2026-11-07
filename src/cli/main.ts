@@ -32,11 +32,13 @@ Options:
   --accent <hex>    accent colour as #rrggbb
   --no-starfield    scene without the background dots
   --static          print one still frame and exit
+  --version         print the version and exit
   -h, --help        show this help
 `;
 
 export interface CliArgs {
   help: boolean;
+  version: boolean;
   staticFrame: boolean;
   /** `opening` when no view is named. */
   view: View;
@@ -57,6 +59,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
       allowNegative: true,
       options: {
         help: { type: 'boolean', short: 'h', default: false },
+        version: { type: 'boolean', default: false },
         static: { type: 'boolean', default: false },
         shape: { type: 'string', default: 'cube' },
         speed: { type: 'string', default: '1' },
@@ -77,6 +80,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (values.accent !== undefined && !isHexColor(values.accent)) throw new UsageError('--accent must be #rrggbb');
   return {
     help: values.help,
+    version: values.version,
     staticFrame: values.static,
     view,
     shape: values.shape,
@@ -110,6 +114,10 @@ export async function runCli(argv: string[]): Promise<number> {
   }
   if (args.help) {
     process.stdout.write(USAGE);
+    return 0;
+  }
+  if (args.version) {
+    process.stdout.write(`flexx ${packageVersion()}\n`);
     return 0;
   }
 

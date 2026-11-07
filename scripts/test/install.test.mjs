@@ -36,12 +36,13 @@ import io, sys, tarfile
 path, version, kind = sys.argv[1:]
 with tarfile.open(path, 'w:gz') as bundle:
     entry = tarfile.TarInfo('bin/flexx')
-    script = ('#!/bin/sh\\n' + ('exit 1\\n' if kind == 'broken' else 'printf "%s\\\\n" "' + version + '"\\n')).encode()
+    body = {'broken': 'exit 1\\n', 'hang': 'sleep 30\\n'}.get(kind, 'printf "%s\\\\n" "' + version + '"\\n')
+    script = ('#!/bin/sh\\n' + body).encode()
     entry.size = len(script)
     entry.mode = 0o755
     bundle.addfile(entry, io.BytesIO(script))
-    if kind in ('traversal', 'absolute', 'symlink', 'hardlink', 'duplicate'):
-        entry = tarfile.TarInfo({'traversal': '../escaped', 'absolute': '/tmp/flex-escaped', 'duplicate': 'bin/flexx'}.get(kind, 'evil'))
+    if kind in ('traversal', 'absolute', 'symlink', 'hardlink', 'duplicate', 'conflict'):
+        entry = tarfile.TarInfo({'traversal': '../escaped', 'absolute': '/tmp/flex-escaped', 'duplicate': 'bin/flexx', 'conflict': 'bin'}.get(kind, 'evil'))
         if kind in ('symlink', 'hardlink'):
             entry.type = tarfile.SYMTYPE if kind == 'symlink' else tarfile.LNKTYPE
             entry.linkname = '/tmp'
@@ -206,4 +207,80 @@ test('unsupported platforms fail before creating the installation directory', (t
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /unsupported OS/);
   assert.ok(!existsSync(prefix));
+});
+
+test('installs to the default prefix when $HOME is reached through a symlink', (t) => {
+  const { root } = fixture(t);
+  const real = join(root, 'real-home');
+  mkdirSync(real);
+  symlinkSync(real, join(root, 'home'));
+  const bundle = archive(root, 'v0.1.0');
+  const result = spawnSync(
+    'bash',
+    [installer, '--version', 'v0.1.0', '--sha256', bundle.digest, '--archive', bundle.path],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, HOME: join(root, 'home') },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(active(join(real, '.flex')), 'v0.1.0');
+});
+
+test('stops a smoke check that never finishes', (t) => {
+  const { root, prefix } = fixture(t);
+  const result = install(prefix, 'v0.1.0', archive(root, 'v0.1.0', 'hang'), [], { FLEX_INSTALL_SMOKE_TIMEOUT: '1' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /did not finish within 1 seconds/);
+  assert.ok(!existsSync(join(prefix, 'current')));
+  assert.ok(!existsSync(join(prefix, '.install-lock')));
+});
+
+test('unreadable archives and blocking files fail with installer messages, not tracebacks', (t) => {
+  const { root, prefix } = fixture(t);
+  const valid = archive(root, 'v0.1.0');
+  const garbage = join(root, 'not-gzip.tar.gz');
+  writeFileSync(garbage, 'plain text, not a gzip stream');
+  const truncated = join(root, 'truncated.tar.gz');
+  writeFileSync(truncated, readFileSync(valid.path).subarray(0, 40));
+  const digestOf = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+  const cases = [
+    [prefix, { path: garbage, digest: digestOf(garbage) }],
+    [prefix, { path: truncated, digest: digestOf(truncated) }],
+    [prefix, archive(root, 'v0.1.0', 'conflict')],
+  ];
+  for (const blocker of ['bin', 'versions']) {
+    const blocked = join(root, `blocked-${blocker}`);
+    mkdirSync(blocked);
+    writeFileSync(join(blocked, blocker), 'not a directory');
+    cases.push([blocked, valid]);
+  }
+  for (const [target, bundle] of cases) {
+    const result = install(target, 'v0.1.0', bundle);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /Traceback/);
+    assert.match(result.stderr.trim().split('\n').at(-1), /^flex installer: /);
+    assert.ok(!existsSync(join(target, 'current')));
+    assert.ok(!existsSync(join(target, '.install-lock')));
+  }
+});
+
+test('a read-only prefix is reported as such, not as a held lock', { skip: process.getuid?.() === 0 }, (t) => {
+  const { root, prefix } = fixture(t);
+  mkdirSync(prefix);
+  chmodSync(prefix, 0o500);
+  const result = install(prefix, 'v0.1.0', archive(root, 'v0.1.0'));
+  chmodSync(prefix, 0o700);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cannot create files in/);
+});
+
+test('refuses the root directory however it is spelled', (t) => {
+  const { root } = fixture(t);
+  const bundle = archive(root, 'v0.1.0');
+  for (const spelling of ['//', '/tmp/..']) {
+    const result = install(spelling, 'v0.1.0', bundle);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /cannot install into \//);
+  }
 });

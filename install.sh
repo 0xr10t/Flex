@@ -58,19 +58,22 @@ if [[ -n "$archive" ]]; then
 else
   command -v curl >/dev/null 2>&1 || fail 'curl is required for downloads'
 fi
-# Resolve paths and reject symlinked installation components before writing.
+# Resolve the parent directories (a home directory reached through a symlink is common), then reject a symlinked
+# prefix or installation component before writing.
 prefix=$(python3 - "$prefix" <<'PY'
 import os, pathlib, sys
-p = pathlib.Path(os.path.abspath(sys.argv[1]))
-for part in (p, *p.parents):
-    if part.is_symlink():
-        sys.exit('flex installer: installation path must not contain symlinks')
+absolute = os.path.abspath(sys.argv[1])
+p = pathlib.Path(os.path.realpath(os.path.dirname(absolute))) / os.path.basename(absolute)
 if p == pathlib.Path('/'):
     sys.exit('flex installer: cannot install into /')
+if p.is_symlink():
+    sys.exit('flex installer: the installation directory must not be a symlink')
 for child in ('versions', 'bin', 'current'):
     target = p / child
     if child != 'current' and target.is_symlink():
         sys.exit('flex installer: installation directories must not be symlinks')
+    if child != 'current' and target.exists() and not target.is_dir():
+        sys.exit(f'flex installer: {child} exists and is not a directory')
     if child == 'current' and target.exists() and not target.is_symlink():
         sys.exit('flex installer: current exists and is not an installer symlink')
 launcher = p / 'bin/flexx'
@@ -81,7 +84,10 @@ PY
 )
 mkdir -p "$prefix"
 lock="$prefix/.install-lock"
-mkdir "$lock" 2>/dev/null || fail 'another install holds .install-lock; inspect it before removing a stale lock'
+if ! mkdir "$lock" 2>/dev/null; then
+  [[ -e "$lock" ]] && fail 'another install holds .install-lock; inspect it before removing a stale lock'
+  fail "cannot create files in $prefix"
+fi
 staging=''
 cleanup() {
   # Only remove this invocation's private staging directory and empty lock.
@@ -107,42 +113,66 @@ if [[ -z "$archive" ]]; then
     fail "could not download $asset; check that release $version is published for this platform"
 fi
 python3 - "$archive" "$digest" "$staging/payload" <<'PY'
-import hashlib, pathlib, shutil, sys, tarfile
+import hashlib, pathlib, shutil, sys, tarfile, zlib
 archive, digest, destination = sys.argv[1:]
-h = hashlib.sha256()
-with open(archive, 'rb') as source:
-    for chunk in iter(lambda: source.read(1024 * 1024), b''):
-        h.update(chunk)
-if h.hexdigest() != digest.lower():
-    sys.exit('flex installer: SHA-256 mismatch; nothing activated')
 root = pathlib.Path(destination)
-with tarfile.open(archive, 'r:gz') as bundle:
-    members = bundle.getmembers()
-    seen = set()
-    # Validate the whole archive before writing any payload file.
-    for member in members:
-        path = pathlib.PurePosixPath(member.name)
-        if path.is_absolute() or '..' in path.parts or '\\' in member.name:
-            sys.exit('flex installer: unsafe archive path')
-        if not (member.isfile() or member.isdir()):
-            sys.exit('flex installer: archive links and special files are forbidden')
-        if path in seen:
-            sys.exit('flex installer: duplicate archive path')
-        seen.add(path)
-    for member in members:
-        target = root / member.name
-        if member.isdir():
-            target.mkdir(parents=True, exist_ok=True)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with bundle.extractfile(member) as source, target.open('xb') as output:
-                shutil.copyfileobj(source, output)
-            target.chmod(0o700 if member.mode & 0o111 else 0o600)
+try:
+    h = hashlib.sha256()
+    with open(archive, 'rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            h.update(chunk)
+    if h.hexdigest() != digest.lower():
+        sys.exit('flex installer: SHA-256 mismatch; nothing activated')
+    with tarfile.open(archive, 'r:gz') as bundle:
+        members = bundle.getmembers()
+        seen = set()
+        # Validate the whole archive before writing any payload file.
+        for member in members:
+            path = pathlib.PurePosixPath(member.name)
+            if path.is_absolute() or '..' in path.parts or '\\' in member.name:
+                sys.exit('flex installer: unsafe archive path')
+            if not (member.isfile() or member.isdir()):
+                sys.exit('flex installer: archive links and special files are forbidden')
+            if path in seen:
+                sys.exit('flex installer: duplicate archive path')
+            seen.add(path)
+        for member in members:
+            target = root / member.name
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with bundle.extractfile(member) as source, target.open('xb') as output:
+                    shutil.copyfileobj(source, output)
+                target.chmod(0o700 if member.mode & 0o111 else 0o600)
+except (tarfile.TarError, EOFError, zlib.error) as error:
+    sys.exit(f'flex installer: archive is not a readable .tar.gz ({error})')
+except OSError as error:
+    sys.exit(f'flex installer: could not unpack the archive ({error})')
 launcher = root / 'bin/flexx'
 if not launcher.is_file() or not launcher.stat().st_mode & 0o111:
     sys.exit('flex installer: release must contain executable bin/flexx')
 PY
-"$staging/payload/bin/flexx" --version || fail 'release smoke check failed; previous version remains active'
+python3 - "$staging/payload/bin/flexx" <<'PY' || fail 'release smoke check failed; previous version remains active'
+import os, signal, subprocess, sys
+limit = int(os.environ.get('FLEX_INSTALL_SMOKE_TIMEOUT', '60'))  # seconds; the variable exists for the tests
+# A process group of its own, so a hung check and anything it started can be stopped together.
+check = subprocess.Popen([sys.argv[1], '--version'], stdin=subprocess.DEVNULL, start_new_session=True)
+try:
+    code = check.wait(timeout=limit)
+except subprocess.TimeoutExpired:
+    code = None
+except KeyboardInterrupt:
+    code = 130
+finally:
+    try:
+        os.killpg(check.pid, signal.SIGKILL)
+    except OSError:
+        pass
+if code is None:
+    sys.exit(f'flex installer: release smoke check did not finish within {limit} seconds')
+sys.exit(code)
+PY
 python3 - "$staging" "$prefix" "$version" <<'PY'
 import os, pathlib, sys
 stage, root, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
