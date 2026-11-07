@@ -10,6 +10,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -334,6 +335,7 @@ if args[0] == 'clone':
     if os.environ.get('SOURCE_FAIL') == 'clone': sys.exit(1)
     root = pathlib.Path(args[-1])
     (root / 'dist/src/cli').mkdir(parents=True)
+    (root / '.env.example').write_text('FLEX_WALLET_ADDRESS=\\n')
     (root / 'dist/src/cli/main.js').write_text("console.log(process.argv[2] === '--version' ? 'flexx 0.1.0' : JSON.stringify({cwd: process.cwd(), args: process.argv.slice(2)}));")
 elif args[0] == '-C': print('a' * 40)
 else: sys.exit(2)
@@ -396,6 +398,8 @@ test('source install builds all project components and launches after relocation
   });
   assert.ok(!existsSync(join(prefix, '.install-lock')));
   const config = join(prefix, 'current', '.env');
+  assert.equal(readFileSync(config, 'utf8'), 'FLEX_WALLET_ADDRESS=\n');
+  assert.equal(statSync(config).mode & 0o777, 0o600);
   writeFileSync(config, 'user configuration');
   assert.notEqual(run().status, 0);
   assert.equal(readFileSync(config, 'utf8'), 'user configuration');
@@ -447,7 +451,7 @@ test('curl | bash: no arguments means a source install, and a child reading stdi
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(active(join(prefix, '..', '.flex')), 'flexx 0.1.0');
-  assert.match(result.stdout, /npm run testnet:setup/);
+  assert.match(result.stdout, /Run flexx/);
 });
 
 test('a truncated download runs nothing', (t) => {

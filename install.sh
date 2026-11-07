@@ -151,6 +151,8 @@ if "$source_install"; then
     npm --prefix wallet/cre/autopay ci --include=dev || exit 1
     npm run testnet:build || exit 1
   ) || fail 'source build failed; check Node, npm and native build tools above; nothing activated'
+  # The settings file flexx reads; umask 077 keeps it private.
+  cp "$staging/payload/.env.example" "$staging/payload/.env" || fail 'the downloaded source has no .env.example'
   mkdir -p "$staging/payload/bin"
   cat > "$staging/payload/bin/flexx" <<'LAUNCHER'
 #!/usr/bin/env bash
@@ -265,10 +267,9 @@ printf 'Add this directory to your PATH: %s/bin\n' "$prefix"
 printf 'No shell files, configuration, or services were changed.\n'
 printf 'Run: %q --help\n' "$prefix/bin/flexx"
 if "$source_install"; then
-  printf '\nBefore first use (Ollama, Tor and MetaMask must be installed):\n'
-  printf '  cd %q\n' "$prefix/current"
-  printf '  cp .env.example .env    # your public wallet address and RPC URLs\n'
-  printf '  npm run testnet:setup\n'
+  printf '\nNext:\n'
+  printf '  1. Add your testnet RPC URLs to %q\n' "$prefix/current/.env"
+  printf '  2. Run flexx. The first run connects MetaMask and finishes setup.\n'
 fi
 }
 main "$@"
