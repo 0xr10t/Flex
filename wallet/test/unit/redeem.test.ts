@@ -1,8 +1,21 @@
 // Guards the A.5 rules that redeem.v2.ts exists for: USDC is `transfer` (B1), the fee is in the batch (B8), and the
 // redeem always uses batch mode (B10). Calldata is decoded back rather than compared with fixed bytes.
-import { decodeAbiParameters, decodeFunctionData, erc20Abi, getAddress, parseUnits, type Hex } from 'viem';
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  erc20Abi,
+  getAddress,
+  parseAbiParameters,
+  parseUnits,
+  type Hex,
+} from 'viem';
 import { describe, expect, it } from 'vitest';
-import { executionsOf, redeemCalldata } from '../../src/chain/redeem.v2.js';
+import { DELEGATION, DELEGATION_MANAGER_ABI } from '../../src/autopay/abi.js';
+import { delegationFromRedeem } from '../../src/autopay/delegation.js';
+import { executionsOf, permissionRedeem, redeemCalldata, redeemIdentity } from '../../src/chain/redeem.v2.js';
+import { decodeRedeemBatch } from '../../src/guard/decode.js';
 import { IntentSchema, USDC, type Intent } from '@flex/protocol/schemas/intent.v2';
 
 const ME = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
@@ -69,7 +82,7 @@ describe('redeemCalldata', () => {
       signature: '0x' as Hex,
     };
     const redeem = redeemCalldata(usdcAutopay, delegation);
-    expect(redeem.slice(0, 10)).toBe('0xcef6d209'); // the selector IntentExecutorV3 requires
+    expect(redeem.slice(0, 10)).toBe('0xcef6d209'); // the selector IntentExecutorV4 requires
 
     const { args } = decodeFunctionData({
       abi: [
@@ -102,5 +115,60 @@ describe('redeemCalldata', () => {
     expect(decoded).toHaveLength(2);
     expect(decoded[0]!.callData).toBe(executionsOf(usdcAutopay)[0]!.callData);
     expect(decoded[1]!.callData).toBe(executionsOf(usdcAutopay)[1]!.callData);
+  });
+});
+
+describe('permissionRedeem (F8)', () => {
+  const contextOf = (delegate: Hex) =>
+    encodeAbiParameters(parseAbiParameters(`${DELEGATION}[]`), [
+      [
+        {
+          delegate,
+          delegator: ME as Hex,
+          authority: `0x${'ff'.repeat(32)}`,
+          caveats: [],
+          salt: 1n,
+          signature: '0x',
+        },
+      ],
+    ]);
+  const context = contextOf(FEE);
+  const SINGLE = `0x${'00'.repeat(32)}`;
+
+  it('runs each payment as its own single execution, all under the one context', () => {
+    const redeem = permissionRedeem(usdcAutopay, context);
+    const { args } = decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: redeem });
+    const [contexts, modes] = args as unknown as [Hex[], Hex[]];
+    expect(contexts).toEqual([context, context]);
+    expect(modes).toEqual([SINGLE, SINGLE]);
+    expect(decodeRedeemBatch(redeem)).toEqual(
+      executionsOf(usdcAutopay).map((e) => ({ ...e, target: e.target.toLowerCase() })),
+    );
+    expect(redeemIdentity(redeem)).toEqual({ delegator: getAddress(ME), delegate: getAddress(FEE) });
+    expect(delegationFromRedeem(redeem)?.delegate).toBe(getAddress(FEE));
+  });
+
+  it('ETH payments carry the value and no calldata', () => {
+    const eth = autopay({ type: 'native', token: null, decimals: 18 }, '0.01', '0.0001');
+    expect(decodeRedeemBatch(permissionRedeem(eth, context))).toEqual([
+      { target: ALICE, value: parseUnits('0.01', 18), callData: '0x' },
+      { target: FEE, value: parseUnits('0.0001', 18), callData: '0x' },
+    ]);
+  });
+
+  it('refuses entries that mix contexts or modes', () => {
+    const { args } = decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: permissionRedeem(usdcAutopay, context) });
+    const [, modes, executions] = args as unknown as [Hex[], Hex[], Hex[]];
+    const redeem = (contexts: Hex[], m: Hex[]) =>
+      encodeFunctionData({
+        abi: DELEGATION_MANAGER_ABI,
+        functionName: 'redeemDelegations',
+        args: [contexts, m, executions],
+      });
+    const mixed = redeem([context, contextOf(ALICE)], modes);
+    expect(() => redeemIdentity(mixed)).toThrow('INVALID_REDEEM');
+    expect(decodeRedeemBatch(mixed)).toBeNull();
+    expect(delegationFromRedeem(mixed)).toBeNull();
+    expect(decodeRedeemBatch(redeem([context, context], [SINGLE as Hex, `0x01${'00'.repeat(31)}`]))).toBeNull();
   });
 });

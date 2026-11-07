@@ -112,13 +112,13 @@ export interface DecodedDelegation {
   signature: Hex;
 }
 
-/** §12.5: reads the signed delegation back out of the redeem bytes a `Registered` event carries. */
+/** §12.5: reads the signed delegation back out of the redeem bytes a `Registered` event carries. Every entry shares it. */
 export function delegationFromRedeem(redeem: Hex): DecodedDelegation | null {
   try {
     const { args } = decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: redeem });
     if (args?.length !== 3) return null;
     const contexts = args[0] as readonly Hex[];
-    if (contexts.length !== 1) return null;
+    if (!contexts.length || contexts.some((c) => c !== contexts[0])) return null;
     const [chain] = decodeAbiParameters(DELEGATION_ARRAY, contexts[0] as Hex);
     return chain.length === 1 ? (chain[0] as DecodedDelegation) : null;
   } catch {
