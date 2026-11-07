@@ -55,9 +55,9 @@ The repo has three parts:
 
 | Network | Address |
 | --- | --- |
-| Ethereum Sepolia | [`0xe282252b6cff630bdb5f584417daf24e8e3843ff`](https://sepolia.etherscan.io/address/0xe282252b6cff630bdb5f584417daf24e8e3843ff) |
-| Base Sepolia | [`0xcb775819bf181f91e8a124157368f3e29ba35005`](https://sepolia.basescan.org/address/0xcb775819bf181f91e8a124157368f3e29ba35005) |
-| Arbitrum Sepolia | [`0x37af59078638387f0416bef031d8d70b9b6b00f2`](https://sepolia.arbiscan.io/address/0x37af59078638387f0416bef031d8d70b9b6b00f2) |
+| Base Sepolia | [`0x6ccd98da9dccfa9e5a9fa941539f8fe6d930fd5b`](https://sepolia.basescan.org/address/0x6ccd98da9dccfa9e5a9fa941539f8fe6d930fd5b) |
+
+Ethereum Sepolia and Arbitrum Sepolia don't have a V4 executor yet. Deploy your own with `npm run testnet:onboard`.
 
 ## Quick start
 
