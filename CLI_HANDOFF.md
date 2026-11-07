@@ -1,7 +1,6 @@
 # Handoff: the `flexx` CLI and the live testnet setup
 
-Written 2026-11-07 for the next agent. Read this first, then `README.md` (sections "The `flexx` terminal" and the
-setup steps) and `docs/wallet/`.
+Written 2026-11-07 for the next agent. Read this first, then `README.md` (the quick start) and `wallet/README.md`.
 
 ## 1. Where things stand
 

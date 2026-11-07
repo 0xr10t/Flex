@@ -190,6 +190,16 @@ export class Store {
     return readWalletData(this.db, resource, query);
   }
 
+  /** A local health check; it reads no payment data and makes no network calls. */
+  readable(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** The hash stored for this request, or null when the key is new. */
   storedHash(requestId: string): string | null {
     const row = this.db.prepare('SELECT envelope_hash FROM requests WHERE request_id = ?').get(requestId) as

@@ -22,7 +22,7 @@ import { LaunchError, type AgentEndpoint } from './agent/launcher.js';
 import type { Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
 
 export interface ChatDeps {
-  connect: () => Promise<AgentEndpoint>;
+  connect: (signal: AbortSignal, onStatus?: (note: string) => void) => Promise<AgentEndpoint>;
   client?: (endpoint: AgentEndpoint) => AgentApi;
   timezone: string;
   /** Opens a local page in the browser; returns false when it could not. */
@@ -77,6 +77,7 @@ const HINT: Record<Question['input'], string> = {
 };
 
 export class Chat {
+  private readonly connectionAbort = new AbortController();
   private endpoint: AgentEndpoint | undefined;
   private api: AgentApi | undefined;
   private sessionId: string | undefined;
@@ -87,16 +88,21 @@ export class Chat {
   constructor(private readonly deps: ChatDeps) {}
 
   /** Connects and opens a session; returns lines saying how it went. Safe to call again after a failure. */
-  connect(): Promise<Line[]> {
-    this.connecting ??= this.doConnect().catch((err: unknown) => {
+  connect(onStatus?: (note: string) => void): Promise<Line[]> {
+    this.connecting ??= this.doConnect(onStatus).catch((err: unknown) => {
+      this.endpoint?.stop();
+      this.endpoint = undefined;
+      this.api = undefined;
+      this.sessionId = undefined;
       this.connecting = undefined;
       return describeFailure(err);
     });
     return this.connecting;
   }
 
-  private async doConnect(): Promise<Line[]> {
-    this.endpoint ??= await this.deps.connect();
+  private async doConnect(onStatus?: (note: string) => void): Promise<Line[]> {
+    this.endpoint ??= await this.deps.connect(this.connectionAbort.signal, onStatus);
+    this.connectionAbort.signal.throwIfAborted();
     this.api ??= (this.deps.client ?? ((e) => new AgentClient(e.baseUrl, e.token)))(this.endpoint);
     this.sessionId = await this.api.openSession(this.deps.timezone);
     const health = await this.api.health().catch(() => undefined);
@@ -183,6 +189,9 @@ export class Chat {
     if (err instanceof AgentHttpError && err.status === 409)
       return [plain('The agent is still working on the previous message, or that question has moved on.')];
     if (err instanceof AgentUnreachableError) {
+      this.endpoint?.stop();
+      this.endpoint = undefined;
+      this.api = undefined;
       this.sessionId = undefined;
       this.connecting = undefined;
       return [plain('Lost the agent. Send that again to reconnect, or check /status.')];
@@ -279,8 +288,11 @@ export class Chat {
     const status = await this.ensureSession();
     if (status) return status;
     const health = await this.api!.health().catch(() => undefined);
-    const wallet = await fetch(this.endpoint!.walletUrl, { signal: AbortSignal.timeout(2000) }).then(
-      () => true,
+    const wallet = await (this.deps.probe?.fetch ?? fetch)(this.endpoint!.walletUrl, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(2000),
+    }).then(
+      (response) => response.ok,
       () => false,
     );
     const row = (name: string, ok: boolean | undefined, okText: string, badText: string): Line =>
@@ -290,6 +302,9 @@ export class Chat {
       row('model', health?.ollama, 'ready', 'not ready (is Ollama running with the configured model?)'),
       row('database', health?.db, 'open', 'not readable'),
       row('wallet', wallet, `answering at ${this.endpoint!.walletUrl}`, `not running at ${this.endpoint!.walletUrl}`),
+      ...(this.endpoint!.recurring && this.endpoint!.recurring !== 'off'
+        ? [line(t('recurring'.padEnd(9), 1), t(`${this.endpoint!.recurring}; keep flexx open`))]
+        : []),
     ];
   }
 
@@ -341,31 +356,31 @@ export class Chat {
 
     if (info) {
       const tags = await fetchImpl(`${info.ollamaUrl.replace(/\/+$/, '')}/api/tags`, {
+        redirect: 'error',
         signal: AbortSignal.timeout(3000),
       })
         .then((r) => r.json() as Promise<{ models?: Array<{ name: string }> }>)
         .catch(() => undefined);
-      if (!tags) out.push(bad('ollama', `not running at ${info.ollamaUrl}; start it with: ollama serve`));
+      if (!tags) out.push(bad('ollama', `not running at ${info.ollamaUrl}; reopen flexx to start it`));
       else if (!tags.models?.some((m) => m.name === info.model || m.name === `${info.model}:latest`))
-        out.push(bad('model', `${info.model} isn't pulled; run: ollama pull ${info.model}`));
+        out.push(bad('model', `${info.model} isn't available; reopen flexx to download and load it`));
       else out.push(ok('model', `${info.model} ready`));
 
       if (info.proxy) {
         const m = /^socks5h:\/\/([^:/]+):(\d+)/.exec(info.proxy);
         const up = m ? await port(m[1]!, Number(m[2])) : false;
-        out.push(up ? ok('tor', info.proxy) : bad('tor', 'not running; start it with: brew services start tor'));
+        out.push(up ? ok('tor', info.proxy) : bad('tor', 'not running; reopen flexx to start it'));
       } else out.push(ok('tor', 'off: connecting directly'));
     }
 
-    const wallet = await fetchImpl(this.endpoint!.walletUrl, { signal: AbortSignal.timeout(2000) }).then(
-      () => true,
+    const wallet = await fetchImpl(this.endpoint!.walletUrl, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(2000),
+    }).then(
+      (response) => response.ok,
       () => false,
     );
-    out.push(
-      wallet
-        ? ok('wallet', this.endpoint!.walletUrl)
-        : bad('wallet', 'not running; start it with: node wallet/dist/src/main.js .local/wallet.config.json'),
-    );
+    out.push(wallet ? ok('wallet', this.endpoint!.walletUrl) : bad('wallet', 'not running; reopen flexx to start it'));
     return out;
   }
 
@@ -379,8 +394,10 @@ export class Chat {
       : [plain("Couldn't reach the clipboard.", 1)];
   }
 
-  /** Closes the session (the agent clears its data) and stops an agent this CLI started. */
+  /** Cancels startup, closes the session, and releases the services owned by this CLI. */
   async close(): Promise<void> {
+    this.connectionAbort.abort();
+    await this.connecting;
     if (this.api && this.sessionId) await this.api.closeSession(this.sessionId).catch(() => undefined);
     this.sessionId = undefined;
     this.endpoint?.stop();
@@ -557,6 +574,11 @@ function parseLimitValue(words: string[], current: unknown): unknown {
 /** Why connecting failed, as lines to show. */
 function describeFailure(err: unknown): Line[] {
   if (err instanceof LaunchError) {
+    if (err.stage === 'wallet') return err.details.map((d) => plain(d));
+    if (err.stage === 'ollama' || err.stage === 'wallet-service' || err.stage === 'recurring')
+      return err.details.map((d) => plain(d));
+    if (err.stage === 'tor')
+      return [plain("Tor isn't ready, so I haven't connected to the agent."), ...err.details.map((d) => plain(d, 1))];
     if (err.stage === 'config')
       return [
         plain("The agent's config isn't usable yet, so I can't start it:"),
@@ -571,11 +593,13 @@ function describeFailure(err: unknown): Line[] {
     if (err.stage === 'start')
       return [
         plain("The agent didn't start."),
-        plain('Run npm start in the Flex folder to see why, then send your message again.', 1),
+        ...(err.details.length ? err.details : ['Check the local configuration, then send your message again.']).map(
+          (d) => plain(d, 1),
+        ),
       ];
     return [plain("I couldn't read the agent's UI token file."), ...err.details.map((d) => plain(`- ${d}`, 1))];
   }
   if (err instanceof AgentHttpError && err.status === 401)
     return [plain("The agent didn't accept the UI token. Is another agent with a different config on this port?")];
-  return [plain("I couldn't reach the agent."), plain('Check /status, or start it with npm start.', 1)];
+  return [plain("I couldn't reach the agent."), plain('Send your message again to retry service startup.', 1)];
 }

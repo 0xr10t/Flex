@@ -1,14 +1,28 @@
-// Finds the agent for the CLI, starting it when it is not running. It reads the agent's own config (env AGENT_CONFIG,
-// else the checkout's .local/agent.config.json that `node scripts/setup-testnet.mjs` writes, else
-// ~/.agent-layer/config.json) for the address, the UI token file and the wallet's URL. If nothing answers on
-// the agent's port, it starts `dist/src/index.js` as a child process with that config, waits for it to come up, and
-// stops it again when the CLI exits. An agent that was already running is left alone.
+// Starts the configured local services in dependency order and checks readiness before opening a chat session.
+// Existing services are reused; only this CLI's wallet, agent and optional CRE runner are stopped on exit.
 
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import type { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, configPath, expandHome, loadConfig } from '../../config/load.js';
 import type { Config } from '../../contracts/types.js';
+import { loadTokens } from '../../config/tokens.js';
+import { ensureTor, TorStartError } from './tor.js';
+import { ensureOllama } from './ollama.js';
+import { ensureWallet } from './wallet.js';
+import { ensureRecurring, type RecurringMode } from './recurring.js';
+import {
+  checkCancelled,
+  ensureProcess,
+  probeHttp,
+  responseObject,
+  ServiceStartError,
+  type Readiness,
+  type ServiceHandle,
+} from './process.js';
+import { prepareWalletConfig } from '../onboarding/config.js';
+import { WalletConnectError } from '../onboarding/connect.js';
 
 /** What /config and /doctor show about the setup: never RPC URLs (they carry provider keys) or tokens. */
 export interface AgentInfo {
@@ -49,10 +63,11 @@ export interface AgentEndpoint {
   started: boolean;
   /** The setup, for /config and /doctor; absent for endpoints made without a config (tests). */
   info?: AgentInfo;
+  recurring?: RecurringMode;
   stop(): void;
 }
 
-export type LaunchStage = 'config' | 'start' | 'token';
+export type LaunchStage = 'config' | 'wallet' | 'tor' | 'ollama' | 'wallet-service' | 'recurring' | 'start' | 'token';
 
 /** Why the agent could not be reached; `details` are safe to show (config field paths, not values). */
 export class LaunchError extends Error {
@@ -72,6 +87,17 @@ export interface LaunchOptions {
   startTimeoutMs?: number;
   fetchImpl?: typeof fetch;
   spawnImpl?: typeof spawn;
+  ensureTorImpl?: typeof ensureTor;
+  ensureOllamaImpl?: typeof ensureOllama;
+  ensureWalletImpl?: typeof ensureWallet;
+  ensureRecurringImpl?: typeof ensureRecurring;
+  projectRoot?: string;
+  walletConfigFile?: string;
+  recurringMode?: RecurringMode;
+  /** Desktop first-run setup is enabled by the interactive CLI, never by read-only/static commands. */
+  onboard?: boolean;
+  signal?: AbortSignal;
+  prepareConfigImpl?: typeof prepareWalletConfig;
   /** Progress notes while starting. */
   onStatus?: (note: string) => void;
 }
@@ -85,81 +111,123 @@ export function agentConfigFile(env: NodeJS.ProcessEnv = process.env, setupConfi
   if (env.AGENT_CONFIG) return configPath(env);
   return existsSync(setupConfig) ? setupConfig : configPath(env);
 }
-const POLL_MS = 250;
-
-/** True when anything answers HTTP on the agent's port (even 401: the agent wants its token). */
-async function listening(baseUrl: string, fetchImpl: typeof fetch): Promise<boolean> {
-  try {
-    await fetchImpl(`${baseUrl}/v1/health`, { signal: AbortSignal.timeout(1000) });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function readToken(config: Config): string {
-  try {
-    const token = readFileSync(expandHome(config.auth.ui_token_file), 'utf8').trim();
-    if (/^[0-9a-f]{64}$/.test(token)) return token;
-  } catch {
-    // reported below
-  }
-  throw new LaunchError('token', [config.auth.ui_token_file]);
-}
 
 /** Connects to the agent, starting it first when needed. */
 export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpoint> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const file = opts.configFile ?? agentConfigFile();
+  let file = opts.configFile ?? agentConfigFile();
+  if (opts.onboard && !opts.configFile && !process.env.AGENT_CONFIG && !existsSync(file)) file = SETUP_CONFIG;
+  file = resolve(expandHome(file));
   let config: Config;
   try {
-    config = loadConfig(file);
+    config = opts.onboard
+      ? await (opts.prepareConfigImpl ?? prepareWalletConfig)(file, { signal: opts.signal })
+      : loadConfig(file);
   } catch (err) {
+    if (err instanceof WalletConnectError) throw new LaunchError('wallet', [err.message]);
     throw new LaunchError('config', err instanceof ConfigError ? err.errors : []);
   }
+  if (opts.signal?.aborted) throw new LaunchError('start', ['Startup cancelled.']);
   const baseUrl = `http://${config.server.host}:${config.server.port}`;
   const walletUrl = config.execution.url.replace(/\/+$/, '') + '/';
-
-  let child: ChildProcess | undefined;
-  if (!(await listening(baseUrl, fetchImpl))) {
-    opts.onStatus?.('starting the agent');
-    child = (opts.spawnImpl ?? spawn)(process.execPath, [opts.entry ?? DEFAULT_ENTRY], {
-      env: { ...process.env, AGENT_CONFIG: file },
-      stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    let exited = false;
-    child.once('exit', () => {
-      exited = true;
-    });
-    child.once('error', () => {
-      exited = true;
-    });
-    const deadline = Date.now() + (opts.startTimeoutMs ?? 60_000);
-    while (!(await listening(baseUrl, fetchImpl))) {
-      if (exited || Date.now() > deadline) {
-        child.kill('SIGTERM');
-        throw new LaunchError('start');
-      }
-      await new Promise((r) => setTimeout(r, POLL_MS));
-    }
-  }
-
-  const running = child;
-  let token: string;
+  let tokens;
   try {
-    token = readToken(config);
-  } catch (err) {
-    running?.kill('SIGTERM');
-    throw err;
+    tokens = loadTokens(config);
+  } catch {
+    throw new LaunchError('token', ['Check the configured token files and their private file permissions.']);
   }
-  return {
-    baseUrl,
-    token,
-    walletUrl,
-    started: running !== undefined,
-    info: agentInfo(config, file),
-    stop: () => {
-      if (running && running.exitCode === null) running.kill('SIGTERM');
-    },
+  const serviceOptions = {
+    signal: opts.signal,
+    startTimeoutMs: opts.startTimeoutMs,
+    fetchImpl,
+    spawnImpl: opts.spawnImpl,
+    onStatus: opts.onStatus,
+    projectRoot: opts.projectRoot,
   };
+  const owned: ServiceHandle[] = [];
+  try {
+    if (config.network.socks_proxy !== null) {
+      opts.onStatus?.('Checking Tor...');
+      try {
+        await (opts.ensureTorImpl ?? ensureTor)(
+          config.network.socks_proxy,
+          join(dirname(file), 'tor', new URL(config.network.socks_proxy).port),
+          { onStatus: opts.onStatus, signal: opts.signal },
+        );
+      } catch (err) {
+        checkCancelled(opts.signal);
+        throw new LaunchError('tor', [err instanceof TorStartError ? err.message : new TorStartError('start').message]);
+      }
+      opts.onStatus?.('Tor ready.');
+    }
+    const ollama = await (opts.ensureOllamaImpl ?? ensureOllama)(config, serviceOptions);
+    owned.push(ollama);
+    const wallet = await (opts.ensureWalletImpl ?? ensureWallet)(config, file, {
+      ...serviceOptions,
+      tokens,
+      configFile: opts.walletConfigFile,
+    });
+    owned.push(wallet);
+    const probe = async (): Promise<Readiness> => {
+      const response = await probeHttp(`${baseUrl}/v1/health`, serviceOptions, {
+        authorization: `Bearer ${tokens.ui}`,
+      });
+      if (typeof response === 'string') return response;
+      if (response.status === 401)
+        throw new ServiceStartError(
+          'start',
+          'An agent with different credentials is using this port. Close its session or check AGENT_CONFIG.',
+        );
+      const body = await responseObject(response);
+      if (!response.ok || body?.ok !== true || typeof body.db !== 'boolean' || typeof body.ollama !== 'boolean')
+        throw new ServiceStartError(
+          'start',
+          'The configured agent port did not return a valid health check. Check AGENT_CONFIG and the service using that port.',
+        );
+      return body.db && body.ollama ? 'ready' : 'waiting';
+    };
+    opts.onStatus?.('Checking the agent...');
+    const agent = await ensureProcess(
+      {
+        service: 'start',
+        label: 'the agent',
+        probe,
+        command: () => ({
+          executable: process.execPath,
+          args: [opts.entry ?? DEFAULT_ENTRY],
+          options: { env: { ...process.env, AGENT_CONFIG: file } },
+        }),
+        failure:
+          'The agent did not become ready. Check its config, database and OS keychain access, then retry in flexx.',
+      },
+      serviceOptions,
+    );
+    owned.push(agent);
+    const recurring = await (opts.ensureRecurringImpl ?? ensureRecurring)(config, file, {
+      ...serviceOptions,
+      mode: opts.recurringMode,
+    });
+    owned.push(recurring);
+    checkCancelled(opts.signal);
+    // Ollama, like Tor, is shared by other applications and survives a successful CLI session.
+    ollama.detach();
+    opts.onStatus?.('All required services are ready.');
+    return {
+      baseUrl,
+      token: tokens.ui,
+      walletUrl,
+      started: agent.started,
+      info: agentInfo(config, file),
+      recurring: recurring.mode,
+      stop: () => {
+        for (const service of [...owned].reverse()) if (service !== ollama) service.stop();
+      },
+    };
+  } catch (error) {
+    for (const service of owned.reverse()) service.stop();
+    if (opts.signal?.aborted) throw new LaunchError('start', ['Startup cancelled.']);
+    if (error instanceof LaunchError) throw error;
+    if (error instanceof ServiceStartError) throw new LaunchError(error.service, [error.message]);
+    throw new LaunchError('start', ['Service startup failed. Check the local configuration and retry in flexx.']);
+  }
 }

@@ -46,6 +46,26 @@ const good = () =>
     ]),
   ]);
 
+describe('GET /v1/health', () => {
+  it('checks the wallet and database only after authenticating the caller', async () => {
+    const denied = await app.inject({ method: 'GET', url: '/v1/health' });
+    expect(denied.statusCode).toBe(401);
+    expect(denied.body).not.toContain(WALLET);
+    const res = await app.inject({ method: 'GET', url: '/v1/health', headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.json()).toEqual({ service: 'flex-wallet', ok: true, db: true, wallet_address: WALLET });
+    expect(accepted).toBe(0);
+  });
+
+  it('reports an unreadable database as unavailable', async () => {
+    store.readable = () => false;
+    const res = await app.inject({ method: 'GET', url: '/v1/health', headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().ok).toBe(false);
+  });
+});
+
 describe('POST /v1/intents', () => {
   it('saves a good envelope before replying 202', async () => {
     const e = good();

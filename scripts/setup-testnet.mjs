@@ -8,6 +8,10 @@ import { parseEnv } from 'node:util';
 import { protectPrivateFile } from '../dist/src/util/private-file.js';
 import { ensureTokenFile } from '../dist/src/config/tokens.js';
 import { validateConfig } from '../dist/src/config/load.js';
+import { ensureTor, TorStartError } from '../dist/src/cli/agent/tor.js';
+import { connectMetaMask, walletAddress } from '../dist/src/cli/onboarding/connect.js';
+import { saveWalletEnv } from '../dist/src/cli/onboarding/config.js';
+import { focusTerminal } from '../dist/src/cli/open.js';
 import { validateSimulationConfig } from '../wallet/dist/src/chain/simulation.js';
 import { parseConfig as validateWalletConfig } from '../wallet/dist/src/config.js';
 import { SIMULATION_FORWARDERS } from '../wallet/dist/src/autopay/local-cre.js';
@@ -25,6 +29,20 @@ function privateWrite(path, content, overwrite = true) {
 if (!existsSync(envPath)) privateWrite(envPath, readFileSync(resolve(root, '.env.example'), 'utf8'));
 else protectPrivateFile(envPath);
 const env = { ...parseEnv(readFileSync(envPath, 'utf8')), ...process.env };
+if (!walletAddress(env.FLEX_WALLET_ADDRESS) && process.stdin.isTTY && !process.argv.includes('--non-interactive')) {
+  console.log('Opening your default browser to connect MetaMask...');
+  let connected = false;
+  try {
+    env.FLEX_WALLET_ADDRESS = await connectMetaMask();
+    saveWalletEnv(envPath, env.FLEX_WALLET_ADDRESS);
+    connected = true;
+  } catch {
+    console.error('Wallet connection was not completed. Run setup again, or fill FLEX_WALLET_ADDRESS locally.');
+  } finally {
+    await focusTerminal();
+  }
+  if (!connected) process.exit(2);
+}
 const networks = { 11155111: 'SEPOLIA', 84532: 'BASE_SEPOLIA', 421614: 'ARBITRUM_SEPOLIA' };
 const required = [
   'FLEX_WALLET_ADDRESS',
@@ -75,6 +93,7 @@ if (missing.length) {
   if (existsSync(previousPath)) {
     const previous = JSON.parse(readFileSync(previousPath, 'utf8'));
     if (previous.network) cfg.network = previous.network;
+    if (previous.chat) cfg.chat = previous.chat;
   }
   if (env.FLEX_SOCKS_PROXY)
     cfg.network = { socks_proxy: env.FLEX_SOCKS_PROXY === 'direct' ? null : env.FLEX_SOCKS_PROXY };
@@ -148,4 +167,15 @@ if (missing.length) {
   console.log(
     'Created protected agent, wallet and CRE configs in .local. MetaMask approves and submits each browser batch.',
   );
+  if (cfg.network.socks_proxy !== null) {
+    try {
+      await ensureTor(cfg.network.socks_proxy, resolve(local, 'tor', new URL(cfg.network.socks_proxy).port), {
+        onStatus: (note) => console.log(note),
+      });
+      console.log('Tor is ready. flexx checks and starts Tor automatically whenever it opens.');
+    } catch (err) {
+      console.error(err instanceof TorStartError ? err.message : 'Tor could not start. Check your Tor installation.');
+      process.exitCode = 2;
+    }
+  }
 }
