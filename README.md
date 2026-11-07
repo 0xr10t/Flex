@@ -49,17 +49,6 @@ Anything Flex didn't get from you directly, such as pasted text, a web page or a
 
 ![How Flex works](assets/architecture.png)
 
-## Repository Layout
-
-```text
-src/                 Agent pipeline and the flexx terminal client
-wallet/              Execution layer: checks, simulates and sends through MetaMask
-wallet/contracts/    IntentExecutorV4, which runs registered recurring plans
-wallet/cre/          Chainlink CRE autopay workflow
-packages/protocol/   @flex/protocol, the hand-off schema both sides validate
-frontend/            Static install page
-```
-
 ## Quick Start
 
 ### Prerequisites
