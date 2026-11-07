@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFrame, frameLines } from '../../../src/cli/render/frame.js';
 import { paintRow, SCENE_PALETTE, SPLASH_PALETTE, to256 } from '../../../src/cli/render/paint.js';
 import { renderScene, renderSceneLayer, SCENE_COLS, SCENE_ROWS } from '../../../src/cli/render/scene.js';
@@ -8,7 +8,7 @@ import { SplashAnimation, SPLASH_COLS, SPLASH_ROWS } from '../../../src/cli/rend
 import { composeOpening, detectColorMode, renderStatic, type Phase } from '../../../src/cli/terminal.js';
 import { parseInput, type KeyEvent } from '../../../src/cli/input.js';
 import { Repl, type Line } from '../../../src/cli/repl.js';
-import { parseCliArgs, UsageError } from '../../../src/cli/main.js';
+import { parseCliArgs, runCli, UsageError } from '../../../src/cli/main.js';
 
 const ESC = '\u001b';
 
@@ -501,6 +501,19 @@ describe('arguments', () => {
     expect(() => parseCliArgs(['--shape', 'sphere'])).toThrow(UsageError);
     expect(() => parseCliArgs(['--accent', 'gold'])).toThrow(UsageError);
     expect(() => parseCliArgs(['pay'])).toThrow(UsageError);
+  });
+
+  it('prints the version and exits without starting anything (the release installer runs this)', async () => {
+    expect(parseCliArgs([])).toMatchObject({ version: false });
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => (out.push(String(chunk)), true));
+    try {
+      expect(await runCli(['--version'])).toBe(0);
+    } finally {
+      write.mockRestore();
+    }
+    // From src/ the package.json lookup (written for dist/src/cli) falls back to 'dev'.
+    expect(out.join('')).toMatch(/^flexx (\d+\.\d+\.\d+|dev)\n$/);
   });
 });
 

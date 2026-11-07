@@ -51,7 +51,7 @@ export async function startWorld(timestamp?: number): Promise<World> {
   const deployments = new Map<LocalChain, { executor: Hex; forwarder: Hex; block: number; router: Hex }>();
   for (const chain of [base, arbitrum]) {
     const forwarder = await chain.deploy('TestHelpers.sol', 'MockForwarder');
-    const executor = await chain.deploy('IntentExecutorV3.sol', 'IntentExecutorV3', [
+    const executor = await chain.deploy('IntentExecutorV4.sol', 'IntentExecutorV4', [
       forwarder,
       chain.env.DelegationManager,
     ]);

@@ -80,7 +80,7 @@ describe.skipIf(process.env.FLEX_NATIVE_CRE !== '1')(
           mkdirSync(resolve(dir, 'autopay'), { recursive: true });
           const forwarder = SIMULATION_FORWARDERS[chainId]!;
           await chain.setCode(forwarder, codes.get(chainId)!);
-          const { abi, bytecode } = artifact('IntentExecutorV3.sol', 'IntentExecutorV3');
+          const { abi, bytecode } = artifact('IntentExecutorV4.sol', 'IntentExecutorV4');
           const deployed = await chain
             .walletFor(userAccount)
             .deployContract({ abi, bytecode: bytecode.object, args: [forwarder, chain.env.DelegationManager] });

@@ -16,7 +16,7 @@ import {
   parseEventLogs,
   type Hex,
 } from 'viem';
-import { executionsOf } from '../chain/redeem.v2.js';
+import { executionsOf, permissionRedeem } from '../chain/redeem.v2.js';
 import { asUpgraded, runCheck, type Check } from '../guard/check.js';
 import {
   ETH,
@@ -40,6 +40,7 @@ import {
   signAutopayDelegation,
   type SignedDelegation,
 } from './delegation.js';
+import { permissionRequestFor } from './permission.js';
 import { reportCall } from './report-call.js';
 import { scanLogs } from './scan.js';
 
@@ -204,19 +205,28 @@ export const autopayHandler: StepHandler<AutopayK> = {
 
     if (!row) {
       const verified = verifiedIntent(ctx.envelope, intent.step);
-      const delegation: SignedDelegation = await signAutopayDelegation(
-        {
-          intent: verified,
-          delegator: ctx.walletAddress,
-          executor: deployment.executor,
-          chainId: intent.chain_id,
-          env: deployment.env,
-          startAt: intent.schedule.start_at,
-          endAt: intent.schedule.end_at,
-        },
-        ctx.gateway.signTypedData,
-      );
-      const redeem = redeemFor(verified, delegation);
+      let redeem: Hex, delegationJson: string;
+      if (ctx.grantPermission) {
+        // F8: MetaMask grants a periodic permission instead of signing a delegation; the executor pins the payees.
+        const context = await ctx.grantPermission(permissionRequestFor(intent, ctx.walletAddress, deployment.executor));
+        redeem = permissionRedeem(verified, context);
+        delegationJson = JSON.stringify({ permission_context: context });
+      } else {
+        const delegation: SignedDelegation = await signAutopayDelegation(
+          {
+            intent: verified,
+            delegator: ctx.walletAddress,
+            executor: deployment.executor,
+            chainId: intent.chain_id,
+            env: deployment.env,
+            startAt: intent.schedule.start_at,
+            endAt: intent.schedule.end_at,
+          },
+          ctx.gateway.signTypedData,
+        );
+        redeem = redeemFor(verified, delegation);
+        delegationJson = JSON.stringify(delegation);
+      }
       ctx.store.saveAutopayDraft({
         plan_id: planIdOf(redeem),
         request_id: id,
@@ -227,7 +237,7 @@ export const autopayHandler: StepHandler<AutopayK> = {
         token: intent.token,
         amount: runTotal(intent),
         fee: intent.fee.amount.value,
-        delegation_json: JSON.stringify(delegation),
+        delegation_json: delegationJson,
         redeem,
         end_at: intent.schedule.end_at,
       });

@@ -1,4 +1,4 @@
-// The parts of IntentExecutorV3 and DelegationManager the wallet uses. Viem-only, so this also works inside CRE.
+// The parts of IntentExecutorV4 and DelegationManager the wallet uses. Viem-only, so this also works inside CRE.
 
 import { parseAbi } from 'viem';
 

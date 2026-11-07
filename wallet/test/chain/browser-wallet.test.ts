@@ -7,6 +7,7 @@ import { encodeExecuteBatch } from '../../src/payments/payment-i.js';
 import { ALEX, WALLET, envelope, payEth, autopay, cancelOf } from '../support/envelopes.js';
 import { pendingDelegations } from '../../src/browser/delegation.js';
 import { userAccount } from './harness.js';
+import { metamaskGrant } from '../support/grant.js';
 import { startWorld, units, type World, type Wallet } from './world.js';
 
 let world: World;
@@ -66,19 +67,42 @@ describe('browser approved CCIP transfer', () => {
     await vi.waitFor(() => expect(pendingDelegations(wallet.service.store)).toHaveLength(1), { timeout: 15000 });
     const request = pendingDelegations(wallet.service.store)[0]!;
     expect(wallet.service.store.autopayByStep(e.request_id, 0)).toBeNull();
-    // Reopening preserves the exact bounded permission; a signature for changed terms is refused.
+    expect(request.permissionRequest).toMatchObject({
+      from: WALLET,
+      to: world.executorOf(world.base),
+      permission: {
+        type: 'erc20-token-periodic',
+        isAdjustmentAllowed: false,
+        data: { startTime: k.schedule.start_at },
+      },
+    });
+    // Reopening preserves the exact permission request; a grant with changed terms is refused and stays pending.
     await wallet.stop();
     wallet = await world.startWallet({ approval: 'metamask', dbName: 'recurring-browser.db' });
     post = await session(wallet);
     expect(pendingDelegations(wallet.service.store)[0]?.id).toBe(request.id);
-    const wrong = await userAccount.signTypedData({
-      ...request.typedData,
-      domain: { ...request.typedData.domain, chainId: 421614 },
-    } as never);
-    expect((await post('delegation', { id: request.id, signature: wrong })).statusCode).toBe(409);
-    const signature = await userAccount.signTypedData(request.typedData as never);
-    expect((await post('delegation', { id: request.id, signature })).statusCode).toBe(200);
-    expect((await post('delegation', { id: request.id, signature })).statusCode).toBe(409);
+    const sign = (typed: unknown) => userAccount.signTypedData(typed as never);
+    const asked = request.permissionRequest;
+    const doubled = await metamaskGrant(
+      {
+        ...asked,
+        permission: {
+          ...asked.permission,
+          data: {
+            ...asked.permission.data,
+            periodAmount: `0x${(BigInt(asked.permission.data.periodAmount) * 2n).toString(16)}`,
+          },
+        },
+      },
+      world.base.env,
+      sign,
+    );
+    const refused = await post('delegation', { id: request.id, response: doubled });
+    expect([refused.statusCode, refused.json().error]).toEqual([409, 'PERMISSION_MISMATCH']);
+    expect(pendingDelegations(wallet.service.store)).toHaveLength(1);
+    const response = await metamaskGrant(asked, world.base.env, sign);
+    expect((await post('delegation', { id: request.id, response })).statusCode).toBe(200);
+    expect((await post('delegation', { id: request.id, response })).statusCode).toBe(409);
     const approveBatch = async (requestId: string) => {
       await vi.waitFor(() => expect(wallet.service.store.walletBatch(requestId, 0)).not.toBeNull(), { timeout: 15000 });
       const batch = wallet.service.store.walletBatch(requestId, 0)!;
@@ -96,11 +120,15 @@ describe('browser approved CCIP transfer', () => {
     const plan = wallet.service.store.autopayByStep(e.request_id, 0)!;
     expect(plan.status).toBe('active');
     expect(await world.base.usdcOf(ALEX)).toBe(before);
+    // The plan runs under the granted permission: each payee as its own execution.
+    await world.base.setTime(k.schedule.start_at);
+    expect((await world.deliver(world.base, plan.redeem)).paid).toBe(true);
+    expect(await world.base.usdcOf(ALEX)).toBe(before + units('10'));
     const cancel = envelope([cancelOf(0, k.autopay_id, plan.plan_id)]);
     expect((await wallet.post(cancel)).status).toBe(202);
     await approveBatch(cancel.request_id);
     expect(wallet.service.store.autopayByPlan(plan.plan_id)?.status).toBe('cancelled');
-    await world.base.setTime(k.schedule.start_at);
+    await world.base.setTime(k.schedule.start_at + k.schedule.interval_seconds);
     expect((await world.deliver(world.base, plan.redeem)).paid).toBe(false);
   });
   it('sends a single-recipient payment as its exact call and verifies the transaction MetaMask sends', async () => {

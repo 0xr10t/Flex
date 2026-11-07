@@ -27,7 +27,7 @@ import { decodeExecuteBatch } from '../guard/decode.js';
 import type { Logger } from '../log.js';
 import { paymentHandler } from '../payments/payment-i.js';
 import {
-  browserDelegationSigner,
+  browserPermissionGranter,
   SignaturePending,
   SignatureRejected,
   type DelegationRequest,
@@ -157,13 +157,13 @@ export class Runner {
       return;
     }
     if (this.deps.browserWallet && intent.intent_id === 'k') {
-      ctx.gateway = { ...ctx.gateway, signTypedData: browserDelegationSigner(store, id, intent.step) };
+      ctx.grantPermission = browserPermissionGranter(store, id, intent.step);
       const approval = store.stepData<DelegationRequest>(id, intent.step);
       if (approval?.rejected) {
         this.finish(id, intent, { status: 'failed', error_code: 'USER_REJECTED' });
         return;
       }
-      if (approval?.typedData && !approval.signature) {
+      if (approval?.permissionRequest && !approval.context) {
         if (this.now().getTime() >= intent.schedule.start_at * 1000)
           this.finish(id, intent, { status: 'failed', error_code: 'START_PASSED' });
         return;

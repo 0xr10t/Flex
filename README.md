@@ -12,7 +12,7 @@ Flex runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, with USDC and 
 
 - **Pay people.** Addresses, saved contacts or ENS names, one person or several at once. Several payments on one chain can go out as a single atomic batch.
 - **Bridge when it has to.** If your USDC is on the wrong chain, Flex adds a Chainlink CCIP bridge step to the plan, with a cap on the fee.
-- **Recurring payments.** *"Pay mihir 10 usdc every friday for 8 weeks."* You sign a MetaMask delegation for that one plan, and a Chainlink CRE workflow pays each run when it's due. The money stays in your wallet until then. *"Stop paying mihir"* cancels the plan and revokes the permission.
+- **Recurring payments.** *"Pay mihir 10 usdc every friday for 8 weeks."* You approve one MetaMask permission for that plan, capped at each run's total and ending after the last run, then register the plan from your wallet. A Chainlink CRE workflow pays each run when it's due. The money stays in your wallet until then. *"Stop paying mihir"* cancels the plan and revokes the permission.
 - **Pay an ENS group.** *"Send 10 usdc to everyone under iitr.eth."* Flex lists the subnames and you pick who gets paid.
 - **Answer questions about your wallet.** Balances, what you received this week, whether the last payment went through, what a pasted hash is. The common ones are answered from local data without calling the model.
 - **Stick to your limits.** Spending limits are set in settings or with `/limits`. Nothing typed into the chat can change them.
@@ -23,7 +23,7 @@ Letting a language model near a wallet is asking for trouble, so most of Flex is
 
 - **The model doesn't drive.** Flex is a fixed pipeline, not an agent that picks its own tools. Code calls the model at four points (amounts, request type, recipients, pairing), checks every answer, and decides what happens next.
 - **The model never sees your real addresses or amounts.** Before it pairs payments with recipients, those values are swapped for placeholders. Code puts the real ones back only after you confirm.
-- **Untrusted text gets its own model.** Pasted text, PDFs, web pages and ENS text records go to a separate, quarantined call with no tools that never sees your request. Anything it pulls out is marked untrusted, needs your explicit confirmation, and can never set up a recurring payment.
+- **Untrusted text gets its own model.** Pasted text, web pages and ENS text records go to a separate, quarantined call with no tools that never sees your request. Anything it pulls out is marked untrusted, needs your explicit confirmation, and can never set up a recurring payment.
 - **Private keys and seed phrases are blocked.** Paste one and the request stops right there.
 - **The wallet checks again before signing.** It validates the plan on its own, decodes the transaction bytes and simulates them with `eth_simulateV1`. If the plan, the decoded call and the simulation don't all agree, it stops. After sending, it confirms the expected transfers actually happened.
 - **Local data is encrypted.** The databases use SQLCipher with the key kept in your OS keychain, and logs never contain amounts or addresses.
@@ -46,12 +46,12 @@ The repo has three parts:
 | Path | What it is |
 | --- | --- |
 | `/` | The agent, which turns a request into a plan you confirm, plus the `flexx` terminal client |
-| `wallet/` | The execution layer. It checks, simulates and sends what you approved through MetaMask, and holds the `IntentExecutorV3` contract and the CRE autopay workflow |
+| `wallet/` | The execution layer. It checks, simulates and sends what you approved through MetaMask, and holds the `IntentExecutorV4` contract and the CRE autopay workflow |
 | `packages/protocol/` | `@flex/protocol`, the hand-off format both sides validate |
 
 ## Deployed contracts
 
-`IntentExecutorV3` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you signed.
+`IntentExecutorV4` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you registered, and only pays the recipients that registration fixed. MetaMask's permission caps how much it can move per run.
 
 | Network | Address |
 | --- | --- |
@@ -72,6 +72,18 @@ The repo has three parts:
 
 ### Install
 
+For a user-local source installation, download and inspect `install.sh`, then run:
+
+```sh
+bash install.sh --source
+```
+
+This clones `master` into a private staging directory under `~/.flex`, installs the agent, wallet and CRE dependencies from their lockfiles, builds both services, and checks `flexx --version` before activating the installation. It requires Bash, Git, Python 3, npm and the Node version listed above; native dependencies may need a compiler and build tools. It never uses `sudo`, changes shell profiles, starts services or downloads models. It refuses to replace an existing installation. Set `--prefix /absolute/path` for a different location.
+
+Run `~/.flex/bin/flexx --help`, or add `~/.flex/bin` to your PATH. For the configuration steps below, use `cd ~/.flex/current` as your project directory. Ollama, Tor, MetaMask and the RPC settings are still required. For prepared release archives, the existing `--version VERSION --sha256 DIGEST` mode verifies the supplied checksum before extraction and activation; `--archive PATH` supports local archives.
+
+To work from a development checkout instead:
+
 ```sh
 git clone https://github.com/0xr10t/Flex.git
 cd Flex
@@ -81,6 +93,10 @@ npm ci
 ```
 
 The database and keychain packages use native bindings, so install on the machine that will run Flex.
+
+### Install page
+
+`npm run frontend:dev` serves the command-only install page at `http://127.0.0.1:4173`. It matches the CLI's wallet approval page. `npm run frontend:build` produces a standalone static site in `dist/install/`, including the current `install.sh`; publish that directory on an HTTPS host. The command downloads the installer from the page's own URL and only executes it after a successful complete download. Subdirectory hosting is supported. The local server serves only these public assets, never `.env` or other repository files.
 
 ### Configure
 
@@ -214,7 +230,7 @@ Recurring payments need a few more things:
 
 ```sh
 forge build --root wallet/contracts
-npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser
+npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser, deploy the payment executor
 ```
 
 Set `FLEX_CRE_MODE=broadcast` in `.env` once, then run `flexx`. It starts the recurring runner after the wallet and agent are ready. Use `FLEX_CRE_MODE=dry-run` to check registered schedules without sending payments, or `off` (the default) to leave recurring execution disabled. Enabling the runner does not change Tor settings: explicitly choose `FLEX_SOCKS_PROXY=direct` and rerun setup first. The runner still requires the CRE CLI login and a funded test transmitter key for broadcasts.
@@ -239,12 +255,6 @@ To run the acceptance prompts against your real local model, use `LIVE_SET=all L
 - Testnets only, and only USDC and ETH. No swaps, NFTs or arbitrary contract calls.
 - Recurring payments are broadcast by the CRE CLI running on your machine, not by a deployed DON. On testnets the receivers trust Chainlink's mock forwarder.
 - `install.sh` is ready, but no release has been published yet, so install from source.
-
-## Docs
-
-- [`wallet/README.md`](wallet/README.md) covers the execution layer and how each payment is checked.
-- [`packages/protocol/README.md`](packages/protocol/README.md) describes the hand-off format between agent and wallet.
-- `agent-layer-architecture.html` is a visual walkthrough of the agent. Open it in a browser.
 
 ## Team
 

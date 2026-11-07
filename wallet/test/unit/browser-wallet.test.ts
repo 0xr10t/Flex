@@ -87,7 +87,7 @@ function harness() {
     chainIds: [11155111, 84532, 421614],
     feeMaxEth: '0.003',
     gatewayFor: () => chain,
-    delegationManagerFor: () => MANAGER,
+    envFor: () => ({ DelegationManager: MANAGER }) as never,
     now: () => now,
     kick: () => {
       void runner.kick();

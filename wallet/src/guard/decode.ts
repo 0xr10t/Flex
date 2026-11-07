@@ -56,22 +56,45 @@ export function decodeExecuteBatch(data: Hex): Execution[] | null {
   }
 }
 
-/** The batch inside a `redeemDelegations` call: what the delegation would actually run. */
+const SINGLE_DEFAULT = `0x${'00'.repeat(32)}`;
+const DELEGATIONS = parseAbiParameters(`${DELEGATION}[]`);
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** An ERC-7579 single execution: target (20 bytes) ‖ value (32 bytes) ‖ calldata. */
+const unpackSingle = (packed: Hex): Execution | null =>
+  packed.length < 106
+    ? null
+    : {
+        target: `0x${packed.slice(2, 42)}`,
+        value: BigInt(`0x${packed.slice(42, 106)}`),
+        callData: `0x${packed.slice(106)}`,
+      };
+
+/**
+ * The calls inside a `redeemDelegations` call: what a run would actually do. Either one batch, or one single execution
+ * per entry under the same context (a MetaMask permission, F8).
+ */
 export function decodeRedeemBatch(redeem: Hex): Execution[] | null {
   try {
     const { functionName, args } = decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: redeem });
     if (functionName !== 'redeemDelegations') return null;
-    const [, modes, executions] = args as readonly [readonly Hex[], readonly Hex[], readonly Hex[]];
-    if (modes.length !== 1 || executions.length !== 1 || modes[0] !== BATCH_DEFAULT) return null;
-    return [...decodeAbiParameters(EXECUTIONS, executions[0] as Hex)[0]] as Execution[];
+    const [contexts, modes, executions] = args as readonly [readonly Hex[], readonly Hex[], readonly Hex[]];
+    if (modes.length === 1 && executions.length === 1 && modes[0] === BATCH_DEFAULT)
+      return [...decodeAbiParameters(EXECUTIONS, executions[0] as Hex)[0]] as Execution[];
+    if (
+      !executions.length ||
+      contexts.length !== executions.length ||
+      modes.length !== executions.length ||
+      contexts.some((c) => c !== contexts[0]) ||
+      modes.some((m) => m !== SINGLE_DEFAULT)
+    )
+      return null;
+    const calls = executions.map(unpackSingle);
+    return calls.every((c) => c !== null) ? (calls as Execution[]) : null;
   } catch {
     return null;
   }
 }
-
-const SINGLE_DEFAULT = `0x${'00'.repeat(32)}`;
-const DELEGATIONS = parseAbiParameters(`${DELEGATION}[]`);
-const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
  * The calls the account itself ran in a mined transaction, or null. MetaMask either sends from the account, or pays the
@@ -96,14 +119,9 @@ export function executedCalls(
       const chain = decodeAbiParameters(DELEGATIONS, contexts[0]!)[0];
       if (!chain.length || !same(chain[chain.length - 1]!.delegator, wallet)) return null;
       if (modes[0] === BATCH_DEFAULT) return [...decodeAbiParameters(EXECUTIONS, executions[0]!)[0]] as Execution[];
-      // ERC-7579 single execution: target (20 bytes) ‖ value (32 bytes) ‖ calldata.
-      const packed = executions[0]!;
-      if (modes[0] !== SINGLE_DEFAULT || packed.length < 106) return null;
-      call = {
-        target: `0x${packed.slice(2, 42)}`,
-        value: BigInt(`0x${packed.slice(42, 106)}`),
-        callData: `0x${packed.slice(106)}`,
-      };
+      const single = modes[0] === SINGLE_DEFAULT ? unpackSingle(executions[0]!) : null;
+      if (!single) return null;
+      call = single;
     } catch {
       return null;
     }

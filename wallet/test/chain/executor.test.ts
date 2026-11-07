@@ -1,7 +1,9 @@
-// IntentExecutorV3 with MetaMask's real contracts, covering the gaps the lab left: a list of 50, one recipient, ETH, the exact
-// edges of the time window, and a run with too little money. These runs go through a stand-in forwarder.
+// IntentExecutorV4 with MetaMask's real contracts, covering the gaps the lab left: a list of 50, one recipient, ETH, the exact
+// edges of the time window, and a run with too little money; and plans that run under a MetaMask periodic permission (F8).
+// These runs go through a stand-in forwarder.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
   keccak256,
@@ -10,8 +12,11 @@ import {
   parseUnits,
   type Hex,
 } from 'viem';
-import { EXECUTOR_ABI } from '../../src/autopay/abi.js';
+import { DELEGATION_MANAGER_ABI, EXECUTOR_ABI } from '../../src/autopay/abi.js';
 import { delegationFromRedeem, planIdOf, redeemFor, signAutopayDelegation } from '../../src/autopay/delegation.js';
+import { permissionRequestFor } from '../../src/autopay/permission.js';
+import { permissionRedeem } from '../../src/chain/redeem.v2.js';
+import { metamaskGrant } from '../support/grant.js';
 import { toPlan } from '@flex/protocol/mapping/to-plan';
 import type { AutopayK, HandoffEnvelope, Payee } from '@flex/protocol/schemas/envelope';
 import { BASE, envelope, eth, usdc, WALLET } from '../support/envelopes.js';
@@ -32,7 +37,7 @@ let snap: string;
 beforeAll(async () => {
   chain = await startChain(BASE);
   forwarder = await chain.deploy('TestHelpers.sol', 'MockForwarder');
-  executor = await chain.deploy('IntentExecutorV3.sol', 'IntentExecutorV3', [forwarder, chain.env.DelegationManager]);
+  executor = await chain.deploy('IntentExecutorV4.sol', 'IntentExecutorV4', [forwarder, chain.env.DelegationManager]);
   await chain.mintUsdc(WALLET, units('1000000'));
   const auth = await userAccount.signAuthorization({
     address: EIP7702_DELEGATOR,
@@ -64,6 +69,8 @@ interface Options {
   runs?: number;
   start?: number;
   signChainId?: number;
+  /** Runs under a MetaMask periodic permission instead of a signed exact-batch delegation (F8). */
+  grant?: boolean;
 }
 
 /** Builds a `k`, signs it, and registers it from the user's account. */
@@ -106,19 +113,27 @@ async function register(o: Options = {}) {
   };
   const e: HandoffEnvelope = envelope([k]);
   const intent = toPlan(e).steps[0]?.intent as unknown as Intent;
-  const delegation = await signAutopayDelegation(
-    {
-      intent,
-      delegator: WALLET,
-      executor,
-      chainId: o.signChainId ?? BASE,
-      env: chain.env,
-      startAt: start,
-      endAt: k.schedule.end_at,
-    },
-    (typed) => userAccount.signTypedData(typed as never),
-  );
-  const redeem = redeemFor(intent, delegation);
+  const sign = (typed: unknown) => userAccount.signTypedData(typed as never);
+  const redeem = o.grant
+    ? permissionRedeem(
+        intent,
+        (await metamaskGrant(permissionRequestFor(k, WALLET, executor), chain.env, sign)).context,
+      )
+    : redeemFor(
+        intent,
+        await signAutopayDelegation(
+          {
+            intent,
+            delegator: WALLET,
+            executor,
+            chainId: o.signChainId ?? BASE,
+            env: chain.env,
+            startAt: start,
+            endAt: k.schedule.end_at,
+          },
+          sign,
+        ),
+      );
   const user = userClient();
   const hash = await user.sendTransaction({
     to: executor,
@@ -260,6 +275,80 @@ describe('gaps from the lab', () => {
     const last = logs.at(-1);
     expect(last.args.intentId).toBe(plan.id);
     expect(delegationFromRedeem(last.args.redeem)?.delegator.toLowerCase()).toBe(WALLET.toLowerCase());
+  });
+});
+
+describe('a MetaMask periodic permission (F8)', () => {
+  const two = [
+    { recipient: ALEX, amount: usdc('10') },
+    { recipient: address(1), amount: usdc('2.5') },
+  ];
+  /** Redeems straight through the DelegationManager as the executor, so only the permission's own caveats decide. */
+  const asExecutor = (redeem: Hex) =>
+    chain.pub.call({ account: executor, to: chain.env.DelegationManager as Hex, data: redeem });
+
+  it('pays every recipient and the fee, once per period, as one single execution each', async () => {
+    const plan = await register({ grant: true, recipients: two, runs: 2 });
+    await chain.setTime(plan.start + 30);
+    expect((await run(plan.redeem)).paid).toBe(true);
+    expect(await chain.usdcOf(ALEX)).toBe(units('10'));
+    expect(await chain.usdcOf(address(1))).toBe(units('2.5'));
+    expect(await chain.usdcOf(FEE_TO)).toBe(units('0.05'));
+    // The period's allowance is spent, whatever the executor does.
+    await expect(asExecutor(plan.redeem)).rejects.toThrow();
+    await chain.setTime(plan.start + plan.interval + 30);
+    expect((await run(plan.redeem)).paid).toBe(true);
+    expect(await chain.usdcOf(ALEX)).toBe(units('20'));
+  });
+
+  it('an ETH permission', async () => {
+    const before = await chain.ethOf(ALEX);
+    const plan = await register({ grant: true, token: 'ETH' });
+    await chain.setTime(plan.start + 30);
+    expect((await run(plan.redeem)).paid).toBe(true);
+    expect((await chain.ethOf(ALEX)) - before).toBe(parseEther('0.01'));
+  });
+
+  it('the permission itself refuses before its start and after its expiry', async () => {
+    const plan = await register({ grant: true, runs: 1 });
+    await expect(asExecutor(plan.redeem)).rejects.toThrow();
+    await chain.setTime(plan.start + plan.late + 2);
+    await expect(asExecutor(plan.redeem)).rejects.toThrow();
+  });
+
+  it('pays at exactly the last second of the last window', async () => {
+    const plan = await register({ grant: true, runs: 1 });
+    await chain.rpc('evm_setNextBlockTimestamp', [plan.start + plan.late]);
+    expect((await run(plan.redeem)).paid).toBe(true);
+  });
+
+  /** Why `register` from `account` would revert, decoded with the contract's own errors. */
+  const registerError = (plan: Awaited<ReturnType<typeof register>>, redeem: Hex, account: Hex = WALLET) =>
+    chain.pub.simulateContract({
+      account,
+      address: executor,
+      abi: artifact('IntentExecutorV4.sol', 'IntentExecutorV4').abi,
+      functionName: 'register',
+      args: [BigInt(plan.start), BigInt(plan.interval), BigInt(plan.late), BigInt(plan.runs), redeem],
+    });
+
+  it('another account cannot register the grant', async () => {
+    const plan = await register({ grant: true });
+    await expect(registerError(plan, plan.redeem, ALEX)).rejects.toThrow('NotYourDelegation');
+  });
+
+  it('refuses a redeem whose entries carry different contexts', async () => {
+    const plan = await register({ grant: true, recipients: two });
+    const other = await register({ grant: true, start: plan.start + 1 });
+    const entries = (redeem: Hex) =>
+      decodeFunctionData({ abi: DELEGATION_MANAGER_ABI, data: redeem }).args as unknown as [Hex[], Hex[], Hex[]];
+    const [contexts, modes, executions] = entries(plan.redeem);
+    const mixed = encodeFunctionData({
+      abi: DELEGATION_MANAGER_ABI,
+      functionName: 'redeemDelegations',
+      args: [[contexts[0]!, entries(other.redeem)[0][0]!, contexts[2]!], modes, executions],
+    });
+    await expect(registerError(plan, mixed)).rejects.toThrow('BadRedeemShape');
   });
 });
 

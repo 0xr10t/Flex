@@ -1,12 +1,14 @@
 // Your redeem.ts, corrected: ERC-20 payments become token.transfer calls [B1], and the
 // per-run fee is part of the same signed batch [B8]. Still viem-only, so it runs inside CRE WASM.
-// Keep always-batch encoding even for one recipient: the MetaMask kit encodes a single execution
-// differently and the batch delegation rejects it [B10], while this encoder works [B10b].
+// A signed delegation keeps always-batch encoding even for one recipient: the MetaMask kit encodes a single execution
+// differently and the batch delegation rejects it [B10], while this encoder works [B10b]. A MetaMask permission (F8)
+// allows only single executions, so its redeem repeats one context, once per payee.
 import {
   decodeAbiParameters,
   decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
+  encodePacked,
   erc20Abi,
   parseUnits,
   type Hex,
@@ -64,13 +66,22 @@ const REDEEM_ABI = [
   },
 ] as const;
 const BATCH_DEFAULT = '0x0100000000000000000000000000000000000000000000000000000000000000' as const;
+const SINGLE_DEFAULT = `0x${'00'.repeat(32)}` as const;
 
-/** Read the same single-delegation shape accepted by IntentExecutorV3, without loading a signer. */
+/**
+ * The one delegation a plan runs under, read the way IntentExecutorV4 accepts it: one or more entries, all with the same
+ * context, which holds exactly one delegation. Loads no signer.
+ */
 export function redeemIdentity(redeem: Hex): { delegator: Hex; delegate: Hex } {
   const {
     args: [contexts, modes, executions],
   } = decodeFunctionData({ abi: REDEEM_ABI, data: redeem });
-  if (contexts.length !== 1 || modes.length !== 1 || executions.length !== 1 || modes[0] !== BATCH_DEFAULT)
+  if (
+    !contexts.length ||
+    modes.length !== contexts.length ||
+    executions.length !== contexts.length ||
+    contexts.some((c) => c !== contexts[0])
+  )
     throw new Error('INVALID_REDEEM');
   const [delegations] = decodeAbiParameters([DELEGATION], contexts[0]!);
   if (delegations.length !== 1) throw new Error('INVALID_REDEEM');
@@ -101,5 +112,19 @@ export function redeemCalldata(intent: Intent, d: SignedDelegation): Hex {
     abi: REDEEM_ABI,
     functionName: 'redeemDelegations',
     args: [[ctx], [BATCH_DEFAULT], [exec]],
+  });
+}
+
+/** A MetaMask permission's run: each payment as its own single execution (ERC-7579 packed), all under one context. */
+export function permissionRedeem(intent: Intent, context: Hex): Hex {
+  const executions = executionsOf(intent);
+  return encodeFunctionData({
+    abi: REDEEM_ABI,
+    functionName: 'redeemDelegations',
+    args: [
+      executions.map(() => context),
+      executions.map(() => SINGLE_DEFAULT),
+      executions.map((e) => encodePacked(['address', 'uint256', 'bytes'], [e.target, e.value, e.callData])),
+    ],
   });
 }

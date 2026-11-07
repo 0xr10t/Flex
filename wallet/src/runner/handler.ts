@@ -6,6 +6,7 @@ import type { IntentResultReport } from '@flex/protocol';
 import type { Hex } from 'viem';
 import type { ChainGateway, TxReceipt, TxRequest } from '../chain/gateway.js';
 import type { Check } from '../guard/check.js';
+import type { PermissionRequest } from '../autopay/permission.js';
 import type { EnvelopeIntent, HandoffEnvelope } from '@flex/protocol/schemas/envelope';
 import type { StepResult, Store } from '../store/store.js';
 
@@ -30,6 +31,8 @@ export interface HandlerContext {
   now: () => Date;
   bridgeTimeoutMs: number;
   bridgeFeeMaxEth?: string;
+  /** Browser mode: a recurring plan runs under a MetaMask permission. Resolves to its verified context. */
+  grantPermission?: (request: PermissionRequest) => Promise<Hex>;
 }
 
 /** What to check before asking the user. `finished` means there's nothing to sign. */

@@ -1,0 +1,243 @@
+/* Same palette, typography and controls as wallet/src/browser/ui.css. */
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #e9edf5;
+  background: #111722;
+  font-synthesis: none;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  width: min(100%, 1120px);
+  margin: auto;
+  padding: 32px 28px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.brand {
+  font-size: 24px;
+  font-weight: 850;
+  letter-spacing: 3px;
+  color: #e9edf5;
+  text-decoration: none;
+}
+nav {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+}
+nav a {
+  color: #9eacc1;
+  text-decoration: none;
+}
+nav a:hover {
+  color: #e9edf5;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: #94aeae;
+}
+.hero {
+  min-height: calc(100svh - 92px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 0 96px;
+}
+h1 {
+  font-size: clamp(36px, 6vw, 62px);
+  line-height: 1.07;
+  letter-spacing: -2px;
+  margin: 18px 0 44px;
+  max-width: 860px;
+  font-weight: 650;
+}
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.command {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(100%, 720px);
+  background: #1a2332;
+  border: 1px solid #303e52;
+  border-radius: 12px;
+  padding: 26px 18px 26px 32px;
+  transition: border-color 0.15s;
+}
+.command:hover {
+  border-color: #42536b;
+}
+#command {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  line-height: 1.6;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+#command .tool {
+  color: #b5e0cd;
+}
+#command .flag {
+  color: #9eacc1;
+}
+#command .url {
+  color: #9ec5f0;
+}
+#command .pipe {
+  color: #6f7f96;
+}
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  color: #9eacc1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+button:hover,
+button.done {
+  color: #14281e;
+  background: #b5e0cd;
+  border-color: #91cdb8;
+}
+button:disabled {
+  visibility: hidden;
+}
+:focus-visible {
+  outline: 2px solid #b5e0cd;
+  outline-offset: 5px;
+}
+#status {
+  min-height: 22px;
+  color: #b5e0cd;
+  font-size: 13px;
+  margin: 14px 0 10px;
+}
+.intro {
+  max-width: 620px;
+  color: #b7c0d0;
+  font-size: 17px;
+  line-height: 1.7;
+  margin: 0;
+}
+.intro code,
+.docs :not(pre) > code {
+  font-size: 0.88em;
+  color: #e9edf5;
+  background: #1a2332;
+  border: 1px solid #293547;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.docs {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 72px 0 96px;
+  border-top: 1px solid #293547;
+}
+h2 {
+  font-size: clamp(28px, 4vw, 38px);
+  letter-spacing: -1px;
+  font-weight: 650;
+  margin: 12px 0 8px;
+}
+h3 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 44px 0 12px;
+}
+.docs p,
+.docs li {
+  color: #b7c0d0;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.docs p {
+  margin: 0 0 14px;
+}
+.docs ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.docs li {
+  margin-bottom: 8px;
+}
+.docs li::marker {
+  color: #b5e0cd;
+}
+.docs strong,
+.docs em {
+  color: #e9edf5;
+}
+pre {
+  background: #1a2332;
+  border: 1px solid #303e52;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 0 0 16px;
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: #e9edf5;
+}
+a {
+  color: #b5e0cd;
+  text-underline-offset: 4px;
+}
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #293547;
+  padding-top: 22px;
+  color: #8393a9;
+  font-size: 12px;
+  line-height: 1.7;
+}
+footer a {
+  text-decoration: none;
+}
+footer a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 540px) {
+  main {
+    padding: 24px 16px;
+  }
+  h1 {
+    letter-spacing: -1.3px;
+  }
+  .command {
+    padding: 18px 8px 18px 18px;
+  }
+  #command {
+    font-size: 14px;
+    text-align: left;
+  }
+  footer {
+    flex-wrap: wrap;
+  }
+}
