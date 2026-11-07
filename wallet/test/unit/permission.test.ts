@@ -25,7 +25,7 @@ const ethK = {
   fee: { ...k.fee, amount: eth('0.0001') },
 };
 const signer = privateKeyToAccount(generatePrivateKey());
-const sign = (typed: never) => signer.signTypedData(typed);
+const sign = (typed: unknown) => signer.signTypedData(typed as never);
 const usdcRequest = permissionRequestFor(k, WALLET, EXECUTOR);
 const grant = (o?: GrantOptions, request = usdcRequest) => metamaskGrant(request, env, sign, o);
 const verify = async (o?: GrantOptions, request = usdcRequest) => {

@@ -46,12 +46,12 @@ The repo has three parts:
 | Path | What it is |
 | --- | --- |
 | `/` | The agent, which turns a request into a plan you confirm, plus the `flexx` terminal client |
-| `wallet/` | The execution layer. It checks, simulates and sends what you approved through MetaMask, and holds the `IntentExecutorV3` contract and the CRE autopay workflow |
+| `wallet/` | The execution layer. It checks, simulates and sends what you approved through MetaMask, and holds the `IntentExecutorV4` contract and the CRE autopay workflow |
 | `packages/protocol/` | `@flex/protocol`, the hand-off format both sides validate |
 
 ## Deployed contracts
 
-`IntentExecutorV3` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you signed.
+`IntentExecutorV4` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you signed.
 
 | Network | Address |
 | --- | --- |

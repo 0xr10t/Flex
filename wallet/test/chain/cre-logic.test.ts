@@ -74,7 +74,7 @@ async function create(options: { runs?: number; interval?: number; late?: number
 async function simulate(redeem: Hex): Promise<Simulated> {
   const forwarder = (await world.base.pub.readContract({
     address: world.executorOf(world.base),
-    abi: artifact('IntentExecutorV3.sol', 'IntentExecutorV3').abi,
+    abi: artifact('IntentExecutorV4.sol', 'IntentExecutorV4').abi,
     functionName: 'getForwarderAddress',
   })) as Hex;
   const metadata = metadataOf({ id: `0x${'00'.repeat(32)}`, name: `0x${'00'.repeat(10)}`, owner: ALEX });

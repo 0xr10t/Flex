@@ -1,6 +1,6 @@
 // CRE CLI simulation forwarders, verified against the official directory and supported-chains.
 // These are testnet mocks: they do not authenticate DON consensus. User-signed delegations and
-// IntentExecutorV3's registration, schedule, cancellation and replay checks remain mandatory.
+// IntentExecutorV4's registration, schedule, cancellation and replay checks remain mandatory.
 // https://docs.chain.link/cre/guides/workflow/using-evm-client/forwarder-directory-ts
 import type { Hex } from 'viem';
 

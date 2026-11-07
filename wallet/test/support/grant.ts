@@ -18,7 +18,7 @@ export interface GrantOptions {
 export async function metamaskGrant(
   request: PermissionRequest,
   env: SmartAccountsEnvironment,
-  sign: (typedData: never) => Promise<Hex>,
+  sign: (typedData: unknown) => Promise<Hex>,
   o: GrantOptions = {},
 ) {
   const e = env.caveatEnforcers as Record<string, Hex>;
@@ -66,7 +66,7 @@ export async function metamaskGrant(
     types: SIGNABLE_DELEGATION_TYPED_DATA,
     primaryType: 'Delegation',
     message,
-  } as never);
+  });
   return {
     chainId: request.chainId,
     from: request.from,

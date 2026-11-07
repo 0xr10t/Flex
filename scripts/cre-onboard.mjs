@@ -31,7 +31,7 @@ export async function startOnboarding(port = 8792) {
     throw new Error('LOCAL_METAMASK_CONFIG_REQUIRED');
   const address = wallet.approval.wallet_address;
   const artifact = JSON.parse(
-    readFileSync(resolve(root, 'wallet/contracts/out/IntentExecutorV3.sol/IntentExecutorV3.json'), 'utf8'),
+    readFileSync(resolve(root, 'wallet/contracts/out/IntentExecutorV4.sol/IntentExecutorV4.json'), 'utf8'),
   );
   const journalPath = resolve(root, '.local/cre-onboarding.json');
   const deploymentsPath = resolve(root, '.local/deployments.json');

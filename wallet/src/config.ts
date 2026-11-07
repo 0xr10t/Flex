@@ -26,7 +26,7 @@ export interface WalletConfig {
     rpc_url: string;
     /** Separate, provider-neutral simulation backends. Omission preserves the legacy single-RPC mode. */
     simulation?: SimulationConfig;
-    /** Absent until `IntentExecutorV3` is deployed on that chain. Autopay and cancel are refused without it. */
+    /** Absent until `IntentExecutorV4` is deployed on that chain. Autopay and cancel are refused without it. */
     executor?: { address: Hex; deployment_block: number };
   }[];
 }

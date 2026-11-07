@@ -4,11 +4,13 @@ pragma solidity ^0.8.24;
 import {ReceiverTemplate} from "./ReceiverTemplate.sol";
 
 /// IntentExecutorV2 + user-side registration (no HTTP intake, no gateway key).
-///  - register(): sent by the user's own wallet. Checks the signed delegation is FROM msg.sender and TO this contract,
+///  - register(): sent by the user's own wallet. Checks the delegation is FROM msg.sender and TO this contract,
 ///    stores only the hash + schedule, emits the full redeem calldata (the cron reads its plan list from these events).
 ///  - reports (CRE cron) can only RUN registered plans; they can no longer create one or choose its schedule.
 ///  - cancel(): the user stops the plan here; the wallet also calls DelegationManager.disableDelegation in the same batch.
-contract IntentExecutorV3 is ReceiverTemplate {
+/// V4 (F8): a redeem may hold several entries, all with the same context, because a MetaMask periodic permission allows
+/// only single executions: one entry per payee. Modes and executions are left to the DelegationManager and enforcers.
+contract IntentExecutorV4 is ReceiverTemplate {
   bytes4 private constant REDEEM = 0xcef6d209; // redeemDelegations(bytes[],bytes32[],bytes[])
 
   struct Caveat { address enforcer; bytes terms; bytes args; }
@@ -55,7 +57,9 @@ contract IntentExecutorV3 is ReceiverTemplate {
     if (redeem.length < 4 || bytes4(redeem[:4]) != REDEEM) revert NotRedeemCall();
     if (interval == 0 || maxRuns == 0 || lateWindow == 0 || lateWindow > interval) revert BadPlan();
     (bytes[] memory contexts, bytes32[] memory modes, bytes[] memory execs) = abi.decode(redeem[4:], (bytes[], bytes32[], bytes[]));
-    if (contexts.length != 1 || modes.length != 1 || execs.length != 1) revert BadRedeemShape();
+    if (contexts.length == 0 || modes.length != contexts.length || execs.length != contexts.length) revert BadRedeemShape();
+    bytes32 context = keccak256(contexts[0]);
+    for (uint256 i = 1; i < contexts.length; i++) if (keccak256(contexts[i]) != context) revert BadRedeemShape();
     Delegation[] memory chain = abi.decode(contexts[0], (Delegation[]));
     if (chain.length != 1) revert BadRedeemShape();
     if (chain[0].delegator != msg.sender) revert NotYourDelegation(chain[0].delegator, msg.sender);
