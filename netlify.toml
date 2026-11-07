@@ -1,0 +1,14 @@
+# frontend/ is source: its docs are templates and install.sh lives at the repo root. Publish the built folder.
+[build]
+  command = "node scripts/frontend.mjs"
+  publish = "dist/install"
+
+# The build uses only Node's standard library, so skip the native builds of the app's dependencies.
+[build.environment]
+  NPM_FLAGS = "--ignore-scripts"
+
+# Show the installer as text in the browser. curl ignores this.
+[[headers]]
+  for = "/install.sh"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
