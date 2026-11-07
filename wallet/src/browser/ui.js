@@ -61,8 +61,9 @@ function el(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
-function action(label, fn, secondary = false) {
-  const node = el('button', label, secondary ? 'secondary' : undefined);
+/** `variant`: true for a secondary button, or 'approve' (green) / 'reject' (red). Default is the gold primary. */
+function action(label, fn, variant = false) {
+  const node = el('button', label, variant === true ? 'secondary' : variant || undefined);
   node.type = 'button';
   // approving connects MetaMask first when needed, so there is no separate connect step
   node.disabled = sending;
@@ -108,6 +109,7 @@ async function connect() {
     ? `Connected: ${state.wallet}`
     : `Choose this configured account in MetaMask: ${state.wallet}`;
   $('connect').textContent = connected ? 'Connected to MetaMask' : 'Connect MetaMask';
+  $('connect').dataset.connected = String(connected);
   render();
   if (!connected) throw new Error(`Choose the configured account in MetaMask: ${state.wallet}`);
 }
@@ -262,14 +264,8 @@ function accountSetup(request) {
   const card = el('article', undefined, 'card');
   card.append(el('h3', `Enable your smart account on ${chain}`));
   const intent = request.intent;
-  if (intent?.recipients)
-    for (const recipient of intent.recipients)
-      card.append(
-        el(
-          'p',
-          `${recipient.amount.value} ${intent.token} to ${recipient.recipient}${intent.intent_id === 'k' ? ' per run' : ''}`,
-        ),
-      );
+  const facts = slipFor(intent, request.chainId);
+  if (facts) card.append(facts);
   card.append(el('p', 'Your payment is saved and waiting for account setup.'));
   const steps = el('ol');
   for (const instruction of [
@@ -304,7 +300,7 @@ function accountSetup(request) {
           step: request.step,
           decision: 'cancel',
         }),
-      true,
+      'reject',
     ),
   );
   card.append(actions);
@@ -323,32 +319,132 @@ function txLink(text, chainId, hash) {
   wrap.append(link);
   return wrap;
 }
-/** What a step does, in words, from the request the agent sent: the heading and the filled-in details. */
+const span = (text, className) => el('span', text, className);
+/**
+ * An address in groups of four, with the first and last groups emphasised: the parts people compare against MetaMask.
+ * The groups are spaced by CSS, so copying it still gives the exact address.
+ */
+function address(value) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(value ?? '')) return el('code', value ?? 'unknown', 'addr');
+  const node = el('code', undefined, 'addr');
+  node.title = value;
+  const groups = value.slice(2).match(/.{4}/g);
+  groups.forEach((group, i) =>
+    node.append(span(i ? group : `0x${group}`, i === 0 || i === groups.length - 1 ? 'key' : undefined)),
+  );
+  return node;
+}
+/** Exact sum of decimal amount strings (no floating point). */
+function total(values) {
+  const places = Math.max(0, ...values.map((v) => (v.split('.')[1] ?? '').length));
+  const sum = values.reduce((acc, v) => {
+    const [whole, frac = ''] = v.split('.');
+    return acc + BigInt(whole + frac.padEnd(places, '0'));
+  }, 0n);
+  if (!places) return sum.toString();
+  const digits = sum.toString().padStart(places + 1, '0');
+  return `${digits.slice(0, -places)}.${digits.slice(-places)}`.replace(/\.?0+$/, '');
+}
+const network = (chainId) => names[chainId] || `chain ${chainId}`;
+/**
+ * The facts to check before saying yes: how much, from which account, to whom, on which network, and what it costs.
+ * `rows` are [term, ...nodes]; `verify` adds the reminder to compare the highlighted characters with MetaMask.
+ */
+function slip({ label, amount, token, rows, note, verify }) {
+  const box = el('section', undefined, 'slip');
+  box.setAttribute('aria-label', 'Check these details');
+  const head = el('div', undefined, 'slip-amount');
+  head.append(span(label, 'slip-label'), el('strong', amount, 'figure'), span(token, 'unit'));
+  const list = el('dl');
+  for (const [term, ...values] of rows) {
+    const row = el('div', undefined, 'row');
+    const value = el('dd');
+    value.append(...values);
+    row.append(el('dt', term), value);
+    list.append(row);
+  }
+  box.append(head, list);
+  if (note) box.append(el('p', note, 'slip-note'));
+  if (verify)
+    box.append(el('p', 'Approve only if the highlighted characters match what MetaMask shows.', 'slip-check'));
+  return box;
+}
+const yourWallet = () => [address(state.wallet), span('Your wallet', 'tag')];
+const payees = (intent, suffix = '') =>
+  intent.recipients.map((r) =>
+    intent.recipients.length === 1
+      ? ['To', address(r.recipient)]
+      : ['To', span(`${r.amount.value} ${intent.token}${suffix}`, 'each'), address(r.recipient)],
+  );
+/** The verification slip for a step, or null when it moves no money (cancelling a plan). */
+function slipFor(intent, chainId, { feeWei, verify = false } = {}) {
+  if (intent?.intent_id === 'i')
+    return slip({
+      label: intent.recipients.length === 1 ? 'You send' : `You send in total, to ${intent.recipients.length} people`,
+      amount: total(intent.recipients.map((r) => r.amount.value)),
+      token: intent.token,
+      rows: [
+        ['From', ...yourWallet()],
+        ...payees(intent),
+        ['Network', span(network(intent.chain_id ?? chainId), 'chain')],
+        ['Network fee', span('Paid in test ETH. MetaMask shows the exact amount.')],
+      ],
+      note: intent.depends_on?.length ? 'Runs after the transfer between your chains above has arrived.' : undefined,
+      verify,
+    });
+  if (intent?.intent_id === 'j')
+    return slip({
+      label: 'You move',
+      amount: intent.amount.value,
+      token: 'USDC',
+      rows: [
+        ['From', ...yourWallet(), span(network(intent.source_chain_id), 'chain')],
+        ['To', ...yourWallet(), span(network(intent.dest_chain_id), 'chain')],
+        [
+          'CCIP fee',
+          span(
+            feeWei
+              ? `${eth(feeWei)} test ETH quoted, at most ${intent.fee_max_eth}`
+              : `At most ${intent.fee_max_eth} test ETH`,
+          ),
+        ],
+      ],
+      note: 'Arrives at your own wallet. Network gas is extra and shown in MetaMask.',
+      verify,
+    });
+  if (intent?.intent_id === 'k')
+    return slip({
+      label: 'Each run sends',
+      amount: total(intent.recipients.map((r) => r.amount.value)),
+      token: intent.token,
+      rows: [
+        ['From', ...yourWallet()],
+        ...payees(intent, ' per run'),
+        ['Executor fee', span(`${intent.fee.amount.value} ${intent.token} per run to`), address(intent.fee.to)],
+        [
+          'Schedule',
+          span(
+            `${intent.schedule.max_runs} runs, ${every(intent.schedule.interval_seconds)}, from ${new Date(intent.schedule.start_at * 1000).toLocaleString()}`,
+          ),
+        ],
+        ['Total cap', span(`${intent.limits.max_total.value} ${intent.token}`, 'strong')],
+        ['Network', span(network(intent.chain_id ?? chainId), 'chain')],
+      ],
+      verify,
+    });
+  return null;
+}
+/** What a step does, in words, from the request the agent sent. */
 function describe(intent, chainId) {
-  if (intent?.intent_id === 'i') {
-    const single = intent.recipients.length === 1;
-    const heading = single
+  if (intent?.intent_id === 'i')
+    return intent.recipients.length === 1
       ? `Send ${intent.recipients[0].amount.value} ${intent.token} to ${short(intent.recipients[0].recipient)}`
       : `Pay ${intent.recipients.length} recipients in ${intent.token}`;
-    return {
-      heading,
-      lines: [
-        ...(single
-          ? [`Recipient: ${intent.recipients[0].recipient}`]
-          : intent.recipients.map((r) => `${r.amount.value} ${intent.token} to ${r.recipient}`)),
-        `Network: ${names[intent.chain_id] ?? names[chainId]}`,
-        ...(intent.depends_on?.length ? ['Runs after the transfer between your chains above has arrived.'] : []),
-      ],
-    };
-  }
   if (intent?.intent_id === 'j')
-    return {
-      heading: `Move ${intent.amount.value} USDC · ${names[intent.source_chain_id]} → ${names[intent.dest_chain_id]}`,
-      lines: [`Arrives at your own wallet. CCIP fee at most ${intent.fee_max_eth} test ETH.`],
-    };
-  if (intent?.intent_id === 'k') return { heading: `Register recurring payment on ${names[chainId]}`, lines: [] };
-  if (intent?.intent_id === 'l') return { heading: `Cancel recurring payment on ${names[chainId]}`, lines: [] };
-  return { heading: `Payment on ${names[chainId]}`, lines: [] };
+    return `Move ${intent.amount.value} USDC · ${names[intent.source_chain_id]} → ${names[intent.dest_chain_id]}`;
+  if (intent?.intent_id === 'k') return `Register recurring payment on ${names[chainId]}`;
+  if (intent?.intent_id === 'l') return `Cancel recurring payment on ${names[chainId]}`;
+  return `Payment on ${names[chainId]}`;
 }
 /** In the approval view, only the request flexx opened the page for. */
 const inFocus = (requestId) => !focusId || requestId === focusId;
@@ -421,37 +517,26 @@ function render() {
     const card = el('article', undefined, 'card');
     const intent = request.intent;
     card.append(el('h3', 'Approve recurring payment permission'));
-    for (const recipient of intent.recipients)
-      card.append(el('p', `${recipient.amount.value} ${intent.token} to ${recipient.recipient} per run`));
-    card.append(
-      el(
-        'p',
-        `Fee per run: ${intent.fee.amount.value} ${intent.token}. Maximum ${intent.schedule.max_runs} runs, ${every(intent.schedule.interval_seconds)}.`,
-      ),
-    );
-    card.append(
-      el(
-        'p',
-        `Starts ${new Date(intent.schedule.start_at * 1000).toLocaleString()}. Total cap: ${intent.limits.max_total.value} ${intent.token}.`,
-      ),
-    );
+    card.append(slipFor(intent, request.chainId ?? intent.chain_id, { verify: true }));
     card.append(
       el(
         'p',
         'This grants a bounded onchain permission. Registration is a separate wallet transaction. Local CRE simulation does not send scheduled payments.',
       ),
     );
-    card.append(
-      action('Review permission in MetaMask', () => signDelegation(request)),
+    const decide = el('div', undefined, 'actions');
+    decide.append(
+      action('Review permission in MetaMask', () => signDelegation(request), 'approve'),
       action(
         'Reject permission',
         async () => {
           await api('/browser/reject-delegation', { id: request.id });
           notify('Recurring permission rejected. Nothing was registered.');
         },
-        true,
+        'reject',
       ),
     );
+    card.append(decide);
     container.append(card);
   }
   const queued = state.requests.filter((r) => inFocus(r.id) && !state.batches.some((b) => b.requestId === r.id));
@@ -482,9 +567,12 @@ function render() {
   for (const batch of shown) {
     const card = el('article', undefined, 'card');
     const intent = batch.intent;
-    const about = describe(intent, batch.chainId);
-    card.append(el('h3', about.heading));
-    for (const line of about.lines) card.append(el('p', line, 'detail'));
+    card.append(el('h3', describe(intent, batch.chainId)));
+    const facts = slipFor(intent, batch.chainId, {
+      feeWei: batch.feeWei,
+      verify: batch.status === 'draft' && !batch.expired,
+    });
+    if (facts) card.append(facts);
     const complete = ['executed', 'failed'].includes(batch.stepStatus);
     const label =
       batch.stepStatus === 'executed'
@@ -524,6 +612,7 @@ function render() {
           : sameChain && label === 'Waiting for MetaMask / source confirmation'
             ? 'Waiting for MetaMask and the network to confirm.'
             : label,
+        `status ${batch.stepStatus === 'executed' ? 'ok' : batch.stepStatus === 'failed' ? 'bad' : 'live'}`,
       ),
     );
     if (batch.txHash) card.append(txLink('View transaction', batch.chainId, batch.txHash));
@@ -537,8 +626,6 @@ function render() {
           'muted',
         ),
       );
-    if (batch.feeWei) card.append(el('p', `Quoted CCIP fee: ${eth(batch.feeWei)} test ETH`));
-    if (intent?.intent_id === 'j') card.append(el('p', `Recipient: your wallet ${state.wallet}`, 'muted'));
     const details = el('details');
     details.dataset.batchId = batch.id;
     details.open = expanded.has(batch.id);
@@ -562,11 +649,13 @@ function render() {
       const actions = el('div', undefined, 'actions');
       if (batch.status === 'draft') {
         actions.append(
-          action(batch.expired ? 'Refresh checks & quote' : 'Approve in MetaMask', () =>
-            batch.expired ? api('/browser/refresh', { id: batch.id }) : send(batch),
+          action(
+            batch.expired ? 'Refresh checks & quote' : 'Approve in MetaMask',
+            () => (batch.expired ? api('/browser/refresh', { id: batch.id }) : send(batch)),
+            batch.expired ? false : 'approve',
           ),
         );
-        actions.append(action('Cancel', () => api('/browser/reject', { id: batch.id }), true));
+        actions.append(action('Cancel', () => api('/browser/reject', { id: batch.id }), 'reject'));
       } else if (batch.status === 'dispatched') {
         actions.append(action('Check MetaMask status', () => track(batch), true));
         const recovery = el('form', undefined, 'recover');

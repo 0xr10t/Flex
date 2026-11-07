@@ -6,6 +6,7 @@ import { ALEX, BASE, BOB, WALLET, envelope, payEth } from '../support/envelopes.
 
 class Element {
   children: Element[] = [];
+  className = '';
   textContent = '';
   disabled = false;
   dataset: Record<string, string> = {};
@@ -36,6 +37,12 @@ class Element {
   }
   text(): string {
     return [this.textContent, ...this.children.map((child) => child.text())].join(' ');
+  }
+  /** Addresses shown in verification slips, rejoined from their groups of four. */
+  addresses(): string[] {
+    return this.all()
+      .filter((node) => node.className === 'addr')
+      .map((node) => node.textContent + node.children.map((child) => child.textContent).join(''));
   }
 }
 
@@ -137,7 +144,8 @@ async function browser({ focused = false, unrelated = false, sent = false } = {}
 describe('browser account setup flow', () => {
   it('shows the saved payment and guides setup, then checks the upgrade without requesting a signature', async () => {
     const b = await browser();
-    expect(b.get('batches').text()).toContain(`0.01 ETH to ${ALEX}`);
+    expect(b.get('batches').text()).toContain('You send 0.01 ETH');
+    expect(b.get('batches').addresses()).toContain(ALEX);
     expect(b.get('batches').text()).toContain('Account details → Smart account');
     expect(b.get('batches').text()).toContain('payment still needs its own MetaMask approval');
     expect(b.get('requests').text()).not.toContain('checking route');
@@ -174,8 +182,9 @@ describe('browser account setup flow', () => {
   });
   it('shows only the CLI-selected request and explains account setup without opening MetaMask automatically', async () => {
     const b = await browser({ focused: true, unrelated: true });
-    expect(b.get('batches').text()).toContain(`0.01 ETH to ${ALEX}`);
-    expect(b.get('batches').text()).not.toContain(BOB);
+    expect(b.get('batches').text()).toContain('You send 0.01 ETH');
+    expect(b.get('batches').addresses()).toContain(ALEX);
+    expect(b.get('batches').addresses()).not.toContain(BOB);
     expect(b.get('focus-status').text()).toContain('saved and waiting for account setup');
     expect(b.get('requests').text()).not.toContain('checking route');
     expect(b.providerCalls).toEqual([]);
@@ -188,7 +197,7 @@ describe('browser account setup flow', () => {
       { url: '/browser/account-upgrade', body: { requestId: b.setup.requestId, step: 0, decision: 'check' } },
     ]);
     expect(b.get('batches').text()).not.toContain('Enable your smart account');
-    expect(b.get('batches').text()).not.toContain(BOB);
+    expect(b.get('batches').addresses()).not.toContain(BOB);
     expect(b.providerCalls).not.toContain('wallet_sendCalls');
     expect(b.providerCalls).not.toContain('eth_signTypedData_v4');
   });

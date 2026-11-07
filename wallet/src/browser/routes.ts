@@ -5,10 +5,18 @@ import { BrowserWalletController, BrowserWalletError } from './controller.js';
 
 export function registerBrowserWallet(app: FastifyInstance, controller: BrowserWalletController) {
   const session = randomBytes(32).toString('hex');
+  const asset = (path: string, type: string, file: string, encoding?: 'utf8') =>
+    [path, { type, body: readFileSync(new URL(file, import.meta.url), encoding) }] as [
+      string,
+      { type: string; body: string | Buffer },
+    ];
   const assets = new Map([
-    ['/', { type: 'text/html', body: readFileSync(new URL('./ui.html', import.meta.url), 'utf8') }],
-    ['/wallet.js', { type: 'text/javascript', body: readFileSync(new URL('./ui.js', import.meta.url), 'utf8') }],
-    ['/wallet.css', { type: 'text/css', body: readFileSync(new URL('./ui.css', import.meta.url), 'utf8') }],
+    asset('/', 'text/html', './ui.html', 'utf8'),
+    asset('/wallet.js', 'text/javascript', './ui.js', 'utf8'),
+    asset('/wallet.css', 'text/css', './ui.css', 'utf8'),
+    // Self-hosted so the page never reaches a font CDN (Archivo and JetBrains Mono, SIL OFL 1.1).
+    asset('/fonts/archivo.woff2', 'font/woff2', './fonts/archivo.woff2'),
+    asset('/fonts/jetbrains-mono.woff2', 'font/woff2', './fonts/jetbrains-mono.woff2'),
   ]);
   const local = (request: FastifyRequest) => /^127\.0\.0\.1:\d+$/.test(request.headers.host ?? '');
   const authenticated = (request: FastifyRequest) => {
@@ -33,7 +41,7 @@ export function registerBrowserWallet(app: FastifyInstance, controller: BrowserW
         .header('x-content-type-options', 'nosniff')
         .header(
           'content-security-policy',
-          "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         );
       if (path === '/') reply.header('set-cookie', `flex_wallet=${session}; HttpOnly; SameSite=Strict; Path=/`);
       return reply.type(asset.type).send(asset.body);
