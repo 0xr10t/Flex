@@ -19,7 +19,7 @@ import { LaunchError, type AgentEndpoint } from './agent/launcher.js';
 import type { Command, CommandContext, CommandResult, Line, Segment } from './repl.js';
 
 export interface ChatDeps {
-  connect: () => Promise<AgentEndpoint>;
+  connect: (signal: AbortSignal) => Promise<AgentEndpoint>;
   client?: (endpoint: AgentEndpoint) => AgentApi;
   timezone: string;
   /** Opens a local page in the browser; returns false when it could not. */
@@ -73,6 +73,7 @@ const HINT: Record<Question['input'], string> = {
 };
 
 export class Chat {
+  private readonly connectionAbort = new AbortController();
   private endpoint: AgentEndpoint | undefined;
   private api: AgentApi | undefined;
   private sessionId: string | undefined;
@@ -92,7 +93,7 @@ export class Chat {
   }
 
   private async doConnect(): Promise<Line[]> {
-    this.endpoint ??= await this.deps.connect();
+    this.endpoint ??= await this.deps.connect(this.connectionAbort.signal);
     this.api ??= (this.deps.client ?? ((e) => new AgentClient(e.baseUrl, e.token)))(this.endpoint);
     this.sessionId = await this.api.openSession(this.deps.timezone);
     const health = await this.api.health().catch(() => undefined);
@@ -351,6 +352,7 @@ export class Chat {
 
   /** Closes the session (the agent clears its data) and stops an agent this CLI started. */
   async close(): Promise<void> {
+    this.connectionAbort.abort();
     if (this.api && this.sessionId) await this.api.closeSession(this.sessionId).catch(() => undefined);
     this.sessionId = undefined;
     this.endpoint?.stop();
@@ -497,6 +499,9 @@ function parseLimitValue(words: string[], current: unknown): unknown {
 /** Why connecting failed, as lines to show. */
 function describeFailure(err: unknown): Line[] {
   if (err instanceof LaunchError) {
+    if (err.stage === 'wallet') return err.details.map((d) => plain(d));
+    if (err.stage === 'tor')
+      return [plain("Tor isn't ready, so I haven't connected to the agent."), ...err.details.map((d) => plain(d, 1))];
     if (err.stage === 'config')
       return [
         plain("The agent's config isn't usable yet, so I can't start it:"),

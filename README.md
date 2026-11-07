@@ -65,7 +65,7 @@ The repo has three parts:
 
 - Node 24 (see `.nvmrc`), or 22.12+ on the 22.x line
 - [Ollama](https://ollama.com) with the model pulled: `ollama pull qwen2.5:7b-instruct`
-- Tor listening on `127.0.0.1:9050`, unless you switch it off (see below)
+- Tor installed (macOS: `brew install tor`), unless you switch it off (see below). Setup and `flexx` start it automatically when needed.
 - MetaMask, plus test USDC ([faucet.circle.com](https://faucet.circle.com)) and test ETH on the chains you want to use
 - RPC URLs for the three testnets, and RPCs that support `eth_simulateV1`
 - For recurring payments and the contract tests: [Foundry](https://getfoundry.sh) and the CRE CLI
@@ -94,9 +94,17 @@ Flex only needs your wallet's public address. Signing happens in MetaMask.
 
 Tor is on by default. `FLEX_SOCKS_PROXY` in `.env` controls it: set it to `direct` to connect without Tor, or to `socks5h://127.0.0.1:9050` to use Tor. Left blank, setup keeps whatever the current config uses, which is Tor on a fresh setup. Run `npm run testnet:setup` again after changing `.env`.
 
+With Tor enabled, `npm run testnet:setup` and `flexx` reuse an existing local SOCKS listener, or start the installed `tor` executable and wait up to two minutes for it to connect. A missing installation or failed connection shows an actionable error; traffic never falls back to a direct connection. Put `tor` on your PATH or set `FLEX_TOR_PATH` in your shell to its executable. If you start the agent directly with `npm start`, run Tor first. Explicit direct mode skips Tor.
+
+Tor's private state and startup log go beside the agent config under `tor/<port>/`. Tor stays running after `flexx` exits so the wallet and other sessions can keep using it.
+
 Questions about payments you've received are off by default. They need a Blockscout API for each chain under `history` in the agent config.
 
 ### Run
+
+If no wallet address is saved, `flexx` opens a local connection page in your **default browser**. Approve access in MetaMask and choose an account if it shares more than one. Flexx saves the public address, updates the local configs, and brings your terminal back to the foreground where the desktop supports it. This step requests no signature or payment. An existing address skips it; cancellation or timeout saves nothing. The other RPC/model settings still need to be configured in `.env`.
+
+Interactive `npm run testnet:setup` offers the same connection step when `FLEX_WALLET_ADDRESS` is blank. Noninteractive setup (`--non-interactive`, or without a TTY) reports missing settings instead of opening a browser. If MetaMask is unavailable in the default browser, the connection page explains how to continue.
 
 ```sh
 npm link                                                 # once, puts flexx on your PATH

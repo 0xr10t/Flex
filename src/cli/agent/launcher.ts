@@ -6,9 +6,13 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, configPath, expandHome, loadConfig } from '../../config/load.js';
 import type { Config } from '../../contracts/types.js';
+import { ensureTor, TorStartError } from './tor.js';
+import { prepareWalletConfig } from '../onboarding/config.js';
+import { WalletConnectError } from '../onboarding/connect.js';
 
 /** What /config and /doctor show about the setup: never RPC URLs (they carry provider keys) or tokens. */
 export interface AgentInfo {
@@ -52,7 +56,7 @@ export interface AgentEndpoint {
   stop(): void;
 }
 
-export type LaunchStage = 'config' | 'start' | 'token';
+export type LaunchStage = 'config' | 'wallet' | 'tor' | 'start' | 'token';
 
 /** Why the agent could not be reached; `details` are safe to show (config field paths, not values). */
 export class LaunchError extends Error {
@@ -72,6 +76,11 @@ export interface LaunchOptions {
   startTimeoutMs?: number;
   fetchImpl?: typeof fetch;
   spawnImpl?: typeof spawn;
+  ensureTorImpl?: typeof ensureTor;
+  /** Desktop first-run setup is enabled by the interactive CLI, never by read-only/static commands. */
+  onboard?: boolean;
+  signal?: AbortSignal;
+  prepareConfigImpl?: typeof prepareWalletConfig;
   /** Progress notes while starting. */
   onStatus?: (note: string) => void;
 }
@@ -110,17 +119,35 @@ function readToken(config: Config): string {
 /** Connects to the agent, starting it first when needed. */
 export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpoint> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const file = opts.configFile ?? agentConfigFile();
+  let file = opts.configFile ?? agentConfigFile();
+  if (opts.onboard && !opts.configFile && !process.env.AGENT_CONFIG && !existsSync(file)) file = SETUP_CONFIG;
   let config: Config;
   try {
-    config = loadConfig(file);
+    config = opts.onboard
+      ? await (opts.prepareConfigImpl ?? prepareWalletConfig)(file, { signal: opts.signal })
+      : loadConfig(file);
   } catch (err) {
+    if (err instanceof WalletConnectError) throw new LaunchError('wallet', [err.message]);
     throw new LaunchError('config', err instanceof ConfigError ? err.errors : []);
   }
+  if (opts.signal?.aborted) throw new LaunchError('wallet', ['Wallet connection cancelled.']);
   const baseUrl = `http://${config.server.host}:${config.server.port}`;
   const walletUrl = config.execution.url.replace(/\/+$/, '') + '/';
 
+  if (config.network.socks_proxy !== null) {
+    try {
+      await (opts.ensureTorImpl ?? ensureTor)(
+        config.network.socks_proxy,
+        join(dirname(file), 'tor', new URL(config.network.socks_proxy).port),
+        { onStatus: opts.onStatus },
+      );
+    } catch (err) {
+      throw new LaunchError('tor', [err instanceof TorStartError ? err.message : new TorStartError('start').message]);
+    }
+  }
+
   let child: ChildProcess | undefined;
+  if (opts.signal?.aborted) throw new LaunchError('start');
   if (!(await listening(baseUrl, fetchImpl))) {
     opts.onStatus?.('starting the agent');
     child = (opts.spawnImpl ?? spawn)(process.execPath, [opts.entry ?? DEFAULT_ENTRY], {
@@ -136,7 +163,7 @@ export async function connectAgent(opts: LaunchOptions = {}): Promise<AgentEndpo
     });
     const deadline = Date.now() + (opts.startTimeoutMs ?? 60_000);
     while (!(await listening(baseUrl, fetchImpl))) {
-      if (exited || Date.now() > deadline) {
+      if (exited || opts.signal?.aborted || Date.now() > deadline) {
         child.kill('SIGTERM');
         throw new LaunchError('start');
       }

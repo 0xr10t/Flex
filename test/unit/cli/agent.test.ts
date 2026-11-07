@@ -309,7 +309,7 @@ describe('agent client', () => {
 
 describe('agent launcher', () => {
   /** A valid config in a temp folder, its UI token file written, the agent on `port`. */
-  const setup = (port = 8787): { file: string; tokenFile: string } => {
+  const setup = (port = 8787, proxy: string | null = null): { file: string; tokenFile: string } => {
     const dir = mkdtempSync(join(tmpdir(), 'flexx-launch-'));
     const tokenFile = join(dir, 'ui_token');
     writeFileSync(tokenFile, TOKEN, { mode: 0o600 });
@@ -321,6 +321,7 @@ describe('agent launcher', () => {
         ...config,
         server: { ...config.server, port },
         auth: { ...config.auth, ui_token_file: tokenFile },
+        network: { socks_proxy: proxy },
       }),
     );
     return { file, tokenFile };
@@ -376,6 +377,63 @@ describe('agent launcher', () => {
     expect(e).toMatchObject({ baseUrl: 'http://127.0.0.1:8799', token: TOKEN, started: false });
     expect(e.walletUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(spawned).toBe(0);
+  });
+
+  it('ensures Tor is ready before contacting even an already running agent', async () => {
+    const { file } = setup(8787, 'socks5h://127.0.0.1:19050');
+    const order: string[] = [];
+    await connectAgent({
+      configFile: file,
+      ensureTorImpl: async (proxy, dir) => {
+        expect(proxy).toBe('socks5h://127.0.0.1:19050');
+        expect(dir).toMatch(/tor\/19050$/);
+        order.push('tor-starting');
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        order.push('tor-ready');
+      },
+      fetchImpl: (async () => {
+        order.push('agent');
+        return new Response(null, { status: 401 });
+      }) as typeof fetch,
+    });
+    expect(order).toEqual(['tor-starting', 'tor-ready', 'agent']);
+  });
+
+  it('does not connect or start an agent when Tor fails, and hides raw errors', async () => {
+    const { file } = setup(8787, 'socks5h://127.0.0.1:19050');
+    let contacted = false;
+    let spawned = false;
+    const error = await connectAgent({
+      configFile: file,
+      ensureTorImpl: async () => {
+        throw new Error('private-provider-key');
+      },
+      fetchImpl: (async () => {
+        contacted = true;
+        return new Response();
+      }) as typeof fetch,
+      spawnImpl: (() => {
+        spawned = true;
+        return fakeChild();
+      }) as unknown as typeof spawn,
+    }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ stage: 'tor' });
+    expect(JSON.stringify(error)).not.toContain('private-provider-key');
+    expect(contacted).toBe(false);
+    expect(spawned).toBe(false);
+  });
+
+  it('skips Tor entirely for direct configurations', async () => {
+    const { file } = setup();
+    await expect(
+      connectAgent({
+        configFile: file,
+        fetchImpl: answering,
+        ensureTorImpl: async () => {
+          throw new Error('must not start Tor');
+        },
+      }),
+    ).resolves.toMatchObject({ started: false });
   });
 
   it('starts the agent with its config, waits for it, and stops it on request', async () => {

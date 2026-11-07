@@ -130,7 +130,7 @@ export async function runCli(argv: string[]): Promise<number> {
   const chat =
     args.view === 'opening'
       ? new Chat({
-          connect: () => connectAgent(),
+          connect: (signal) => connectAgent({ onboard: true, signal }),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           openPage: (url) => openLocalPage(url),
           copy: (text) => copyText(text),
