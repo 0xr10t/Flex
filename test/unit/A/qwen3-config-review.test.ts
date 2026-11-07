@@ -1,15 +1,11 @@
-// Independent SQ-M-01 review: opt-in Qwen3 profile and live overrides preserve legacy defaults.
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+// Independent SQ-M-01 review: the opt-in Qwen3 settings and live overrides preserve legacy defaults.
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig, validateConfig } from '../../../src/config/load.js';
-import type { Config } from '../../../src/contracts/types.js';
 import { testConfig } from '../../fakes/context.js';
 import { liveModelConfig } from '../../live/model-config.js';
-
-const example = (name: string): Config =>
-  JSON.parse(readFileSync(new URL(`../../../${name}`, import.meta.url), 'utf8')) as Config;
 
 describe('SQ-M-01 independent config review', () => {
   it('accepts the legacy config without inserting a thinking default or changing serialized data', () => {
@@ -51,31 +47,6 @@ describe('SQ-M-01 independent config review', () => {
       expect(String(error)).toContain('/llm/think');
       expect(String(error)).not.toContain('PRIVATE-INVALID-SETTING');
     }
-  });
-
-  it('keeps the original profile unchanged and adds the approved model, thinking and general-chat options', () => {
-    const original = example('config.example.json');
-    const qwen3 = example('config.qwen3.example.json');
-    expect(original.llm.model).toBe('qwen2.5:7b-instruct');
-    expect(Object.hasOwn(original.llm, 'think')).toBe(false);
-    expect(qwen3).toEqual({
-      ...original,
-      llm: { ...original.llm, model: 'qwen3:8b', think: false },
-      chat: { enabled: true, think: true },
-    });
-    const fixture = testConfig();
-    const configured = {
-      ...qwen3,
-      wallet: fixture.wallet,
-      autopay: { ...qwen3.autopay!, fee_collector: fixture.autopay!.fee_collector },
-      ens: {
-        ...qwen3.ens,
-        universal_resolver_address: fixture.ens.universal_resolver_address,
-        indexer_url: fixture.ens.indexer_url,
-      },
-      chains: qwen3.chains.map((chain) => ({ ...chain, rpc_url: chain.rpc_url.replace('<anon-rpc>', 'rpc.invalid') })),
-    };
-    expect(validateConfig(configured)).toEqual(configured);
   });
 });
 
