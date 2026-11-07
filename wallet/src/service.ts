@@ -131,7 +131,7 @@ export function createService(
           if (!gateway) throw new Error('chain unavailable');
           return gateway;
         },
-        delegationManagerFor: (id) => envFor(id).DelegationManager as Hex,
+        envFor,
         kick: () => {
           void runner.kick();
         },

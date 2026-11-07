@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { ALEX, BASE, BOB, WALLET, envelope, payEth } from '../support/envelopes.js';
+import { permissionRequestFor } from '../../src/autopay/permission.js';
+import { ALEX, BASE, BOB, WALLET, autopay, envelope, payEth } from '../support/envelopes.js';
 
 class Element {
   children: Element[] = [];
@@ -172,5 +173,104 @@ describe('browser account setup flow', () => {
     expect(b.get('batches').text()).not.toContain(BOB);
     expect(b.providerCalls).not.toContain('wallet_sendCalls');
     expect(b.providerCalls).not.toContain('eth_signTypedData_v4');
+  });
+});
+
+describe('recurring permission (F8)', () => {
+  const k = autopay(0, 2_000_000_000, [[ALEX, '10']]);
+  const permissionRequest = permissionRequestFor(k, WALLET, '0x00000000000000000000000000000000000e0ec0');
+  const ID = `0x${'ab'.repeat(32)}`;
+
+  /** The approval page with one pending permission; MetaMask answers with `answer`, the server with `server`. */
+  async function page(answer: () => unknown, server: { ok: boolean; error?: string } = { ok: true }) {
+    const nodes = new Map<string, Element>();
+    const get = (id: string) => {
+      if (!nodes.has(id)) nodes.set(id, new Element());
+      return nodes.get(id)!;
+    };
+    const asked: unknown[] = [];
+    const posted: { url: string; body: unknown }[] = [];
+    let pending = true;
+    const provider = {
+      isMetaMask: true,
+      async request({ method, params }: { method: string; params?: unknown }) {
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [WALLET];
+        if (method === 'eth_chainId') return `0x${BASE.toString(16)}`;
+        if (method === 'wallet_switchEthereumChain') return null;
+        expect(method).toBe('wallet_requestExecutionPermissions');
+        asked.push(params);
+        return answer();
+      },
+    };
+    runInNewContext(readFileSync(new URL('../../src/browser/ui.js', import.meta.url), 'utf8'), {
+      document: {
+        getElementById: get,
+        createElement: (name: string) => new Element(name),
+        body: { classList: { toggle: vi.fn() } },
+      },
+      window: { ethereum: provider, location: { hash: '', reload: vi.fn() } },
+      URL,
+      URLSearchParams,
+      setInterval: () => 0,
+      fetch: async (url: string, options: { body?: string }) => {
+        if (url === '/browser/state')
+          return {
+            ok: true,
+            json: async () => ({
+              wallet: WALLET,
+              chainIds: [BASE],
+              feeMaxEth: '0.003',
+              upgrades: [],
+              requests: [],
+              delegations: pending
+                ? [{ id: ID, requestId: 'req_000000000001', step: 0, permissionRequest, intent: k }]
+                : [],
+              batches: [],
+            }),
+          };
+        posted.push({ url, body: JSON.parse(options.body!) });
+        if (url === '/browser/delegation' && !server.ok)
+          return { ok: false, json: async () => ({ error: server.error }) };
+        pending = false;
+        return { ok: true, json: async () => ({ ok: true }) };
+      },
+    });
+    await vi.waitFor(() => expect(get('batches').text()).toContain('Approve recurring payment permission'));
+    const review = get('batches')
+      .all()
+      .find((node) => node.tagName === 'button' && node.textContent === 'Review permission in MetaMask')!;
+    return { get, asked, posted, review };
+  }
+  const refusal = (code: number) => () => {
+    throw Object.assign(new Error('refused'), { code });
+  };
+
+  it('asks MetaMask for exactly the saved request and posts its answer', async () => {
+    const response = { context: '0x1234' };
+    const p = await page(() => [response]);
+    expect(p.get('batches').text()).toContain('at most 10.05 USDC every day');
+    await p.review.click();
+    expect(p.asked).toEqual([[permissionRequest]]);
+    expect(p.posted).toEqual([{ url: '/browser/delegation', body: { id: ID, response } }]);
+    expect(p.get('notice').text()).toContain('Permission granted');
+  });
+
+  it('a rejection, or a refusal before MetaMask shows it, rejects the step', async () => {
+    for (const [code, notice] of [
+      [4001, 'Recurring permission rejected'],
+      [4100, 'refused this request before showing it (4100)'],
+    ] as const) {
+      const p = await page(refusal(code));
+      await p.review.click();
+      expect(p.posted).toEqual([{ url: '/browser/reject-delegation', body: { id: ID } }]);
+      expect(p.get('notice').text()).toContain(notice);
+    }
+  });
+
+  it('a grant with other terms is kept pending and the user is told to revoke it', async () => {
+    const p = await page(() => [{ context: '0x1234' }], { ok: false, error: 'PERMISSION_MISMATCH' });
+    await p.review.click();
+    expect(p.posted.map((c) => c.url)).toEqual(['/browser/delegation']);
+    expect(p.get('notice').text()).toContain('Revoke that permission in MetaMask');
   });
 });

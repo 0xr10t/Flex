@@ -40,6 +40,10 @@ const errors = {
     'This account points to a different smart-account implementation. Flex has kept the payment paused.',
   UPGRADE_NOT_PENDING: 'This setup step has already changed. Refresh the wallet page to see its current state.',
   INVALID_UPGRADE_REQUEST: 'This setup request is invalid. Refresh the wallet page.',
+  PERMISSION_MISMATCH:
+    'MetaMask granted different terms than this plan asked for, so nothing was registered. Revoke that permission in MetaMask, then review it again.',
+  PERMISSION_UNSUPPORTED_ACCOUNT:
+    'MetaMask granted this permission for an account that is not deployed yet. Nothing was registered. Upgrade the account in MetaMask, then review it again.',
 };
 const notify = (message) => {
   $('notice').textContent = message;
@@ -87,9 +91,11 @@ function every(seconds) {
     if (seconds % size === 0) return seconds === size ? `every ${unit}` : `every ${seconds / size} ${unit}s`;
   return `every ${seconds} seconds`;
 }
-function eth(wei) {
-  const s = BigInt(wei).toString().padStart(19, '0');
-  return `${s.slice(0, -18)}.${s.slice(-18).replace(/0+$/, '') || '0'}`;
+function eth(wei, decimals = 18) {
+  const s = BigInt(wei)
+    .toString()
+    .padStart(decimals + 1, '0');
+  return `${s.slice(0, -decimals)}.${s.slice(-decimals).replace(/0+$/, '') || '0'}`;
 }
 /** Connects MetaMask to the configured wallet; throws when it can't. */
 async function connect() {
@@ -201,42 +207,31 @@ async function send(batch) {
     await refresh();
   }
 }
-async function signDelegation(request) {
+async function requestPermission(request) {
   if (sending) return;
   sending = true;
   render();
-  let signature;
+  let response;
   try {
     await ensureConnected();
-    await accountCheck(request.typedData.domain.chainId);
-    signature = await provider.request({
-      method: 'eth_signTypedData_v4',
-      params: [
-        state.wallet,
-        JSON.stringify({
-          ...request.typedData,
-          types: {
-            EIP712Domain: [
-              { name: 'name', type: 'string' },
-              { name: 'version', type: 'string' },
-              { name: 'chainId', type: 'uint256' },
-              { name: 'verifyingContract', type: 'address' },
-            ],
-            ...request.typedData.types,
-          },
-        }),
-      ],
+    await accountCheck(Number(request.permissionRequest.chainId));
+    [response] = await provider.request({
+      method: 'wallet_requestExecutionPermissions',
+      params: [request.permissionRequest],
     });
-    await api('/browser/delegation', { id: request.id, signature });
-    notify(
-      'Permission approved. Review the separate registration transaction next. CRE is running in simulation mode.',
-    );
+    await api('/browser/delegation', { id: request.id, response });
+    notify('Permission granted. Review the separate registration transaction next. CRE is running in simulation mode.');
   } catch (e) {
-    if (e.code === 4001 && !signature) await api('/browser/reject-delegation', { id: request.id });
+    const refused = REFUSED_BEFORE_SENDING.includes(e.code);
+    if (!response && (e.code === 4001 || refused)) await api('/browser/reject-delegation', { id: request.id });
     notify(
       e.code === 4001
-        ? 'Recurring permission rejected.'
-        : 'Permission approval could not be saved. Refresh and try again; no registration was sent.',
+        ? 'Recurring permission rejected. Nothing was registered.'
+        : refused
+          ? `MetaMask refused this request before showing it (${e.code}). Nothing was registered.`
+          : response
+            ? e.message
+            : 'Permission approval could not be saved. Refresh and try again; no registration was sent.',
     );
   } finally {
     sending = false;
@@ -380,7 +375,7 @@ async function autoApprove() {
   for (const request of (state.delegations ?? []).filter((d) => d.requestId === focusId)) {
     if (autoTried.has(`d:${request.id}`)) continue;
     autoTried.add(`d:${request.id}`);
-    return signDelegation(request);
+    return requestPermission(request);
   }
   for (const batch of state.batches.filter((b) => b.requestId === focusId && b.status === 'draft')) {
     if (['executed', 'failed'].includes(batch.stepStatus)) continue;
@@ -426,11 +421,11 @@ function render() {
     card.append(
       el(
         'p',
-        'This grants a bounded onchain permission. Registration is a separate wallet transaction. Local CRE simulation does not send scheduled payments.',
+        `MetaMask shows this as a token subscription: at most ${eth(request.permissionRequest.permission.data.periodAmount, intent.token === 'ETH' ? 18 : 6)} ${intent.token} ${every(intent.schedule.interval_seconds)}, ending after the last run. Only the Flex executor can use it, and only for the recipients above, which registration (a separate wallet transaction) fixes onchain. Local CRE simulation does not send scheduled payments.`,
       ),
     );
     card.append(
-      action('Review permission in MetaMask', () => signDelegation(request)),
+      action('Review permission in MetaMask', () => requestPermission(request)),
       action(
         'Reject permission',
         async () => {

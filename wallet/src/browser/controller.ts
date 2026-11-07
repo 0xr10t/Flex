@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import type { SmartAccountsEnvironment } from '@metamask/smart-accounts-kit';
 import { formatUnits, parseUnits, type Hex } from 'viem';
+import { PermissionError } from '../autopay/permission.js';
 import { UPGRADED_CODE } from '../chain/addresses.js';
 import type { ChainGateway } from '../chain/gateway.js';
 import { executedCalls } from '../guard/decode.js';
@@ -26,8 +28,8 @@ export class BrowserWalletController {
       chainIds: readonly number[];
       feeMaxEth: string;
       gatewayFor: (chain: number) => ChainGateway;
-      /** MetaMask relays a gas-sponsored batch through this contract. */
-      delegationManagerFor: (chain: number) => Hex;
+      /** MetaMask's contracts per chain: its DelegationManager relays a gas-sponsored batch, and grants are checked. */
+      envFor: (chain: number) => SmartAccountsEnvironment;
       kick: () => void;
       now?: () => number;
     },
@@ -144,11 +146,12 @@ export class BrowserWalletController {
     return envelope.request_id;
   }
 
-  async delegation(id: string, signature: unknown, reject = false) {
+  /** A grant that differs from the request stays pending: the page asks the user to revoke it in MetaMask. */
+  delegation(id: string, response: unknown, reject = false) {
     try {
-      await approveDelegation(this.deps.store, this.deps.walletAddress, id, signature, reject);
-    } catch {
-      throw new BrowserWalletError('DELEGATION_APPROVAL_INVALID');
+      approveDelegation(this.deps.store, this.deps.envFor, id, response, reject);
+    } catch (e) {
+      throw new BrowserWalletError(e instanceof PermissionError ? e.message : 'DELEGATION_APPROVAL_INVALID');
     }
     this.deps.kick();
   }
@@ -249,7 +252,7 @@ export class BrowserWalletController {
     const receipt = await gateway.getReceipt(hash);
     if (!tx || !receipt) throw new BrowserWalletError('TRANSACTION_NOT_MINED');
     const wallet = this.deps.walletAddress.toLowerCase();
-    const ran = executedCalls(tx, this.deps.walletAddress, this.deps.delegationManagerFor(batch.chain_id));
+    const ran = executedCalls(tx, this.deps.walletAddress, this.deps.envFor(batch.chain_id).DelegationManager);
     const expected = payload.calls.calls;
     if (
       ran?.length !== expected.length ||
