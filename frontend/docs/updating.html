@@ -1,0 +1,21 @@
+<p class="eyebrow">HELP</p>
+<h1>Updating and removing</h1>
+<p class="lead">Your settings and data live inside the install, so keep a copy before you replace it.</p>
+
+<h2>Updating</h2>
+<p>There's no in-place update yet. Save your settings and data, reinstall, and put them back:</p>
+<pre><code>cp -a ~/.flex/current/.env ~/.flex/current/.local ~/flex-backup/
+rm -rf ~/.flex
+curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash
+cp -a ~/flex-backup/.env ~/flex-backup/.local ~/.flex/current/</code></pre>
+<p>
+  Make the backup folder first with <code>mkdir ~/flex-backup</code>. <code>.env</code> holds your settings, and
+  <code>.local</code> holds your contacts, history and configs.
+</p>
+
+<h2>Removing</h2>
+<pre><code>rm -rf ~/.flex</code></pre>
+<p>
+  Flex also keeps its database key in your system keychain, under the service <code>agent-layer</code>. You can delete
+  that entry too. Nothing else on your system was changed.
+</p>

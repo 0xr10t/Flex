@@ -1,0 +1,43 @@
+<p class="eyebrow">CONCEPTS</p>
+<h1>Security</h1>
+<p class="lead">
+  Letting a language model near a wallet is asking for trouble. Models get things wrong, and they can be talked into
+  things. So most of Flex is plain code built around a few small model calls.
+</p>
+
+<h2>The model doesn't drive</h2>
+<p>
+  Flex is a fixed pipeline, not an agent that picks its own tools. Code calls the model at four points (amounts, the
+  kind of request, recipients, and pairing them up), checks every answer, and decides what happens next.
+</p>
+
+<h2>The model never sees real values</h2>
+<p>
+  Before the model pairs payments with recipients, amounts and addresses are swapped for placeholders. It can only
+  choose between those placeholders, so it can't invent or mistype an amount or an address. Code puts the real values
+  back only after you confirm.
+</p>
+
+<h2>Untrusted text gets its own model</h2>
+<p>
+  Pasted text, web pages and ENS text records go to a separate, quarantined model call. It has no tools and never sees
+  your request. Anything it pulls out is marked untrusted, needs your explicit confirmation, and can never set up a
+  recurring payment.
+</p>
+
+<h2>The wallet checks again</h2>
+<p>
+  Before anything reaches MetaMask, the wallet validates the plan on its own, decodes the transaction bytes, and
+  simulates them with <code>eth_simulateV1</code> across independent providers. If the plan, the decoded calls and the
+  simulation don't all agree, it stops. After sending, it confirms the expected transfers really happened.
+</p>
+
+<h2>Your data stays put</h2>
+<ul>
+  <li>
+    Private keys and seed phrases are blocked the moment they're pasted. Flex only ever needs your public address.
+  </li>
+  <li>The local databases are encrypted with SQLCipher, and the key is kept in your OS keychain.</li>
+  <li>Logs never contain amounts or addresses.</li>
+  <li>Spending limits are set in settings or with <code>/limits</code>, never by the chat.</li>
+</ul>

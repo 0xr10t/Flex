@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}} · Flex docs</title>
+    <link rel="stylesheet" href="{{root}}site.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="brand" href="{{root}}" aria-label="Flex home">FLEX</a>
+        <nav aria-label="Site">
+          <a href="{{root}}docs/" aria-current="true">Docs</a><a href="{{root}}install.sh">install.sh</a>
+        </nav>
+      </header>
+      <div class="docs">
+        <nav class="sidebar" aria-label="Documentation">{{nav}}</nav>
+        <article>
+          {{content}}
+          <nav class="pager" aria-label="Pages">{{pager}}</nav>
+        </article>
+      </div>
+      <footer>
+        <span>Testnets only. Everything runs on your machine.</span>
+        <a href="https://github.com/0xr10t/Flex">GitHub</a>
+      </footer>
+    </main>
+  </body>
+</html>

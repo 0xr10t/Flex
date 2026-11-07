@@ -1,0 +1,46 @@
+<p class="eyebrow">HELP</p>
+<h1>Troubleshooting</h1>
+<p class="lead">
+  Start with <code>/doctor</code> inside <code>flexx</code>. It checks Node, the config, the agent, the database, the
+  model, Tor and the wallet, and tells you how to fix whatever failed.
+</p>
+
+<h2>The install failed while building</h2>
+<p>
+  It's almost always the compiler. Install the build tools listed under
+  <a href="../install/">Installation</a> and run the command again. Nothing was activated, so you're starting clean.
+</p>
+
+<h2>“Flex is already installed here”</h2>
+<p>
+  The installer never overwrites an install or your settings. To get a newer version, see
+  <a href="../updating/">Updating and removing</a>.
+</p>
+
+<h2>“another install holds .install-lock”</h2>
+<p>
+  Another install is running, or one was killed partway through. If nothing is running, remove
+  <code>~/.flex/.install-lock</code> and try again.
+</p>
+
+<h2>“Fill these settings in …/.env”</h2>
+<p>
+  Flex is missing RPC endpoints. Add the ones it names to that file, or use the quick way on
+  <a href="../first-run/">First run</a>, then start <code>flexx</code> again.
+</p>
+
+<h2>Tor or Ollama can't be found</h2>
+<p>
+  Install them, or point Flex at them: set <code>FLEX_TOR_PATH</code> or <code>FLEX_OLLAMA_PATH</code> in your shell to
+  the program's full path. To skip Tor, see <a href="../first-run/">First run</a>.
+</p>
+
+<h2>MetaMask doesn't open</h2>
+<p>
+  Flex opens your default browser, so that's the one that needs MetaMask. If it says it couldn't open your browser, run
+  <code>flexx</code> from a terminal on your desktop rather than over SSH.
+</p>
+<p>
+  You can also skip the browser step: put your public address in <code>FLEX_WALLET_ADDRESS</code> in
+  <code>~/.flex/current/.env</code>.
+</p>

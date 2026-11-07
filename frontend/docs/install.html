@@ -1,0 +1,51 @@
+<p class="eyebrow">GET STARTED</p>
+<h1>Installation</h1>
+<p class="lead">One command builds Flex for your user. It takes a minute or two.</p>
+
+<h2>What you need</h2>
+<ul>
+  <li>macOS or Linux, with Git, Python 3 and npm</li>
+  <li>Node 24, or 22.12 or later on the 22.x line</li>
+  <li>
+    A C/C++ compiler, because the encrypted database is built on your machine. On macOS run
+    <code>xcode-select --install</code>. On Debian or Ubuntu run <code>sudo apt install build-essential</code>.
+  </li>
+  <li><a href="https://ollama.com">Ollama</a> and Tor (on macOS, <code>brew install tor</code>)</li>
+  <li>MetaMask in your default browser</li>
+</ul>
+
+<h2>Install</h2>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash</code></pre>
+<p>
+  The installer clones the latest Flex into a private folder under <code>~/.flex</code>. It installs dependencies from
+  the lockfiles, builds the agent and the wallet, and checks that <code>flexx</code> starts. Only then does it switch
+  <code>~/.flex/current</code> over. If any step fails, nothing is activated and the half-built copy is deleted.
+</p>
+<p>
+  It never uses sudo, never edits your shell files, never starts services and never downloads models. Bash reads the
+  whole script before running any of it, so a dropped connection can't leave you with half an install. If you'd rather
+  read it first, <a href="../../install.sh">here it is</a>.
+</p>
+
+<h2>Where things go</h2>
+<dl>
+  <dt><code>~/.flex/bin/flexx</code></dt>
+  <dd>The command you run.</dd>
+  <dt><code>~/.flex/current</code></dt>
+  <dd>The active build. Your settings live in <code>.env</code> here and your data in <code>.local</code>.</dd>
+  <dt><code>~/.flex/versions</code></dt>
+  <dd>Each build the installer made.</dd>
+</dl>
+<p>To type just <code>flexx</code>, add this line to your shell profile:</p>
+<pre><code>export PATH="$HOME/.flex/bin:$PATH"</code></pre>
+
+<h2>Installing somewhere else</h2>
+<p>Pass an absolute folder you can write to:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash -s -- --prefix /path/to/flex</code></pre>
+
+<h2>Working on Flex itself</h2>
+<p>For a development checkout instead of an install:</p>
+<pre><code>git clone https://github.com/0xr10t/Flex.git && cd Flex
+npm ci && npm --prefix wallet ci && npm --prefix wallet/cre/autopay ci
+npm run testnet:build
+npm link</code></pre>

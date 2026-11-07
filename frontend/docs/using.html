@@ -1,0 +1,56 @@
+<p class="eyebrow">GUIDES</p>
+<h1>Using Flex</h1>
+<p class="lead">Talk to it the way you'd ask a friend to pay someone for you.</p>
+
+<pre><code>send 50 usdc to aradhya on base
+send 10 usdc to everyone under iitr.eth
+what's my balance on arbitrum?
+did my last payment go through?</code></pre>
+
+<h2>Paying people</h2>
+<p>
+  You can pay an address, a saved contact or an ENS name, and several people in one go. Payments on the same chain go
+  out as one atomic batch. If your USDC is on the wrong chain, Flex adds a Chainlink CCIP bridge step, with a cap on the
+  fee.
+</p>
+<p>
+  For an ENS group such as <code>iitr.eth</code>, Flex lists the subnames and you pick who gets paid. If a name could
+  mean more than one person, it asks.
+</p>
+
+<h2>Approving</h2>
+<p>
+  Every payment ends in a plain summary that you answer with <code>y</code> or <code>n</code>. On yes, the wallet opens
+  an approval page in your browser and MetaMask asks you to sign that exact plan.
+</p>
+<p>
+  The first payment on each network also asks you to switch your MetaMask account to a smart account (EIP-7702). The
+  approval page walks you through it, and it costs a little test ETH.
+</p>
+
+<h2>Commands</h2>
+<p>Type <code>/</code> to open the command menu, and <code>?</code> for keyboard shortcuts.</p>
+<dl>
+  <dt><code>/balance</code></dt>
+  <dd>Your balances on every chain.</dd>
+  <dt><code>/contacts</code></dt>
+  <dd>Read or edit saved contacts and the networks they use.</dd>
+  <dt><code>/limits</code></dt>
+  <dd>Show your spending limits, or change one. Nothing typed into the chat itself can change them.</dd>
+  <dt><code>/cancel</code></dt>
+  <dd>Drop the request that's waiting on you.</dd>
+  <dt><code>/wallet</code></dt>
+  <dd>Open the wallet page to approve in MetaMask.</dd>
+  <dt><code>/get</code> and <code>/db</code></dt>
+  <dd>Read your local records, such as transactions or recurring plans, without changing anything.</dd>
+  <dt><code>/status</code> and <code>/doctor</code></dt>
+  <dd>Check that everything is running, and get told how to fix what isn't.</dd>
+  <dt><code>/copy</code></dt>
+  <dd>Copy the last reply.</dd>
+  <dt><code>/new</code></dt>
+  <dd>Start a fresh session.</dd>
+</dl>
+<p>
+  <code>Ctrl+C</code> clears what you've typed, and pressing it twice on an empty line exits. When you leave, Flex stops
+  the services it started. Ollama and Tor keep running for next time.
+</p>
