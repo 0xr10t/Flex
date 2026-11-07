@@ -45,8 +45,11 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1000px 560px at 92% -12%, rgba(64, 208, 144, 0.13), transparent 68%),
-    radial-gradient(600px 400px at -8% 30%, rgba(112, 240, 160, 0.06), transparent 70%), var(--bg);
+    radial-gradient(1100px 640px at 88% -14%, rgba(64, 208, 144, 0.32), transparent 66%),
+    radial-gradient(900px 560px at -12% 34%, rgba(32, 176, 112, 0.2), transparent 70%),
+    radial-gradient(1000px 520px at 50% 118%, rgba(112, 240, 160, 0.14), transparent 70%),
+    linear-gradient(180deg, #06120c 0%, var(--bg) 55%, #030806 100%);
+  background-attachment: fixed;
   border-top: 2px solid var(--accent);
 }
 main {
@@ -217,6 +220,83 @@ button:disabled {
 .more {
   font-weight: 600;
   text-decoration: none;
+}
+
+/* Installer viewer */
+.viewer {
+  padding: 48px 0 72px;
+}
+.viewer h1 {
+  margin: 12px 0 16px;
+  font-size: clamp(34px, 5vw, 52px);
+  max-width: none;
+}
+.file {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.file-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.file-bar a {
+  text-decoration: none;
+  font-weight: 600;
+}
+pre.code {
+  margin: 0;
+  border: 0;
+  padding: 16px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  counter-reset: line;
+  max-height: 75vh;
+}
+pre.code .line {
+  display: block;
+  padding: 0 20px 0 0;
+}
+pre.code .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 3.5em;
+  padding-right: 1.2em;
+  margin-right: 1em;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.6;
+  border-right: 1px solid var(--line);
+  user-select: none;
+}
+pre.code .line:hover {
+  background: var(--raised);
+}
+pre.code .here {
+  color: var(--text-2);
+}
+pre.code .here.text {
+  color: #e2cf8e;
+}
+pre.code .com {
+  color: var(--muted);
+  font-style: italic;
+}
+pre.code .str {
+  color: #e2cf8e;
+}
+pre.code .var {
+  color: var(--accent-hi);
+}
+pre.code .key {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* Docs */

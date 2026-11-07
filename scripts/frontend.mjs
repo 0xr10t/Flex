@@ -50,10 +50,45 @@ pages.forEach(([slug, title], index) => {
     .replace('{{title}}', title)
     .replace('{{nav}}', nav)
     .replace('{{pager}}', pager)
-    .replace('{{content}}', readFileSync(join(source, 'docs', `${slug || 'index'}.html`), 'utf8'));
+    .replace('{{content}}', () => readFileSync(join(source, 'docs', `${slug || 'index'}.html`), 'utf8'));
   mkdirSync(join(output, 'docs', slug), { recursive: true });
   writeFileSync(join(output, 'docs', slug, 'index.html'), html);
 });
+
+// The installer as a readable page: line numbers and light Bash colouring. Heredoc bodies are either text the script
+// prints (cat <<, coloured like a string) or embedded Python (left plain).
+const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const token =
+  /('[^']*'|"(?:\\.|[^"\\])*")|(#.*$)|(\$\{?[A-Za-z_]\w*\}?|\$[@#?*\d])|\b(if|then|else|elif|fi|for|in|do|done|while|case|esac|return|exit|local|trap|set|shift)\b/g;
+const kinds = ['str', 'com', 'var', 'key'];
+const script = readFileSync(join(root, 'install.sh'), 'utf8').replace(/\n$/, '').split('\n');
+let heredoc = null;
+let printed = false;
+const code = script
+  .map((line) => {
+    if (heredoc) {
+      if (line === heredoc) heredoc = null;
+      return `<span class="line here${printed && heredoc ? ' text' : ''}">${escape(line)}</span>`;
+    }
+    heredoc = /<<-?'?(\w+)'?/.exec(line)?.[1] ?? null;
+    printed = /\bcat\s+<</.test(line); // cat straight to the screen, not cat > file
+    let html = '';
+    let last = 0;
+    for (const match of line.matchAll(token)) {
+      const kind = kinds[match.slice(1).findIndex(Boolean)];
+      html += `${escape(line.slice(last, match.index))}<span class="${kind}">${escape(match[0])}</span>`;
+      last = match.index + match[0].length;
+    }
+    return `<span class="line">${html}${escape(line.slice(last))}</span>`;
+  })
+  .join(''); // each line is a block, so no newlines between them
+mkdirSync(join(output, 'installer'), { recursive: true });
+writeFileSync(
+  join(output, 'installer/index.html'),
+  readFileSync(join(source, 'installer.html'), 'utf8')
+    .replaceAll('{{lines}}', String(script.length))
+    .replace('{{code}}', () => code),
+);
 
 if (process.argv.includes('--serve')) {
   const types = {
