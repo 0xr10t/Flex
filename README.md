@@ -12,7 +12,7 @@ Flex runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, with USDC and 
 
 - **Pay people.** Addresses, saved contacts or ENS names, one person or several at once. Several payments on one chain can go out as a single atomic batch.
 - **Bridge when it has to.** If your USDC is on the wrong chain, Flex adds a Chainlink CCIP bridge step to the plan, with a cap on the fee.
-- **Recurring payments.** *"Pay mihir 10 usdc every friday for 8 weeks."* You sign a MetaMask delegation for that one plan, and a Chainlink CRE workflow pays each run when it's due. The money stays in your wallet until then. *"Stop paying mihir"* cancels the plan and revokes the permission.
+- **Recurring payments.** *"Pay mihir 10 usdc every friday for 8 weeks."* You approve one MetaMask permission for that plan, capped at each run's total and ending after the last run, then register the plan from your wallet. A Chainlink CRE workflow pays each run when it's due. The money stays in your wallet until then. *"Stop paying mihir"* cancels the plan and revokes the permission.
 - **Pay an ENS group.** *"Send 10 usdc to everyone under iitr.eth."* Flex lists the subnames and you pick who gets paid.
 - **Answer questions about your wallet.** Balances, what you received this week, whether the last payment went through, what a pasted hash is. The common ones are answered from local data without calling the model.
 - **Stick to your limits.** Spending limits are set in settings or with `/limits`. Nothing typed into the chat can change them.
@@ -51,7 +51,7 @@ The repo has three parts:
 
 ## Deployed contracts
 
-`IntentExecutorV4` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you signed.
+`IntentExecutorV4` runs registered recurring plans. It can only execute a plan you registered from your own wallet, on the schedule you registered, and only pays the recipients that registration fixed. MetaMask's permission caps how much it can move per run.
 
 | Network | Address |
 | --- | --- |
@@ -214,7 +214,7 @@ Recurring payments need a few more things:
 
 ```sh
 forge build --root wallet/contracts
-npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser
+npm run testnet:onboard               # once: open http://127.0.0.1:8792 in your MetaMask browser, deploy the payment executor
 ```
 
 Set `FLEX_CRE_MODE=broadcast` in `.env` once, then run `flexx`. It starts the recurring runner after the wallet and agent are ready. Use `FLEX_CRE_MODE=dry-run` to check registered schedules without sending payments, or `off` (the default) to leave recurring execution disabled. Enabling the runner does not change Tor settings: explicitly choose `FLEX_SOCKS_PROXY=direct` and rerun setup first. The runner still requires the CRE CLI login and a funded test transmitter key for broadcasts.

@@ -1,6 +1,7 @@
 # F8: recurring payments through MetaMask permissions
 
-Status: design, branch `f8-erc7715-recurring-permissions`. Delete this file when the work merges.
+Status: built on branch `f8-erc7715-recurring-permissions`; live MetaMask test pending. Delete this file when the work
+merges.
 
 ## Problem
 
@@ -29,7 +30,9 @@ be registered, so cancel (`l`) is unreachable too. Websites must use ERC-7715 in
 ## Decision
 
 One permission per plan, no `payee` rule (chosen 2026-11-07). The grant caps the token per period, expires after the
-last run, and names the executor as redeemer. The executor pins the exact recipients and amounts.
+last run, and is delegated to the executor, the only account that can redeem it. The executor pins the exact recipients
+and amounts. No `redeemer` rule: the delegate already decides who redeems, and an extra rule is one more thing MetaMask
+could refuse.
 
 ## Design
 
@@ -42,7 +45,10 @@ delegation, working unchanged. Plan id (`keccak256(redeem)`), schedule, slots, `
 as they are.
 
 V4 is redeployed per testnet through the onboarding page's "Deploy payment executor". No browser plan can exist on V3
-because F8 blocked registration, so configs simply point at V4.
+because F8 blocked registration, so configs simply point at V4. `wallet/cre/deployments.testnet.json` no longer lists the
+V3 executors, so a fresh setup has none until onboarding deploys V4. An existing setup still points at V3: remove
+`executor` from each chain in `.local/wallet.config.json`, and the chain's entries in `.local/deployments.json` and
+`.local/cre-onboarding.json` if present, then onboard again. Onboarding rewrites `.local/cre.config.json`.
 
 ### Recurring plan (`k`), browser mode
 
@@ -51,10 +57,10 @@ because F8 blocked registration, so configs simply point at V4.
    - `periodAmount` = one run's total (recipients + fee), `periodDuration` = `interval_seconds`,
      `startTime` = `start_at`, `isAdjustmentAllowed: false`, a short justification naming the plan
    - rules: `expiry` = `start_at + (max_runs - 1) × interval_seconds + late_window_seconds + 1` (the enforcer's bound
-     is exclusive), `redeemer` = [executor]
+     is exclusive)
    - `from` = wallet, `to` = executor
 2. The approval page shows "Review permission in MetaMask" and calls `wallet_requestExecutionPermissions`.
-3. The page posts MetaMask's response to `/browser/permission`. The server verifies it (below) and stores the
+3. The page posts MetaMask's response to `/browser/delegation`. The server verifies it (below) and stores the
    `context`.
 4. The runner builds `redeem` as one single-mode transfer per payee, all with that context, simulates the first run
    at its start time as today, and sends `register(…, redeem)` through `wallet_sendCalls`.
@@ -68,16 +74,18 @@ Nothing is registered unless every check passes; the response is untrusted input
 - `chainId` and `delegationManager` match the step's chain; `dependencies` is empty (a counterfactual account is
   out of scope).
 - `context` decodes to exactly one delegation: delegator = wallet, delegate = executor, authority = root.
-- The caveats decode with MetaMask's own decoder for that chain's enforcers to the requested type, with exactly the
-  requested token, `periodAmount`, `periodDuration`, `startTime`, expiry and redeemer, and no payee or unknown
-  enforcer.
+- Its caveats are exactly the ones the request implies, built with the kit for that chain's enforcers (period
+  transfer, ValueLte(0) or ExactCalldata(empty), Timestamp(0, expiry)), plus one Nonce caveat of any value. Any other,
+  missing or repeated caveat (a payee, a redeemer, a changed amount, period, start, token or expiry) is refused. Tests
+  build grants with MetaMask's own `createErc20TokenPeriodicCaveats` / `createNativeTokenPeriodicCaveats`, so a
+  disagreement between the two encoders fails there.
 - The first-run simulation is the signature check: the DelegationManager validates the account's signature when it
   redeems.
 
 ### Cancel (`l`)
 
 Unchanged: `executor.cancel(planId)` and `DelegationManager.disableDelegation(delegation)` from the wallet, which also
-ends the MetaMask grant on-chain. The page mentions MetaMask → Advanced permissions as the other way to revoke.
+ends the MetaMask grant on-chain. Revoking it in MetaMask also stops every later run.
 
 ### Failures
 
@@ -85,8 +93,8 @@ ends the MetaMask grant on-chain. The page mentions MetaMask → Advanced permis
 |---|---|
 | User rejects the permission (4001) | Step fails `USER_REJECTED`; nothing granted or registered |
 | MetaMask refuses before prompting (4100, 4200, 5700, 5710, -32602) | Same, with "MetaMask refused this request before showing it" |
-| Response differs from the request (adjusted amounts, other caveats, wrong delegate) | Step fails `PERMISSION_MISMATCH`; page asks the user to revoke that grant in MetaMask |
-| `dependencies` not empty | Step fails `PERMISSION_UNSUPPORTED_ACCOUNT` |
+| Response differs from the request (adjusted amounts, other caveats, wrong delegate) | `409 PERMISSION_MISMATCH`; the request stays pending, the page asks the user to revoke that grant in MetaMask and review again |
+| `dependencies` not empty | `409 PERMISSION_UNSUPPORTED_ACCOUNT`; the request stays pending |
 | First-run simulation fails | Existing `SIMULATION_*` codes |
 | `start_at` passes before registration | Existing rule: the step fails, no run is silently lost |
 
