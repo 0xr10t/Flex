@@ -48,7 +48,11 @@ function runSetup(root: string, address: string, signal?: AbortSignal): Promise<
         if (!error) return done();
         if (signal?.aborted) return fail(new WalletConnectError('cancelled'));
         const missing = /Fill: ([A-Z0-9_, ]+)/.exec(stdout)?.[1];
-        fail(missing ? new ConfigError([`Fill these .env settings: ${missing}`]) : new WalletConnectError('setup'));
+        fail(
+          missing
+            ? new ConfigError([`Fill these settings in ${join(root, '.env')}: ${missing}`])
+            : new WalletConnectError('setup'),
+        );
       },
     );
   });
