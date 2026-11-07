@@ -72,6 +72,18 @@ The repo has three parts:
 
 ### Install
 
+For a user-local source installation, download and inspect `install.sh`, then run:
+
+```sh
+bash install.sh --source
+```
+
+This clones `master` into a private staging directory under `~/.flex`, installs the agent, wallet and CRE dependencies from their lockfiles, builds both services, and checks `flexx --version` before activating the installation. It requires Bash, Git, Python 3, npm and the Node version listed above; native dependencies may need a compiler and build tools. It never uses `sudo`, changes shell profiles, starts services or downloads models. It refuses to replace an existing installation. Set `--prefix /absolute/path` for a different location.
+
+Run `~/.flex/bin/flexx --help`, or add `~/.flex/bin` to your PATH. For the configuration steps below, use `cd ~/.flex/current` as your project directory. Ollama, Tor, MetaMask and the RPC settings are still required. For prepared release archives, the existing `--version VERSION --sha256 DIGEST` mode verifies the supplied checksum before extraction and activation; `--archive PATH` supports local archives.
+
+To work from a development checkout instead:
+
 ```sh
 git clone https://github.com/0xr10t/Flex.git
 cd Flex
