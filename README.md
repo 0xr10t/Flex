@@ -23,7 +23,7 @@ Letting a language model near a wallet is asking for trouble, so most of Flex is
 
 - **The model doesn't drive.** Flex is a fixed pipeline, not an agent that picks its own tools. Code calls the model at four points (amounts, request type, recipients, pairing), checks every answer, and decides what happens next.
 - **The model never sees your real addresses or amounts.** Before it pairs payments with recipients, those values are swapped for placeholders. Code puts the real ones back only after you confirm.
-- **Untrusted text gets its own model.** Pasted text, PDFs, web pages and ENS text records go to a separate, quarantined call with no tools that never sees your request. Anything it pulls out is marked untrusted, needs your explicit confirmation, and can never set up a recurring payment.
+- **Untrusted text gets its own model.** Pasted text, web pages and ENS text records go to a separate, quarantined call with no tools that never sees your request. Anything it pulls out is marked untrusted, needs your explicit confirmation, and can never set up a recurring payment.
 - **Private keys and seed phrases are blocked.** Paste one and the request stops right there.
 - **The wallet checks again before signing.** It validates the plan on its own, decodes the transaction bytes and simulates them with `eth_simulateV1`. If the plan, the decoded call and the simulation don't all agree, it stops. After sending, it confirms the expected transfers actually happened.
 - **Local data is encrypted.** The databases use SQLCipher with the key kept in your OS keychain, and logs never contain amounts or addresses.
@@ -239,12 +239,6 @@ To run the acceptance prompts against your real local model, use `LIVE_SET=all L
 - Testnets only, and only USDC and ETH. No swaps, NFTs or arbitrary contract calls.
 - Recurring payments are broadcast by the CRE CLI running on your machine, not by a deployed DON. On testnets the receivers trust Chainlink's mock forwarder.
 - `install.sh` is ready, but no release has been published yet, so install from source.
-
-## Docs
-
-- [`wallet/README.md`](wallet/README.md) covers the execution layer and how each payment is checked.
-- [`packages/protocol/README.md`](packages/protocol/README.md) describes the hand-off format between agent and wallet.
-- `agent-layer-architecture.html` is a visual walkthrough of the agent. Open it in a browser.
 
 ## Team
 
