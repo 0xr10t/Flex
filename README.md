@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Flex logo" width="104" />
+  <img src="assets/logo.png" alt="Flexx logo" width="104" />
 </p>
 
-<h1 align="center">Flex</h1>
+<h1 align="center">Flexx</h1>
 
 <p align="center">A private AI agent layer for your Ethereum wallet.</p>
 
@@ -14,17 +14,17 @@
 
 ## Introduction
 
-Flex lets you pay people by typing what you want, the way you'd say it:
+Flexx lets you pay people by typing what you want, the way you'd say it:
 
 ```text
 send 50 usdc to aradhya on base and 20 to mihir on arbitrum
 ```
 
-A model running on your own machine works out who you mean, which chain your money is on, and whether it has to bridge first. Flex then shows you a plain summary. Nothing moves until you say yes, and MetaMask asks once more before anything is signed.
+A model running on your own machine works out who you mean, which chain your money is on, and whether it has to bridge first. Flexx then shows you a plain summary. Nothing moves until you say yes, and MetaMask asks once more before anything is signed.
 
-The catch with putting a language model near a wallet is that models can be wrong, and they can be talked into things. So in Flex the model never drives. Plain code runs a fixed pipeline, asks the model four narrow questions, and checks every answer before using it. The model never even sees your real addresses or amounts.
+The catch with putting a language model near a wallet is that models can be wrong, and they can be talked into things. So in Flexx the model never drives. Plain code runs a fixed pipeline, asks the model four narrow questions, and checks every answer before using it. The model never even sees your real addresses or amounts.
 
-Everything sensitive stays on your device. The model runs through Ollama, and chain reads, ENS lookups and web fetches go out through Tor. Flex runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia with USDC and ETH.
+Everything sensitive stays on your device. The model runs through Ollama, and chain reads, ENS lookups and web fetches go out through Tor. Flexx runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia with USDC and ETH.
 
 ## Key Features
 
@@ -45,9 +45,9 @@ Everything sensitive stays on your device. The model runs through Ollama, and ch
 6. You see a summary and answer `y` or `n`.
 7. On `y`, the wallet decodes and simulates the transactions with `eth_simulateV1`, then MetaMask asks you to sign.
 
-Anything Flex didn't get from you directly, such as pasted text, a web page or an ENS record, goes to a separate quarantined model with no tools. Values taken from it need your explicit confirmation and can never set up a recurring payment. Local data is stored in SQLCipher, with the key kept in your OS keychain.
+Anything Flexx didn't get from you directly, such as pasted text, a web page or an ENS record, goes to a separate quarantined model with no tools. Values taken from it need your explicit confirmation and can never set up a recurring payment. Local data is stored in SQLCipher, with the key kept in your OS keychain.
 
-![How Flex works](assets/architecture.png)
+![How Flexx works](assets/architecture.png)
 
 ## Quick Start
 
@@ -66,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bas
 ~/.flex/bin/flexx
 ```
 
-That's it. The installer builds Flex into `~/.flex` without sudo, shell edits or background services. The first `flexx` run connects MetaMask in your browser and writes its own configs. If your testnet RPC URLs aren't set yet, it tells you exactly which ones are missing and the file to put them in. After that, `flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
+That's it. The installer builds Flexx into `~/.flex` without sudo, shell edits or background services. The first `flexx` run connects MetaMask in your browser and writes its own configs. If your testnet RPC URLs aren't set yet, it tells you exactly which ones are missing and the file to put them in. After that, `flexx` starts Tor, Ollama, the wallet and the agent for you. Type `/` for commands, and run `/doctor` if something isn't working.
 
 <details>
 <summary>Recurring payments</summary>

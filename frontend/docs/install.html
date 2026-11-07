@@ -1,6 +1,6 @@
 <p class="eyebrow">GET STARTED</p>
 <h1>Installation</h1>
-<p class="lead">One command builds Flex for your user. It takes a minute or two.</p>
+<p class="lead">One command builds Flexx for your user. It takes a minute or two.</p>
 
 <h2>What you need</h2>
 <ul>
@@ -17,7 +17,7 @@
 <h2>Install</h2>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash</code></pre>
 <p>
-  The installer clones the latest Flex into a private folder under <code>~/.flex</code>. It installs dependencies from
+  The installer clones the latest Flexx into a private folder under <code>~/.flex</code>. It installs dependencies from
   the lockfiles, builds the agent and the wallet, and checks that <code>flexx</code> starts. Only then does it switch
   <code>~/.flex/current</code> over. If any step fails, nothing is activated and the half-built copy is deleted.
 </p>
@@ -43,9 +43,9 @@
 <p>Pass an absolute folder you can write to:</p>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/0xr10t/Flex/master/install.sh | bash -s -- --prefix /path/to/flex</code></pre>
 
-<h2>Working on Flex itself</h2>
+<h2>Working on Flexx itself</h2>
 <p>For a development checkout instead of an install:</p>
-<pre><code>git clone https://github.com/0xr10t/Flex.git && cd Flex
+<pre><code>git clone https://github.com/0xr10t/Flex.git && cd Flexx
 npm ci && npm --prefix wallet ci && npm --prefix wallet/cre/autopay ci
 npm run testnet:build
 npm link</code></pre>

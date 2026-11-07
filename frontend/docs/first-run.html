@@ -1,12 +1,12 @@
 <p class="eyebrow">GET STARTED</p>
 <h1>First run</h1>
 <p class="lead">
-  Flex needs one thing from you before it starts: RPC endpoints for the three testnets. Everything else it sets up on
+  Flexx needs one thing from you before it starts: RPC endpoints for the three testnets. Everything else it sets up on
   its own.
 </p>
 
 <h2>RPC endpoints</h2>
-<p>For each of Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, Flex needs two things:</p>
+<p>For each of Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, Flexx needs two things:</p>
 <ul>
   <li>a normal RPC URL for reading the chain and sending transactions</li>
   <li>
@@ -23,7 +23,7 @@
 <p>
   Put an Alchemy API key and a QuickNode API key in <code>.env</code> as <code>ALCHEMY_API_KEY</code> and
   <code>QUICKNODE_API_KEY</code>. The QuickNode one is the management key from your account, not a node token. Then let
-  Flex find and test the endpoints:
+  Flexx find and test the endpoints:
 </p>
 <pre><code>cd ~/.flex/current
 node scripts/configure-rpc-providers.mjs --third-provider=publicnode</code></pre>
@@ -32,12 +32,12 @@ node scripts/configure-rpc-providers.mjs --third-provider=publicnode</code></pre
   <code>.env</code>. Your other settings stay as they are. PublicNode needs no key.
 </p>
 
-<h2>Start Flex</h2>
+<h2>Start Flexx</h2>
 <pre><code>~/.flex/bin/flexx</code></pre>
-<p>On the first run, Flex does the rest of the setup:</p>
+<p>On the first run, Flexx does the rest of the setup:</p>
 <ul>
   <li>
-    It opens a page in your browser to connect MetaMask. Flex only needs your <strong>public</strong> address. No
+    It opens a page in your browser to connect MetaMask. Flexx only needs your <strong>public</strong> address. No
     signature or payment is requested.
   </li>
   <li>It writes its agent, wallet and CRE configs.</li>
@@ -46,7 +46,7 @@ node scripts/configure-rpc-providers.mjs --third-provider=publicnode</code></pre
   </li>
 </ul>
 <p>
-  If a setting is still missing, Flex tells you which ones and the exact file to put them in. After the first run,
+  If a setting is still missing, Flexx tells you which ones and the exact file to put them in. After the first run,
   <code>flexx</code> starts straight into the chat.
 </p>
 

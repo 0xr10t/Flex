@@ -1,25 +1,25 @@
 <p class="eyebrow">DOCS</p>
 <h1>Overview</h1>
 <p class="lead">
-  Flex is a terminal app that lets you pay people by typing what you want. A model on your own machine works out the
+  Flexx is a terminal app that lets you pay people by typing what you want. A model on your own machine works out the
   plan, plain code checks every value, you approve it, and MetaMask signs it.
 </p>
 
 <pre><code>send 50 usdc to aradhya on base and 20 to mihir on arbitrum</code></pre>
 
 <p>
-  Flex works out who you mean, which chain your money is on, and whether it has to bridge first. Then it shows you a
+  Flexx works out who you mean, which chain your money is on, and whether it has to bridge first. Then it shows you a
   summary. Nothing moves until you say yes, and MetaMask asks you once more before anything is signed.
 </p>
 
 <h2>How a request flows</h2>
 <ol>
   <li>You type a request into <code>flexx</code>.</li>
-  <li>Flex refreshes your balances and stops right there if you pasted a private key or seed phrase.</li>
+  <li>Flexx refreshes your balances and stops right there if you pasted a private key or seed phrase.</li>
   <li>
     The model pulls out amounts and recipients. Code checks them and resolves names through your contacts and ENS.
   </li>
-  <li>If something is missing or unclear, Flex asks you instead of guessing.</li>
+  <li>If something is missing or unclear, Flexx asks you instead of guessing.</li>
   <li>
     Code builds the plan, including source chains, bridges and schedules, and checks it against your balances and
     limits.
@@ -31,12 +31,12 @@
 <h2>What runs where</h2>
 <p>
   Everything runs on your machine. The model runs through <a href="https://ollama.com">Ollama</a>, your data sits in
-  encrypted local databases, and chain reads, ENS lookups and web fetches go out through Tor by default. There's no Flex
-  server and no cloud AI.
+  encrypted local databases, and chain reads, ENS lookups and web fetches go out through Tor by default. There's no
+  Flexx server and no cloud AI.
 </p>
 
 <h2>What's supported</h2>
 <p>
-  Flex runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, with USDC and ETH. It doesn't do swaps, NFTs,
+  Flexx runs on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, with USDC and ETH. It doesn't do swaps, NFTs,
   arbitrary contract calls or mainnet.
 </p>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Flex for the current user. No services, configuration, or model downloads.
+# Install Flexx for the current user. No services, configuration, or model downloads.
 set -euo pipefail
 umask 077
 
@@ -25,7 +25,7 @@ They install all three dependency trees and build the agent and wallet.
 Native dependencies may require a compiler and build tools on your machine.
 HELP
 }
-fail() { printf 'flex installer: %s\n' "$*" >&2; exit 1; }
+fail() { printf 'flexx installer: %s\n' "$*" >&2; exit 1; }
 # Everything runs inside main, called on the last line: a truncated download runs nothing, and with
 # `curl | bash` Bash has read the whole script before any command can consume stdin.
 main() {
@@ -88,26 +88,26 @@ import os, pathlib, sys
 absolute = os.path.abspath(sys.argv[1])
 p = pathlib.Path(os.path.realpath(os.path.dirname(absolute))) / os.path.basename(absolute)
 if p == pathlib.Path('/'):
-    sys.exit('flex installer: cannot install into /')
+    sys.exit('flexx installer: cannot install into /')
 if p.is_symlink():
-    sys.exit('flex installer: the installation directory must not be a symlink')
+    sys.exit('flexx installer: the installation directory must not be a symlink')
 if p.exists() and not p.is_dir():
-    sys.exit('flex installer: the installation directory exists and is not a directory')
+    sys.exit('flexx installer: the installation directory exists and is not a directory')
 for child in ('versions', 'bin', 'current'):
     target = p / child
     if child != 'current' and target.is_symlink():
-        sys.exit('flex installer: installation directories must not be symlinks')
+        sys.exit('flexx installer: installation directories must not be symlinks')
     if child != 'current' and target.exists() and not target.is_dir():
-        sys.exit(f'flex installer: {child} exists and is not a directory')
+        sys.exit(f'flexx installer: {child} exists and is not a directory')
     if child == 'current' and target.exists() and not target.is_symlink():
-        sys.exit('flex installer: current exists and is not an installer symlink')
+        sys.exit('flexx installer: current exists and is not an installer symlink')
     if child == 'current' and target.is_symlink():
         link = pathlib.PurePosixPath(os.readlink(target))
         if len(link.parts) != 2 or link.parts[0] != 'versions' or link.parts[1] in ('.', '..'):
-            sys.exit('flex installer: refusing to replace an unrelated current symlink')
+            sys.exit('flexx installer: refusing to replace an unrelated current symlink')
 launcher = p / 'bin/flexx'
 if os.path.lexists(launcher) and not (launcher.is_symlink() and os.readlink(launcher) == '../current/bin/flexx'):
-    sys.exit('flex installer: refusing to replace an unrelated bin/flexx')
+    sys.exit('flexx installer: refusing to replace an unrelated bin/flexx')
 print(p)
 PY
 )
@@ -132,14 +132,14 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 if "$source_install"; then
   [[ ! -e "$prefix/current" && ! -L "$prefix/current" ]] ||
-    fail 'Flex is already installed here; source installs never replace an existing installation or its configuration'
+    fail 'Flexx is already installed here; source installs never replace an existing installation or its configuration'
 else
   [[ ! -e "$prefix/versions/$version" && ! -L "$prefix/versions/$version" ]] || fail 'version already installed; existing releases are never overwritten'
 fi
 staging=$(mktemp -d "$prefix/.install.XXXXXXXX")
 if "$source_install"; then
-  printf 'Building Flex from source for the current user...\n'
-  git clone --depth 1 --branch master -- https://github.com/0xr10t/Flex.git "$staging/payload" || fail 'could not download Flex source'
+  printf 'Building Flexx from source for the current user...\n'
+  git clone --depth 1 --branch master -- https://github.com/0xr10t/Flex.git "$staging/payload" || fail 'could not download Flexx source'
   revision=$(git -C "$staging/payload" rev-parse HEAD)
   [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || fail 'could not identify the downloaded source revision'
   version="source-$revision"
@@ -189,7 +189,7 @@ try:
         for chunk in iter(lambda: source.read(1024 * 1024), b''):
             h.update(chunk)
     if h.hexdigest() != digest.lower():
-        sys.exit('flex installer: SHA-256 mismatch; nothing activated')
+        sys.exit('flexx installer: SHA-256 mismatch; nothing activated')
     with tarfile.open(archive, 'r:gz') as bundle:
         members = bundle.getmembers()
         seen = set()
@@ -197,11 +197,11 @@ try:
         for member in members:
             path = pathlib.PurePosixPath(member.name)
             if path.is_absolute() or '..' in path.parts or '\\' in member.name:
-                sys.exit('flex installer: unsafe archive path')
+                sys.exit('flexx installer: unsafe archive path')
             if not (member.isfile() or member.isdir()):
-                sys.exit('flex installer: archive links and special files are forbidden')
+                sys.exit('flexx installer: archive links and special files are forbidden')
             if path in seen:
-                sys.exit('flex installer: duplicate archive path')
+                sys.exit('flexx installer: duplicate archive path')
             seen.add(path)
         for member in members:
             target = root / member.name
@@ -213,12 +213,12 @@ try:
                     shutil.copyfileobj(source, output)
                 target.chmod(0o700 if member.mode & 0o111 else 0o600)
 except (tarfile.TarError, EOFError, zlib.error) as error:
-    sys.exit(f'flex installer: archive is not a readable .tar.gz ({error})')
+    sys.exit(f'flexx installer: archive is not a readable .tar.gz ({error})')
 except OSError as error:
-    sys.exit(f'flex installer: could not unpack the archive ({error})')
+    sys.exit(f'flexx installer: could not unpack the archive ({error})')
 launcher = root / 'bin/flexx'
 if not launcher.is_file() or not launcher.stat().st_mode & 0o111:
-    sys.exit('flex installer: release must contain executable bin/flexx')
+    sys.exit('flexx installer: release must contain executable bin/flexx')
 PY
 fi
 python3 - "$staging/payload/bin/flexx" <<'PY' || fail 'release smoke check failed; previous version remains active'
@@ -228,12 +228,12 @@ try:
     if limit < 1:
         raise ValueError()
 except ValueError:
-    sys.exit('flex installer: smoke timeout must be a positive number of seconds')
+    sys.exit('flexx installer: smoke timeout must be a positive number of seconds')
 # A process group of its own, so a hung check and anything it started can be stopped together.
 try:
     check = subprocess.Popen([sys.argv[1], '--version'], stdin=subprocess.DEVNULL, start_new_session=True)
 except OSError as error:
-    sys.exit(f'flex installer: cannot run bin/flexx ({error})')
+    sys.exit(f'flexx installer: cannot run bin/flexx ({error})')
 try:
     code = check.wait(timeout=limit)
 except subprocess.TimeoutExpired:
@@ -246,7 +246,7 @@ finally:
     except OSError:
         pass
 if code is None:
-    sys.exit(f'flex installer: release smoke check did not finish within {limit} seconds')
+    sys.exit(f'flexx installer: release smoke check did not finish within {limit} seconds')
 sys.exit(code)
 PY
 python3 - "$staging" "$prefix" "$version" <<'PY'
@@ -262,7 +262,7 @@ link = stage / 'current'
 link.symlink_to('versions/' + version)
 os.replace(link, root / 'current')
 PY
-printf '\nInstalled Flex %s in %s\n' "$version" "$prefix"
+printf '\nInstalled Flexx %s in %s\n' "$version" "$prefix"
 printf 'Add this directory to your PATH: %s/bin\n' "$prefix"
 printf 'No shell files, configuration, or services were changed.\n'
 printf 'Run: %q --help\n' "$prefix/bin/flexx"

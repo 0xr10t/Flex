@@ -38,7 +38,7 @@ const REASONS: Record<string, string> = {
   DECODE_MISMATCH: 'The prepared calls did not match the request, so it was not sent.',
   FEE_TOO_HIGH: 'The bridge fee was above your limit, so it was not sent.',
   BRIDGE_ROUTE_UNAVAILABLE: 'That bridge route is not available right now.',
-  BRIDGE_VERSION_UNSUPPORTED: 'The bridge on this route is a version Flex does not support.',
+  BRIDGE_VERSION_UNSUPPORTED: 'The bridge on this route is a version Flexx does not support.',
   ACCOUNT_DELEGATED_ELSEWHERE: 'This account points to a different smart-account implementation.',
   DELEGATOR_MISSING: 'The smart-account contract is missing on this network.',
   DEPENDENCY_FAILED: 'An earlier step it depends on did not go through.',

@@ -15,7 +15,7 @@ const pages = [
   ['', 'Overview'],
   ['install', 'Installation'],
   ['first-run', 'First run'],
-  ['using', 'Using Flex'],
+  ['using', 'Using Flexx'],
   ['recurring', 'Recurring payments'],
   ['security', 'Security'],
   ['troubleshooting', 'Troubleshooting'],
@@ -130,8 +130,8 @@ if (process.argv.includes('--serve')) {
     process.exitCode = 1;
   });
   server.listen(Number(process.env.PORT || 4173), '127.0.0.1', () => {
-    console.log(`Flex install page: http://127.0.0.1:${server.address().port}`);
+    console.log(`Flexx install page: http://127.0.0.1:${server.address().port}`);
   });
 } else {
-  console.log(`Built Flex install page and docs: ${relative(process.cwd(), output) || output}`);
+  console.log(`Built Flexx install page and docs: ${relative(process.cwd(), output) || output}`);
 }

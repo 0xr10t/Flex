@@ -268,7 +268,7 @@ test('unreadable archives and blocking files fail with installer messages, not t
     const result = install(target, 'v0.1.0', bundle);
     assert.notEqual(result.status, 0);
     assert.doesNotMatch(result.stderr, /Traceback/);
-    assert.match(result.stderr.trim().split('\n').at(-1), /^flex installer: /);
+    assert.match(result.stderr.trim().split('\n').at(-1), /^flexx installer: /);
     assert.ok(!existsSync(join(target, 'current')));
     assert.ok(!existsSync(join(target, '.install-lock')));
   }
