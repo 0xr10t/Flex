@@ -228,7 +228,7 @@ async function requestPermission(request) {
       e.code === 4001
         ? 'Recurring permission rejected. Nothing was registered.'
         : refused
-          ? `MetaMask refused this request before showing it (${e.code}). Nothing was registered.`
+          ? `MetaMask refused this request before showing it (${e.code}). Nothing was registered. MetaMask said: ${e.message}`
           : response
             ? e.message
             : 'Permission approval could not be saved. Refresh and try again; no registration was sent.',
