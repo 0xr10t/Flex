@@ -5,6 +5,13 @@
   model, Tor and the wallet, and tells you how to fix whatever failed.
 </p>
 
+<h2>“source installs require Node 22.12+ on the 22.x line, or Node 24+”</h2>
+<p>
+  Your Node version isn't supported, and Node 23 is the most common case. With nvm, run <code>nvm install 24</code>,
+  then run the install command again in the same terminal. Keep using that version afterwards, because
+  <code>flexx</code> runs with whichever <code>node</code> is on your PATH.
+</p>
+
 <h2>The install failed while building</h2>
 <p>
   It's almost always the compiler. Install the build tools listed under
