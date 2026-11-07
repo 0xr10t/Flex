@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Flex logo" width="104" />
+</p>
+
 <h1 align="center">Flex</h1>
 
 <p align="center">A private AI agent layer for your Ethereum wallet.</p>
